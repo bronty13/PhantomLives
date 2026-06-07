@@ -4,6 +4,22 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Full RAR support via vendored unrar (2026-06-06)
+
+100% RAR/RAR5 coverage — the last format gap closed.
+
+- **Vendored RARLAB unrar 7.1.6** (`Vendor/CUnrar`, extract-only freeware) behind
+  a thin C shim (`cunrar.*`) over its C++ `RAR*` API. Only the makefile's library
+  TUs compile (48); the 37 `#include`-only `.cpp` are excluded.
+- **`UnrarEngine`** (list/extract/verify); `ArchiveService` routes all RAR (by
+  `Rar!\x1a\x07` magic) to it. Fixes the one variant libarchive's reader can't
+  open — **RAR5 with a recovery record** — and uses recovery data during extract.
+- Measured before/after on the ssokolow/rar-test-files corpus: libarchive 8/9 →
+  unrar **9/9** variants list + extract to correct content.
+- `RarReadTests` against a committed `RarCorpus` (RAR3/RAR5 incl. recovery-record
+  + solid). Engine suite **44/44**. Bundle deep-strict valid with the C++ unrar
+  in `ArchiveKit.framework`.
+
 ### Batch queue, drag-out, single-entry extraction, visual polish (2026-06-06)
 
 - **Single-entry extraction** (`ArchiveService.extractEntry` /

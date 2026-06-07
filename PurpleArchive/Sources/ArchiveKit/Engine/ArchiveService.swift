@@ -10,6 +10,7 @@ public struct ArchiveService: Sendable {
     private let writer = LibArchiveWriter()
     private let editor = LibArchiveEditor()
     private let legacy = PeelerEngine()   // StuffIt/Compact Pro/BinHex/MacBinary
+    private let unrar = UnrarEngine()     // RAR/RAR5 (authoritative over libarchive's reader)
 
     public init() {}
 
@@ -17,7 +18,8 @@ public struct ArchiveService: Sendable {
 
     public func list(_ url: URL) throws -> [ArchiveEntry] {
         try resolvingVolumes(url) { real in
-            legacy.canHandle(real) ? try legacy.list(real) : try reader.list(real)
+            if unrar.canHandle(real) { return try unrar.list(real) }
+            return legacy.canHandle(real) ? try legacy.list(real) : try reader.list(real)
         }
     }
 
@@ -70,7 +72,8 @@ public struct ArchiveService: Sendable {
     public func extract(_ url: URL, options: ExtractOptions,
                         sink: ProgressSink = .none) throws -> Int {
         try resolvingVolumes(url) { real in
-            legacy.canHandle(real)
+            if unrar.canHandle(real) { return try unrar.extract(real, options: options, sink: sink) }
+            return legacy.canHandle(real)
                 ? try legacy.extract(real, options: options, sink: sink)
                 : try reader.extract(real, options: options, sink: sink)
         }
@@ -82,12 +85,14 @@ public struct ArchiveService: Sendable {
     public func extractEntry(_ url: URL, entryPath: String, to dest: URL,
                              password: String? = nil) throws -> Bool {
         try resolvingVolumes(url) { real in
-            if legacy.canHandle(real) {
-                // peeler peels in-memory; extract all to a temp dir, move the one out.
+            if legacy.canHandle(real) || unrar.canHandle(real) {
+                // These backends extract whole; stage to a temp dir, move the one out.
                 let staging = FileManager.default.temporaryDirectory
                     .appendingPathComponent("pa-one-\(UUID().uuidString)", isDirectory: true)
                 defer { try? FileManager.default.removeItem(at: staging) }
-                try legacy.extract(real, options: ExtractOptions(destination: staging))
+                let opts = ExtractOptions(destination: staging, password: password)
+                if unrar.canHandle(real) { try unrar.extract(real, options: opts) }
+                else { try legacy.extract(real, options: opts) }
                 let src = staging.appendingPathComponent(entryPath)
                 guard FileManager.default.fileExists(atPath: src.path) else { return false }
                 try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
@@ -126,6 +131,7 @@ public struct ArchiveService: Sendable {
     public func test(_ url: URL, password: String? = nil,
                      sink: ProgressSink = .none) throws -> Bool {
         return try resolvingVolumes(url) { real in
+            if unrar.canHandle(real) { return try unrar.verify(real, password: password) }
             if legacy.canHandle(real) {
                 // peeler fully decompresses on list, so a clean list == integrity OK.
                 _ = try legacy.list(real)

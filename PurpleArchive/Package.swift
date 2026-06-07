@@ -22,6 +22,7 @@ let package = Package(
         .package(path: "Vendor/CZstd"),
         .package(path: "Vendor/CLibArchive"),
         .package(path: "Vendor/CPeeler"),
+        .package(path: "Vendor/CUnrar"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
@@ -31,6 +32,7 @@ let package = Package(
                 .product(name: "CLibArchive", package: "CLibArchive"),
                 .product(name: "CZstd", package: "CZstd"),
                 .product(name: "CPeeler", package: "CPeeler"),
+                .product(name: "CUnrar", package: "CUnrar"),
             ],
             path: "Sources/ArchiveKit"
         ),
@@ -46,7 +48,7 @@ let package = Package(
             name: "ArchiveKitTests",
             dependencies: ["ArchiveKit"],
             path: "Tests/ArchiveKitTests",
-            resources: [.copy("LegacyCorpus")]
+            resources: [.copy("LegacyCorpus"), .copy("RarCorpus")]
         ),
     ]
 )
