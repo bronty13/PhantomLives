@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Personal-use local app — sandbox dropped on purpose.
+
+      PurpleSpeak reads user-chosen documents (PDF/EPUB/DOCX/images) from
+      anywhere on disk, writes exported audio + transcripts under
+      ~/Downloads/PurpleSpeak/, and persists its library + settings in
+      ~/Library/Application Support/PurpleSpeak/. No security-scoped
+      bookmarks: paths are stored as plain strings.
+
+      The network client entitlement covers two paths: fetching web
+      articles to read aloud, and downloading the Whisper GGML model on
+      first transcription. Microphone access (declared in Info.plist via
+      NSMicrophoneUsageDescription) is requested only if live dictation
+      is added later; file-based transcription needs no TCC grant.
+    -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>
