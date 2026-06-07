@@ -52,6 +52,7 @@ final class RoundTripTests: XCTestCase {
         let formats: [(String, ArchiveFormat)] = [
             ("out.zip", .zip), ("out.tar", .tar), ("out.tar.gz", .tarGz),
             ("out.tar.bz2", .tarBz2), ("out.tar.xz", .tarXz), ("out.tar.zst", .tarZst),
+            ("out.7z", .sevenZip),
         ]
         for (name, fmt) in formats {
             let archive = tmp.appendingPathComponent(name)
@@ -132,6 +133,22 @@ final class RoundTripTests: XCTestCase {
         let tree = try svc.tree(archive)
         XCTAssertEqual(tree.fileCount, 3)
         XCTAssertGreaterThan(tree.totalSize, 40_000)
+    }
+
+    func testConvertTranscodesPreservingContents() throws {
+        let src = try makeSource()
+        let svc = ArchiveService()
+        // Start from a zip, convert zip → 7z → tar.zst, verify contents survive.
+        let zip = tmp.appendingPathComponent("c.zip")
+        try svc.create(zip, inputs: [src])
+        let sevenZ = tmp.appendingPathComponent("c.7z")
+        try svc.convert(from: zip, to: sevenZ)
+        let tzst = tmp.appendingPathComponent("c.tar.zst")
+        try svc.convert(from: sevenZ, to: tzst)
+
+        let dest = tmp.appendingPathComponent("conv-out")
+        try svc.extract(tzst, options: ExtractOptions(destination: dest))
+        try assertTreesEqual(src, dest.appendingPathComponent("src"))
     }
 
     func testHashKnownVector() throws {

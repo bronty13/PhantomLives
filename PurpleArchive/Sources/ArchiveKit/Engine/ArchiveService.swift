@@ -92,6 +92,32 @@ public struct ArchiveService: Sendable {
                                  options: options, sink: sink)
     }
 
+    // MARK: Convert (transcode)
+
+    /// Transcode `src` → `dst` (format inferred from `dst`'s extension) in one
+    /// step — extract to a temp dir, then re-create. Beats the manual
+    /// extract-then-recompress dance. Returns the entry count written.
+    @discardableResult
+    public func convert(from src: URL, to dst: URL,
+                        password: String? = nil,
+                        options: CompressionOptions = .default,
+                        sink: ProgressSink = .none) throws -> Int {
+        let fm = FileManager.default
+        let staging = fm.temporaryDirectory
+            .appendingPathComponent("pa-convert-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: staging) }
+
+        try extract(src, options: ExtractOptions(destination: staging, password: password), sink: sink)
+        // Re-archive the staging dir's top-level children so the internal
+        // structure is preserved (not wrapped in the temp dir name).
+        let inputs = try fm.contentsOfDirectory(at: staging, includingPropertiesForKeys: nil)
+        guard !inputs.isEmpty else {
+            throw ArchiveError.readFailed(detail: "nothing to convert (source extracted empty)")
+        }
+        return try create(dst, inputs: inputs, options: options, sink: sink)
+    }
+
     // MARK: Hash
 
     public func hash(_ url: URL, algorithm: HashAlgorithm) throws -> String {

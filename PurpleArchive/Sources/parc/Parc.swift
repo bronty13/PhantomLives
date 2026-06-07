@@ -12,8 +12,8 @@ struct Parc: AsyncParsableCommand {
         commandName: "parc",
         abstract: "PurpleArchive — extract, create, inspect and hash any archive.",
         version: "PurpleArchive \(ArchiveKitVersions.libarchive)+zstd\(ArchiveKitVersions.zstd)",
-        subcommands: [List.self, Extract.self, Add.self, Test.self,
-                      Info.self, Hash.self, Recommend.self, Vault.self, Versions.self],
+        subcommands: [List.self, Extract.self, Add.self, Test.self, Info.self,
+                      Hash.self, Convert.self, Recommend.self, Vault.self, Versions.self],
         defaultSubcommand: nil)
 }
 

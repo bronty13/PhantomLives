@@ -4,6 +4,18 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Phase 3a — 7z creation + one-step convert (2026-06-06)
+
+- **7z creation** — turns out libarchive ships `archive_write_set_format_7zip`
+  (LZMA2), so 7z is now a first-class *create* format (GUI picker + `parc a
+  out.7z`), no p7zip vendor needed. Round-trips through create/list/test/extract.
+- **`convert`** — transcode an archive to another format in one step
+  (`ArchiveService.convert`, `parc convert in.zip out.tar.zst`): extract to a
+  temp dir then re-create, preserving the internal structure. Beats the manual
+  extract-then-recompress dance.
+- `ArchiveFormat.canCreate` is now always true. 2 new tests (7z round-trip,
+  zip→7z→tar.zst convert chain); engine suite 33/33.
+
 ### Phase 2c — format recommender + Windows-safe naming (2026-06-06)
 
 - **`FormatRecommender`**: suggests the best format from the payload + your

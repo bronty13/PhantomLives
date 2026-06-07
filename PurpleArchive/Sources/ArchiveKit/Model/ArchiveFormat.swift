@@ -45,13 +45,10 @@ public enum ArchiveFormat: String, CaseIterable, Sendable {
         }
     }
 
-    /// Can PurpleArchive *create* this format today (Phase 1)?
-    public var canCreate: Bool {
-        switch self {
-        case .sevenZip: return false          // libarchive can't write 7z (Phase 3)
-        default: return true
-        }
-    }
+    /// Can PurpleArchive *create* this format? libarchive's `archive_write_set
+    /// _format_7zip` (LZMA2-backed) handles 7z creation, so everything we list
+    /// for creation is writable.
+    public var canCreate: Bool { true }
 
     /// Does this format carry multiple files (a true archive) vs. a single
     /// compressed stream (`.gz` / `.zst` of one file)?

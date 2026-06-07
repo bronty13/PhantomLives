@@ -76,10 +76,14 @@ public struct LibArchiveWriter: Sendable {
             archive_write_set_format_raw(a); archive_write_add_filter_zstd(a)
             applyZstdOptions(a, options: options)
         case .sevenZip:
-            throw ArchiveError.unsupportedFormat(detail: "7z creation lands in Phase 3")
+            // libarchive writes 7z with an internal codec (no external filter).
+            archive_write_set_format_7zip(a)
+            _ = "7zip:compression=lzma2".withCString { archive_write_set_options(a, $0) }
+            let lvl = max(0, min(9, options.level == 6 ? 9 : options.level))
+            _ = "7zip:compression-level=\(lvl)".withCString { archive_write_set_options(a, $0) }
         }
-        // Generic compression level (gzip/bzip2/xz honor this; zstd set above).
-        if format != .tarZst && format != .zstd {
+        // Generic compression level (gzip/bzip2/xz honor this; zstd + 7z set above).
+        if format != .tarZst && format != .zstd && format != .sevenZip {
             let lvl = max(0, min(9, options.level))
             _ = "compression-level=\(lvl)".withCString { archive_write_set_options(a, $0) }
         }

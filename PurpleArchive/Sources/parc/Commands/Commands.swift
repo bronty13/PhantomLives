@@ -195,6 +195,29 @@ struct Hash: AsyncParsableCommand {
     }
 }
 
+// MARK: - convert
+
+struct Convert: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "convert",
+        abstract: "Transcode an archive to another format in one step (e.g. .rar → .tar.zst).")
+    @Argument(help: "Source archive.") var input: String
+    @Argument(help: "Destination archive; format inferred from its extension.") var output: String
+    @Option(name: .shortAndLong, help: "Password for an encrypted source.") var password: String?
+    @Option(name: .shortAndLong, help: "Compression level for the destination.") var level = 6
+    @Flag(name: .long, help: "Sanitize names for Windows in the destination.") var windowsSafe = false
+
+    func run() async throws {
+        let src = URL(fileURLWithPath: input)
+        let dst = URL(fileURLWithPath: output)
+        let opts = CompressionOptions(level: level, threads: 0, windowsSafeNames: windowsSafe)
+        do {
+            let n = try ArchiveService().convert(from: src, to: dst, password: password, options: opts)
+            print("Converted \(src.lastPathComponent) → \(dst.lastPathComponent) (\(n) entries)")
+        } catch { die(error.localizedDescription) }
+    }
+}
+
 // MARK: - recommend
 
 struct Recommend: AsyncParsableCommand {
