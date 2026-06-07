@@ -1,0 +1,47 @@
+{
+  "name": "calendarmaker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-contained, offline SPA for creating visually stunning, print-ready monthly calendars. Build named calendar bundles, then export to PDF (Month / Detail / Both).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/make-zip.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ingest:content": "node scripts/ingest-content.mjs",
+    "embed:fonts": "node scripts/embed-fonts.mjs"
+  },
+  "dependencies": {
+    "idb": "^8.0.0",
+    "jspdf": "^2.5.2",
+    "jszip": "^3.10.1",
+    "nanoid": "^5.0.9",
+    "react": "^18.3.1",
+    "react-colorful": "^5.6.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@expo-google-fonts/caveat": "^0.4.2",
+    "@expo-google-fonts/dancing-script": "^0.4.2",
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/lora": "^0.4.2",
+    "@expo-google-fonts/merriweather": "^0.4.2",
+    "@expo-google-fonts/montserrat": "^0.4.2",
+    "@expo-google-fonts/nunito": "^0.4.2",
+    "@expo-google-fonts/pacifico": "^0.4.1",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vite-plugin-singlefile": "^2.0.3",
+    "vitest": "^2.1.8"
+  }
+}
