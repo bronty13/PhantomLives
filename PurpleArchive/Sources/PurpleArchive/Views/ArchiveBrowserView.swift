@@ -38,8 +38,6 @@ struct ArchiveBrowserView: View {
                             if entry.isEncrypted { Image(systemName: "lock.fill").foregroundStyle(.orange) }
                         }
                         .contentShape(Rectangle())
-                        // Drag a file out to Finder → extracts just that entry.
-                        .onDrag { model.dragProvider(for: entry) }
                     }
                     TableColumn("Size") { entry in
                         Text(entry.isDirectory ? "—" : ByteFormat.string(entry.uncompressedSize))
@@ -99,11 +97,6 @@ struct ArchiveBrowserView: View {
             }
             .help("Quick Look the selected file (Space)")
             .disabled(selectedFileEntry == nil || model.busy)
-            Button { beginExtractSelected(selection) } label: {
-                Image(systemName: "arrow.down.to.line")
-            }
-            .help("Extract just the selected item(s)")
-            .disabled(selection.isEmpty || model.busy)
             Divider().frame(height: 16)
             if model.canEdit {
                 Button { addFiles() } label: { Image(systemName: "plus") }
@@ -134,10 +127,36 @@ struct ArchiveBrowserView: View {
             .disabled(model.busy)
             .help("Verify every entry decompresses correctly (integrity check)")
 
-            Button { beginExtractAll() } label: {
-                Label("Extract", systemImage: "arrow.down.circle.fill")
+            // Primary extract: the whole archive when nothing is selected, or
+            // just the selected rows when there's a selection.
+            Button { beginExtract() } label: {
+                Label(selection.isEmpty ? "Extract" : "Extract Selected",
+                      systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(.borderedProminent).tint(.purple)
+            .disabled(model.busy)
+            .help(selection.isEmpty
+                  ? "Extract everything to \(model.extractDestinationLabel)"
+                  : "Extract the selected item(s) to \(model.extractDestinationLabel)")
+
+            // Destination & all-items options.
+            Menu {
+                Text("Extract to: \(model.extractDestinationLabel)")
+                Button("Choose Destination Folder…") { chooseDestination() }
+                if model.sessionExtractRoot != nil {
+                    Button("Reset to Default (\(model.settings.resolvedExtractRoot.lastPathComponent))") {
+                        model.sessionExtractRoot = nil
+                    }
+                }
+                Divider()
+                Button("Extract All Items") { beginExtractAll() }
+                    .disabled(model.entries.isEmpty)
+            } label: {
+                Image(systemName: "folder")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Extract destination & options")
             .disabled(model.busy)
         }
         .padding(12)
@@ -205,6 +224,30 @@ struct ArchiveBrowserView: View {
     }
 
     // MARK: - Extract / test routing
+
+    /// The primary Extract action: selection drives it — all when nothing is
+    /// selected, just the selected rows otherwise.
+    private func beginExtract() {
+        if selection.isEmpty { beginExtractAll() }
+        else { beginExtractSelected(selection) }
+    }
+
+    /// Pick a destination folder for extraction. The choice is session-sticky
+    /// (`AppModel.sessionExtractRoot`) — every later extract goes there until
+    /// the app relaunches, when it falls back to the Settings default.
+    private func chooseDestination() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.message = "Choose where extracted files should go (for this session)"
+        panel.directoryURL = model.extractDestinationRoot
+        if panel.runModal() == .OK, let url = panel.url {
+            model.sessionExtractRoot = url
+            model.status = "Extract destination → \(model.extractDestinationLabel)"
+        }
+    }
 
     /// Run the action straight away when the archive is plaintext (or its
     /// password is remembered); otherwise stash the action and prompt.

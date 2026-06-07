@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import UniformTypeIdentifiers
 import ArchiveKit
 
 /// The GUI's central state: the currently open archive, its entry tree, and the
@@ -73,12 +72,27 @@ final class AppModel: ObservableObject {
     /// Password remembered in the Keychain for the open archive, if any.
     var vaultPassword: String? { openedURL.flatMap { vault.password(for: $0) } }
 
+    /// Session-sticky extract destination. When the user picks a folder it's
+    /// stored here and every later extract goes there — until the app relaunches
+    /// (this is in-memory only), when it falls back to the Settings default.
+    @Published var sessionExtractRoot: URL?
+
+    /// Where extracts go right now: the session override if set, else the
+    /// persistent Settings default (`~/Downloads/PurpleArchive` out of the box).
+    var extractDestinationRoot: URL { sessionExtractRoot ?? settings.resolvedExtractRoot }
+
+    /// `~`-abbreviated path of the current destination, for menus/help text.
+    var extractDestinationLabel: String {
+        extractDestinationRoot.path
+            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+    }
+
     func extractOpened(password: String? = nil, remember: Bool = false) {
         guard let url = openedURL else { return }
         // Fall back to a Keychain-remembered password when none was supplied.
         let effective = password ?? vault.password(for: url)
         if remember, let pw = password, !pw.isEmpty { vault.setPassword(pw, for: url) }
-        let dest = settings.resolvedExtractRoot
+        let dest = extractDestinationRoot
             .appendingPathComponent(url.deletingPathExtension().lastPathComponent)
         let opts = ExtractOptions(destination: dest, password: effective)
         runJob("Extracting…") { [service] in
@@ -100,7 +114,7 @@ final class AppModel: ObservableObject {
         guard !items.isEmpty else { return }
         let effective = password ?? vault.password(for: url)
         if remember, let pw = password, !pw.isEmpty { vault.setPassword(pw, for: url) }
-        let destRoot = settings.resolvedExtractRoot
+        let destRoot = extractDestinationRoot
             .appendingPathComponent(url.deletingPathExtension().lastPathComponent)
         runJob("Extracting \(items.count) item(s)…") { [service] in
             try FileManager.default.createDirectory(at: destRoot, withIntermediateDirectories: true)
@@ -132,29 +146,6 @@ final class AppModel: ObservableObject {
                 ? "✓ Archive is intact — every entry verified."
                 : "⚠︎ Archive failed verification."
         }
-    }
-
-    // MARK: - Drag-out
-
-    /// An item provider for dragging a single archive entry out to Finder. The
-    /// file is extracted lazily (only if/when the drop completes) to a temp file.
-    func dragProvider(for entry: ArchiveEntry) -> NSItemProvider {
-        let provider = NSItemProvider()
-        provider.suggestedName = entry.name
-        guard let url = openedURL, !entry.isDirectory else { return provider }
-        let pw = vault.password(for: url)
-        let uti = UTType(filenameExtension: (entry.name as NSString).pathExtension) ?? .data
-        provider.registerFileRepresentation(forTypeIdentifier: uti.identifier,
-                                            fileOptions: [], visibility: .all) { completion in
-            do {
-                let temp = try ArchiveService().extractEntryToTemp(url, entry: entry, password: pw)
-                completion(temp, true, nil)   // true: a temp file the system may move
-            } catch {
-                completion(nil, false, error)
-            }
-            return nil
-        }
-        return provider
     }
 
     // MARK: - Quick Look

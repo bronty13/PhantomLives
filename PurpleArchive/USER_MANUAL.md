@@ -74,15 +74,24 @@ instantly. **Reveal** shows the temp copy in Finder; **Done** closes the sheet.
 
 ### Extracting
 
-Click **Extract**. Everything goes to `~/Downloads/PurpleArchive/<archive name>/`
-by default (changeable in Settings), and the folder is revealed in Finder when
-done. Encrypted archives prompt for a password first — tick the **eye** to reveal
-what you typed.
+The **Extract** button extracts the whole archive when nothing is selected, or
+just the selected files when you've selected some. Everything goes to
+`~/Downloads/PurpleArchive/<archive name>/` by default, and the folder is
+revealed in Finder when done. Encrypted archives prompt for a password first —
+tick the **eye** to reveal what you typed.
 
-**Extract only some files:** select one or more rows, then click the **download
-button** (↓) in the header, or right-click ▸ **Extract N Items**. Just those
-files are written to the same destination, keeping their folder structure;
-selecting a folder pulls out everything inside it.
+**Select the files you want** with standard gestures: click a row, **⇧-click**
+for a range, **⌘-click** to add/remove individual rows, ⌘A for all. With a
+selection, **Extract** becomes **Extract Selected** (or right-click ▸ **Extract
+N Items**) — just those files are written, keeping their folder structure;
+selecting a folder pulls out everything inside it. The **folder menu** beside
+Extract also has an explicit **Extract All Items**.
+
+**Choose where files go:** the folder menu beside Extract ▸ **Choose Destination
+Folder…** lets you pick any folder. That choice is *sticky for the session* —
+every later extract goes there until you quit the app, when it reverts to the
+default (set the permanent default in **Settings**). The menu shows the current
+destination and a **Reset to Default** item once you've changed it.
 
 ### Testing an archive
 

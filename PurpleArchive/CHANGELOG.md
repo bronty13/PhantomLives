@@ -4,6 +4,28 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Multi-select, smarter Extract button, sticky extract destination (2026-06-07)
+
+Follow-up to the selective-extract work — the browser table couldn't actually
+be multi-selected, so picking "a few" files was impossible.
+
+- **Multi-selection now works** with standard gestures: click, **⇧-click** for a
+  range, **⌘-click** to toggle individual rows, ⌘A to select all. The culprit
+  was the per-row `.onDrag` (drag-to-Finder) handler, which hijacked the click
+  gesture and disabled SwiftUI's modified-click selection. **Drag-out-to-Finder
+  was removed** to restore multi-selection — the Extract button and right-click
+  ▸ Extract cover getting files out, with more control.
+- **The Extract button extracts all *or* selected.** With nothing selected it
+  reads "Extract" and unpacks the whole archive; with a selection it reads
+  "Extract Selected" and unpacks just those (folders expand to their contents).
+  A new folder menu beside it offers **Extract All Items** explicitly. Right-
+  click ▸ **Extract N Items** works on any selection.
+- **Pick the extract destination, sticky for the session.** The folder menu next
+  to Extract has **Choose Destination Folder…** — every later extract goes there
+  until you relaunch the app (then it reverts to the Settings default,
+  `~/Downloads/PurpleArchive`). The menu shows the current destination and a
+  **Reset to Default** item once you've overridden it.
+
 ### Selective extract, integrity test, safer password entry (2026-06-07)
 
 Browser and compress improvements.
