@@ -8,23 +8,25 @@ import Foundation
 public struct ArchiveService: Sendable {
     private let reader = LibArchiveEngine()
     private let writer = LibArchiveWriter()
+    private let legacy = PeelerEngine()   // StuffIt/Compact Pro/BinHex/MacBinary
 
     public init() {}
 
     // MARK: Read
 
     public func list(_ url: URL) throws -> [ArchiveEntry] {
-        try reader.list(url)
+        legacy.canHandle(url) ? try legacy.list(url) : try reader.list(url)
     }
 
     public func tree(_ url: URL) throws -> ArchiveEntryNode {
-        ArchiveEntryTree.build(from: try reader.list(url))
+        ArchiveEntryTree.build(from: try list(url))
     }
 
     /// List entries, re-decoding filenames with `encoding` (the live encoding
-    /// override). Pass `nil` to keep libarchive's default UTF-8 decode.
+    /// override). Pass `nil` to keep the default decode. Routes through the
+    /// engine-agnostic `list(_:)` so legacy (peeler) formats work here too.
     public func list(_ url: URL, encoding: String.Encoding?) throws -> [ArchiveEntry] {
-        let entries = try reader.list(url)
+        let entries = try list(url)
         guard let encoding else { return entries }
         return entries.map { $0.reDecoded(using: encoding) }
     }
@@ -32,11 +34,11 @@ public struct ArchiveService: Sendable {
     /// Guess the archive's dominant filename encoding from its raw entry-name
     /// bytes — the fix for mojibake names in zips made on Windows/Linux.
     public func detectEncoding(_ url: URL) throws -> DetectedEncoding {
-        EncodingDetector.detect(rawNames: try reader.list(url).map(\.rawNameBytes))
+        EncodingDetector.detect(rawNames: try list(url).map(\.rawNameBytes))
     }
 
     public func info(_ url: URL) throws -> ArchiveInfo {
-        let entries = try reader.list(url)
+        let entries = try list(url)
         let files = entries.filter { !$0.isDirectory }
         return ArchiveInfo(
             url: url,
@@ -53,7 +55,9 @@ public struct ArchiveService: Sendable {
     @discardableResult
     public func extract(_ url: URL, options: ExtractOptions,
                         sink: ProgressSink = .none) throws -> Int {
-        try reader.extract(url, options: options, sink: sink)
+        legacy.canHandle(url)
+            ? try legacy.extract(url, options: options, sink: sink)
+            : try reader.extract(url, options: options, sink: sink)
     }
 
     /// Best-effort recovery from a damaged archive — salvages every readable
@@ -68,7 +72,12 @@ public struct ArchiveService: Sendable {
     /// CRCs / decompression) without writing anything to disk.
     public func test(_ url: URL, password: String? = nil,
                      sink: ProgressSink = .none) throws -> Bool {
-        try reader.verify(url, password: password, sink: sink)
+        if legacy.canHandle(url) {
+            // peeler fully decompresses on list, so a clean list == integrity OK.
+            _ = try legacy.list(url)
+            return true
+        }
+        return try reader.verify(url, password: password, sink: sink)
     }
 
     // MARK: Create

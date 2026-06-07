@@ -85,7 +85,7 @@ struct ArchiveBrowserView: View {
             Image(systemName: "doc.zipper")
                 .font(.system(size: 54)).foregroundStyle(.purple.opacity(0.5))
             Text("Drop an archive here").font(.title3)
-            Text("ZIP · 7z · RAR · TAR · gz · bz2 · xz · zst · cab · iso · and more")
+            Text("ZIP · 7z · RAR · TAR · gz · bz2 · xz · zst · cab · iso · StuffIt · BinHex · and more")
                 .font(.caption).foregroundStyle(.secondary)
             Button("Open Archive…") {
                 let panel = NSOpenPanel()

@@ -4,6 +4,29 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Phase 2d — legacy Macintosh formats (StuffIt / Compact Pro / BinHex / MacBinary) (2026-06-06)
+
+The formats libarchive can't read — now opening cleanly.
+
+- **Vendored `peeler`** (MIT C99, `Vendor/CPeeler`) — StuffIt `.sit` (methods
+  13/14/15), Compact Pro `.cpt`, BinHex `.hqx`, MacBinary `.bin`, and nested
+  wraps (`.sit.hqx`, `.sit.bin`).
+- **`PeelerEngine`** backend + `ArchiveService` routing (by header magic via
+  `peel_detect`, extension fallback). `list`/`extract`/`info`/`test` all route
+  legacy formats to peeler, modern ones to libarchive. Resource forks are
+  written as AppleDouble (`._name`) sidecars (`AppleDouble.swift`, byte-matching
+  peeler's CLI); classic-Mac `:` paths are mapped to POSIX.
+- **Validated, not trusted on faith:** peeler is AI-generated, so it's gated by
+  `PeelerLegacyTests` — extract the committed redistributable corpus
+  (`Tests/ArchiveKitTests/LegacyCorpus/`) and byte-verify every data fork
+  against ground-truth MD5s. At adoption the **full upstream corpus passed
+  216/216 data-fork checksums across 22 archives** (StuffIt 4.5/6.5.1/7, Compact
+  Pro 1.33/1.52, BinHex, MacBinary). Engine suite 36/36.
+- GUI + `parc l/x/t/info` handle legacy formats transparently.
+
+(Test corpus + library courtesy of github.com/pappadf/peeler and
+github.com/ssokolow's StuffIt/DiskDoubler test-file repos.)
+
 ### Phase 3b — best-effort recovery (2026-06-06)
 
 - **`recover`** / **`parc repair`**: salvage readable files from a damaged or
