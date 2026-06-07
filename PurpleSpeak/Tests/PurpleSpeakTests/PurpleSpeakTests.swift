@@ -88,6 +88,37 @@ private func makeFloatBuffer(_ samples: [Float]) -> AVAudioPCMBuffer {
     #expect(AVSpeechTTSEngine.combineBuffers([]) == nil)
 }
 
+// MARK: - Progressive-render chunking (>4× streaming)
+
+@MainActor
+@Test func chunkForStreamingCoversTextContiguouslyInOrder() {
+    let text = "One sentence here. Two follows. Three is also present. "
+        + "Four extends things. Five keeps going. Six wraps it up nicely now."
+    let chunks = AVSpeechTTSEngine.chunkForStreaming(text, maxChars: 40)
+    #expect(chunks.count > 1)                              // actually splits
+    // Offsets are non-decreasing and each chunk's text lives at its offset.
+    let ns = text as NSString
+    var lastOffset = -1
+    for c in chunks {
+        #expect(c.offset > lastOffset)
+        lastOffset = c.offset
+        let slice = ns.substring(with: NSRange(location: c.offset, length: (c.text as NSString).length))
+        #expect(slice == c.text)
+    }
+    // Every word survives somewhere in the chunks (no dropped content).
+    let joined = chunks.map(\.text).joined(separator: " ")
+    for word in ["One", "Three", "Five", "nicely"] {
+        #expect(joined.contains(word))
+    }
+}
+
+@MainActor
+@Test func chunkForStreamingShortTextIsSingleChunk() {
+    let chunks = AVSpeechTTSEngine.chunkForStreaming("Just a little text.")
+    #expect(chunks.count == 1)
+    #expect(chunks[0].offset == 0)
+}
+
 // MARK: - Word-precise click-to-start snapping
 
 @MainActor

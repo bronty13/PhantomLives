@@ -33,16 +33,22 @@ whole-document coordinates and publish `spokenWordRange` /
 - **≤ 4× (`nativeMaxSpeed`)** → native `speakNative` (zero latency, perfect
   delegate-driven highlight). `mappedRate` interpolates so the slider label
   tracks perceived speed (the old curve dead-zoned past ~2×).
-- **> 4×** → `renderFast` renders the tail to one PCM buffer at the engine max
-  via `synth.write` (which still fires `willSpeakRange`, captured as a
-  word→frame timeline by `FastRenderCapture`), then `setupAndPlayFast` plays it
+- **> 4×** → `startFastStreaming` splits the tail into sentence-aligned chunks
+  (`chunkForStreaming`) and renders them one at a time via `renderFast`
+  (`synth.write`, which still fires `willSpeakRange`, captured as a word→frame
+  timeline by `FastRenderCapture`). The first chunk starts playback immediately
+  (`beginFastEngine`); later chunks are `scheduleBuffer`'d onto the queue as they
+  finish, with frame offsets accumulated into one growing `fastTimeline` so the
+  highlight indexes by the player's cumulative `sampleTime`. Playback runs
   through `AVAudioEngine` → `AVAudioUnitTimePitch` (rate = speed/4, pitch
-  preserved). A 25 fps timer reads `playerNode.playerTime().sampleTime` (the
-  buffer position, independent of the stretch factor) to drive the highlight.
-  `playGeneration` invalidates a stale async render if the user moves on.
-  Pause/resume/stop branch on `fastActive`. Caveat: the whole tail is rendered
-  before playback, so very long docs at >4× have a brief render pause + memory
-  cost — progressive rendering is a future improvement.
+  preserved); a 25 fps timer reads `playerNode.playerTime().sampleTime` to drive
+  the highlight. `playGeneration` invalidates stale async renders; pause/resume/
+  stop branch on `fastActive`; falls back to native if the engine won't start.
+
+**Changing speed while playing** (`setRateLive` + `commitRate`, wired to the
+PlaybackBar slider): a fast→fast change just retunes `timePitch.rate` live
+(seamless); any change involving the native path (or crossing the 4× boundary)
+restarts from the current word at the new rate when the slider drag ends.
 
 `ReaderView` hosts `ReaderTextView` — an `NSTextView` (TextKit) wrapped in
 `NSViewRepresentable`. TextKit is what enables **word-precise click-to-start**:

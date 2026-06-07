@@ -44,8 +44,19 @@ struct PlaybackBar: View {
                 HStack(spacing: 6) {
                     Image(systemName: "gauge.with.dots.needle.50percent")
                         .foregroundStyle(.secondary)
-                    Slider(value: $settings.settings.speechRateMultiplier,
-                           in: 0.5...8.0, step: 0.25)
+                    Slider(
+                        value: Binding(
+                            get: { settings.settings.speechRateMultiplier },
+                            set: { v in
+                                settings.settings.speechRateMultiplier = v
+                                tts.setRateLive(v)   // seamless retune for the fast path
+                            }),
+                        in: 0.5...8.0, step: 0.25,
+                        onEditingChanged: { editing in
+                            // Native playback can't re-rate live; restart from the
+                            // current word once the drag ends.
+                            if !editing { tts.commitRate() }
+                        })
                         .frame(width: 130)
                     Text(String(format: "%.2g×", settings.settings.speechRateMultiplier))
                         .font(.caption.monospacedDigit())

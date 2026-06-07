@@ -49,9 +49,12 @@ Select a document and use the **playback bar** at the bottom:
   that word. (You can still select text normally with click-drag.)
 - **Speed up to 8×.** Up to 4× uses Apple's on-device synthesizer directly
   (its natural maximum is ~4× normal). Above 4×, PurpleSpeak renders the speech
-  and time-stretches it (pitch preserved), so there's a brief render pause
-  before playback starts at very high speeds. Word highlighting stays in sync at
-  every speed.
+  and time-stretches it (pitch preserved); it renders in chunks and streams
+  them, so playback starts promptly even on long documents. Word highlighting
+  stays in sync at every speed.
+- **Change speed while it's reading.** Drag the speed slider mid-playback — very
+  fast speeds adjust instantly; at normal speeds it picks up from the current
+  word at the new pace.
 
 ### Voices
 

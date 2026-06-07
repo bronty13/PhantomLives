@@ -192,21 +192,31 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
         if rateMultiplier <= Self.nativeMaxSpeed {
             speakNative(tail)
         } else {
-            // >4×: render at engine max, then time-stretch on playback.
-            let gen = playGeneration
-            let off = offset
-            let speed = rateMultiplier
-            Task { @MainActor in
-                guard let rendered = await self.renderFast(tail: tail, baseOffset: off) else {
-                    // Rendering failed → fall back to native at the engine max
-                    // so the user still hears something coherent.
-                    if self.playGeneration == gen { self.speakNative(tail) }
-                    return
-                }
-                guard self.playGeneration == gen else { return }   // superseded/stopped
-                self.setupAndPlayFast(buffer: rendered.buffer, timeline: rendered.timeline, speed: speed)
-            }
+            // >4×: render in chunks and stream them, so playback starts after the
+            // first (small) chunk instead of waiting for the whole document.
+            startFastStreaming(tail: tail, baseOffset: offset, speed: rateMultiplier)
         }
+    }
+
+    /// Change speed while playing. For the fast path this is seamless (just
+    /// retune `AVAudioUnitTimePitch`). For the native path the synthesizer can't
+    /// re-rate a live utterance, so the caller commits the change (restart from
+    /// the current word) when the slider drag ends — see `commitRate`.
+    func setRateLive(_ multiplier: Double) {
+        rateMultiplier = multiplier
+        if fastActive, multiplier > Self.nativeMaxSpeed {
+            timePitch.rate = Float(min(8.0, max(0.5, multiplier / Self.nativeMaxSpeed)))
+        }
+    }
+
+    /// Apply a committed speed change to in-progress playback: restart from the
+    /// current word at the new rate. No-op when idle, paused, or when a fast→fast
+    /// change was already applied live by `setRateLive`.
+    func commitRate() {
+        guard isSpeaking, !isPaused else { return }
+        if fastActive && rateMultiplier > Self.nativeMaxSpeed { return } // handled live
+        let pos = spokenWordRange?.location ?? baseOffset
+        speak(fullText, from: pos)
     }
 
     /// Native AVSpeechSynthesizer playback (≤ nativeMaxSpeed). Perfect word
@@ -316,35 +326,93 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
         return RenderResult(buffer: combined, timeline: capture.timeline)
     }
 
-    private func setupAndPlayFast(buffer: AVAudioPCMBuffer,
-                                 timeline: [(range: NSRange, frame: AVAudioFramePosition)],
-                                 speed: Double) {
+    /// Render the tail in chunks and stream them onto the player as each is
+    /// ready, so playback starts after the first (small) chunk rather than
+    /// waiting for the whole document. Frame offsets accumulate across chunks so
+    /// the single growing `fastTimeline` indexes by the player's cumulative
+    /// sample position.
+    private func startFastStreaming(tail: String, baseOffset: Int, speed: Double) {
         fastActive = true
-        fastTimeline = timeline
-        audioEngine.stop()
-        audioEngine.connect(playerNode, to: timePitch, format: buffer.format)
-        audioEngine.connect(timePitch, to: audioEngine.mainMixerNode, format: buffer.format)
-        // Rendered audio is ~nativeMaxSpeed× already; stretch the rest.
-        timePitch.rate = Float(min(8.0, max(0.5, speed / Self.nativeMaxSpeed)))
+        fastTimeline = []
+        let gen = playGeneration
+        let chunks = Self.chunkForStreaming(tail)
 
+        Task { @MainActor in
+            var cumulativeFrames: AVAudioFramePosition = 0
+            var engineStarted = false
+            for (i, chunk) in chunks.enumerated() {
+                guard self.playGeneration == gen else { return }   // stopped/superseded
+                guard let r = await self.renderFast(tail: chunk.text,
+                                                    baseOffset: baseOffset + chunk.offset) else {
+                    continue   // skip a chunk that failed to render; keep streaming
+                }
+                guard self.playGeneration == gen else { return }
+
+                // Shift this chunk's word timings into whole-playback coordinates.
+                for entry in r.timeline {
+                    self.fastTimeline.append((entry.range, entry.frame + cumulativeFrames))
+                }
+                if !engineStarted {
+                    guard self.beginFastEngine(format: r.buffer.format, speed: speed) else {
+                        // Engine wouldn't start — fall back to native, once.
+                        self.fastActive = false
+                        self.speakNative(String((self.fullText as NSString).substring(from: baseOffset)))
+                        return
+                    }
+                    engineStarted = true
+                }
+                self.scheduleFastBuffer(r.buffer, isLast: i == chunks.count - 1, gen: gen)
+                cumulativeFrames += AVAudioFramePosition(r.buffer.frameLength)
+            }
+        }
+    }
+
+    private func beginFastEngine(format: AVAudioFormat, speed: Double) -> Bool {
+        audioEngine.stop()
+        audioEngine.connect(playerNode, to: timePitch, format: format)
+        audioEngine.connect(timePitch, to: audioEngine.mainMixerNode, format: format)
+        timePitch.rate = Float(min(8.0, max(0.5, speed / Self.nativeMaxSpeed)))
         do {
             try audioEngine.start()
         } catch {
             NSLog("PurpleSpeak: fast playback engine failed (\(error)); using native.")
-            fastActive = false
-            speakNative(String((fullText as NSString).substring(from: baseOffset)))
-            return
+            return false
         }
+        playerNode.play()
+        startFastTimer()
+        return true
+    }
 
-        let gen = playGeneration
+    private func scheduleFastBuffer(_ buffer: AVAudioPCMBuffer, isLast: Bool, gen: Int) {
         playerNode.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
+            guard isLast else { return }
             Task { @MainActor in
                 guard let self, self.playGeneration == gen else { return }
                 self.finishFast()
             }
         }
-        playerNode.play()
-        startFastTimer()
+    }
+
+    /// Split text into sentence-aligned chunks of roughly `maxChars`, each with
+    /// its character offset within `text`, so streaming renders start fast.
+    static func chunkForStreaming(_ text: String, maxChars: Int = 320) -> [(text: String, offset: Int)] {
+        let ns = text as NSString
+        var chunks: [(String, Int)] = []
+        var accStart = -1
+        var accEnd = 0
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length),
+                               options: .bySentences) { _, r, _, _ in
+            if accStart < 0 { accStart = r.location }
+            accEnd = r.location + r.length
+            if accEnd - accStart >= maxChars {
+                chunks.append((ns.substring(with: NSRange(location: accStart, length: accEnd - accStart)), accStart))
+                accStart = -1
+            }
+        }
+        if accStart >= 0, accEnd > accStart {
+            chunks.append((ns.substring(with: NSRange(location: accStart, length: accEnd - accStart)), accStart))
+        }
+        return chunks.isEmpty ? [(text, 0)] : chunks
     }
 
     private func startFastTimer() {

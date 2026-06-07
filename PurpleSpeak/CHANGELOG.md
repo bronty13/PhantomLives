@@ -17,8 +17,10 @@ app for macOS, fully on-device and private.
   locale first) so it stays navigable across 100+ installed voices.
 - Playback transport: play/pause, stop, previous/next paragraph, speed
   (0.5–8×: native engine up to its ~4× max, time-stretched audio above that
-  with pitch preserved and highlighting still synced), pitch, and a live voice
-  picker.
+  with pitch preserved and highlighting still synced; >4× renders in chunks and
+  streams them so playback starts promptly on long documents), pitch, and a live
+  voice picker. Speed can be changed mid-playback — fast speeds retune instantly,
+  normal speeds resume from the current word.
 - Reading-comfort controls: font size, line spacing, and a line-focus mode
   that dims everything but the active paragraph.
 - Word-precise click-to-start: a plain click on any word begins reading from
