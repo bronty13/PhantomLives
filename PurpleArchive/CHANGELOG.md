@@ -4,6 +4,21 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Release infrastructure — Sparkle 2 auto-update (2026-06-06)
+
+PurpleArchive is now distributable + self-updating.
+
+- **Sparkle 2** integrated: `UpdaterController`, a "Check for Updates…" menu item,
+  `SUFeedURL` + the shared Purple\* `SUPublicEDKey` in Info.plist. `build-app.sh`
+  signs Sparkle's XPCServices/Updater/Autoupdate inside-out (Developer ID,
+  hardened runtime) — verified deep-strict valid.
+- **`Scripts/release.sh`** (build → notarize → DMG → EdDSA-sign → GitHub release →
+  appcast), **`appcast.xml`**, **`RELEASING.md`** — cloned from the PurpleMark
+  release pattern, adapted (tag `purplearchive-v<version>`, feed URL, minimum
+  macOS 13).
+- App builds + signs with Developer ID; release from a Mac that has the shared
+  `PurpleDedup-Notary` notarytool profile + Sparkle private key.
+
 ### Phase 2d — legacy Macintosh formats (StuffIt / Compact Pro / BinHex / MacBinary) (2026-06-06)
 
 The formats libarchive can't read — now opening cleanly.

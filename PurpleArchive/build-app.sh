@@ -60,6 +60,7 @@ ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
 # Code sign: Developer ID (hardened runtime + timestamp) if available, else ad-hoc.
 CERT="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")}"
 APP_ENT="Sources/PurpleArchive/App/PurpleArchive.entitlements"
+SPARKLE_FW="$DEST_APP/Contents/Frameworks/Sparkle.framework"
 xattr -cr "$DEST_APP"
 if [ -n "$CERT" ]; then
     echo "Signing with Developer ID: $CERT"
@@ -67,6 +68,16 @@ if [ -n "$CERT" ]; then
 else
     echo "No Developer ID found — using ad-hoc signing"
     SIGN=(codesign --force --options runtime -s -)
+fi
+# Sparkle's nested helpers must be signed inside-out before the framework + app.
+if [ -d "$SPARKLE_FW" ]; then
+    SV="$SPARKLE_FW/Versions/Current"
+    for xpc in "$SV/XPCServices/"*.xpc; do
+        [ -d "$xpc" ] && "${SIGN[@]}" "$xpc"
+    done
+    [ -d "$SV/Updater.app" ] && "${SIGN[@]}" "$SV/Updater.app"
+    [ -f "$SV/Autoupdate" ] && "${SIGN[@]}" "$SV/Autoupdate"
+    "${SIGN[@]}" "$SPARKLE_FW"
 fi
 "${SIGN[@]}" --entitlements "$APP_ENT" "$DEST_APP"
 

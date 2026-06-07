@@ -1,0 +1,9 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>PurpleArchive</title>
+        <description>Updates for PurpleArchive — the last archive tool you'll need on macOS.</description>
+        <language>en</language>
+        <!-- ITEMS -->
+    </channel>
+</rss>

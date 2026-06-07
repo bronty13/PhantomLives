@@ -25,6 +25,9 @@ struct PurpleArchiveApp: App {
                 Button("Open Archive…") { openArchivePanel() }
                     .keyboardShortcut("o")
             }
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { UpdaterController.shared.checkForUpdates() }
+            }
             CommandGroup(after: .windowArrangement) {
                 Button("Reset Window State…") {
                     WindowStateGuard.forceReset(appName: "PurpleArchive", resetVersion: 1)

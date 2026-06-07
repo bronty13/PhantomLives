@@ -25,6 +25,16 @@
     <string>PurpleArchive</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <!-- Sparkle 2 auto-update. SUPublicEDKey is the SHARED Purple* EdDSA public
+         key; the matching private key signs releases (see RELEASING.md). -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/bronty13/PhantomLives/main/PurpleArchive/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>2q4I3WNk7qQbidXEO/Jo/U3+t2ODS9x+e3/Wqt+ClQQ=</string>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
     <!-- Archive types PurpleArchive can open from Finder ("Open With"). -->
     <key>CFBundleDocumentTypes</key>
     <array>

@@ -17,6 +17,9 @@ packages:
     path: Vendor/CZstd
   CPeeler:
     path: Vendor/CPeeler
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
 
 settings:
   base:
@@ -46,6 +49,7 @@ targets:
       - package: CLibArchive
       - package: CZstd
       - package: CPeeler
+      - package: Sparkle
     scheme:
       testTargets:
         - PurpleArchiveTests
