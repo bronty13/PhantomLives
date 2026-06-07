@@ -1,27 +1,29 @@
 #!/usr/bin/env bash
 #
-# sync-md-to-obsidian.sh — one-way mirror of this repo's tracked Markdown
-# files into an Obsidian vault, preserving directory structure.
+# sync-md-to-obsidian.sh — one-way mirror of this repo's Markdown files into
+# an Obsidian vault, preserving directory structure.
 #
 # It is a *copy* mirror: edits made in Obsidian do NOT flow back to git.
-# The mirror is rebuilt from scratch each run, so files you delete or rename
-# in the repo disappear from the vault too.
+# Files removed/renamed in the repo are removed from the mirror too.
 #
-# TCC note: macOS protects ~/Documents, so a launchd background agent cannot
-# write there (only interactive, already-granted apps can). To stay fully
-# automated WITHOUT a Full Disk Access grant, the real mirror is written to a
-# non-protected location and exposed inside the vault via a symlink. Obsidian
-# follows the symlink, so the vault shows a normal "PhantomLives" folder.
+# The mirror is written as a REAL folder inside the vault. Because Obsidian
+# vaults commonly live under ~/Documents (iCloud-synced) and iCloud Drive
+# strips symlinks, a real folder is the only thing that survives there. The
+# sync is incremental (rsync --delete), so unchanged files are not rewritten
+# each run — important for keeping iCloud churn (and ' 2'-dupe corruption) low.
+#
+# macOS TCC protects ~/Documents, so the launchd background agent needs
+# Full Disk Access to write the mirror there. Grant it once (see README /
+# docs/obsidian-sync.md). Interactive/manual runs work without it if the
+# terminal already has Documents access.
 #
 # Usage:
 #   ./sync-md-to-obsidian.sh                 Run the sync once.
 #   ./sync-md-to-obsidian.sh --install-agent [interval_seconds]
-#                                            Create the vault symlink, then
-#                                            install + load a launchd agent
+#                                            Install + load a launchd agent
 #                                            (default 3600s = hourly).
 #   ./sync-md-to-obsidian.sh --uninstall-agent
-#                                            Unload + remove the launchd agent
-#                                            (leaves the mirror + symlink).
+#                                            Unload + remove the launchd agent.
 #
 # Override the vault location with $OBSIDIAN_VAULT (path to the vault root).
 #
@@ -32,36 +34,17 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PAT
 
 SRC="$HOME/dev/PhantomLives"
 SCRIPT="$SRC/sync-md-to-obsidian.sh"
-
-# Real mirror — outside any TCC-protected folder, so launchd can write it.
-TARGET="$HOME/Library/Application Support/phantomlives-obsidian/PhantomLives"
-# Symlink inside the vault that points at the real mirror.
 VAULT="${OBSIDIAN_VAULT:-$HOME/Documents/Obsidian Vault}"
-LINK="$VAULT/PhantomLives"
+DEST="$VAULT/PhantomLives"
 
 LABEL="com.phantomlives.obsidian-sync"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/phantomlives-obsidian-sync.log"
 
-# Create (or repair) the vault symlink. Requires Documents access, so this
-# only succeeds from an interactive/granted context — which is exactly when
-# --install-agent is run. Best-effort: never fail the sync over it.
-ensure_link() {
-  [[ -d "$VAULT" ]] || { echo "note: vault not found at '$VAULT' — skipping symlink." >&2; return 0; }
-  # Replace a pre-existing real directory (e.g. from an earlier copy mirror).
-  if [[ -e "$LINK" && ! -L "$LINK" ]]; then
-    rm -rf "$LINK"
-  fi
-  if [[ ! -L "$LINK" ]]; then
-    ln -s "$TARGET" "$LINK" && echo "Linked vault → mirror: $LINK"
-  fi
-}
-
 install_agent() {
   local interval="${1:-3600}"
-  mkdir -p "$TARGET" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-  ensure_link || true
-  run_sync   # seed the mirror immediately
+  mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+  run_sync   # seed the mirror immediately (interactive context has access)
 
   cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -88,12 +71,15 @@ install_agent() {
 </plist>
 PLIST_EOF
 
-  # Reload cleanly if it was already installed.
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$PLIST"
   echo "Installed launchd agent: $LABEL (every ${interval}s)"
   echo "  plist: $PLIST"
   echo "  log:   $LOG"
+  echo
+  echo "IMPORTANT: grant Full Disk Access so the background agent can write to"
+  echo "the iCloud-synced vault. System Settings ▸ Privacy & Security ▸ Full"
+  echo "Disk Access ▸ + ▸ ⇧⌘G ▸ /bin ▸ select 'bash' ▸ enable it."
 }
 
 uninstall_agent() {
@@ -103,19 +89,34 @@ uninstall_agent() {
 }
 
 run_sync() {
+  if [[ ! -d "$VAULT" ]]; then
+    echo "error: vault not found at: $VAULT" >&2
+    echo "       set OBSIDIAN_VAULT=/path/to/your/vault and re-run." >&2
+    exit 1
+  fi
+  mkdir -p "$DEST"
   cd "$SRC"
 
-  # Rebuild the mirror from scratch so deletes/renames stay in sync.
-  rm -rf "$TARGET"
-  mkdir -p "$TARGET"
+  # Mirror ONLY git-tracked .md files (skips node_modules/.build/build/ dep
+  # checkouts, built .app bundles, .venv, and the nested standalone repos —
+  # anything not in the git index). -0 handles paths with spaces safely.
+  # rsync (no --delete here) skips unchanged files, so iCloud isn't churned.
+  git ls-files -z '*.md' | rsync -0 -a --files-from=- "$SRC/" "$DEST/"
 
-  # Only tracked .md files in the outer repo (skips node_modules/.build/.venv
-  # and the nested standalone repos). -z/-0 handles paths with spaces safely.
-  git ls-files -z '*.md' | rsync -0 -a --files-from=- "$SRC/" "$TARGET/"
+  # Prune: drop any .md in the mirror that's no longer tracked (handles
+  # deletes/renames). --files-from can't do this, so reconcile by hand.
+  local tracked existing
+  tracked="$(mktemp)"; existing="$(mktemp)"
+  git ls-files '*.md' | sort > "$tracked"
+  ( cd "$DEST" && find . -name '*.md' -type f -print | sed 's|^\./||' ) | sort > "$existing"
+  comm -13 "$tracked" "$existing" | while IFS= read -r f; do
+    [[ -n "$f" ]] && rm -f "$DEST/$f"
+  done
+  find "$DEST" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+  local count; count=$(wc -l < "$tracked" | tr -d ' ')
+  rm -f "$tracked" "$existing"
 
-  local count
-  count=$(git ls-files '*.md' | wc -l | tr -d ' ')
-  echo "$(date '+%Y-%m-%d %H:%M:%S')  Mirrored $count markdown files → $TARGET"
+  echo "$(date '+%Y-%m-%d %H:%M:%S')  Mirrored $count markdown files → $DEST"
 }
 
 case "${1:-}" in

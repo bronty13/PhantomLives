@@ -7,47 +7,57 @@ mirror on a schedule.
 
 ## What it does
 
-- Copies the outer repo's git-tracked `.md` files (sourced via
-  `git ls-files '*.md'`, ~319 files) into the vault, preserving directory
-  structure. Because it uses the git index, it automatically skips
-  `node_modules/`, `.build/`, `.venv/` clutter **and** the two nested
-  standalone repos (`video-analyzer/`, `ClipperInfo/`).
+- Copies the outer repo's **git-tracked** `.md` files (via
+  `git ls-files '*.md'`, ~325 files) into a `PhantomLives/` folder inside the
+  vault, preserving directory structure. Using the git index is what keeps the
+  mirror clean: anything not tracked is skipped — `node_modules/`, SwiftPM
+  `build/` & `.build/` dependency checkouts, built `.app` bundles, `.venv/`,
+  and the two nested standalone repos (`video-analyzer/`, `ClipperInfo/`).
+  (An earlier `--include='*.md'` filter approach was abandoned because it swept
+  in 146 dependency/`build/` README files; only the git index is precise.)
 - **One-way copy mirror.** Edits made in Obsidian do **not** flow back to git.
-  The mirror is rebuilt from scratch each run, so files deleted or renamed in
-  the repo disappear from the vault too. → Don't author notes inside the
-  mirrored folder; they get wiped on the next sync.
+  → Don't author notes inside the mirrored folder.
+- **Incremental.** rsync skips unchanged files and a prune pass removes `.md`
+  that's no longer tracked (handles deletes/renames). Unchanged files are not
+  rewritten each run — important because the vault is usually iCloud-synced and
+  rewriting everything hourly would churn iCloud (and risk `' 2'`-dupe
+  corruption — see `CLAUDE.md`).
 
 ## Where things live
 
 | Thing | Path |
 |---|---|
-| Real mirror (the actual copied files) | `~/Library/Application Support/phantomlives-obsidian/PhantomLives/` |
-| Vault-visible folder (symlink → mirror) | `<vault>/PhantomLives` |
+| Mirror (real folder inside the vault) | `<vault>/PhantomLives/` |
 | launchd agent plist | `~/Library/LaunchAgents/com.phantomlives.obsidian-sync.plist` |
 | Run log | `~/Library/Logs/phantomlives-obsidian-sync.log` |
 
 Default vault is `~/Documents/Obsidian Vault`; override with the
 `OBSIDIAN_VAULT` env var (path to the vault root).
 
-## Why a symlink instead of writing straight into the vault (the TCC fix)
+## Why a real folder + Full Disk Access (not a symlink)
 
-macOS TCC protects `~/Desktop`, `~/Documents`, and `~/Downloads`. An
-**interactive** terminal that's already been granted Documents access can
-write there, but a **launchd background agent** runs in a different context
-with no such grant — every write into `~/Documents/Obsidian Vault/` is denied
-with `Operation not permitted`.
+The mirror is written as a **real folder** inside the vault. An earlier design
+wrote the files to `~/Library/Application Support/` and symlinked them into the
+vault — that **failed**: Obsidian vaults usually live under `~/Documents`,
+which is iCloud-synced, and **iCloud Drive does not support symlinks — it
+strips them on sync.** The symlink vanished within hours and Obsidian reported
+"path not found." A real folder of plain Markdown syncs through iCloud fine.
 
-Rather than grant Full Disk Access to `/bin/bash` (broad, fiddly, and
-unreliable for launchd-spawned processes), the script writes the real mirror
-to a non-protected location under `~/Library/Application Support/` and exposes
-it inside the vault via a **symlink**. Obsidian follows the symlink, so the
-vault shows a normal `PhantomLives` folder, while the background agent only
-ever writes outside the TCC-protected Documents folder. No permission prompt
-is ever required.
+The cost of writing directly into `~/Documents` is **TCC**: macOS protects
+`~/Desktop`, `~/Documents`, and `~/Downloads`. An interactive terminal that's
+already been granted Documents access can write there (so manual runs and the
+install-time seed work), but a **launchd background agent** runs with no such
+grant and is denied with `Operation not permitted`.
 
-The symlink is created once during `--install-agent`, which runs in the
-interactive (already-granted) context. The recurring launchd runs only touch
-the non-protected mirror path.
+So the launchd agent needs **Full Disk Access**, granted once:
+
+> System Settings ▸ Privacy & Security ▸ Full Disk Access ▸ **+** ▸ press
+> **⇧⌘G** ▸ type `/bin` ▸ select **`bash`** ▸ enable the toggle.
+
+(The agent runs `/bin/bash <script>`, so `/bin/bash` is the binary TCC
+attributes the write to.) After granting, force a run to confirm:
+`launchctl kickstart -k "gui/$(id -u)/com.phantomlives.obsidian-sync"` and
+check the log shows a fresh "Mirrored N markdown files" line.
 
 ## Cross-Mac note
 
@@ -55,8 +65,8 @@ The script is committed to the repo; the launchd plist is **not** (it would
 carry hardcoded `/Users/<name>/…` paths that break on the maintainer's other
 Mac, which has a different username — see `docs/cross-mac-dev-setup.md`).
 Instead the script generates the plist from `$HOME` at install time. On a new
-machine, run `./sync-md-to-obsidian.sh --install-agent` once and it sets up
-the symlink + agent locally.
+machine, run `./sync-md-to-obsidian.sh --install-agent` once and grant Full
+Disk Access there too.
 
 ## Usage
 
@@ -68,7 +78,7 @@ the symlink + agent locally.
 ./sync-md-to-obsidian.sh --install-agent
 ./sync-md-to-obsidian.sh --install-agent 1800   # custom interval (30 min)
 
-# Remove the agent (leaves the mirror + symlink in place)
+# Remove the agent (leaves the mirror in place)
 ./sync-md-to-obsidian.sh --uninstall-agent
 
 # Point at a different vault

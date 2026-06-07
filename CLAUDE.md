@@ -33,15 +33,16 @@ Everything else (including `MusicJournal/`, `fsearch/`, `PurpleIRC/`, `messages-
 A small number of scripts live at the **repo root** and operate across the
 whole monorepo rather than inside one subproject:
 
-- **`sync-md-to-obsidian.sh`** — one-way mirror of every git-tracked `.md`
-  file into an Obsidian vault, for reading the docs in Obsidian. Optionally
-  self-installs a launchd agent (`--install-agent [interval]` /
-  `--uninstall-agent`) that refreshes hourly. Writes the real mirror under
-  `~/Library/Application Support/` and exposes it inside the vault via a
-  symlink — this sidesteps the macOS TCC block on launchd agents writing to
-  `~/Documents` without needing a Full Disk Access grant. → Full detail (paths,
-  the TCC/symlink rationale, cross-Mac setup, operational commands) is in
-  **`docs/obsidian-sync.md`**.
+- **`sync-md-to-obsidian.sh`** — one-way, incremental mirror of every
+  git-tracked `.md` file into a real `PhantomLives/` folder inside an Obsidian
+  vault, for reading the docs in Obsidian. Optionally self-installs a launchd
+  agent (`--install-agent [interval]` / `--uninstall-agent`) that refreshes
+  hourly. The vault is usually iCloud-synced, which (a) strips symlinks — so
+  the mirror must be a real folder, not a symlink — and (b) is TCC-protected,
+  so the **background agent requires a one-time Full Disk Access grant on
+  `/bin/bash`** to write there. → Full detail (the iCloud/symlink + TCC/FDA
+  rationale, why git-tracked precision over an rsync `*.md` filter, cross-Mac
+  setup, operational commands) is in **`docs/obsidian-sync.md`**.
 
 ## Release-hygiene rules (from `.github/copilot-instructions.md`)
 
