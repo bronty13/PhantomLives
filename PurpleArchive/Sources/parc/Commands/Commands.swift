@@ -245,6 +245,42 @@ struct Convert: AsyncParsableCommand {
     }
 }
 
+// MARK: - edit (in-place add/rename/delete)
+
+struct Edit: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "edit",
+        abstract: "Add, rename, or delete entries inside an archive (rewrites it in place).")
+    @Argument(help: "Archive to edit.") var archive: String
+    @Option(name: .long, parsing: .upToNextOption,
+            help: "Delete entries by archive path (repeatable).") var delete: [String] = []
+    @Option(name: .long, parsing: .upToNextOption,
+            help: "Rename an entry: old=new (repeatable).") var rename: [String] = []
+    @Option(name: .long, parsing: .upToNextOption,
+            help: "Add a file: localPath=archivePath (or just localPath) (repeatable).") var add: [String] = []
+    @Option(name: .shortAndLong, help: "Password for an encrypted archive.") var password: String?
+
+    func run() async throws {
+        var ops: [EditOperation] = delete.map { .delete(path: $0) }
+        for r in rename {
+            let parts = r.split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { die("bad --rename “\(r)” (use old=new)") }
+            ops.append(.rename(from: parts[0], to: parts[1]))
+        }
+        for a in add {
+            let parts = a.split(separator: "=", maxSplits: 1).map(String.init)
+            let local = parts[0]
+            let at = parts.count == 2 ? parts[1] : URL(fileURLWithPath: local).lastPathComponent
+            ops.append(.add(fileURL: URL(fileURLWithPath: local), at: at))
+        }
+        guard !ops.isEmpty else { die("nothing to do — pass --add/--rename/--delete") }
+        do {
+            let n = try ArchiveService().edit(URL(fileURLWithPath: archive), operations: ops, password: password)
+            print("Edited \(archive) — \(n) entries now")
+        } catch { die(error.localizedDescription) }
+    }
+}
+
 // MARK: - recommend
 
 struct Recommend: AsyncParsableCommand {

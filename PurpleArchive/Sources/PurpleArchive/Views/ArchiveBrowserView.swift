@@ -8,6 +8,9 @@ struct ArchiveBrowserView: View {
     @State private var password = ""
     @State private var remember = false
     @State private var showingPasswordSheet = false
+    @State private var selection = Set<Int>()
+    @State private var renaming: ArchiveEntry?
+    @State private var newName = ""
 
     var body: some View {
         if model.openedURL == nil {
@@ -16,7 +19,7 @@ struct ArchiveBrowserView: View {
             VStack(spacing: 0) {
                 header
                 Divider()
-                Table(model.entries) {
+                Table(model.entries, selection: $selection) {
                     TableColumn("Name") { entry in
                         HStack(spacing: 6) {
                             Image(systemName: icon(for: entry))
@@ -34,8 +37,17 @@ struct ArchiveBrowserView: View {
                             .foregroundStyle(.secondary).font(.caption)
                     }.width(150)
                 }
+                .contextMenu(forSelectionType: Int.self) { ids in
+                    if model.canEdit {
+                        if ids.count == 1, let entry = model.entries.first(where: { $0.id == ids.first }) {
+                            Button("Rename…") { renaming = entry; newName = entry.displayPath }
+                        }
+                        Button("Delete", role: .destructive) { deleteSelected(ids) }
+                    }
+                }
             }
             .sheet(isPresented: $showingPasswordSheet) { passwordSheet }
+            .sheet(item: $renaming) { entry in renameSheet(entry) }
         }
     }
 
@@ -51,6 +63,13 @@ struct ArchiveBrowserView: View {
                 }
             }
             Spacer()
+            if model.canEdit {
+                Button { addFiles() } label: { Image(systemName: "plus") }
+                    .help("Add files to this archive").disabled(model.busy)
+                Button { deleteSelected(selection) } label: { Image(systemName: "trash") }
+                    .help("Delete selected entries").disabled(model.busy || selection.isEmpty)
+                Divider().frame(height: 16)
+            }
             Menu {
                 ForEach(model.availableEncodings) { enc in
                     Button {
@@ -114,6 +133,35 @@ struct ArchiveBrowserView: View {
             }
         }
         .padding(20)
+    }
+
+    private func renameSheet(_ entry: ArchiveEntry) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Rename entry").font(.headline)
+            TextField("New path", text: $newName)
+                .textFieldStyle(.roundedBorder).frame(width: 320)
+            HStack {
+                Spacer()
+                Button("Cancel") { renaming = nil }
+                Button("Rename") {
+                    model.rename(entry.displayPath, to: newName)
+                    renaming = nil
+                }.keyboardShortcut(.defaultAction).tint(.purple)
+            }
+        }.padding(20)
+    }
+
+    private func deleteSelected(_ ids: Set<Int>) {
+        let paths = model.entries.filter { ids.contains($0.id) }.map(\.displayPath)
+        model.deleteEntries(paths)
+        selection.removeAll()
+    }
+
+    private func addFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK { model.addFiles(panel.urls) }
     }
 
     private func icon(for entry: ArchiveEntry) -> String {

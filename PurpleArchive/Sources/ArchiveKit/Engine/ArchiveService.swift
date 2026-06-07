@@ -8,6 +8,7 @@ import Foundation
 public struct ArchiveService: Sendable {
     private let reader = LibArchiveEngine()
     private let writer = LibArchiveWriter()
+    private let editor = LibArchiveEditor()
     private let legacy = PeelerEngine()   // StuffIt/Compact Pro/BinHex/MacBinary
 
     public init() {}
@@ -133,6 +134,24 @@ public struct ArchiveService: Sendable {
             throw ArchiveError.readFailed(detail: "nothing to convert (source extracted empty)")
         }
         return try create(dst, inputs: inputs, options: options, sink: sink)
+    }
+
+    // MARK: Edit (in place)
+
+    /// Apply add/rename/delete operations to an existing archive, rewriting it
+    /// in the same format and atomically replacing the original. Read-only
+    /// formats (RAR, legacy Mac) can't be edited.
+    @discardableResult
+    public func edit(_ url: URL, operations: [EditOperation],
+                     password: String? = nil,
+                     options: CompressionOptions = .default,
+                     sink: ProgressSink = .none) throws -> Int {
+        if legacy.canHandle(url) {
+            throw ArchiveError.unsupportedFormat(
+                detail: "this is a read-only format — extract it and create a new archive instead")
+        }
+        return try editor.edit(url, operations: operations, password: password,
+                               options: options, sink: sink)
     }
 
     // MARK: Hash

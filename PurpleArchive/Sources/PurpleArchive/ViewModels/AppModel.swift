@@ -89,6 +89,37 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - In-place edit
+
+    /// Whether the open archive is a writable, editable container.
+    var canEdit: Bool {
+        guard let url = openedURL, let fmt = ArchiveFormat.forFilename(url.lastPathComponent)
+        else { return false }
+        return fmt.canCreate && fmt.isMultiFileContainer
+    }
+
+    func deleteEntries(_ paths: [String]) { applyEdits(paths.map { .delete(path: $0) }) }
+    func addFiles(_ urls: [URL]) { applyEdits(urls.map { .add(fileURL: $0, at: $0.lastPathComponent) }) }
+    func rename(_ from: String, to: String) {
+        guard !to.isEmpty, to != from else { return }
+        applyEdits([.rename(from: from, to: to)])
+    }
+
+    private func applyEdits(_ ops: [EditOperation]) {
+        guard let url = openedURL, !ops.isEmpty else { return }
+        runJob("Editing \(url.lastPathComponent)…") { [service] in
+            try service.edit(url, operations: ops)
+            let info = try service.info(url)
+            let entries = try service.list(url)
+            return (info, entries)
+        } onSuccess: { [weak self] (info: ArchiveInfo, entries: [ArchiveEntry]) in
+            self?.info = info
+            self?.rawEntries = entries
+            self?.applyEncoding()
+            self?.status = "Edited · \(info.fileCount) files"
+        }
+    }
+
     // MARK: - Compress
 
     func compress(_ inputs: [URL], windowsSafe: Bool = false) {

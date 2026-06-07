@@ -4,6 +4,23 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### In-place archive editing (2026-06-06)
+
+Add, rename, and delete entries inside an archive without a manual
+extract-and-repack — the BetterZip-class feature.
+
+- **`LibArchiveEditor`** / **`ArchiveService.edit(_:operations:)`**: streams every
+  surviving entry (data + metadata, no disk extract) from the source into a fresh
+  archive of the same format, applies the `EditOperation`s (delete / rename /
+  add), appends new files, then **atomically replaces** the original. Reuses the
+  read entry for the write header so untouched entries keep their perms / mtime /
+  symlink exactly. Re-encrypts (zip AES-256) when a password is supplied.
+- Read-only formats (RAR, legacy Mac, single-file .gz/.zst) refuse clearly.
+- **GUI**: select rows in the browser → Delete; ➕ Add Files…; right-click →
+  Rename…. **CLI**: `parc edit <archive> --delete p --rename old=new --add local=path`.
+- 4 edit tests (delete+rename+add round-trip, tar.zst, read-only refusal);
+  verified end-to-end via `parc`. Engine suite 39/39.
+
 ### Quick Look + Finder Sync extensions (2026-06-06)
 
 Archives now preview, thumbnail, and right-click in Finder — powered by the same

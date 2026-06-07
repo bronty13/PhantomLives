@@ -19,7 +19,7 @@ public struct LibArchiveWriter: Sendable {
         }
         defer { archive_write_free(a) }
 
-        try configureFormat(a, format: format, options: options)
+        try Self.configureFormat(a, format: format, options: options)
 
         let openResult = output.path.withCString { archive_write_open_filename(a, $0) }
         guard openResult == ARCHIVE_OK else {
@@ -39,7 +39,7 @@ public struct LibArchiveWriter: Sendable {
 
         for (src, name) in items {
             if sink.cancelled() { throw CancelledError() }
-            try writeEntry(a, source: src, name: name, buffer: buffer)
+            try Self.writeEntry(a, source: src, name: name, buffer: buffer)
             done += 1
             sink.report(ArchiveProgress(entriesDone: done, entriesTotal: total,
                                         bytesDone: 0, currentName: name))
@@ -49,7 +49,7 @@ public struct LibArchiveWriter: Sendable {
 
     // MARK: - Format / filter wiring
 
-    private func configureFormat(_ a: OpaquePointer, format: ArchiveFormat,
+    static func configureFormat(_ a: OpaquePointer, format: ArchiveFormat,
                                  options: CompressionOptions) throws {
         switch format {
         case .zip:
@@ -68,13 +68,13 @@ public struct LibArchiveWriter: Sendable {
             archive_write_set_format_pax_restricted(a); archive_write_add_filter_xz(a)
         case .tarZst:
             archive_write_set_format_pax_restricted(a); archive_write_add_filter_zstd(a)
-            applyZstdOptions(a, options: options)
+            Self.applyZstdOptions(a, options: options)
         case .gzip:
             archive_write_set_format_raw(a); archive_write_add_filter_gzip(a)
         case .zstd:
             // Single-file raw zstd; ArchiveWriter routes here only for 1 input.
             archive_write_set_format_raw(a); archive_write_add_filter_zstd(a)
-            applyZstdOptions(a, options: options)
+            Self.applyZstdOptions(a, options: options)
         case .sevenZip:
             // libarchive writes 7z with an internal codec (no external filter).
             archive_write_set_format_7zip(a)
@@ -89,7 +89,7 @@ public struct LibArchiveWriter: Sendable {
         }
     }
 
-    private func applyZstdOptions(_ a: OpaquePointer, options: CompressionOptions) {
+    static func applyZstdOptions(_ a: OpaquePointer, options: CompressionOptions) {
         let lvl = max(1, min(22, options.level == 6 ? 19 : options.level))
         _ = "zstd:compression-level=\(lvl)".withCString { archive_write_set_options(a, $0) }
         // 0 → libzstd picks all cores; this is the multithreaded fast path.
@@ -98,7 +98,7 @@ public struct LibArchiveWriter: Sendable {
 
     // MARK: - Per-entry write
 
-    private func writeEntry(_ a: OpaquePointer, source: URL, name: String,
+    static func writeEntry(_ a: OpaquePointer, source: URL, name: String,
                             buffer: UnsafeMutableRawPointer) throws {
         let fm = FileManager.default
         var isDir: ObjCBool = false
