@@ -4,6 +4,28 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Fix: "Open With Purple Archive" + in-app Quick Look (2026-06-07)
+
+Two browse-side improvements.
+
+- **"Open With Purple Archive" now actually opens the archive.** The app's
+  `Info.plist` declared the archive document types, so Finder offered the app in
+  the *Open With* menu — but nothing happened, because a `WindowGroup` app (as
+  opposed to a `DocumentGroup`) gets no automatic file routing and the
+  `AppDelegate` never implemented an open handler. Added
+  `application(_:open:)`, which routes each opened file into the model
+  (`AppModel.open`) and switches to the Browse tab. Open events that arrive
+  before the SwiftUI model exists (cold launch) are buffered and drained once the
+  view installs the handler.
+- **Quick Look a file from inside an open archive.** Select any file entry and
+  hit the new eye button in the browser header (or press **Space**, or use the
+  right-click **Quick Look** menu item) to preview it in an inline sheet —
+  powered by AppKit's `QLPreviewView`, so it renders the same rich previews
+  (text, images, PDFs, audio/video, code, CSV, …) Finder's spacebar Quick Look
+  does. Only the single previewed entry is streamed out to a temp file (reusing
+  the same single-entry extractor as drag-out), so even huge archives don't
+  fully unpack. A **Reveal** button shows the temp file in Finder.
+
 ### Fix: app icon never showed (2026-06-06)
 
 The generated `AppIcon.icns` was being copied into the bundle but never

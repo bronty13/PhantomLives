@@ -113,6 +113,33 @@ final class AppModel: ObservableObject {
         return provider
     }
 
+    // MARK: - Quick Look
+
+    /// A file extracted to a temp location for inline Quick Look preview.
+    /// Identifiable so it can drive a `.sheet(item:)`.
+    struct PreviewItem: Identifiable {
+        let id = UUID()
+        let url: URL
+        let name: String
+    }
+
+    /// Non-nil while a Quick Look preview sheet should be shown.
+    @Published var preview: PreviewItem?
+
+    /// Extract one entry to a temp file and surface it for Quick Look. Reuses
+    /// the same single-entry streaming extractor as drag-out, so even huge
+    /// archives only unpack the one file being previewed.
+    func quickLook(_ entry: ArchiveEntry) {
+        guard let url = openedURL, !entry.isDirectory else { return }
+        let pw = vault.password(for: url)
+        runJob("Preparing preview of \(entry.name)…") { [service] in
+            try service.extractEntryToTemp(url, entry: entry, password: pw)
+        } onSuccess: { [weak self] (temp: URL) in
+            self?.preview = PreviewItem(url: temp, name: entry.name)
+            self?.status = "Previewing \(entry.name)"
+        }
+    }
+
     // MARK: - In-place edit
 
     /// Whether the open archive is a writable, editable container.

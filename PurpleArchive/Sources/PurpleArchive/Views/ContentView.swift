@@ -35,6 +35,13 @@ struct ContentView: View {
                 .keyboardShortcut("s", modifiers: [.control, .command])
             }
         }
+        .onAppear {
+            // Route Finder "Open With" / double-click opens into the model.
+            AppDelegate.openHandler = { url in
+                model.sidebarSelection = .browse
+                model.open(url)
+            }
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers); return true
         }

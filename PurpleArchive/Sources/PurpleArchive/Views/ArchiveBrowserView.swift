@@ -41,6 +41,11 @@ struct ArchiveBrowserView: View {
                     }.width(150)
                 }
                 .contextMenu(forSelectionType: Int.self) { ids in
+                    if ids.count == 1,
+                       let entry = model.entries.first(where: { $0.id == ids.first }),
+                       !entry.isDirectory {
+                        Button { model.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye") }
+                    }
                     if model.canEdit {
                         if ids.count == 1, let entry = model.entries.first(where: { $0.id == ids.first }) {
                             Button("Rename…") { renaming = entry; newName = entry.displayPath }
@@ -48,9 +53,15 @@ struct ArchiveBrowserView: View {
                         Button("Delete", role: .destructive) { deleteSelected(ids) }
                     }
                 }
+                .spaceToQuickLook(enabled: selectedFileEntry != nil) {
+                    if let entry = selectedFileEntry { model.quickLook(entry) }
+                }
             }
             .sheet(isPresented: $showingPasswordSheet) { passwordSheet }
             .sheet(item: $renaming) { entry in renameSheet(entry) }
+            .sheet(item: $model.preview) { item in
+                QuickLookSheet(item: item) { model.preview = nil }
+            }
         }
     }
 
@@ -66,6 +77,12 @@ struct ArchiveBrowserView: View {
                 }
             }
             Spacer()
+            Button { if let entry = selectedFileEntry { model.quickLook(entry) } } label: {
+                Image(systemName: "eye")
+            }
+            .help("Quick Look the selected file (Space)")
+            .disabled(selectedFileEntry == nil || model.busy)
+            Divider().frame(height: 16)
             if model.canEdit {
                 Button { addFiles() } label: { Image(systemName: "plus") }
                     .help("Add files to this archive").disabled(model.busy)
@@ -154,6 +171,15 @@ struct ArchiveBrowserView: View {
         }.padding(20)
     }
 
+    /// The single selected non-directory entry, if exactly one file is selected
+    /// (Quick Look only makes sense for one previewable file at a time).
+    private var selectedFileEntry: ArchiveEntry? {
+        guard selection.count == 1, let id = selection.first,
+              let entry = model.entries.first(where: { $0.id == id }), !entry.isDirectory
+        else { return nil }
+        return entry
+    }
+
     private func deleteSelected(_ ids: Set<Int>) {
         let paths = model.entries.filter { ids.contains($0.id) }.map(\.displayPath)
         model.deleteEntries(paths)
@@ -176,4 +202,22 @@ struct ArchiveBrowserView: View {
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short; return f
     }()
+}
+
+private extension View {
+    /// Trigger Quick Look on the spacebar (Finder-style), matching the header
+    /// button. `onKeyPress` is macOS 14+; on macOS 13 the button and context
+    /// menu remain the way in.
+    @ViewBuilder
+    func spaceToQuickLook(enabled: Bool, action: @escaping () -> Void) -> some View {
+        if #available(macOS 14.0, *) {
+            self.onKeyPress(.space) {
+                guard enabled else { return .ignored }
+                action()
+                return .handled
+            }
+        } else {
+            self
+        }
+    }
 }

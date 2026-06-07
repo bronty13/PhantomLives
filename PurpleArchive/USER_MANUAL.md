@@ -49,9 +49,28 @@ to browse it, drop **files/folders** to compress them.
 
 ### Browsing an archive
 
-Open an archive (drag it in, **File ▸ Open Archive…**, or ⌘O). The contents
-appear in a table — name, size, modified date, and a 🔒 on encrypted entries. The
-header shows the file count and total uncompressed size.
+Open an archive any of these ways:
+
+- Drag it onto the window.
+- **File ▸ Open Archive…**, or ⌘O.
+- In Finder, right-click the archive ▸ **Open With ▸ Purple Archive** (or set
+  Purple Archive as the default and double-click).
+
+The contents appear in a table — name, size, modified date, and a 🔒 on encrypted
+entries. The header shows the file count and total uncompressed size.
+
+### Previewing a file (Quick Look)
+
+To peek inside the archive without extracting, select a file entry and either:
+
+- click the **eye** button in the browser header, or
+- press **Space**, or
+- right-click the entry ▸ **Quick Look**.
+
+A preview sheet opens with the same rich rendering Finder's spacebar Quick Look
+gives you — text, images, PDFs, audio/video, code, CSV, and more. Only that one
+file is streamed out (a temporary copy), so even a huge archive previews
+instantly. **Reveal** shows the temp copy in Finder; **Done** closes the sheet.
 
 ### Extracting
 
