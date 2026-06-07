@@ -4,6 +4,18 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Multi-volume / split archives (2026-06-06)
+
+- **Raw split sets** (`.001`/`.002`/… — 7-Zip "split to volumes", `split`,
+  download mirrors) are now transparent: `MultiVolume` detects the set from any
+  member, reassembles the parts (streamed, flat memory) into a temp file, and
+  `list`/`extract`/`test` operate on it normally. Open `movie.7z.003` and the
+  whole thing just works. GUI drop-routing + CLI both handle them.
+- Structured spanning (split-zip `.z01`, multi-part RAR `.partN`/`.rNN`) is
+  intentionally out of scope — those aren't plain concatenations.
+- `MultiVolumeTests`: detection from any part, false-positive guard, and a
+  3-volume list+extract round-trip. Engine suite 40/40.
+
 ### Legacy-format Quick Look, bundled CLI, user manual (2026-06-06)
 
 - **Quick Look + thumbnails for legacy Mac formats**: exported UTIs for

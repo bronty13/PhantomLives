@@ -16,7 +16,20 @@ public struct ArchiveService: Sendable {
     // MARK: Read
 
     public func list(_ url: URL) throws -> [ArchiveEntry] {
-        legacy.canHandle(url) ? try legacy.list(url) : try reader.list(url)
+        try resolvingVolumes(url) { real in
+            legacy.canHandle(real) ? try legacy.list(real) : try reader.list(real)
+        }
+    }
+
+    /// If `url` is one part of a raw split set (.001/.002/…), reassemble the
+    /// volumes into a temp file and run `body` on that; otherwise run on `url`.
+    private func resolvingVolumes<T>(_ url: URL, _ body: (URL) throws -> T) throws -> T {
+        guard let parts = MultiVolume.volumeParts(for: url), parts.count > 1 else {
+            return try body(url)
+        }
+        let assembled = try MultiVolume.assemble(parts)
+        defer { try? FileManager.default.removeItem(at: assembled) }
+        return try body(assembled)
     }
 
     public func tree(_ url: URL) throws -> ArchiveEntryNode {
@@ -56,9 +69,11 @@ public struct ArchiveService: Sendable {
     @discardableResult
     public func extract(_ url: URL, options: ExtractOptions,
                         sink: ProgressSink = .none) throws -> Int {
-        legacy.canHandle(url)
-            ? try legacy.extract(url, options: options, sink: sink)
-            : try reader.extract(url, options: options, sink: sink)
+        try resolvingVolumes(url) { real in
+            legacy.canHandle(real)
+                ? try legacy.extract(real, options: options, sink: sink)
+                : try reader.extract(real, options: options, sink: sink)
+        }
     }
 
     /// Best-effort recovery from a damaged archive — salvages every readable
@@ -73,12 +88,14 @@ public struct ArchiveService: Sendable {
     /// CRCs / decompression) without writing anything to disk.
     public func test(_ url: URL, password: String? = nil,
                      sink: ProgressSink = .none) throws -> Bool {
-        if legacy.canHandle(url) {
-            // peeler fully decompresses on list, so a clean list == integrity OK.
-            _ = try legacy.list(url)
-            return true
+        return try resolvingVolumes(url) { real in
+            if legacy.canHandle(real) {
+                // peeler fully decompresses on list, so a clean list == integrity OK.
+                _ = try legacy.list(real)
+                return true
+            }
+            return try reader.verify(real, password: password, sink: sink)
         }
-        return try reader.verify(url, password: password, sink: sink)
     }
 
     // MARK: Create

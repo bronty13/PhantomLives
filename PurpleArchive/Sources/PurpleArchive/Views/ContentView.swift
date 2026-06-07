@@ -96,8 +96,11 @@ struct ContentView: View {
 /// the drop-routing decision.)
 enum ArchiveProbe {
     static func looksLikeArchive(_ url: URL) -> Bool {
-        ArchiveFormat.forFilename(url.lastPathComponent) != nil
-            || ["rar", "7z", "cab", "iso", "lha", "lzh", "cpio", "ar", "xar", "sit", "sitx"]
-                .contains(url.pathExtension.lowercased())
+        let ext = url.pathExtension.lowercased()
+        // Raw split volumes (.001/.002/…) are archives too.
+        if ext.count >= 2, ext.allSatisfy(\.isNumber) { return true }
+        return ArchiveFormat.forFilename(url.lastPathComponent) != nil
+            || ["rar", "7z", "cab", "iso", "lha", "lzh", "cpio", "ar", "xar", "sit", "sitx", "cpt", "hqx"]
+                .contains(ext)
     }
 }
