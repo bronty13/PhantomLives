@@ -4,6 +4,22 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Multi-level folder tree, confirm-before-extract/create (2026-06-07)
+
+- **The browser is now a multi-level folder tree.** Folders show a disclosure
+  triangle and an item count; click to expand and see their contents any number
+  of levels deep (previously every entry was shown flat with its full path).
+  Selecting a folder and extracting pulls its whole subtree, structure intact.
+- **Extract prompts for the destination by default.** The primary button now
+  reads **"Extract All…" / "Extract N Selected…"** and opens a folder chooser
+  (pre-set to the current destination) so you see and confirm where files go
+  before extracting — the chosen folder becomes the session default. The
+  adjacent **⌄ menu** keeps the quick, no-prompt choices: *Extract to <default>*,
+  *Extract All Items*, and *Set Default Destination…*.
+- **Create Archive prompts for path + name.** Clicking Create now opens a save
+  dialog pre-filled with the default name and destination — rename, relocate, or
+  just hit Create — instead of silently writing to `~/Downloads/PurpleArchive`.
+
 ### Multi-select, smarter Extract button, sticky extract destination (2026-06-07)
 
 Follow-up to the selective-extract work — the browser table couldn't actually

@@ -138,13 +138,24 @@ struct CompressDropView: View {
     }
 
     private func compress() {
-        guard !passwordMismatch else { return }
+        guard !passwordMismatch, !staged.isEmpty else { return }
         let inputs = staged
-        if !password.isEmpty, settings.defaultFormat.supportsEncryption {
-            model.compressEncrypted(inputs, password: password, windowsSafe: windowsSafe)
-        } else {
-            model.compress(inputs, windowsSafe: windowsSafe)
-        }
+
+        // Confirm the output path + name before creating (like other archive
+        // utilities) — pre-filled with the default name & destination; the user
+        // can rename, relocate, or just hit Create.
+        let suggested = model.suggestedOutputURL(for: inputs)
+        let panel = NSSavePanel()
+        panel.title = "Create Archive"
+        panel.message = "Choose where to save the \(settings.defaultFormat.displayName) archive"
+        panel.prompt = "Create"
+        panel.canCreateDirectories = true
+        panel.directoryURL = suggested.deletingLastPathComponent()
+        panel.nameFieldStringValue = suggested.lastPathComponent
+        guard panel.runModal() == .OK, let out = panel.url else { return }
+
+        let pw = (!password.isEmpty && settings.defaultFormat.supportsEncryption) ? password : nil
+        model.createArchive(inputs, output: out, password: pw, windowsSafe: windowsSafe)
         staged.removeAll(); password = ""; confirmPassword = ""; recommendation = nil
     }
 }

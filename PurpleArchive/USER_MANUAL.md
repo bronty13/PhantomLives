@@ -56,8 +56,10 @@ Open an archive any of these ways:
 - In Finder, right-click the archive ▸ **Open With ▸ Purple Archive** (or set
   Purple Archive as the default and double-click).
 
-The contents appear in a table — name, size, modified date, and a 🔒 on encrypted
-entries. The header shows the file count and total uncompressed size.
+The contents appear as a **folder tree** — name, size, modified date, and a 🔒 on
+encrypted entries. Folders show a disclosure triangle and an item count; click it
+to expand the folder and see its contents, any number of levels deep. The header
+shows the file count and total uncompressed size.
 
 ### Previewing a file (Quick Look)
 
@@ -74,27 +76,27 @@ instantly. **Reveal** shows the temp copy in Finder; **Done** closes the sheet.
 
 ### Extracting
 
-The **Extract** button extracts the whole archive when nothing is selected, or
-just the selected files when you've selected some. Everything goes to
-`~/Downloads/PurpleArchive/<archive name>/` by default, and the folder is
-revealed in Finder when done. Encrypted archives prompt for a password first —
-tick the **eye** to reveal what you typed.
-
 **Select the files you want** the same way you do in Finder: click a row,
 **⌘-click** to add or remove individual rows, **⇧-click** for a range, ⌘A for
 all. (Note: on macOS *Control*-click is a right-click, not multi-select — use
 **Command (⌘)**.) The header shows how many are selected.
 
-With a selection the button reads **Extract N Selected** and writes just those
-(keeping their folder structure; selecting a folder pulls out everything inside
-it). With nothing selected it reads **Extract All**. Right-click ▸ **Extract**
-and the **folder menu** ▸ **Extract All Items** are alternatives.
+The primary **Extract All… / Extract N Selected…** button opens a folder chooser
+so you can see and confirm where files go before extracting — pick a folder and
+the selected items (or everything, if nothing is selected) are written there,
+keeping their folder structure. Selecting a folder pulls out everything inside
+it. The folder you pick becomes the destination for the rest of the session.
 
-**Choose where files go:** the folder menu beside Extract ▸ **Choose Destination
-Folder…** lets you pick any folder. That choice is *sticky for the session* —
-every later extract goes there until you quit the app, when it reverts to the
-default (set the permanent default in **Settings**). The menu shows the current
-destination and a **Reset to Default** item once you've changed it.
+For a quicker path, the **⌄ menu** beside the button skips the chooser:
+
+- **Extract to <folder>** — extract straight to the current default.
+- **Extract All Items to <folder>** — extract everything, ignoring the selection.
+- **Set Default Destination…** — change the default folder (sticky for the
+  session; reverts to the **Settings** default on relaunch).
+
+Right-click any item ▸ **Extract Here / Extract to Folder…** does the same, and
+shows the destination right in the menu. Encrypted archives prompt for a password
+first — tick the **eye** to reveal what you typed.
 
 ### Testing an archive
 
@@ -116,7 +118,9 @@ Switch to **Compress** (or drop files on the window):
    disabled while they differ, so a typo can't lock you out of your own
    archive). Use the **eye** toggle to reveal what you typed. Toggle
    **Windows-safe** to sanitize names that Windows would reject.
-3. Click **Create Archive**. Output lands in `~/Downloads/PurpleArchive/`.
+3. Click **Create Archive**. A save dialog opens, pre-filled with a suggested
+   name and the default location (`~/Downloads/PurpleArchive/`) — rename it,
+   choose a different folder, or just click **Create**.
 
 `.DS_Store` and `__MACOSX` junk is stripped automatically.
 

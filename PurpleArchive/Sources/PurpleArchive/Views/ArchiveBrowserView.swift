@@ -10,7 +10,8 @@ struct ArchiveBrowserView: View {
     @State private var revealPassword = false
     @State private var showingPasswordSheet = false
     @State private var pendingAction: PendingAction = .extractAll
-    @State private var selection = Set<Int>()
+    /// Selected node ids (full paths within the archive).
+    @State private var selection = Set<String>()
     @State private var renaming: ArchiveEntry?
     @State private var newName = ""
 
@@ -29,51 +30,14 @@ struct ArchiveBrowserView: View {
             VStack(spacing: 0) {
                 header
                 Divider()
-                Table(model.entries, selection: $selection) {
-                    TableColumn("Name") { entry in
-                        HStack(spacing: 6) {
-                            Image(systemName: icon(for: entry))
-                                .foregroundStyle(entry.isDirectory ? Color.secondary : Color.blue)
-                            Text(entry.displayPath).lineLimit(1).truncationMode(.middle)
-                            if entry.isEncrypted { Image(systemName: "lock.fill").foregroundStyle(.orange) }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    TableColumn("Size") { entry in
-                        Text(entry.isDirectory ? "—" : ByteFormat.string(entry.uncompressedSize))
-                            .foregroundStyle(.secondary).monospacedDigit()
-                    }.width(90)
-                    TableColumn("Modified") { entry in
-                        Text(entry.modified.map { Self.dateFormatter.string(from: $0) } ?? "—")
-                            .foregroundStyle(.secondary).font(.caption)
-                    }.width(150)
-                }
-                .contextMenu(forSelectionType: Int.self) { ids in
-                    if ids.count == 1,
-                       let entry = model.entries.first(where: { $0.id == ids.first }),
-                       !entry.isDirectory {
-                        Button { model.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye") }
-                    }
-                    if !ids.isEmpty {
-                        // Show the destination right in the menu so it's clear
-                        // where files will land before extracting.
-                        Section("Extract to  \(model.extractDestinationLabel)") {
-                            Button { beginExtractSelected(ids) } label: {
-                                Label(ids.count == 1 ? "Extract Here" : "Extract \(ids.count) Items Here",
-                                      systemImage: "arrow.down.circle")
-                            }
-                            Button { chooseDestinationThenExtract(ids) } label: {
-                                Label("Extract to Folder…", systemImage: "folder")
-                            }
-                        }
-                        Divider()
-                    }
-                    if model.canEdit {
-                        if ids.count == 1, let entry = model.entries.first(where: { $0.id == ids.first }) {
-                            Button("Rename…") { renaming = entry; newName = entry.displayPath }
-                        }
-                        Button("Delete", role: .destructive) { deleteSelected(ids) }
-                    }
+                columnHeader
+                Divider()
+                // Multi-level outline: folders expand to show their contents n
+                // levels deep. Native disclosure + Finder-style multi-selection
+                // (click / ⌘-click / ⇧-click / ⌘A).
+                List(model.entryNodes, children: \.childrenOrNil, selection: $selection) { node in
+                    row(node)
+                        .contextMenu { contextMenu(for: node) }
                 }
                 .spaceToQuickLook(enabled: selectedFileEntry != nil) {
                     if let entry = selectedFileEntry { model.quickLook(entry) }
@@ -138,39 +102,128 @@ struct ArchiveBrowserView: View {
             .disabled(model.busy)
             .help("Verify every entry decompresses correctly (integrity check)")
 
-            // Primary extract: the whole archive when nothing is selected, or
-            // just the selected rows when there's a selection.
-            Button { beginExtract() } label: {
-                Label(selection.isEmpty ? "Extract All" : "Extract \(selection.count) Selected",
+            // Primary extract: prompt for a destination folder first (so you
+            // see/choose where files go before extracting), then extract the
+            // selection — or everything when nothing is selected.
+            Button { extractToFolder() } label: {
+                Label(selection.isEmpty ? "Extract All…" : "Extract \(selection.count) Selected…",
                       systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(.borderedProminent).tint(.purple)
             .disabled(model.busy || model.entries.isEmpty)
             .help(selection.isEmpty
-                  ? "Extract everything to \(model.extractDestinationLabel)"
-                  : "Extract the \(selection.count) selected item(s) to \(model.extractDestinationLabel)")
+                  ? "Choose a folder, then extract everything there"
+                  : "Choose a folder, then extract the \(selection.count) selected item(s) there")
 
-            // Destination & all-items options.
+            // Secondary, quicker choices that skip the folder prompt.
             Menu {
-                Text("Extract to: \(model.extractDestinationLabel)")
-                Button("Choose Destination Folder…") { chooseDestination() }
+                Button(selection.isEmpty
+                       ? "Extract All to \(model.extractDestinationLabel)"
+                       : "Extract Selected to \(model.extractDestinationLabel)") { beginExtract() }
+                Button("Extract All Items to \(model.extractDestinationLabel)") { beginExtractAll() }
+                    .disabled(model.entries.isEmpty)
+                Divider()
+                Button("Set Default Destination…") { chooseDestination() }
                 if model.sessionExtractRoot != nil {
-                    Button("Reset to Default (\(model.settings.resolvedExtractRoot.lastPathComponent))") {
+                    Button("Reset Default to \(model.settings.resolvedExtractRoot.lastPathComponent)") {
                         model.sessionExtractRoot = nil
                     }
                 }
-                Divider()
-                Button("Extract All Items") { beginExtractAll() }
-                    .disabled(model.entries.isEmpty)
             } label: {
-                Image(systemName: "folder")
+                Image(systemName: "chevron.down")
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Extract destination & options")
+            .help("Other extract options & default destination")
             .disabled(model.busy)
         }
         .padding(12)
+    }
+
+    /// A lightweight column-title strip above the outline (List has no built-in
+    /// column headers); the Size/Modified widths match the row trailing columns.
+    private var columnHeader: some View {
+        HStack(spacing: 6) {
+            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Size").frame(width: 86, alignment: .trailing)
+            Text("Modified").frame(width: 140, alignment: .trailing)
+        }
+        .font(.caption).foregroundStyle(.secondary)
+        .padding(.horizontal, 16).padding(.vertical, 4)
+    }
+
+    /// One outline row: name (indented by the List for depth) plus size and
+    /// modified date right-aligned.
+    private func row(_ node: ArchiveEntryNode) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: nodeIcon(node))
+                .foregroundStyle(node.isDirectory ? Color.secondary : Color.blue)
+                .frame(width: 18)
+            Text(node.name).lineLimit(1).truncationMode(.middle)
+            if node.entry?.isEncrypted == true {
+                Image(systemName: "lock.fill").foregroundStyle(.orange).font(.caption)
+            }
+            Spacer(minLength: 12)
+            Text(sizeText(node))
+                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                .frame(width: 86, alignment: .trailing)
+            Text(node.entry?.modified.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                .font(.caption).foregroundStyle(.tertiary)
+                .frame(width: 140, alignment: .trailing)
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func contextMenu(for node: ArchiveEntryNode) -> some View {
+        // Act on the whole selection if this row is part of it, else just it.
+        let ids: Set<String> = selection.contains(node.id) ? selection : [node.id]
+        if ids.count == 1, let entry = node.entry, !entry.isDirectory {
+            Button { model.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye") }
+        }
+        // Destination shown right here so it's clear where files will land.
+        Section("Extract to  \(model.extractDestinationLabel)") {
+            Button { beginExtractSelected(ids) } label: {
+                Label(ids.count == 1 ? "Extract Here" : "Extract \(ids.count) Items Here",
+                      systemImage: "arrow.down.circle")
+            }
+            Button { chooseDestinationThenExtract(ids) } label: {
+                Label("Extract to Folder…", systemImage: "folder")
+            }
+        }
+        if model.canEdit {
+            Divider()
+            if ids.count == 1, let entry = node.entry {
+                Button("Rename…") { renaming = entry; newName = entry.displayPath }
+            }
+            Button("Delete", role: .destructive) { deleteSelected(ids) }
+        }
+    }
+
+    private func sizeText(_ node: ArchiveEntryNode) -> String {
+        if node.isDirectory {
+            let n = node.fileCount
+            return "\(n) item" + (n == 1 ? "" : "s")
+        }
+        return ByteFormat.string(node.entry?.uncompressedSize ?? 0)
+    }
+
+    private func nodeIcon(_ node: ArchiveEntryNode) -> String {
+        if node.isDirectory { return "folder.fill" }
+        if node.entry?.isSymlink == true { return "arrow.up.forward.app" }
+        return "doc"
+    }
+
+    /// Find a node by its id (full path) anywhere in the tree.
+    private func node(for id: String) -> ArchiveEntryNode? {
+        func find(_ nodes: [ArchiveEntryNode]) -> ArchiveEntryNode? {
+            for n in nodes {
+                if n.id == id { return n }
+                if let hit = find(n.children) { return hit }
+            }
+            return nil
+        }
+        return find(model.entryNodes)
     }
 
     private var emptyState: some View {
@@ -236,8 +289,14 @@ struct ArchiveBrowserView: View {
 
     // MARK: - Extract / test routing
 
-    /// The primary Extract action: selection drives it — all when nothing is
-    /// selected, just the selected rows otherwise.
+    /// Primary Extract: prompt for a destination folder, then extract there
+    /// (the chosen folder also becomes the session default).
+    private func extractToFolder() {
+        if pickDestination() { beginExtract() }
+    }
+
+    /// Extract to the current default without prompting — selection drives it
+    /// (all when nothing is selected, just the selected rows otherwise).
     private func beginExtract() {
         if selection.isEmpty { beginExtractAll() }
         else { beginExtractSelected(selection) }
@@ -267,7 +326,7 @@ struct ArchiveBrowserView: View {
 
     /// Right-click "Extract to Folder…" — pick a destination, then extract the
     /// given selection there.
-    private func chooseDestinationThenExtract(_ ids: Set<Int>) {
+    private func chooseDestinationThenExtract(_ ids: Set<String>) {
         if pickDestination() { beginExtractSelected(ids) }
     }
 
@@ -278,7 +337,7 @@ struct ArchiveBrowserView: View {
         else { model.extractOpened() }
     }
 
-    private func beginExtractSelected(_ ids: Set<Int>) {
+    private func beginExtractSelected(_ ids: Set<String>) {
         let entries = entriesToExtract(ids)
         guard !entries.isEmpty else { return }
         if needsPasswordPrompt { pendingAction = .extractSelected(entries); showingPasswordSheet = true }
@@ -303,20 +362,14 @@ struct ArchiveBrowserView: View {
         }
     }
 
-    /// The concrete files to extract for a selection: bare files as-is, and any
-    /// selected directory expanded to every file beneath it.
-    private func entriesToExtract(_ ids: Set<Int>) -> [ArchiveEntry] {
-        let selected = model.entries.filter { ids.contains($0.id) }
+    /// The concrete files to extract for a selection of nodes: each selected
+    /// folder expands to every file beneath it (n levels deep); files as-is.
+    private func entriesToExtract(_ ids: Set<String>) -> [ArchiveEntry] {
         var result: [ArchiveEntry] = []
         var seen = Set<Int>()
-        for entry in selected {
-            if entry.isDirectory {
-                let prefix = entry.displayPath   // directory displayPaths end in "/"
-                for child in model.entries
-                where !child.isDirectory && child.displayPath.hasPrefix(prefix) {
-                    if seen.insert(child.id).inserted { result.append(child) }
-                }
-            } else if seen.insert(entry.id).inserted {
+        for id in ids {
+            guard let node = node(for: id) else { continue }
+            for entry in node.fileEntries where seen.insert(entry.id).inserted {
                 result.append(entry)
             }
         }
@@ -327,13 +380,21 @@ struct ArchiveBrowserView: View {
     /// (Quick Look only makes sense for one previewable file at a time).
     private var selectedFileEntry: ArchiveEntry? {
         guard selection.count == 1, let id = selection.first,
-              let entry = model.entries.first(where: { $0.id == id }), !entry.isDirectory
+              let node = node(for: id), let entry = node.entry, !entry.isDirectory
         else { return nil }
         return entry
     }
 
-    private func deleteSelected(_ ids: Set<Int>) {
-        let paths = model.entries.filter { ids.contains($0.id) }.map(\.displayPath)
+    /// Delete every entry under the selected nodes (folders included).
+    private func deleteSelected(_ ids: Set<String>) {
+        var seen = Set<Int>()
+        var paths: [String] = []
+        for id in ids {
+            guard let node = node(for: id) else { continue }
+            for entry in node.allEntries where seen.insert(entry.id).inserted {
+                paths.append(entry.displayPath)
+            }
+        }
         model.deleteEntries(paths)
         selection.removeAll()
     }
@@ -345,15 +406,31 @@ struct ArchiveBrowserView: View {
         if panel.runModal() == .OK { model.addFiles(panel.urls) }
     }
 
-    private func icon(for entry: ArchiveEntry) -> String {
-        if entry.isDirectory { return "folder.fill" }
-        if entry.isSymlink { return "arrow.up.forward.app" }
-        return "doc"
-    }
-
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short; return f
     }()
+}
+
+private extension ArchiveEntryNode {
+    /// Children for `List(children:)` — nil for leaves/empty folders so no
+    /// disclosure triangle is drawn on them.
+    var childrenOrNil: [ArchiveEntryNode]? { children.isEmpty ? nil : children }
+
+    /// Every real file entry at and below this node (folders expanded deep).
+    var fileEntries: [ArchiveEntry] {
+        var out: [ArchiveEntry] = []
+        if let e = entry, !e.isDirectory { out.append(e) }
+        for c in children { out.append(contentsOf: c.fileEntries) }
+        return out
+    }
+
+    /// Every real entry at and below this node, directories included.
+    var allEntries: [ArchiveEntry] {
+        var out: [ArchiveEntry] = []
+        if let e = entry { out.append(e) }
+        for c in children { out.append(contentsOf: c.allEntries) }
+        return out
+    }
 }
 
 private extension View {

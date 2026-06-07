@@ -14,6 +14,10 @@ final class AppModel: ObservableObject {
     // Open archive
     @Published var openedURL: URL?
     @Published var entries: [ArchiveEntry] = []
+    /// Hierarchical (multi-level) view of `entries` for the outline browser —
+    /// the top-level nodes; folders expand to reveal their contents n levels
+    /// deep. Rebuilt whenever the listing or filename encoding changes.
+    @Published var entryNodes: [ArchiveEntryNode] = []
     @Published var info: ArchiveInfo?
     @Published var isEncrypted = false
 
@@ -67,6 +71,7 @@ final class AppModel: ObservableObject {
         } else {
             entries = rawEntries.map { $0.reDecoded(using: selectedEncoding.encoding) }
         }
+        entryNodes = ArchiveEntryTree.build(from: entries).children
     }
 
     /// Password remembered in the Keychain for the open archive, if any.
@@ -208,22 +213,35 @@ final class AppModel: ObservableObject {
 
     // MARK: - Compress
 
-    func compress(_ inputs: [URL], windowsSafe: Bool = false) {
-        compress(inputs, password: nil, windowsSafe: windowsSafe)
-    }
-
-    func compressEncrypted(_ inputs: [URL], password: String, windowsSafe: Bool = false) {
-        compress(inputs, password: password, windowsSafe: windowsSafe)
-    }
-
-    private func compress(_ inputs: [URL], password: String?, windowsSafe: Bool) {
-        guard !inputs.isEmpty else { return }
+    /// Default output URL for `inputs` in the current format and destination —
+    /// the pre-filled suggestion in the Create-Archive save panel.
+    func suggestedOutputURL(for inputs: [URL]) -> URL {
         let format = settings.defaultFormat
         let firstName = inputs.count == 1
             ? inputs[0].deletingPathExtension().lastPathComponent
             : "Archive"
-        let out = settings.resolvedExtractRoot
+        return settings.resolvedExtractRoot
             .appendingPathComponent("\(firstName).\(format.preferredExtension)")
+    }
+
+    func compress(_ inputs: [URL], windowsSafe: Bool = false) {
+        guard !inputs.isEmpty else { return }
+        createArchive(inputs, output: suggestedOutputURL(for: inputs),
+                      password: nil, windowsSafe: windowsSafe)
+    }
+
+    func compressEncrypted(_ inputs: [URL], password: String, windowsSafe: Bool = false) {
+        guard !inputs.isEmpty else { return }
+        createArchive(inputs, output: suggestedOutputURL(for: inputs),
+                      password: password, windowsSafe: windowsSafe)
+    }
+
+    /// Create an archive at an explicit output URL (the path + name the user
+    /// confirmed in the save panel). The format is the current Settings default,
+    /// regardless of the typed extension.
+    func createArchive(_ inputs: [URL], output: URL, password: String?, windowsSafe: Bool) {
+        guard !inputs.isEmpty else { return }
+        let format = settings.defaultFormat
         let opts = CompressionOptions(level: settings.settings.defaultLevel,
                                       password: password,
                                       threads: 0,
@@ -231,11 +249,11 @@ final class AppModel: ObservableObject {
                                       windowsSafeNames: windowsSafe)
         runJob("Compressing \(inputs.count) item(s) → \(format.displayName)…") { [service] in
             try FileManager.default.createDirectory(
-                at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try service.create(out, inputs: inputs, format: format, options: opts)
-            return out
+                at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try service.create(output, inputs: inputs, format: format, options: opts)
+            return output
         } onSuccess: { [weak self] (out: URL) in
-            self?.status = "Created \(out.lastPathComponent)"
+            self?.status = "Created \(out.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))"
             NSWorkspace.shared.activateFileViewerSelecting([out])
         }
     }
