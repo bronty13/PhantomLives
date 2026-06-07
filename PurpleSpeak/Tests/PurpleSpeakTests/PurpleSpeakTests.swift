@@ -35,6 +35,31 @@ import AVFoundation
     #expect(fast >= slow)
 }
 
+// MARK: - Word-precise click-to-start snapping
+
+@MainActor
+@Test func wordStartSnapsClickInsideAWord() {
+    let text = "The lighthouse keeper waited."
+    // An index inside "lighthouse" (which starts at offset 4).
+    let inside = (text as NSString).range(of: "lighthouse").location + 3
+    #expect(ReaderTextView.wordStart(in: text, at: inside) == 4)
+}
+
+@MainActor
+@Test func wordStartInWhitespaceJumpsToNextWord() {
+    let text = "Hello   world"
+    // The run of spaces sits between offset 5 and 8; clicking at 6 → "world".
+    let worldStart = (text as NSString).range(of: "world").location
+    #expect(ReaderTextView.wordStart(in: text, at: 6) == worldStart)
+}
+
+@MainActor
+@Test func wordStartClampsOutOfRange() {
+    let text = "Short."
+    #expect(ReaderTextView.wordStart(in: text, at: -5) == 0)
+    #expect(ReaderTextView.wordStart(in: text, at: 999) == (text as NSString).length)
+}
+
 // MARK: - Paragraph offsets (skip logic)
 
 @MainActor

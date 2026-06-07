@@ -28,11 +28,18 @@ character range of each word as it's spoken; we add `baseOffset` to map it into
 whole-document coordinates and publish `spokenWordRange` /
 `spokenSentenceRange`.
 
-`ReaderView` renders the text **a paragraph at a time** (LazyVStack) so only the
-active paragraph rebuilds its `AttributedString` on each word callback — the
-word gets a bold yellow background, the sentence a faint purple one. It
-auto-scrolls to the active paragraph. `sentenceRange(containing:in:)` and
-`AppState.paragraphStartOffsets` are pure/static and unit-tested.
+`ReaderView` hosts `ReaderTextView` — an `NSTextView` (TextKit) wrapped in
+`NSViewRepresentable`. TextKit is what enables **word-precise click-to-start**:
+SwiftUI `Text` can't map a click to a character index, but
+`NSLayoutManager.characterIndex(for:)` can (see `CenteringTextView.mouseDown`),
+and `ReaderTextView.wordStart(in:at:)` snaps it to the enclosing word →
+`AppState.startReading(from:)`. Highlighting is applied as **minimal-diff
+attribute edits** on the text storage (only the changed word/sentence ranges per
+spoken step — never rebuilding the string), with `scrollRangeToVisible` for
+auto-scroll and native text selection preserved. Line-focus dims the document
+foreground and re-lights the active sentence. `sentenceRange(containing:in:)`,
+`AppState.paragraphStartOffsets`, and `ReaderTextView.wordStart` are pure/static
+and unit-tested.
 
 ## Services
 
@@ -88,5 +95,4 @@ but version-fragile; left as future work.
   protocol.
 - MLX Whisper backend (shell out to the repo's `transcribe/`) behind
   `STTEngine`.
-- Word-precise click-to-start (currently paragraph granularity).
 - Browser extension, read-it-later sync, speaker diarization.

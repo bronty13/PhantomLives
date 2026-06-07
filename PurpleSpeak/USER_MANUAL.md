@@ -45,7 +45,8 @@ Select a document and use the **playback bar** at the bottom:
 - **Synced highlighting:** as PurpleSpeak speaks, the **current word** is
   highlighted in yellow and the surrounding **sentence** gets a soft purple
   glow. The view scrolls to keep the spoken line in sight.
-- **Click to start anywhere:** click a paragraph to begin reading from there.
+- **Click to start anywhere:** click any word to begin reading from exactly
+  that word. (You can still select text normally with click-drag.)
 - **Speeds above ~2×** saturate at the speech engine's maximum rate — that's a
   limit of Apple's on-device synthesizer, not a bug.
 
