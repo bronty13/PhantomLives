@@ -6,7 +6,7 @@ image and PurpleSpeak reads it aloud, lighting up each word as it speaks. Drop
 in an audio or video file and it transcribes it with Whisper.
 
 No cloud round-trip, no account, no telemetry. Apple's on-device voices and
-Vision OCR plus a bundled `whisper.cpp` do all the work locally.
+Vision OCR plus a Homebrew `whisper.cpp` do all the work locally.
 
 ## What it does
 
@@ -41,16 +41,16 @@ cd PurpleSpeak
 `install.sh`, with a stale-instance freshness proof), and relaunches it. Flags:
 `--no-install`, `--no-open`, or `BUILD_ONLY=1`.
 
-To enable on-device transcription, install whisper.cpp first so the binary gets
-bundled:
+To enable on-device transcription, install whisper.cpp — the app runs the
+Homebrew `whisper-cli` as a subprocess at runtime:
 
 ```sh
 brew install whisper-cpp     # provides `whisper-cli`
-./build-app.sh
 ```
 
-The app still builds and runs without it — the Transcribe panel just guides you
-to install it.
+The app runs fine without it — the Transcribe panel just guides you to install
+it. (whisper.cpp isn't bundled: ggml loads its compute backends as separate
+plugins that don't survive being copied into an app bundle — see HANDOFF.md.)
 
 ### Tests
 

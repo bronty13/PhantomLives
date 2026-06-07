@@ -43,9 +43,21 @@ echo "Building $APP $SHORT_VERSION ($BUILD_NUMBER), config=$CONFIG..."
 swift build -c "$CONFIG"
 BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)"
 
-# Resolve whisper-cli to bundle (optional). Honor an explicit override, then
-# fall back to PATH. whisper-cpp installs the binary as `whisper-cli`.
-WHISPER_BIN="${WHISPER_BIN:-$(command -v whisper-cli 2>/dev/null || true)}"
+# Speech-to-text note: PurpleSpeak does NOT bundle whisper-cli. ggml loads its
+# compute backends (CPU/Metal/BLAS) as separate dlopen'd plugins discovered next
+# to the Homebrew install, and lifting the binary + dylibs into the app bundle
+# loses that backend discovery (ggml aborts with "backends = 0") and trips
+# hardened-runtime Team-ID checks on the re-signed Homebrew dylibs. Instead the
+# app runs the Homebrew `whisper-cli` as a subprocess at runtime (it finds its
+# own backends with its own valid signatures). STT therefore requires
+# `brew install whisper-cpp`; without it the Transcribe panel says so. A truly
+# self-contained bundle (bundling the backend .so plugins + GGML_BACKEND_PATH
+# plumbing + re-signing) is tracked as future work in HANDOFF.md.
+if command -v whisper-cli >/dev/null 2>&1; then
+    echo "STT: will use Homebrew whisper-cli at $(command -v whisper-cli)"
+else
+    echo "note: whisper-cli not on PATH — transcription disabled until 'brew install whisper-cpp'."
+fi
 
 # Assemble + sign in /tmp to avoid iCloud xattr races, then ditto back.
 WORK_DIR="$(mktemp -d -t purplespeak-build)"
@@ -57,24 +69,6 @@ RESOURCES="$CONTENTS/Resources"
 mkdir -p "$MACOS" "$RESOURCES"
 
 cp "$BIN_PATH/$APP" "$MACOS/$APP"
-
-if [ -n "${WHISPER_BIN:-}" ] && [ -x "$WHISPER_BIN" ]; then
-    echo "Bundling whisper-cli: $WHISPER_BIN"
-    cp "$WHISPER_BIN" "$RESOURCES/whisper-cli"
-    chmod +x "$RESOURCES/whisper-cli"
-    # whisper.cpp links against libwhisper/libggml dylibs (Homebrew) — copy
-    # them in beside the binary and fix the rpath so the bundle is portable.
-    WLIBDIR="$(dirname "$WHISPER_BIN")/../lib"
-    if [ -d "$WLIBDIR" ]; then
-        for dylib in "$WLIBDIR"/libwhisper*.dylib "$WLIBDIR"/libggml*.dylib; do
-            [ -f "$dylib" ] && cp "$dylib" "$RESOURCES/" 2>/dev/null || true
-        done
-        install_name_tool -add_rpath "@executable_path" "$RESOURCES/whisper-cli" 2>/dev/null || true
-    fi
-else
-    echo "note: whisper-cli not found — building without bundled transcription."
-    echo "      Install it (brew install whisper-cpp) and rebuild to enable STT."
-fi
 
 # Icon: regenerate each build (deterministic).
 ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"

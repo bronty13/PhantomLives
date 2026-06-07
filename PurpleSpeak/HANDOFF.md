@@ -41,7 +41,7 @@ auto-scrolls to the active paragraph. `sentenceRange(containing:in:)` and
 | `TextExtractionService` | PDF (PDFKit), DOCX/RTF (`NSAttributedString`), EPUB (unzip + OPF spine + HTML strip), HTML, web articles (fetch + readability regex), plain text. HTML/EPUB paths are `@MainActor` (AppKit HTML reader). |
 | `OCRService` | Vision `VNRecognizeTextRequest` over images and rasterized image-only PDF pages. |
 | `AudioExportService` | `AVSpeechSynthesizer.write(_:toBufferCallback:)` → CAF → `.m4a` (AVAssetExportSession) or `.mp3` (shell `lame`). |
-| `STTEngine` / `WhisperCppEngine` | Runs the bundled `whisper-cli`; converts input to 16 kHz mono WAV via `afconvert`; parses bracketed timestamps. Graceful when the binary/model is absent. |
+| `STTEngine` / `WhisperCppEngine` | Runs the **Homebrew** `whisper-cli` (`resolvedBinaryURL` prefers `/opt/homebrew/bin`); converts input to 16 kHz mono WAV via `afconvert`; parses bracketed timestamps. Graceful when the binary/model is absent. Not bundled — see "STT bundling" below. |
 | `BackupService` | Zip support dir → `~/Downloads/PurpleSpeak backup/`; debounce / retention / verify / restore. Lifted from Timeliner, de-GRDB'd. |
 | `WindowStateGuard` | Copied verbatim from PurpleReel; sanitizes persisted window/split state on launch. |
 
@@ -64,6 +64,23 @@ auto-scrolls to the active paragraph. `sentenceRange(containing:in:)` and
 - `settings.json`: `AppSettings` (pretty/sorted). Output/backup paths stored as
   `~/…` strings, expanded via `SupportPaths.expand`.
 - Document text lives in `documents/<uuid>.txt` sidecars.
+
+## STT bundling (why whisper-cli isn't in the .app)
+
+We tried bundling `whisper-cli` + its dylibs (SlackSucker pattern) and hit two
+walls: (1) re-signing the Homebrew dylibs under our identity trips a
+hardened-runtime **Team-ID mismatch** when dyld maps them (fixable by rewriting
+install names to `@rpath`), but (2) ggml loads its compute backends
+(`libggml-cpu*/metal/blas.so`) as separate **`dlopen`'d plugins** discovered via
+a hardcoded Cellar `libexec` path / `GGML_BACKEND_PATH` — a copied-into-bundle
+binary finds none and aborts with `GGML_ASSERT(device) failed` (`backends = 0`).
+
+Current approach: **run the original Homebrew `whisper-cli` as a subprocess**
+(its own process, valid signatures, finds its own backends). STT therefore needs
+`brew install whisper-cpp`. A self-contained bundle would mean copying the
+backend `.so` plugins into Resources, fixing their `@rpath`s, re-signing them,
+and setting `GGML_BACKEND_PATH` on the spawned process to point at them — doable
+but version-fragile; left as future work.
 
 ## Known follow-ups (deferred from the competitive survey)
 

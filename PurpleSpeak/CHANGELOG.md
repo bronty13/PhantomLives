@@ -35,9 +35,11 @@ app for macOS, fully on-device and private.
   `~/Downloads/PurpleSpeak/`.
 
 ### Speech-to-text (transcription)
-- On-device transcription of audio/video via bundled `whisper.cpp`
-  (`whisper-cli`). Editable, timestamped transcript; export `.txt` / `.srt`;
-  "Send to Reader" to listen to a transcript.
+- On-device transcription of audio/video via the Homebrew `whisper.cpp`
+  (`whisper-cli`), run as a subprocess (`brew install whisper-cpp`). Editable,
+  timestamped transcript; export `.txt` / `.srt`; "Send to Reader" to listen to
+  a transcript. (Not bundled — ggml's compute-backend plugins don't survive
+  being copied into an app bundle; see HANDOFF.md.)
 - Whisper GGML models download on demand (Large v3 Turbo / Base.en / Small)
   into `~/Library/Application Support/PurpleSpeak/models/`.
 - Optional: an MLX backend hook (reuses the repo's `transcribe/` tool) is

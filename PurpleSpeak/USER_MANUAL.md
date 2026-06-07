@@ -95,8 +95,8 @@ When it finishes you get a **timestamped transcript**. From there:
 - **Send to Reader** — save it as a document and listen to it.
 - **Export .txt** / **Export .srt** — save to `~/Downloads/PurpleSpeak/`.
 
-> Transcription requires the bundled `whisper-cli`. If it isn't present, the
-> panel will tell you to `brew install whisper-cpp` and rebuild the app.
+> Transcription uses the Homebrew `whisper-cli`. If it isn't installed, the
+> panel will tell you to `brew install whisper-cpp`.
 
 ---
 

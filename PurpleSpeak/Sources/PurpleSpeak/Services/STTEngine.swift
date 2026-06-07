@@ -32,9 +32,9 @@ struct TranscriptionResult: Equatable {
     }
 }
 
-/// A speech-to-text backend. v1 default is `WhisperCppEngine` (bundled,
-/// self-contained, on-device). The protocol keeps room for an opt-in MLX
-/// backend that shells out to the repo's `transcribe/` tool.
+/// A speech-to-text backend. v1 default is `WhisperCppEngine`, which drives a
+/// Homebrew-installed `whisper-cli` (on-device). The protocol keeps room for an
+/// opt-in MLX backend that shells out to the repo's `transcribe/` tool.
 protocol STTEngine {
     /// Whether the engine can run right now (binary + model present).
     var isAvailable: Bool { get }
@@ -51,7 +51,7 @@ enum STTError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .binaryMissing:
-            return "The whisper-cli binary isn't bundled. Rebuild PurpleSpeak with whisper-cpp installed (brew install whisper-cpp)."
+            return "whisper-cli was not found. Install whisper-cpp (brew install whisper-cpp) to enable on-device transcription."
         case .modelMissing(let m):
             return "The Whisper model “\(m)” hasn't been downloaded yet. Open Settings → Transcription to download it."
         case .audioConversionFailed(let s):
@@ -62,9 +62,10 @@ enum STTError: Error, LocalizedError {
     }
 }
 
-/// Drives the bundled `whisper-cli` (whisper.cpp). Converts any audio/video
-/// input to the 16 kHz mono WAV whisper.cpp expects, runs the binary, and
-/// parses its bracketed `[hh:mm:ss.mmm --> …]` stdout into segments.
+/// Drives `whisper-cli` (whisper.cpp), preferring a Homebrew install (see
+/// `resolvedBinaryURL`). Converts any audio/video input to the 16 kHz mono WAV
+/// whisper.cpp expects, runs the binary, and parses its bracketed
+/// `[hh:mm:ss.mmm --> …]` stdout into segments.
 final class WhisperCppEngine: STTEngine {
     let modelName: String
 
@@ -72,15 +73,22 @@ final class WhisperCppEngine: STTEngine {
         self.modelName = modelName
     }
 
-    /// The bundled binary, copied into Contents/Resources by build-app.sh.
-    static func bundledBinaryURL() -> URL? {
-        if let url = Bundle.main.url(forResource: "whisper-cli", withExtension: nil) {
-            return url
-        }
-        // Dev fallback: a whisper-cli on PATH (swift run, tests).
+    /// Resolve a runnable whisper-cli.
+    ///
+    /// We PREFER a Homebrew / PATH install over any bundled copy: ggml loads
+    /// its compute backends (CPU/Metal/BLAS) as separate `dlopen`'d plugins it
+    /// discovers next to the Homebrew install, and a copy lifted into the app
+    /// bundle loses that backend discovery (and hits hardened-runtime Team-ID
+    /// mismatches re-signing Homebrew dylibs). Running the original Homebrew
+    /// binary as a subprocess sidesteps all of it. A bundled binary, if a
+    /// future build ships a self-contained one, is the last-resort fallback.
+    static func resolvedBinaryURL() -> URL? {
         for p in ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli"]
         where FileManager.default.isExecutableFile(atPath: p) {
             return URL(fileURLWithPath: p)
+        }
+        if let url = Bundle.main.url(forResource: "whisper-cli", withExtension: nil) {
+            return url
         }
         return nil
     }
@@ -88,11 +96,11 @@ final class WhisperCppEngine: STTEngine {
     var modelURL: URL { SupportPaths.modelsDirectory.appendingPathComponent(modelName) }
 
     var isAvailable: Bool {
-        Self.bundledBinaryURL() != nil && FileManager.default.fileExists(atPath: modelURL.path)
+        Self.resolvedBinaryURL() != nil && FileManager.default.fileExists(atPath: modelURL.path)
     }
 
     var unavailableReason: String? {
-        if Self.bundledBinaryURL() == nil { return STTError.binaryMissing.localizedDescription }
+        if Self.resolvedBinaryURL() == nil { return STTError.binaryMissing.localizedDescription }
         if !FileManager.default.fileExists(atPath: modelURL.path) {
             return STTError.modelMissing(modelName).localizedDescription
         }
@@ -100,7 +108,7 @@ final class WhisperCppEngine: STTEngine {
     }
 
     func transcribe(audioURL: URL, language: String) async throws -> TranscriptionResult {
-        guard let binary = Self.bundledBinaryURL() else { throw STTError.binaryMissing }
+        guard let binary = Self.resolvedBinaryURL() else { throw STTError.binaryMissing }
         guard FileManager.default.fileExists(atPath: modelURL.path) else {
             throw STTError.modelMissing(modelName)
         }
@@ -111,10 +119,9 @@ final class WhisperCppEngine: STTEngine {
         defer { try? FileManager.default.removeItem(at: wav) }
         try convertTo16kWav(input: audioURL, output: wav)
 
-        // 2. Run whisper-cli.
-        var args = ["-m", modelURL.path, "-f", wav.path, "-nt"] // -nt: no extra timestamps token noise
-        // whisper-cli prints bracketed timestamps by default; keep them.
-        args = ["-m", modelURL.path, "-f", wav.path]
+        // 2. Run whisper-cli. It prints bracketed `[hh:mm:ss.mmm --> …]`
+        // timestamps on stdout by default, which parseWhisperOutput consumes.
+        var args = ["-m", modelURL.path, "-f", wav.path]
         if language != "auto" { args += ["-l", language] }
 
         let proc = Process()
