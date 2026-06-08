@@ -37,6 +37,37 @@ Phase 1 stops at "show me what's duplicated." Trashing files happens through the
 or by hand for now; the GUI **Move to Trash** button arrives in Phase 5 along with
 the auto-select rules.
 
+## Audit a folder against your Photos library
+
+The window has a mode switch at the top: **Find Duplicates** (above) and
+**Audit vs Photos**. The audit answers a different question — *which files in
+this folder are already in my Photos library, and which are missing?* — and
+lets you import the missing ones.
+
+1. Switch to **Audit vs Photos**.
+2. Pick a **Folder to audit** and your **Photos library** (`.photoslibrary`).
+3. Choose a **Match mode**:
+   - **Perceptual** (default): a folder file counts as "in Photos" if it's
+     byte-identical to a library original **or** visually matches one (so
+     re-encoded / resized copies are recognised).
+   - **Exact**: byte-identical originals only.
+4. Click **Audit**. The results list shows every file with a status badge:
+   **In Photos** (exact), **Likely · d=N** (perceptual match, with distance),
+   **Same name** (filename matches a library original — likely an
+   iCloud-optimised copy), or **Not in Photos**.
+5. Use the **All / In Photos / Missing** filter at the top to focus. Click
+   **Select all missing**, review, then **Import N → Photos**. A preflight
+   confirms the count; importing **copies** the originals into Photos (your
+   files on disk are never moved or deleted) and collects them in an
+   "Imported by PurpleDedup" album. The list re-audits itself afterward.
+
+**Accuracy notes.** Exact mode misses recompressed copies — use perceptual
+(the default). If iCloud "Optimize Mac Storage" is on, some library originals
+are stubs on disk whose bytes differ; perceptual matching and the filename
+safety net guard against re-importing, but audit is most accurate with
+"Download Originals to this Mac" enabled. Live Photos import as separate still
++ video assets in this version.
+
 ## CLI
 
 ```
@@ -57,7 +88,18 @@ pdedup scan ~/Pictures --photos-only --quiet
 
 # Treat *every* file as a candidate (handy for testing on a fixture directory).
 pdedup scan ./fixtures --all-files
+
+# Audit a folder against your Photos library (read-only; JSON report of in/missing).
+pdedup audit ~/SomeFolder --against ~/Pictures.photoslibrary
+
+# ...and import the files that are missing from Photos (copies, never moves).
+pdedup audit ~/SomeFolder --against ~/Pictures.photoslibrary \
+    --import-missing --import-album "Imported by PurpleDedup"
 ```
+
+The `audit` subcommand takes `--match exact|perceptual` (default perceptual),
+`--perceptual-threshold N`, the same kind filters as `scan`, `--no-cache`, and
+`-o <path>`. It only writes to Photos when `--import-missing` is given.
 
 ### Flags
 

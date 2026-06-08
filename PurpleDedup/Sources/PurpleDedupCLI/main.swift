@@ -10,7 +10,7 @@ struct PurpleDedupCLICommand: AsyncParsableCommand {
         commandName: "pdedup",
         abstract: "Find duplicate photos and videos.",
         version: PurpleDedup.coreVersion,
-        subcommands: [Scan.self, Bench.self, Version.self],
+        subcommands: [Scan.self, Audit.self, Bench.self, Version.self],
         defaultSubcommand: Scan.self
     )
 }
@@ -356,6 +356,148 @@ struct Scan: AsyncParsableCommand {
         }
 
         return filter.isActive ? filter : nil
+    }
+}
+
+// MARK: - audit
+
+struct Audit: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "audit",
+        abstract: "Audit a folder against your Photos library: which files are already in Photos, which are missing — and optionally import the missing ones."
+    )
+
+    @Argument(help: "Folder to audit against the Photos library.")
+    var folder: String
+
+    @Option(name: [.customLong("against")], help: "Path to the `.photoslibrary` to compare against.")
+    var against: String
+
+    @Option(name: [.customLong("match")], help: "Match mode: perceptual (default — catches re-encoded copies) or exact (byte-identical originals only).")
+    var match: String = AuditEngine.MatchMode.perceptual.rawValue
+
+    @Option(name: [.customLong("perceptual-threshold")], help: "Perceptual Hamming threshold (0...64). 6 = very similar.")
+    var perceptualThreshold: Int = PerceptualClusterer.defaultThreshold
+
+    @Flag(name: [.customLong("photos-only")], help: "Restrict to photo extensions.")
+    var photosOnly: Bool = false
+
+    @Flag(name: [.customLong("videos-only")], help: "Restrict to video extensions.")
+    var videosOnly: Bool = false
+
+    @Flag(name: [.customLong("all-files")], help: "Ignore extension filtering — audit every file.")
+    var allFiles: Bool = false
+
+    @Flag(name: [.customLong("hidden")], help: "Include hidden files (skipped by default).")
+    var includeHidden: Bool = false
+
+    @Flag(name: [.customLong("import-missing")], help: "After auditing, import every missing file into Photos (copies originals, never moves).")
+    var importMissing: Bool = false
+
+    @Option(name: [.customLong("import-album")], help: "Album to add imported files to. Pass an empty string to import without an album. Default: \"Imported by PurpleDedup\".")
+    var importAlbum: String?
+
+    @Flag(name: [.customLong("no-cache")], help: "Skip the on-disk hash cache.")
+    var noCache: Bool = false
+
+    @Option(name: [.customShort("o"), .long], help: "Write the JSON audit report to this file. If omitted, prints to stdout.")
+    var output: String?
+
+    @Flag(name: [.customLong("compact")], help: "Emit compact JSON (no pretty-printing).")
+    var compact: Bool = false
+
+    @Flag(name: [.short, .long], help: "Reduce output. Errors only.")
+    var quiet: Bool = false
+
+    mutating func run() async throws {
+        let folderURL = URL(fileURLWithPath: folder)
+        let libraryURL = URL(fileURLWithPath: against)
+        guard ScanSource.isPhotosLibrary(url: libraryURL) else {
+            throw ValidationError("--against must point at a `.photoslibrary` package.")
+        }
+        guard let mode = AuditEngine.MatchMode(rawValue: match) else {
+            throw ValidationError("--match must be 'exact' or 'perceptual'.")
+        }
+        guard perceptualThreshold >= 0 && perceptualThreshold <= 64 else {
+            throw ValidationError("--perceptual-threshold must be in 0...64.")
+        }
+
+        let kinds: Set<FileKind>
+        if allFiles { kinds = [.all] }
+        else if photosOnly { kinds = [.photo] }
+        else if videosOnly { kinds = [.video] }
+        else { kinds = [.photo, .video] }
+        let options = ScanOptions(kinds: kinds, includeHidden: includeHidden)
+
+        let isQuiet = quiet
+        let progress: @Sendable (ScanProgress) -> Void = { p in
+            if isQuiet { return }
+            FileHandle.standardError.write(Data(
+                "[\(p.phase.rawValue)] seen=\(p.filesSeen) hashed=\(p.filesHashed)/\(p.totalCandidates)\r".utf8
+            ))
+        }
+
+        // Filename safety net: ask PhotoKit for the library's original filenames so
+        // iCloud-optimised stubs (whose on-disk bytes differ) aren't misreported as
+        // missing. Best-effort — empty when auth isn't granted.
+        let knownBasenames = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
+
+        let database = noCache ? nil : try? Database.openDefault()
+        let engine = AuditEngine(database: database)
+        let result = try await engine.audit(
+            folder: folderURL,
+            photosLibrary: libraryURL,
+            mode: mode,
+            options: options,
+            perceptualThreshold: perceptualThreshold,
+            knownPhotoBasenames: knownBasenames.isEmpty ? nil : knownBasenames,
+            progress: progress
+        )
+        if !isQuiet { FileHandle.standardError.write(Data("\n".utf8)) }
+
+        let report = AuditReport.from(result)
+        let data = try report.toJSONData(pretty: !compact)
+        if let outPath = output {
+            let url = URL(fileURLWithPath: outPath)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+            if !isQuiet { FileHandle.standardError.write(Data("Wrote \(url.path)\n".utf8)) }
+        } else {
+            FileHandle.standardOutput.write(data)
+            FileHandle.standardOutput.write(Data("\n".utf8))
+        }
+
+        if !isQuiet {
+            FileHandle.standardError.write(Data(
+                "Audited \(result.files.count) file(s) vs \(libraryURL.lastPathComponent): \(result.summary).\n".utf8
+            ))
+        }
+
+        // Import phase — only when explicitly requested.
+        if importMissing {
+            let missing = result.missing.map { $0.url }
+            guard !missing.isEmpty else {
+                if !isQuiet { FileHandle.standardError.write(Data("Nothing missing to import.\n".utf8)) }
+                return
+            }
+            // Empty-string album means "no album"; nil flag means use the default.
+            let album: String?
+            if let importAlbum {
+                album = importAlbum.isEmpty ? nil : importAlbum
+            } else {
+                album = PhotoKitImportService.defaultAlbumName
+            }
+            if !isQuiet {
+                FileHandle.standardError.write(Data("Importing \(missing.count) missing file(s) into Photos…\n".utf8))
+            }
+            let importResult = await PhotoKitImportService.shared.importFiles(missing, addToAlbumNamed: album) { done, total in
+                if isQuiet { return }
+                FileHandle.standardError.write(Data("Importing \(done)/\(total)\r".utf8))
+            }
+            if !isQuiet {
+                FileHandle.standardError.write(Data("\n\(importResult.summary)\n".utf8))
+            }
+        }
     }
 }
 

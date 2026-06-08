@@ -23,7 +23,7 @@ struct PurpleDedupAppMain: App {
 
     var body: some Scene {
         WindowGroup("PurpleDedup") {
-            ContentView(settingsStore: settingsStore)
+            RootView(settingsStore: settingsStore)
                 .frame(minWidth: 720, minHeight: 480)
                 .task {
                     if !hasRunLaunchBackup {

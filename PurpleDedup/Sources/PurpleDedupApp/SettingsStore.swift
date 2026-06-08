@@ -43,6 +43,9 @@ final class SettingsStore: ObservableObject {
         d.set(settings.selectionRuleNames, forKey: Self.key("selectionRuleNames"))
         d.set(settings.folderPriority, forKey: Self.key("folderPriority"))
         d.set(settings.stageFolderPath, forKey: Self.key("stageFolderPath"))
+        d.set(settings.lastAuditFolderPath, forKey: Self.key("lastAuditFolderPath"))
+        d.set(settings.lastAuditLibraryPath, forKey: Self.key("lastAuditLibraryPath"))
+        d.set(settings.auditMatchMode, forKey: Self.key("auditMatchMode"))
         // Encode the filter map as JSON — UserDefaults can't store
         // `PhotoLibraryFilter` directly. Empty map writes nil, so a future
         // load reads back an empty dict cleanly.
@@ -88,6 +91,9 @@ final class SettingsStore: ObservableObject {
         }
         s.folderPriority = (d.array(forKey: key("folderPriority")) as? [String]) ?? []
         s.stageFolderPath = d.string(forKey: key("stageFolderPath"))
+        s.lastAuditFolderPath = d.string(forKey: key("lastAuditFolderPath"))
+        s.lastAuditLibraryPath = d.string(forKey: key("lastAuditLibraryPath"))
+        if let m = d.string(forKey: key("auditMatchMode")) { s.auditMatchMode = m }
         if let data = d.data(forKey: key("photoLibraryFilters")),
            let decoded = try? JSONDecoder().decode([String: PhotoLibraryFilter].self, from: data) {
             s.photoLibraryFilters = decoded
@@ -149,6 +155,14 @@ struct AppSettings: Equatable {
     /// — drop everything in `~/Downloads/Dedupe Stage`, glance through it
     /// in Finder, then `rm -rf` (or move to Trash from there) when satisfied.
     var stageFolderPath: String?
+
+    /// Last folder + Photos library used in the "Audit against Photos" mode.
+    /// Pre-fill the pickers on appear so the user doesn't re-choose every run.
+    /// The audit itself is not auto-run (it's a heavier, explicit action).
+    var lastAuditFolderPath: String?
+    var lastAuditLibraryPath: String?
+    /// "exact" | "perceptual" — last-used audit match mode.
+    var auditMatchMode: String = "perceptual"
 
     /// Per-Photos-library scan filters, keyed by absolute path string. When
     /// a `.photoslibrary` source has an entry here, the scan only walks the

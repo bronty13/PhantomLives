@@ -188,6 +188,18 @@ public actor PhotoKitDeletionService {
         return nil
     }
 
+    /// Set of original filenames PhotoKit reports for every visible asset.
+    /// Used by the audit feature as a duplicate-import safety net: a folder
+    /// file whose bytes don't match a library original (e.g. because the
+    /// library copy is an iCloud-optimised stub) but whose *filename* matches
+    /// a known original is treated as "likely already in Photos" rather than
+    /// missing. Returns an empty set when auth isn't granted.
+    public func libraryOriginalFilenames() async -> Set<String> {
+        let status = currentStatus()
+        guard status == .authorized || status == .limited else { return [] }
+        return Set(await buildBasenameIndex().keys)
+    }
+
     /// Build a `[basename: localIdentifier]` index for every PHAsset visible
     /// to PhotoKit. Runs once per session per library. For a 50K-asset
     /// library this is ~0.5s on M-series.

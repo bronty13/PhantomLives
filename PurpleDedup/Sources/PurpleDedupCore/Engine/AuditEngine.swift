@@ -1,0 +1,517 @@
+import Foundation
+
+/// Audits a folder against an Apple Photos library: classifies every file in the
+/// folder as *already in Photos* or *missing from Photos*, so the user can import
+/// the missing ones.
+///
+/// This is the per-file inverse of `CachedScanEngine`'s "lookup-only" mode. Where
+/// the dedup flow only *badges* cluster members that also live in Photos, the audit
+/// produces a complete, flat classification of the folder — including singleton
+/// files that never form a dedup cluster.
+///
+/// ### How a file is decided "in Photos"
+/// - **Exact (SHA-1).** Photos stores an unmodified import byte-for-byte under
+///   `<library>.photoslibrary/originals/`. So a folder file whose content hash is
+///   present in the library's hash index is definitely there. This is the only
+///   zero-false-positive signal and the only one safe to *gate import on*.
+/// - **Perceptual (opt-in default).** A re-encoded / resized / edited copy SHA-1
+///   mismatches even though "the same photo" is in Photos. In `.perceptual` mode we
+///   also pHash/dHash the library's photos and reclassify a still-missing folder
+///   *photo* to `.likelyInPhotosPerceptual` when it lands within Hamming threshold.
+///   Advisory — surfaced with its distance so the user can review.
+/// - **Filename (safety net).** When the caller supplies `knownPhotoBasenames` (the
+///   set of original filenames PhotoKit reports for the library), a still-missing
+///   file whose basename matches one is flagged `.likelyInPhotosFilename` rather than
+///   `.missing`. This catches iCloud "Optimize Mac Storage" stubs whose `originals/`
+///   bytes differ from the on-disk copy, so we don't re-import a duplicate.
+///
+/// Videos are matched exact-only in v1 (whole-library perceptual video matching is
+/// out of scope).
+public actor AuditEngine {
+
+    public enum MatchMode: String, Sendable, Codable {
+        /// Byte-exact SHA-1 only. Conservative; an in-Photos copy that was
+        /// re-encoded will read as missing.
+        case exact
+        /// Exact first, then perceptual reclassification of still-missing photos.
+        case perceptual
+    }
+
+    /// One audited folder file and the verdict on whether it's in Photos.
+    public struct AuditedFile: Sendable, Equatable {
+        public let url: URL
+        public let sizeBytes: Int64
+        public let modificationTime: Date
+        public let contentHashHex: String?
+        public let classification: Classification
+
+        public enum Classification: Sendable, Equatable {
+            /// SHA-1 matched a library original — definitely present.
+            case inPhotosExact
+            /// pHash/dHash within threshold of a library photo. Advisory.
+            case likelyInPhotosPerceptual(distance: Int)
+            /// Same filename as a known library original (hash differs — likely an
+            /// iCloud-optimised stub). Advisory.
+            case likelyInPhotosFilename(basename: String)
+            /// Not found by any signal — a candidate for import.
+            case missing
+        }
+
+        public init(url: URL, sizeBytes: Int64, modificationTime: Date,
+                    contentHashHex: String?, classification: Classification) {
+            self.url = url
+            self.sizeBytes = sizeBytes
+            self.modificationTime = modificationTime
+            self.contentHashHex = contentHashHex
+            self.classification = classification
+        }
+
+        /// True for every non-`.missing` verdict.
+        public var isInPhotos: Bool {
+            if case .missing = classification { return false }
+            return true
+        }
+    }
+
+    public struct AuditResult: Sendable {
+        public let folder: URL
+        public let photosLibrary: URL
+        public let matchMode: MatchMode
+        /// Every readable folder file, in stable (path-sorted) order.
+        public let files: [AuditedFile]
+        /// Files that could not be hashed (I/O error, permission). Kept distinct
+        /// from `missing` — an ambiguous file must never be auto-imported.
+        public let unreadable: [URL]
+        /// Number of files indexed from the Photos library.
+        public let photosIndexedCount: Int
+        public let timing: ScanEngine.StageTiming
+
+        public init(folder: URL, photosLibrary: URL, matchMode: MatchMode,
+                    files: [AuditedFile], unreadable: [URL],
+                    photosIndexedCount: Int, timing: ScanEngine.StageTiming) {
+            self.folder = folder
+            self.photosLibrary = photosLibrary
+            self.matchMode = matchMode
+            self.files = files
+            self.unreadable = unreadable
+            self.photosIndexedCount = photosIndexedCount
+            self.timing = timing
+        }
+
+        /// Files judged already in Photos (exact, perceptual, or filename).
+        public var inPhotos: [AuditedFile] { files.filter { $0.isInPhotos } }
+        /// Files not found anywhere — the import candidates.
+        public var missing: [AuditedFile] {
+            files.filter { if case .missing = $0.classification { return true }; return false }
+        }
+
+        public var summary: String {
+            var bits = ["\(inPhotos.count) in Photos", "\(missing.count) missing"]
+            if !unreadable.isEmpty { bits.append("\(unreadable.count) unreadable") }
+            return bits.joined(separator: " · ")
+        }
+    }
+
+    private let walker: FileWalker
+    private let contentHasher: ContentHasher
+    private let perceptualHasher: PerceptualHasher
+    private let database: Database?
+
+    public init(
+        database: Database? = nil,
+        walker: FileWalker = FileWalker(),
+        contentHasher: ContentHasher = ContentHasher(),
+        perceptualHasher: PerceptualHasher = PerceptualHasher()
+    ) {
+        self.database = database
+        self.walker = walker
+        self.contentHasher = contentHasher
+        self.perceptualHasher = perceptualHasher
+    }
+
+    public func audit(
+        folder: URL,
+        photosLibrary: URL,
+        mode: MatchMode = .perceptual,
+        options: ScanOptions = ScanOptions(),
+        perceptualThreshold: Int = PerceptualClusterer.defaultThreshold,
+        knownPhotoBasenames: Set<String>? = nil,
+        progress: (@Sendable (ScanProgress) -> Void)? = nil
+    ) async throws -> AuditResult {
+        let start = Date()
+        var timing = ScanEngine.StageTiming()
+
+        let cachedRows = (try? database?.loadAllCachedRows()) ?? [:]
+
+        // 1. Index the Photos library (content hashes + optional perceptual hashes).
+        let indexStart = Date()
+        let index = try await buildLibraryIndex(
+            library: photosLibrary,
+            options: options,
+            mode: mode,
+            cachedRows: cachedRows,
+            progress: progress
+        )
+        timing.exactSeconds = Date().timeIntervalSince(indexStart)
+
+        // 2. Walk the target folder.
+        let walkStart = Date()
+        var folderFiles: [DiscoveredFile] = []
+        for try await f in walker.walk(sources: [ScanSource(url: folder, isLocked: false)], options: options) {
+            try Task.checkCancellation()
+            folderFiles.append(f)
+            if folderFiles.count % 256 == 0 {
+                progress?(ScanProgress(phase: .walking, filesSeen: folderFiles.count,
+                                       filesHashed: 0, totalCandidates: 0, clustersSoFar: 0))
+            }
+        }
+        timing.walkSeconds = Date().timeIntervalSince(walkStart)
+
+        // 3. Hash every folder file (cache-aware) and partition exact in/missing.
+        let hashStart = Date()
+        let (hashed, unreadable) = try await hashFolderFiles(
+            folderFiles, cachedRows: cachedRows, totalCandidates: folderFiles.count, progress: progress
+        )
+
+        var audited: [AuditedFile] = []
+        var stillMissing: [(DiscoveredFile, String?)] = []   // file + its hex (for re-eval)
+        let known = knownPhotoBasenames.map { Set($0.map { $0.lowercased() }) }
+        for (f, hex) in hashed {
+            if let hex, index.hashes.contains(hex) {
+                audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
+                                           modificationTime: f.modificationTime,
+                                           contentHashHex: hex, classification: .inPhotosExact))
+            } else {
+                stillMissing.append((f, hex))
+            }
+        }
+
+        // 4. Perceptual reclassification of still-missing photos (perceptual mode).
+        var resolved: Set<URL> = []
+        if mode == .perceptual, !index.photoHashes.isEmpty {
+            let missingPhotos = stillMissing.filter {
+                FileKind.photoExtensions.contains($0.0.url.pathExtension.lowercased())
+            }.map { $0.0 }
+            let matches = try await perceptualMatch(
+                missingPhotos, against: index.photoHashes,
+                threshold: perceptualThreshold, progress: progress
+            )
+            for (f, hex) in stillMissing {
+                if let distance = matches[f.url] {
+                    audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
+                                               modificationTime: f.modificationTime,
+                                               contentHashHex: hex,
+                                               classification: .likelyInPhotosPerceptual(distance: distance)))
+                    resolved.insert(f.url)
+                }
+            }
+        }
+
+        // 5. Filename safety net + final missing.
+        for (f, hex) in stillMissing where !resolved.contains(f.url) {
+            let base = f.url.lastPathComponent
+            if let known, known.contains(base.lowercased()) {
+                audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
+                                           modificationTime: f.modificationTime,
+                                           contentHashHex: hex,
+                                           classification: .likelyInPhotosFilename(basename: base)))
+            } else {
+                audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
+                                           modificationTime: f.modificationTime,
+                                           contentHashHex: hex, classification: .missing))
+            }
+        }
+
+        audited.sort { $0.url.path < $1.url.path }
+        timing.perceptualSeconds = Date().timeIntervalSince(hashStart)
+        timing.totalSeconds = Date().timeIntervalSince(start)
+
+        progress?(ScanProgress(phase: .done, filesSeen: folderFiles.count,
+                               filesHashed: hashed.count, totalCandidates: folderFiles.count,
+                               clustersSoFar: 0))
+
+        return AuditResult(folder: folder, photosLibrary: photosLibrary, matchMode: mode,
+                           files: audited, unreadable: unreadable,
+                           photosIndexedCount: index.count, timing: timing)
+    }
+
+    // MARK: - Library index
+
+    private struct LibraryIndex {
+        var hashes: Set<String> = []
+        var photoHashes: [PerceptualHash] = []
+        var count = 0
+    }
+
+    /// Walk the Photos library and build its content-hash set (always) plus the
+    /// perceptual-hash list (perceptual mode only). Cache-aware: a file already in
+    /// the SQLite cache with matching `(size, mtime)` is read straight from cache.
+    private func buildLibraryIndex(
+        library: URL,
+        options: ScanOptions,
+        mode: MatchMode,
+        cachedRows: [String: Database.CachedRow],
+        progress: (@Sendable (ScanProgress) -> Void)?
+    ) async throws -> LibraryIndex {
+        progress?(ScanProgress(phase: .indexing, filesSeen: 0, filesHashed: 0,
+                               totalCandidates: 0, clustersSoFar: 0))
+
+        let source = ScanSource(url: library, isLookupOnly: true)
+        var libFiles: [DiscoveredFile] = []
+        for try await f in walker.walk(sources: [source], options: options) {
+            try Task.checkCancellation()
+            libFiles.append(f)
+            if libFiles.count % 256 == 0 {
+                progress?(ScanProgress(phase: .indexing, filesSeen: libFiles.count, filesHashed: 0,
+                                       totalCandidates: 0, clustersSoFar: 0))
+            }
+        }
+        var index = LibraryIndex()
+        index.count = libFiles.count
+        guard !libFiles.isEmpty else { return index }
+
+        // Content hashes.
+        let (hashed, _) = try await hashFolderFiles(
+            libFiles, cachedRows: cachedRows, totalCandidates: libFiles.count, progress: progress, phase: .indexing
+        )
+        for (_, hex) in hashed { if let hex { index.hashes.insert(hex) } }
+
+        // Perceptual hashes of library photos (perceptual mode only).
+        if mode == .perceptual {
+            let photos = libFiles.filter {
+                FileKind.photoExtensions.contains($0.url.pathExtension.lowercased())
+            }
+            index.photoHashes = try await perceptualHashAll(photos, cachedRows: cachedRows, progress: progress)
+        }
+        return index
+    }
+
+    // MARK: - Hashing
+
+    /// Cache-aware SHA-1 over a file list. Returns `(file, hex?)` for every readable
+    /// file (hex nil only on the rare case the cache stored no hash) and the URLs
+    /// that failed to read. Persists fresh hashes so a re-run is instant.
+    private func hashFolderFiles(
+        _ files: [DiscoveredFile],
+        cachedRows: [String: Database.CachedRow],
+        totalCandidates: Int,
+        progress: (@Sendable (ScanProgress) -> Void)?,
+        phase: ScanProgress.Phase = .hashing
+    ) async throws -> (hashed: [(DiscoveredFile, String?)], unreadable: [URL]) {
+        var result: [(DiscoveredFile, String?)] = []
+        var stale: [DiscoveredFile] = []
+        for f in files {
+            if let row = cachedRows[f.url.path],
+               row.file.sizeBytes == f.sizeBytes,
+               row.file.mtimeUnix == Int64(f.modificationTime.timeIntervalSince1970),
+               let blob = row.file.contentHash {
+                result.append((f, blob.hexEncodedString()))
+            } else {
+                stale.append(f)
+            }
+        }
+
+        let hasher = contentHasher
+        var fresh: [(DiscoveredFile, Data)] = []
+        var unreadable: [URL] = []
+        try await withThrowingTaskGroup(of: (DiscoveredFile, Data?)?.self) { group in
+            let limit = max(2, ProcessInfo.processInfo.activeProcessorCount)
+            var iterator = stale.makeIterator()
+            var inFlight = 0
+            func submit() {
+                if Task.isCancelled { return }
+                guard let next = iterator.next() else { return }
+                inFlight += 1
+                group.addTask {
+                    do { return (next, try hasher.hash(fileAt: next.url)) }
+                    catch {
+                        Log.hash.notice("Audit hash failed for \(next.url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        return (next, nil)
+                    }
+                }
+            }
+            for _ in 0..<limit { submit() }
+            var done = 0
+            let cachedHits = result.count
+            while inFlight > 0 {
+                if Task.isCancelled { group.cancelAll(); throw CancellationError() }
+                if let r = try await group.next() {
+                    inFlight -= 1; done += 1
+                    if let entry = r {
+                        if let blob = entry.1 { fresh.append((entry.0, blob)) }
+                        else { unreadable.append(entry.0.url) }
+                    }
+                    if done % 64 == 0 {
+                        progress?(ScanProgress(phase: phase, filesSeen: files.count,
+                                               filesHashed: cachedHits + done,
+                                               totalCandidates: totalCandidates, clustersSoFar: 0))
+                    }
+                    submit()
+                } else { break }
+            }
+        }
+
+        for (f, blob) in fresh { result.append((f, blob.hexEncodedString())) }
+
+        // Persist fresh hashes for next time.
+        if let database, !fresh.isEmpty {
+            let rows = fresh.map { (f, blob) in
+                Database.ScannedFile(
+                    path: f.url.path, sizeBytes: f.sizeBytes,
+                    mtimeUnix: Int64(f.modificationTime.timeIntervalSince1970),
+                    fileType: Self.classify(f.url.pathExtension),
+                    format: f.url.pathExtension.lowercased(), contentHash: blob
+                )
+            }
+            try? database.upsertScannedBatch(rows)
+        }
+        return (result, unreadable)
+    }
+
+    /// pHash/dHash a list of photos, cache-aware. Capped at 6 concurrent for the
+    /// same HEVC-decoder reason as the dedup engine.
+    private func perceptualHashAll(
+        _ photos: [DiscoveredFile],
+        cachedRows: [String: Database.CachedRow],
+        progress: (@Sendable (ScanProgress) -> Void)?
+    ) async throws -> [PerceptualHash] {
+        guard !photos.isEmpty else { return [] }
+        var hashes: [PerceptualHash] = []
+        var stale: [DiscoveredFile] = []
+        for f in photos {
+            if let row = cachedRows[f.url.path],
+               row.file.sizeBytes == f.sizeBytes,
+               row.file.mtimeUnix == Int64(f.modificationTime.timeIntervalSince1970),
+               let fp = row.fingerprint, let ph = fp.phash, let dh = fp.dhash {
+                hashes.append(PerceptualHash(phash: UInt64(littleEndianHashData: ph),
+                                             dhash: UInt64(littleEndianHashData: dh),
+                                             width: Int(fp.width ?? 0), height: Int(fp.height ?? 0)))
+            } else {
+                stale.append(f)
+            }
+        }
+
+        let hasher = perceptualHasher
+        var fresh: [(DiscoveredFile, PerceptualHash)] = []
+        try await withThrowingTaskGroup(of: (DiscoveredFile, PerceptualHash)?.self) { group in
+            let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
+            var iterator = stale.makeIterator()
+            var inFlight = 0
+            func submit() {
+                if Task.isCancelled { return }
+                guard let next = iterator.next() else { return }
+                inFlight += 1
+                group.addTask {
+                    do { return (next, try hasher.hash(imageAt: next.url)) }
+                    catch { return nil }
+                }
+            }
+            for _ in 0..<limit { submit() }
+            var done = 0
+            while inFlight > 0 {
+                if Task.isCancelled { group.cancelAll(); throw CancellationError() }
+                if let r = try await group.next() {
+                    inFlight -= 1; done += 1
+                    if let entry = r { fresh.append(entry); hashes.append(entry.1) }
+                    if done % 32 == 0 {
+                        progress?(ScanProgress(phase: .indexing, filesSeen: photos.count,
+                                               filesHashed: hashes.count, totalCandidates: photos.count,
+                                               clustersSoFar: 0))
+                    }
+                    submit()
+                } else { break }
+            }
+        }
+
+        if let database, !fresh.isEmpty {
+            let rows = fresh.map { (f, h) in
+                Database.FingerprintWrite(
+                    path: f.url.path, sizeBytes: f.sizeBytes,
+                    mtimeUnix: Int64(f.modificationTime.timeIntervalSince1970),
+                    fileType: Self.classify(f.url.pathExtension),
+                    format: f.url.pathExtension.lowercased(),
+                    phash: h.phash, dhash: h.dhash, width: h.width, height: h.height,
+                    videoFingerprint: nil
+                )
+            }
+            try? database.upsertFingerprintsBatch(rows)
+        }
+        return hashes
+    }
+
+    /// For each candidate photo, find the smallest OR-of-distances (min of pHash and
+    /// dHash Hamming) to any library photo; return those within threshold. Linear scan
+    /// — only the still-missing set is searched, and Hamming is a single CPU cycle.
+    private func perceptualMatch(
+        _ candidates: [DiscoveredFile],
+        against library: [PerceptualHash],
+        threshold: Int,
+        progress: (@Sendable (ScanProgress) -> Void)?
+    ) async throws -> [URL: Int] {
+        guard !candidates.isEmpty, !library.isEmpty else { return [:] }
+        let hasher = perceptualHasher
+        let lib = library
+        let thr = threshold
+        return try await withThrowingTaskGroup(of: (URL, Int)?.self) { group in
+            let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
+            var iterator = candidates.makeIterator()
+            var inFlight = 0
+            func submit() {
+                if Task.isCancelled { return }
+                guard let next = iterator.next() else { return }
+                inFlight += 1
+                group.addTask {
+                    guard let h = try? hasher.hash(imageAt: next.url) else { return nil }
+                    var best = Int.max
+                    for l in lib {
+                        let d = min(PerceptualHash.hammingDistance(h.phash, l.phash),
+                                    PerceptualHash.hammingDistance(h.dhash, l.dhash))
+                        if d < best { best = d; if best == 0 { break } }
+                    }
+                    return best <= thr ? (next.url, best) : nil
+                }
+            }
+            for _ in 0..<limit { submit() }
+            var out: [URL: Int] = [:]
+            while inFlight > 0 {
+                if Task.isCancelled { group.cancelAll(); throw CancellationError() }
+                if let r = try await group.next() {
+                    inFlight -= 1
+                    if let entry = r { out[entry.0] = entry.1 }
+                    submit()
+                } else { break }
+            }
+            return out
+        }
+    }
+
+    private nonisolated static func classify(_ ext: String) -> String {
+        let lower = ext.lowercased()
+        if FileKind.photoExtensions.contains(lower) { return "photo" }
+        if FileKind.videoExtensions.contains(lower) { return "video" }
+        return "other"
+    }
+}
+
+/// The three views the audit UI (and tests) partition a result into.
+public enum AuditFilter: String, Sendable, CaseIterable {
+    case all
+    case inPhotos
+    case missing
+}
+
+extension AuditEngine.AuditResult {
+    /// Files matching a filter, preserving the result's stable order. Pure —
+    /// unit-tested without any UI.
+    public func files(for filter: AuditFilter) -> [AuditEngine.AuditedFile] {
+        switch filter {
+        case .all:      return files
+        case .inPhotos: return inPhotos
+        case .missing:  return missing
+        }
+    }
+
+    /// URLs of exactly the missing files — the only set safe to import. By
+    /// construction this never contains a file already judged in Photos.
+    public var missingURLs: [URL] { missing.map { $0.url } }
+}

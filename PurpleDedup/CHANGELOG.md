@@ -3,6 +3,46 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.23.0 — Audit a folder against Photos + import the missing
+
+New top-level workflow alongside dedup: point at a folder, compare every
+file against your **entire** Apple Photos library, and see which files are
+already in Photos vs missing — then import the missing ones with one click.
+
+### What's new
+
+- **`AuditEngine`** (`Sources/PurpleDedupCore/Engine/AuditEngine.swift`) —
+  classifies each folder file as `inPhotosExact` (byte-identical SHA-1 match
+  to a library original), `likelyInPhotosPerceptual` (pHash/dHash within
+  threshold — catches re-encoded/resized copies), `likelyInPhotosFilename`
+  (same filename as a known library original — guards against re-importing
+  iCloud-optimised stubs), or `missing`. Cache-aware (reuses the SQLite hash
+  cache), so a re-audit is near-instant. **Perceptual is the default** match
+  mode; `exact` is available for byte-only matching. Videos are matched
+  exact-only in v1.
+- **`PhotoKitImportService`** — imports the missing files directly into Photos
+  via `PHAssetCreationRequest`. Originals are **copied, never moved**
+  (`shouldMoveFile = false`); imports optionally land in an "Imported by
+  PurpleDedup" album. This uses the read-write Photos authorization the app
+  already holds (the same grant that powers the "Marked for Deletion" album).
+- **GUI** — a "Find Duplicates / Audit vs Photos" mode switch at the top of
+  the window (`RootView`). The audit pane (`AuditView`) is a flat per-file
+  list with an All / In Photos / Missing summary-filter, select-all-missing,
+  an import preflight, and an automatic re-audit after import so the list
+  reflects reality. The dedup UI is unchanged.
+- **CLI** — `pdedup audit <folder> --against <library.photoslibrary>` with
+  `--match exact|perceptual`, `--import-missing`, `--import-album`, kind
+  filters, and JSON output (`-o`). Read-only unless `--import-missing` is set.
+
+### Caveats (documented in README/USER_MANUAL)
+
+- Exact mode only matches byte-identical originals; a recompressed copy of a
+  photo that *is* in Photos reads as missing (use perceptual, the default).
+- iCloud "Optimize Mac Storage": if a library original is a stub on disk, its
+  bytes won't match — perceptual matching and the filename safety net mitigate
+  this, but audit is most accurate with "Download Originals to this Mac" on.
+- Live Photos import as separate still + video assets in v1 (no pairing).
+
 ## Unreleased — silence the last two Swift 6 concurrency warnings
 
 Two actor-isolation warnings remained on a clean build; both are now fixed

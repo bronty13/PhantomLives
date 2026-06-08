@@ -6,12 +6,20 @@ the App Store.
 
 ## Status
 
-**0.22.3 — First notarized release.** All seven
+**0.23.0 — Audit against Photos + import.** All seven
 phases of the requirements doc plus a long list of user-driven additions are
 shipped. See `CHANGELOG.md` for the per-version detail.
 
 What works today:
 
+- **Audit a folder against your Photos library.** A second top-level mode
+  ("Audit vs Photos") classifies every file in a folder as already in Photos
+  or missing, then imports the missing ones directly into Photos
+  (`PHAssetCreationRequest`, originals copied not moved, optionally into an
+  "Imported by PurpleDedup" album). Matching is **perceptual by default**
+  (SHA-1 exact OR pHash/dHash within threshold, so re-encoded copies count),
+  with an exact-only mode and a same-filename safety net for iCloud-optimised
+  stubs. CLI: `pdedup audit <folder> --against <library.photoslibrary>`.
 - **Three pipeline stages.** Byte-exact (SHA-1, parallel), visually-similar
   photos (pHash + dHash, BK-tree, **OR-of-distances** so dHash catches
   what pHash misses, capped at 6 concurrent because the hardware HEVC
@@ -103,7 +111,29 @@ PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures.photoslibrary --photos-onl
 PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures.photoslibrary \
     --photos-person "Ada Lovelace" --photos-subtype "Live Photo"
 PurpleDedup.app/Contents/MacOS/pdedup version
+
+# Audit a folder against your Photos library (which files are / aren't in Photos):
+PurpleDedup.app/Contents/MacOS/pdedup audit ~/SomeFolder \
+    --against ~/Pictures/Photos\ Library.photoslibrary
+PurpleDedup.app/Contents/MacOS/pdedup audit ~/SomeFolder \
+    --against ~/Pictures.photoslibrary --match exact          # byte-identical only
+# ...and import the missing ones into Photos (copies originals, never moves):
+PurpleDedup.app/Contents/MacOS/pdedup audit ~/SomeFolder \
+    --against ~/Pictures.photoslibrary --import-missing \
+    --import-album "Imported by PurpleDedup"
 ```
+
+`audit` is read-only unless `--import-missing` is passed. It emits an
+`AuditReport` JSON (in/missing per file) on stdout or to `-o <path>`.
+
+**Match-mode notes.** `--match perceptual` (default) also flags re-encoded /
+resized copies as already-in-Photos; `--match exact` matches only
+byte-identical originals, so a recompressed copy of a photo that *is* in
+Photos will read as missing. If iCloud "Optimize Mac Storage" is on, a
+library original may be a stub on disk whose bytes differ — perceptual
+matching and a same-filename safety net mitigate this, but audit is most
+accurate with "Download Originals to this Mac" enabled. Live Photos import as
+separate still + video assets (no pairing) in this version.
 
 The CLI emits a JSON report on stdout (or to `-o <path>`) and human-readable progress on
 stderr. Exit code 0 on success regardless of whether duplicates were found.
