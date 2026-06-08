@@ -5,6 +5,7 @@ import PurpleMarkRenderCore
 /// active document's window.
 struct ContentView: View {
     @EnvironmentObject var state: AppState
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,6 +14,20 @@ struct ContentView: View {
                 Divider()
             }
             DocumentWindow(doc: state.active)
+        }
+        // Drag a markdown (or text) file from Finder onto the window to open it
+        // in a tab. Mirrors the existing drop-on-app-icon behavior.
+        .dropDestination(for: URL.self) { urls, _ in
+            let opened = state.openDroppedFiles(urls)
+            return opened
+        } isTargeted: { isDropTargeted = $0 }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .padding(2)
+                    .allowsHitTesting(false)
+            }
         }
     }
 }

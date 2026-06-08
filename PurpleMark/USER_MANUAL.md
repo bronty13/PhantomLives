@@ -22,6 +22,11 @@ Open several documents at once in one window. Press **⌘T** for a new tab (or t
 that's already open just switches to its tab. Each tab remembers its own text,
 file, view mode, and scroll position; a dot on a tab means unsaved changes.
 
+You can also **drag a `.md` file from Finder onto the window** to open it in a
+tab — the window shows a colored border while the file hovers over it. Drop
+several at once to open them all. (Double-clicking a `.md` file in Finder, or
+dropping it on the app icon, works too.)
+
 ## Editing
 
 Type in **Markdown** view; flip to **Document** view to see it rendered, with:

@@ -381,3 +381,42 @@ final class FileServiceTests: XCTestCase {
         XCTAssertFalse(files.contains("ignore.png"))
     }
 }
+
+final class DropToOpenTests: XCTestCase {
+    @MainActor
+    func testOpensMarkdownFilesAndIgnoresOthers() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("pm-drop-\(UUID())", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+
+        let md = dir.appendingPathComponent("note.md")
+        try "# Hello".write(to: md, atomically: true, encoding: .utf8)
+        let png = dir.appendingPathComponent("image.png")
+        try Data([0x89, 0x50]).write(to: png)
+
+        let state = AppState()
+        // Drop a markdown file + an unsupported file + the containing directory.
+        let accepted = state.openDroppedFiles([md, png, dir])
+
+        XCTAssertTrue(accepted)                                   // at least one openable → drop accepted
+        XCTAssertEqual(state.documents.count, 1)                  // only the .md opened (replaced pristine tab)
+        XCTAssertEqual(state.active.fileURL?.lastPathComponent, "note.md")
+    }
+
+    @MainActor
+    func testRejectsDropWithNoOpenableFiles() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("pm-drop-\(UUID())", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let png = dir.appendingPathComponent("image.png")
+        try Data([0x89, 0x50]).write(to: png)
+
+        let state = AppState()
+        let accepted = state.openDroppedFiles([png])
+
+        XCTAssertFalse(accepted)                                  // nothing openable → drop rejected
+        XCTAssertNil(state.active.fileURL)                        // still the pristine untitled tab
+    }
+}

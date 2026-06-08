@@ -43,6 +43,24 @@ final class AppState: ObservableObject {
 
     func activate(_ doc: Document) { activeID = doc.id }
 
+    /// Open files dropped onto the window from Finder. Accepts regular files
+    /// whose extension we recognize as markdown/text (directories and unknown
+    /// types are ignored). Returns `true` if at least one file was opened so the
+    /// drop is accepted; the last opened file becomes the active tab.
+    @discardableResult
+    func openDroppedFiles(_ urls: [URL]) -> Bool {
+        let openable = urls.filter { url in
+            guard url.isFileURL else { return false }
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
+                  !isDir.boolValue else { return false }
+            return FileService.markdownExtensions.contains(url.pathExtension.lowercased())
+        }
+        guard !openable.isEmpty else { return false }
+        for url in openable { open(url) }
+        return true
+    }
+
     func open(_ url: URL) {
         // If the file is already open, just focus its tab.
         if let existing = documents.first(where: { $0.fileURL?.standardizedFileURL == url.standardizedFileURL }) {

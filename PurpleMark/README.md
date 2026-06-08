@@ -14,6 +14,8 @@ Part of the PhantomLives monorepo; one of the `Purple*` SwiftUI apps.
 - **Single-pane toggle** — eye = rendered Document, `</>` = Markdown source.
 - **Default `.md` handler + Quick Look** — double-click opens PurpleMark; press
   spacebar in Finder to preview rendered markdown (same renderer as the app).
+- **Drag-and-drop to open** — drag a `.md` file from Finder onto the window to
+  open it in a tab.
 - **Mermaid + LaTeX**, bundled offline (no CDN, no network).
 - **Outline | Files sidebar** — live TOC + a folder browser.
 - **Export to PDF & HTML**, preserving diagrams and math (→ `~/Downloads/PurpleMark/`).
