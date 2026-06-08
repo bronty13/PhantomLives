@@ -14,8 +14,34 @@ struct SourceTextView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
-        guard let textView = scroll.documentView as? NSTextView else { return scroll }
+        // We build the scroll/text view by hand (rather than
+        // `NSTextView.scrollableTextView()`) so the text view is our
+        // `EditorTextView` subclass, which opens dropped markdown files instead
+        // of inserting their path. (Filtering `registeredDraggedTypes` doesn't
+        // stick — NSTextView re-registers its drag types when added to a window.)
+        let scroll = NSScrollView()
+        scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autoresizingMask = [.width, .height]
+
+        let textView = EditorTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(width: scroll.contentSize.width,
+                                                       height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+        scroll.documentView = textView
+
+        // A dropped markdown file opens as a document instead of inserting its
+        // path; any other drop (plain text, non-markdown files) falls back to
+        // the standard NSTextView behavior.
+        textView.onOpenFiles = { urls in
+            Task { @MainActor in AppState.shared.openDroppedFiles(urls) }
+        }
 
         textView.delegate = context.coordinator
         textView.allowsUndo = true
@@ -30,19 +56,8 @@ struct SourceTextView: NSViewRepresentable {
         textView.insertionPointColor = SourcePalette.caret
         textView.string = text
 
-        scroll.hasVerticalScroller = true
         scroll.drawsBackground = true
         scroll.backgroundColor = SourcePalette.background
-
-        // Let file drops fall through to the window's open-file handler instead
-        // of the text view inserting the file's path/contents. Keep every other
-        // drag type (text, etc.) working as before.
-        let fileDragTypes: Set<NSPasteboard.PasteboardType> = [
-            .fileURL, NSPasteboard.PasteboardType("NSFilenamesPboardType"),
-        ]
-        let kept = textView.registeredDraggedTypes.filter { !fileDragTypes.contains($0) }
-        textView.unregisterDraggedTypes()
-        textView.registerForDraggedTypes(kept)
 
         context.coordinator.textView = textView
         context.coordinator.scrollView = scroll
@@ -432,6 +447,44 @@ struct SourceTextView: NSViewRepresentable {
             MarkdownHighlighter.apply(to: storage, baseFont: parent.settings.editorFont())
             updateFocusMode()
         }
+    }
+}
+
+/// An `NSTextView` that opens dropped markdown files (via `onOpenFiles`) rather
+/// than inserting their path/contents. NSTextView is registered for file-URL
+/// drags and re-registers them whenever it moves to a window, so the only
+/// reliable interception point is the dragging-destination methods themselves.
+final class EditorTextView: NSTextView {
+    /// Invoked with the markdown/text file URLs from a drop; when set and the
+    /// drop contains at least one such file, the text view opens them instead
+    /// of performing its default insert.
+    var onOpenFiles: (([URL]) -> Void)?
+
+    private func openableFileURLs(_ sender: NSDraggingInfo) -> [URL] {
+        guard onOpenFiles != nil,
+              let objs = sender.draggingPasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]) as? [URL] else { return [] }
+        return objs.filter { FileService.markdownExtensions.contains($0.pathExtension.lowercased()) }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        openableFileURLs(sender).isEmpty ? super.draggingEntered(sender) : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        openableFileURLs(sender).isEmpty ? super.draggingUpdated(sender) : .copy
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        openableFileURLs(sender).isEmpty ? super.prepareForDragOperation(sender) : true
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = openableFileURLs(sender)
+        guard !urls.isEmpty else { return super.performDragOperation(sender) }
+        onOpenFiles?(urls)
+        return true
     }
 }
 
