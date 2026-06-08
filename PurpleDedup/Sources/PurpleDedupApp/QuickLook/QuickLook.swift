@@ -30,10 +30,17 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
     }
 
     // MARK: - QLPreviewPanelDataSource
+    //
+    // These protocol requirements are `nonisolated`, so a `@MainActor` type
+    // can't satisfy them with isolated methods. `QLPreviewPanel` only ever
+    // calls its data source on the main thread, so we declare them
+    // `nonisolated` and reach the main-actor state via `assumeIsolated`.
 
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { items.count }
+    nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        MainActor.assumeIsolated { items.count }
+    }
 
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        items[index] as NSURL
+    nonisolated func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        MainActor.assumeIsolated { items[index] as NSURL }
     }
 }

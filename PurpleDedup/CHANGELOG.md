@@ -3,6 +3,23 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — silence the last two Swift 6 concurrency warnings
+
+Two actor-isolation warnings remained on a clean build; both are now fixed
+with no behavior change:
+
+- `QuickLookCoordinator` is `@MainActor`, but the `QLPreviewPanelDataSource`
+  requirements (`numberOfPreviewItems(in:)`, `previewPanel(_:previewItemAt:)`)
+  are `nonisolated`, so an isolated method couldn't satisfy them. `QLPreviewPanel`
+  only ever calls its data source on the main thread, so they're now declared
+  `nonisolated` and reach the main-actor `items` array via
+  `MainActor.assumeIsolated`.
+- `PhotoKitDeletionService.currentStatus()` was an `actor` method, so the
+  `ContentView.onAppear` call site triggered an implicit-async warning. It
+  touches no actor-isolated state — it only wraps the thread-safe synchronous
+  `PHPhotoLibrary.authorizationStatus(for:)` — so it's now `nonisolated` and
+  callable synchronously from the main actor.
+
 ## Unreleased — drop the last `#Preview` block
 
 Removed the sole `#Preview { ContentView(...) }` from `ContentView.swift`.

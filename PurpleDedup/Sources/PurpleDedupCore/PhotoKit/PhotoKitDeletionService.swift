@@ -66,7 +66,11 @@ public actor PhotoKitDeletionService {
         }
     }
 
-    public func currentStatus() -> Authorization {
+    /// `nonisolated` because it touches no actor-isolated state — it only
+    /// wraps `PHPhotoLibrary.authorizationStatus(for:)`, a thread-safe
+    /// synchronous class method. This lets main-actor call sites (e.g. an
+    /// `onAppear`) read the status without hopping onto the actor.
+    public nonisolated func currentStatus() -> Authorization {
         Authorization(PHPhotoLibrary.authorizationStatus(for: .readWrite))
     }
 
