@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import PurpleMarkRenderCore
 
 /// Root: an optional tab bar (when more than one document is open) above the
@@ -16,11 +17,20 @@ struct ContentView: View {
             DocumentWindow(doc: state.active)
         }
         // Drag a markdown (or text) file from Finder onto the window to open it
-        // in a tab. Mirrors the existing drop-on-app-icon behavior.
-        .dropDestination(for: URL.self) { urls, _ in
-            let opened = state.openDroppedFiles(urls)
-            return opened
-        } isTargeted: { isDropTargeted = $0 }
+        // in a tab. Mirrors the existing drop-on-app-icon behavior. We use the
+        // NSItemProvider path (not `.dropDestination(for: URL.self)`, which is
+        // unreliable for Finder drags — Finder vends `public.file-url`).
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            var accepted = false
+            for provider in providers where provider.canLoadObject(ofClass: URL.self) {
+                accepted = true
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    Task { @MainActor in state.openDroppedFiles([url]) }
+                }
+            }
+            return accepted
+        }
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 8)
@@ -154,6 +164,7 @@ struct DocumentWindow: View {
 /// (source). Scroll position carries across the toggle.
 private struct EditorPane: View {
     @ObservedObject var doc: Document
+    @EnvironmentObject var state: AppState
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var themes: ThemeStore
 
@@ -166,7 +177,8 @@ private struct EditorPane: View {
                     colors: themes.colors(forID: settings.themeRaw),
                     width: settings.readingWidth,
                     onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
-                    scrollTo: doc.scrollFraction)
+                    scrollTo: doc.scrollFraction,
+                    onOpenFile: { url in state.openDroppedFiles([url]) })
             case .markdown:
                 SourceTextView(
                     text: $doc.text,

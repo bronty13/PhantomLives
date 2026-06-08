@@ -6,12 +6,15 @@ All notable changes to PurpleMark are documented here.
 
 ### Added
 - **Drag-and-drop to open** — drag a `.md` (or other markdown/text) file from
-  Finder onto the PurpleMark window to open it in a tab. The window shows an
-  accent-colored border while a file hovers over it. Dropping several files
-  opens each (the last becomes active); directories and unsupported file types
-  are ignored. Complements the existing double-click / drop-on-app-icon paths,
-  reusing the same `AppState.open(_:)` logic (already-open files just focus
-  their tab).
+  Finder onto the PurpleMark window to open it in a tab. Works over the whole
+  window: the chrome (sidebar/toolbar/status/tabs) via a SwiftUI `onDrop`, the
+  Markdown source editor (the `NSTextView` now lets file drops fall through
+  instead of inserting the path), and the rendered Document view (the
+  `WKWebView` intercepts the file navigation a drop triggers). Dropping several
+  files opens each (the last becomes active); directories and unsupported file
+  types are ignored. Complements the existing double-click / drop-on-app-icon
+  paths, reusing the same `AppState.open(_:)` logic (already-open files just
+  focus their tab).
 
 ## [1.0.7] - 2026-06-05
 

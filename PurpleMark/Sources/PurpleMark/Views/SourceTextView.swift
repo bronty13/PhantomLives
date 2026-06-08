@@ -34,6 +34,16 @@ struct SourceTextView: NSViewRepresentable {
         scroll.drawsBackground = true
         scroll.backgroundColor = SourcePalette.background
 
+        // Let file drops fall through to the window's open-file handler instead
+        // of the text view inserting the file's path/contents. Keep every other
+        // drag type (text, etc.) working as before.
+        let fileDragTypes: Set<NSPasteboard.PasteboardType> = [
+            .fileURL, NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+        ]
+        let kept = textView.registeredDraggedTypes.filter { !fileDragTypes.contains($0) }
+        textView.unregisterDraggedTypes()
+        textView.registerForDraggedTypes(kept)
+
         context.coordinator.textView = textView
         context.coordinator.scrollView = scroll
         context.coordinator.configure(with: settings)

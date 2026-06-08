@@ -13,17 +13,23 @@ public struct MarkdownWebView: NSViewRepresentable {
     public var onScroll: ((Double) -> Void)?
     /// When set, scrolls the rendered view to this fraction (0…1).
     public var scrollTo: Double?
+    /// Called when a local file is dropped onto (or otherwise navigated to in)
+    /// the rendered view — WebKit treats a file drop as a navigation, which we
+    /// intercept here so the host can open it as a document instead.
+    public var onOpenFile: ((URL) -> Void)?
 
     public init(markdown: String,
                 colors: ThemeColors,
                 width: ReadingWidth,
                 onScroll: ((Double) -> Void)? = nil,
-                scrollTo: Double? = nil) {
+                scrollTo: Double? = nil,
+                onOpenFile: ((URL) -> Void)? = nil) {
         self.markdown = markdown
         self.colors = colors
         self.width = width
         self.onScroll = onScroll
         self.scrollTo = scrollTo
+        self.onOpenFile = onOpenFile
     }
 
     public func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -94,6 +100,21 @@ public struct MarkdownWebView: NSViewRepresentable {
             }
             """
             webView.evaluateJavaScript(js)
+        }
+
+        public func webView(_ webView: WKWebView,
+                            decidePolicyFor navigationAction: WKNavigationAction,
+                            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            // Allow our own bundled assets (index.html and friends under the web
+            // resources folder); a file drop navigates the view to the dropped
+            // file — cancel that and hand it back to the host to open instead.
+            if let url = navigationAction.request.url, url.isFileURL,
+               !url.standardizedFileURL.path.hasPrefix(RenderCore.webURL.standardizedFileURL.path) {
+                decisionHandler(.cancel)
+                parent.onOpenFile?(url)
+                return
+            }
+            decisionHandler(.allow)
         }
 
         public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
