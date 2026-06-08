@@ -8,5 +8,17 @@
         <!-- Scripts/release.sh inserts each new <item> immediately after this
              marker (newest first). Do not hand-edit sparkle:edSignature. -->
         <!-- ITEMS -->
+        <item>
+            <title>PurpleMark 1.0.740</title>
+            <pubDate>Mon, 08 Jun 2026 19:16:22 +0000</pubDate>
+            <sparkle:version>740.f739cf0</sparkle:version>
+            <sparkle:shortVersionString>1.0.740</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[See CHANGELOG.md for details.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplemark-v1.0.740/PurpleMark-1.0.740.dmg"
+                sparkle:edSignature="G/QmeoyY9uu1cspVgK4XqRFp4E1iiO12n3H3Cl+gCOUvBERDyR7Qr03Wpp1v9NJ+UudCyqZLVqbTwTNIqjpdBg==" length="4574754"
+                type="application/octet-stream" />
+        </item>
     </channel>
 </rss>
