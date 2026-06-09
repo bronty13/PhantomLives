@@ -44,6 +44,10 @@ public actor AuditEngine {
         public let modificationTime: Date
         public let contentHashHex: String?
         public let classification: Classification
+        /// True when the matching Photos item is **hidden** (and has no
+        /// non-hidden copy). Lets the UI flag matches that live only in the
+        /// Hidden album so the user can find them. Always false for `.missing`.
+        public let inPhotosHidden: Bool
 
         public enum Classification: Sendable, Equatable {
             /// SHA-1 matched a library original — definitely present.
@@ -58,12 +62,14 @@ public actor AuditEngine {
         }
 
         public init(url: URL, sizeBytes: Int64, modificationTime: Date,
-                    contentHashHex: String?, classification: Classification) {
+                    contentHashHex: String?, classification: Classification,
+                    inPhotosHidden: Bool = false) {
             self.url = url
             self.sizeBytes = sizeBytes
             self.modificationTime = modificationTime
             self.contentHashHex = contentHashHex
             self.classification = classification
+            self.inPhotosHidden = inPhotosHidden
         }
 
         /// True for every non-`.missing` verdict.
@@ -104,9 +110,13 @@ public actor AuditEngine {
         public var missing: [AuditedFile] {
             files.filter { if case .missing = $0.classification { return true }; return false }
         }
+        /// In-Photos matches that live only in the Hidden album.
+        public var hiddenInPhotos: [AuditedFile] { files.filter { $0.inPhotosHidden } }
 
         public var summary: String {
             var bits = ["\(inPhotos.count) in Photos", "\(missing.count) missing"]
+            let hidden = hiddenInPhotos.count
+            if hidden > 0 { bits.append("\(hidden) hidden") }
             if !unreadable.isEmpty { bits.append("\(unreadable.count) unreadable") }
             return bits.joined(separator: " · ")
         }
@@ -136,6 +146,8 @@ public actor AuditEngine {
         options: ScanOptions = ScanOptions(),
         perceptualThreshold: Int = PerceptualClusterer.defaultThreshold,
         knownPhotoBasenames: Set<String>? = nil,
+        includeHidden: Bool = true,
+        hiddenAssetStems: Set<String> = [],
         progress: (@Sendable (ScanProgress) -> Void)? = nil
     ) async throws -> AuditResult {
         let start = Date()
@@ -172,24 +184,31 @@ public actor AuditEngine {
         //    the dominant speedup: tens of files hashed instead of the whole
         //    library. Cache-aware regardless.
         let indexStart = Date()
+        let hiddenStems = Set(hiddenAssetStems.map { $0.uppercased() })
         let index = try await buildLibraryIndex(
             library: photosLibrary,
             options: options,
             relevantSizes: folderSizes,
+            includeHidden: includeHidden,
+            hiddenStems: hiddenStems,
             cachedRows: cachedRows,
             progress: progress
         )
         timing.exactSeconds = Date().timeIntervalSince(indexStart)
 
         // 3. Partition folder files into exact-in-Photos vs still-missing.
+        //    A match is tagged hidden when the only library copy is in the
+        //    Hidden album (present in hiddenHashes, absent from visibleHashes).
         var audited: [AuditedFile] = []
         var stillMissing: [(DiscoveredFile, String?)] = []   // file + its hex (for re-eval)
         let known = knownPhotoBasenames.map { Set($0.map { $0.lowercased() }) }
         for (f, hex) in hashed {
             if let hex, index.hashes.contains(hex) {
+                let hidden = index.hiddenHashes.contains(hex) && !index.visibleHashes.contains(hex)
                 audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
                                            modificationTime: f.modificationTime,
-                                           contentHashHex: hex, classification: .inPhotosExact))
+                                           contentHashHex: hex, classification: .inPhotosExact,
+                                           inPhotosHidden: hidden))
             } else {
                 stillMissing.append((f, hex))
             }
@@ -213,11 +232,12 @@ public actor AuditEngine {
                     threshold: perceptualThreshold, progress: progress
                 )
                 for (f, hex) in stillMissing {
-                    if let distance = matches[f.url] {
+                    if let match = matches[f.url] {
                         audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
                                                    modificationTime: f.modificationTime,
                                                    contentHashHex: hex,
-                                                   classification: .likelyInPhotosPerceptual(distance: distance)))
+                                                   classification: .likelyInPhotosPerceptual(distance: match.distance),
+                                                   inPhotosHidden: match.hidden))
                         resolved.insert(f.url)
                     }
                 }
@@ -256,13 +276,23 @@ public actor AuditEngine {
 
     private struct LibraryIndex {
         var hashes: Set<String> = []
-        /// Library photo files, kept so a *deferred* perceptual pass can hash
-        /// them without re-walking — but only if some folder photo misses the
-        /// exact match (see step 4 in `audit`). Building the library's
-        /// perceptual index up front would waste minutes on a folder that's
-        /// already fully backed up.
-        var photoFiles: [DiscoveredFile] = []
+        /// Hashes whose library file is a hidden asset, and those whose library
+        /// file is visible. A match is "hidden" only when it's in `hiddenHashes`
+        /// and NOT in `visibleHashes` (i.e. the only copy lives in the Hidden
+        /// album).
+        var hiddenHashes: Set<String> = []
+        var visibleHashes: Set<String> = []
+        /// Library photo files (with hidden flag), kept so a *deferred*
+        /// perceptual pass can hash them without re-walking — but only if some
+        /// folder photo misses the exact match (see step 4 in `audit`).
+        var photoFiles: [(file: DiscoveredFile, hidden: Bool)] = []
         var count = 0
+    }
+
+    /// Uppercased filename stem (UUID) — matches Photos.sqlite's ZUUID and the
+    /// hidden-asset stem set.
+    private nonisolated static func stem(_ url: URL) -> String {
+        (url.lastPathComponent as NSString).deletingPathExtension.uppercased()
     }
 
     /// Walk the Photos library and build its content-hash set, hashing ONLY
@@ -277,6 +307,8 @@ public actor AuditEngine {
         library: URL,
         options: ScanOptions,
         relevantSizes: Set<Int64>,
+        includeHidden: Bool,
+        hiddenStems: Set<String>,
         cachedRows: [String: Database.CachedRow],
         progress: (@Sendable (ScanProgress) -> Void)?
     ) async throws -> LibraryIndex {
@@ -293,21 +325,38 @@ public actor AuditEngine {
                                        totalCandidates: 0, clustersSoFar: 0))
             }
         }
+        func isHidden(_ url: URL) -> Bool { hiddenStems.contains(Self.stem(url)) }
+
         var index = LibraryIndex()
         index.count = libFiles.count
-        index.photoFiles = libFiles.filter {
-            FileKind.photoExtensions.contains($0.url.pathExtension.lowercased())
+        // Library photos for the deferred perceptual pass, carrying hidden state.
+        // Drop hidden photos entirely when the user excluded them.
+        index.photoFiles = libFiles.compactMap { f in
+            guard FileKind.photoExtensions.contains(f.url.pathExtension.lowercased()) else { return nil }
+            let hidden = isHidden(f.url)
+            if hidden && !includeHidden { return nil }
+            return (f, hidden)
         }
         guard !libFiles.isEmpty else { return index }
 
         // Content hashes — only for library files whose size matches a folder
         // file. Everything else can't be a byte-exact duplicate, so we never
-        // read its bytes.
+        // read its bytes. Hidden files are dropped here when excluded.
         let candidates = libFiles.filter { relevantSizes.contains($0.sizeBytes) }
         let (hashed, _) = try await hashFolderFiles(
             candidates, cachedRows: cachedRows, totalCandidates: candidates.count, progress: progress, phase: .indexing
         )
-        for (_, hex) in hashed { if let hex { index.hashes.insert(hex) } }
+        for (f, hex) in hashed {
+            guard let hex else { continue }
+            let hidden = isHidden(f.url)
+            if hidden {
+                if !includeHidden { continue }   // excluded → not in the index at all
+                index.hiddenHashes.insert(hex)
+            } else {
+                index.visibleHashes.insert(hex)
+            }
+            index.hashes.insert(hex)
+        }
         return index
     }
 
@@ -393,32 +442,39 @@ public actor AuditEngine {
         return (result, unreadable)
     }
 
-    /// pHash/dHash a list of photos, cache-aware. Capped at 6 concurrent for the
-    /// same HEVC-decoder reason as the dedup engine.
+    /// A library photo's perceptual hash plus whether it's a hidden asset.
+    private struct LibraryPHash: Sendable { let hash: PerceptualHash; let hidden: Bool }
+
+    /// pHash/dHash a list of library photos (each tagged hidden/visible),
+    /// cache-aware. Capped at 6 concurrent for the same HEVC-decoder reason as
+    /// the dedup engine. The hidden flag rides alongside each hash so a match
+    /// can be tagged.
     private func perceptualHashAll(
-        _ photos: [DiscoveredFile],
+        _ photos: [(file: DiscoveredFile, hidden: Bool)],
         cachedRows: [String: Database.CachedRow],
         progress: (@Sendable (ScanProgress) -> Void)?
-    ) async throws -> [PerceptualHash] {
+    ) async throws -> [LibraryPHash] {
         guard !photos.isEmpty else { return [] }
-        var hashes: [PerceptualHash] = []
-        var stale: [DiscoveredFile] = []
-        for f in photos {
+        var hashes: [LibraryPHash] = []
+        var stale: [(file: DiscoveredFile, hidden: Bool)] = []
+        for p in photos {
+            let f = p.file
             if let row = cachedRows[f.url.path],
                row.file.sizeBytes == f.sizeBytes,
                row.file.mtimeUnix == Int64(f.modificationTime.timeIntervalSince1970),
                let fp = row.fingerprint, let ph = fp.phash, let dh = fp.dhash {
-                hashes.append(PerceptualHash(phash: UInt64(littleEndianHashData: ph),
+                hashes.append(LibraryPHash(hash: PerceptualHash(phash: UInt64(littleEndianHashData: ph),
                                              dhash: UInt64(littleEndianHashData: dh),
-                                             width: Int(fp.width ?? 0), height: Int(fp.height ?? 0)))
+                                             width: Int(fp.width ?? 0), height: Int(fp.height ?? 0)),
+                                           hidden: p.hidden))
             } else {
-                stale.append(f)
+                stale.append(p)
             }
         }
 
         let hasher = perceptualHasher
         var fresh: [(DiscoveredFile, PerceptualHash)] = []
-        try await withThrowingTaskGroup(of: (DiscoveredFile, PerceptualHash)?.self) { group in
+        try await withThrowingTaskGroup(of: (DiscoveredFile, Bool, PerceptualHash)?.self) { group in
             let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
             var iterator = stale.makeIterator()
             var inFlight = 0
@@ -427,7 +483,7 @@ public actor AuditEngine {
                 guard let next = iterator.next() else { return }
                 inFlight += 1
                 group.addTask {
-                    do { return (next, try hasher.hash(imageAt: next.url)) }
+                    do { return (next.file, next.hidden, try hasher.hash(imageAt: next.file.url)) }
                     catch { return nil }
                 }
             }
@@ -437,7 +493,10 @@ public actor AuditEngine {
                 if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
                     inFlight -= 1; done += 1
-                    if let entry = r { fresh.append(entry); hashes.append(entry.1) }
+                    if let entry = r {
+                        fresh.append((entry.0, entry.2))
+                        hashes.append(LibraryPHash(hash: entry.2, hidden: entry.1))
+                    }
                     if done % 32 == 0 {
                         progress?(ScanProgress(phase: .indexing, filesSeen: photos.count,
                                                filesHashed: hashes.count, totalCandidates: photos.count,
@@ -465,19 +524,20 @@ public actor AuditEngine {
     }
 
     /// For each candidate photo, find the smallest OR-of-distances (min of pHash and
-    /// dHash Hamming) to any library photo; return those within threshold. Linear scan
-    /// — only the still-missing set is searched, and Hamming is a single CPU cycle.
+    /// dHash Hamming) to any library photo; return those within threshold, plus
+    /// whether the best match is a hidden asset. Linear scan — only the
+    /// still-missing set is searched, and Hamming is a single CPU cycle.
     private func perceptualMatch(
         _ candidates: [DiscoveredFile],
-        against library: [PerceptualHash],
+        against library: [LibraryPHash],
         threshold: Int,
         progress: (@Sendable (ScanProgress) -> Void)?
-    ) async throws -> [URL: Int] {
+    ) async throws -> [URL: (distance: Int, hidden: Bool)] {
         guard !candidates.isEmpty, !library.isEmpty else { return [:] }
         let hasher = perceptualHasher
         let lib = library
         let thr = threshold
-        return try await withThrowingTaskGroup(of: (URL, Int)?.self) { group in
+        return try await withThrowingTaskGroup(of: (URL, Int, Bool)?.self) { group in
             let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
             var iterator = candidates.makeIterator()
             var inFlight = 0
@@ -488,21 +548,22 @@ public actor AuditEngine {
                 group.addTask {
                     guard let h = try? hasher.hash(imageAt: next.url) else { return nil }
                     var best = Int.max
+                    var bestHidden = false
                     for l in lib {
-                        let d = min(PerceptualHash.hammingDistance(h.phash, l.phash),
-                                    PerceptualHash.hammingDistance(h.dhash, l.dhash))
-                        if d < best { best = d; if best == 0 { break } }
+                        let d = min(PerceptualHash.hammingDistance(h.phash, l.hash.phash),
+                                    PerceptualHash.hammingDistance(h.dhash, l.hash.dhash))
+                        if d < best { best = d; bestHidden = l.hidden; if best == 0 { break } }
                     }
-                    return best <= thr ? (next.url, best) : nil
+                    return best <= thr ? (next.url, best, bestHidden) : nil
                 }
             }
             for _ in 0..<limit { submit() }
-            var out: [URL: Int] = [:]
+            var out: [URL: (distance: Int, hidden: Bool)] = [:]
             while inFlight > 0 {
                 if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
                     inFlight -= 1
-                    if let entry = r { out[entry.0] = entry.1 }
+                    if let entry = r { out[entry.0] = (entry.1, entry.2) }
                     submit()
                 } else { break }
             }

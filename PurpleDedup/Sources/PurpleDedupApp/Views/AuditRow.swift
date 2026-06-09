@@ -44,6 +44,10 @@ struct AuditRow: View {
 
             Spacer()
 
+            if file.inPhotosHidden {
+                badge("Hidden", systemImage: "eye.slash.fill", color: .pink)
+                    .help("This file is in your Photos library but only as a HIDDEN item.")
+            }
             statusBadge
         }
         .padding(.vertical, 4)

@@ -16,6 +16,7 @@ struct AuditView: View {
     @State private var auditFolder: URL?
     @State private var libraryURL: URL?
     @State private var matchMode: AuditEngine.MatchMode = .perceptual
+    @State private var includeHiddenPhotos = true
 
     @State private var result: AuditEngine.AuditResult?
     @State private var isAuditing = false
@@ -61,6 +62,7 @@ struct AuditView: View {
         .onChange(of: auditFolder?.path) { _, v in settingsStore.settings.lastAuditFolderPath = v }
         .onChange(of: libraryURL?.path) { _, v in settingsStore.settings.lastAuditLibraryPath = v }
         .onChange(of: matchMode) { _, v in settingsStore.settings.auditMatchMode = v.rawValue }
+        .onChange(of: includeHiddenPhotos) { _, v in settingsStore.settings.auditIncludeHiddenPhotos = v }
     }
 
     // MARK: - Sidebar
@@ -96,6 +98,15 @@ struct AuditView: View {
                 Text(matchMode == .perceptual
                      ? "Also matches re-encoded / resized copies. Slower on big libraries."
                      : "Byte-identical originals only. Fast and exact.")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle("Include hidden Photos items", isOn: $includeHiddenPhotos)
+                    .toggleStyle(.checkbox)
+                    .disabled(isAuditing)
+                Text("Compares against the Hidden album too; matches that are hidden get a pink tag.")
                     .font(.caption2).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -298,13 +309,16 @@ struct AuditView: View {
         let throttle = ProgressThrottle()
         do {
             let known = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
+            let hiddenStems = PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL: library).uuids
             let db = try? Database.openDefault()
             let engine = AuditEngine(database: db)
             let r = try await engine.audit(
                 folder: folder,
                 photosLibrary: library,
                 mode: matchMode,
-                knownPhotoBasenames: known.isEmpty ? nil : known
+                knownPhotoBasenames: known.isEmpty ? nil : known,
+                includeHidden: includeHiddenPhotos,
+                hiddenAssetStems: hiddenStems
             ) { p in
                 if !throttle.shouldFire(interval: 0.2) { return }
                 Task { @MainActor in self.progressLine = ContentView.formatProgress(p) }
@@ -385,5 +399,6 @@ struct AuditView: View {
             libraryURL = URL(fileURLWithPath: p)
         }
         if let m = AuditEngine.MatchMode(rawValue: s.auditMatchMode) { matchMode = m }
+        includeHiddenPhotos = s.auditIncludeHiddenPhotos
     }
 }

@@ -19,7 +19,10 @@ What works today:
   "Imported by PurpleDedup" album). Matching is **perceptual by default**
   (SHA-1 exact OR pHash/dHash within threshold, so re-encoded copies count),
   with an exact-only mode and a same-filename safety net for iCloud-optimised
-  stubs. CLI: `pdedup audit <folder> --against <library.photoslibrary>`.
+  stubs. **Hidden** Photos items are compared too, and any match that lives only
+  in the Hidden album gets a pink "Hidden" tag so you can find it (toggle off
+  with the "Include hidden Photos items" checkbox / `--exclude-hidden-photos`).
+  CLI: `pdedup audit <folder> --against <library.photoslibrary>`.
 - **Three pipeline stages.** Byte-exact (SHA-1, parallel), visually-similar
   photos (pHash + dHash, BK-tree, **OR-of-distances** so dHash catches
   what pHash misses, capped at 6 concurrent because the hardware HEVC

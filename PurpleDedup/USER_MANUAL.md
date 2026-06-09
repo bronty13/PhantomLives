@@ -51,10 +51,15 @@ lets you import the missing ones.
      byte-identical to a library original **or** visually matches one (so
      re-encoded / resized copies are recognised).
    - **Exact**: byte-identical originals only.
+   - **Include hidden Photos items** (default on): also compares against your
+     Hidden album, and gives any match that lives *only* in Hidden a pink
+     **Hidden** tag so you can find it. Turn it off to treat hidden-only
+     matches as missing.
 4. Click **Audit**. The results list shows every file with a status badge:
    **In Photos** (exact), **Likely · d=N** (perceptual match, with distance),
    **Same name** (filename matches a library original — likely an
-   iCloud-optimised copy), or **Not in Photos**.
+   iCloud-optimised copy), or **Not in Photos** — plus a pink **Hidden** tag
+   when the matching item is hidden in Photos.
 5. Use the **All / In Photos / Missing** filter at the top to focus. Click
    **Select all missing**, review, then **Import N → Photos**. A preflight
    confirms the count; importing **copies** the originals into Photos (your
@@ -99,7 +104,10 @@ pdedup audit ~/SomeFolder --against ~/Pictures.photoslibrary \
 
 The `audit` subcommand takes `--match exact|perceptual` (default perceptual),
 `--perceptual-threshold N`, the same kind filters as `scan`, `--no-cache`, and
-`-o <path>`. It only writes to Photos when `--import-missing` is given.
+`-o <path>`. Hidden Photos items are compared by default and flagged
+(`inPhotosHidden` / `hiddenInPhotosCount` in the JSON); pass
+`--exclude-hidden-photos` to drop them from the comparison. It only writes to
+Photos when `--import-missing` is given.
 
 ### Flags
 

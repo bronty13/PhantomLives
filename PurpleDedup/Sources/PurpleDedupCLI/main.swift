@@ -391,6 +391,9 @@ struct Audit: AsyncParsableCommand {
     @Flag(name: [.customLong("hidden")], help: "Include hidden files (skipped by default).")
     var includeHidden: Bool = false
 
+    @Flag(name: [.customLong("exclude-hidden-photos")], help: "Exclude hidden Photos items from the comparison. By default hidden items ARE compared, and matches that are hidden are flagged in the report.")
+    var excludeHiddenPhotos: Bool = false
+
     @Flag(name: [.customLong("import-missing")], help: "After auditing, import every missing file into Photos (copies originals, never moves).")
     var importMissing: Bool = false
 
@@ -441,6 +444,9 @@ struct Audit: AsyncParsableCommand {
         // iCloud-optimised stubs (whose on-disk bytes differ) aren't misreported as
         // missing. Best-effort — empty when auth isn't granted.
         let knownBasenames = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
+        // Hidden-asset stems (read straight from Photos.sqlite) so matches that
+        // live only in the Hidden album can be flagged / excluded.
+        let hiddenStems = PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL: libraryURL).uuids
 
         let database = noCache ? nil : try? Database.openDefault()
         let engine = AuditEngine(database: database)
@@ -451,6 +457,8 @@ struct Audit: AsyncParsableCommand {
             options: options,
             perceptualThreshold: perceptualThreshold,
             knownPhotoBasenames: knownBasenames.isEmpty ? nil : knownBasenames,
+            includeHidden: !excludeHiddenPhotos,
+            hiddenAssetStems: hiddenStems,
             progress: progress
         )
         if !isQuiet { FileHandle.standardError.write(Data("\n".utf8)) }

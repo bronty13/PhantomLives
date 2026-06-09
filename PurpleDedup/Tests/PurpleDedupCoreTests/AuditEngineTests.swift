@@ -88,6 +88,51 @@ final class AuditEngineTests: XCTestCase {
         XCTAssertEqual(result.missing.first?.url.lastPathComponent, "unique.jpg")
     }
 
+    // MARK: - Hidden items
+
+    func testHiddenMatchIsTagged() async throws {
+        let lib = try TestFixtures.makeTempDir("audit-hidden-lib")
+        let folder = try TestFixtures.makeTempDir("audit-hidden-folder")
+        defer { TestFixtures.cleanup(lib); TestFixtures.cleanup(folder) }
+        // Library file whose stem is "hidden" (passed lowercase to exercise the
+        // case-insensitive stem match) and a visible one.
+        try TestFixtures.write("HID", to: lib.appendingPathComponent("abchidden.jpg"))
+        try TestFixtures.write("VIS", to: lib.appendingPathComponent("zzzvisible.jpg"))
+        try TestFixtures.write("HID", to: folder.appendingPathComponent("a.jpg"))
+        try TestFixtures.write("VIS", to: folder.appendingPathComponent("b.jpg"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .exact, options: ScanOptions(kinds: [.all]),
+            includeHidden: true, hiddenAssetStems: ["abchidden"]
+        )
+        XCTAssertEqual(result.inPhotos.count, 2)
+        XCTAssertEqual(result.hiddenInPhotos.count, 1)
+        let byName = Dictionary(uniqueKeysWithValues: result.files.map { ($0.url.lastPathComponent, $0) })
+        XCTAssertTrue(byName["a.jpg"]!.inPhotosHidden)
+        XCTAssertFalse(byName["b.jpg"]!.inPhotosHidden)
+    }
+
+    func testExcludeHiddenMakesHiddenOnlyMatchMissing() async throws {
+        let lib = try TestFixtures.makeTempDir("audit-exhidden-lib")
+        let folder = try TestFixtures.makeTempDir("audit-exhidden-folder")
+        defer { TestFixtures.cleanup(lib); TestFixtures.cleanup(folder) }
+        try TestFixtures.write("HID", to: lib.appendingPathComponent("ABCHIDDEN.jpg"))
+        try TestFixtures.write("VIS", to: lib.appendingPathComponent("ZZZVISIBLE.jpg"))
+        try TestFixtures.write("HID", to: folder.appendingPathComponent("a.jpg"))
+        try TestFixtures.write("VIS", to: folder.appendingPathComponent("b.jpg"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .exact, options: ScanOptions(kinds: [.all]),
+            includeHidden: false, hiddenAssetStems: ["ABCHIDDEN"]
+        )
+        // a's only library copy is hidden → excluded → missing. b stays in Photos.
+        XCTAssertEqual(result.inPhotos.count, 1)
+        XCTAssertEqual(result.inPhotos.first?.url.lastPathComponent, "b.jpg")
+        XCTAssertEqual(result.missing.count, 1)
+        XCTAssertEqual(result.missing.first?.url.lastPathComponent, "a.jpg")
+        XCTAssertEqual(result.hiddenInPhotos.count, 0)
+    }
+
     // MARK: - Filename safety net
 
     func testFilenameSafetyNet() async throws {

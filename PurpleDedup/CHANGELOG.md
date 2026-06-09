@@ -3,6 +3,23 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — audit hidden Photos items, with a tag to find them
+
+The audit can now distinguish **hidden** Photos items. Hidden assets live on
+disk in `originals/` like any other (hiding is a database flag), so the audit
+always compared against them — but silently. Now:
+
+- A folder file whose match lives **only** in the Hidden album gets a pink
+  **"Hidden"** tag (and `inPhotosHidden` in the JSON report) so you can find
+  those items in Photos. Hidden state is read straight from `Photos.sqlite`
+  (`ZASSET.ZHIDDEN`), bypassing the macOS Locked-Hidden-Album gate.
+- A new **"Include hidden Photos items"** toggle (GUI, default on) /
+  `--exclude-hidden-photos` flag (CLI). When off, hidden items are dropped from
+  the comparison entirely, so a folder file that's only in a hidden item reads
+  as *missing*. Both exact and perceptual matches are tagged/filtered.
+
+Covered by `testHiddenMatchIsTagged` + `testExcludeHiddenMakesHiddenOnlyMatchMissing`.
+
 ## Unreleased — faster audit on large libraries (size short-circuit)
 
 The audit hashed every file in the Photos library to build its content-hash

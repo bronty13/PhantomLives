@@ -14,6 +14,8 @@ public struct AuditReport: Codable, Sendable {
         public let contentHash: String?
         /// Present only on perceptual matches — the OR-of-distances Hamming value.
         public let perceptualDistance: Int?
+        /// True when the matching Photos item lives only in the Hidden album.
+        public let inPhotosHidden: Bool
     }
 
     public let appName: String
@@ -25,6 +27,7 @@ public struct AuditReport: Codable, Sendable {
     public let totalFilesAudited: Int
     public let inPhotosCount: Int
     public let missingCount: Int
+    public let hiddenInPhotosCount: Int
     public let unreadableCount: Int
     public let photosIndexedCount: Int
     public let files: [File]
@@ -49,7 +52,8 @@ public struct AuditReport: Codable, Sendable {
                 modificationTimeISO: iso.string(from: f.modificationTime),
                 classification: kind,
                 contentHash: f.contentHashHex,
-                perceptualDistance: distance
+                perceptualDistance: distance,
+                inPhotosHidden: f.inPhotosHidden
             )
         }
 
@@ -63,6 +67,7 @@ public struct AuditReport: Codable, Sendable {
             totalFilesAudited: result.files.count,
             inPhotosCount: result.inPhotos.count,
             missingCount: result.missing.count,
+            hiddenInPhotosCount: result.hiddenInPhotos.count,
             unreadableCount: result.unreadable.count,
             photosIndexedCount: result.photosIndexedCount,
             files: files,

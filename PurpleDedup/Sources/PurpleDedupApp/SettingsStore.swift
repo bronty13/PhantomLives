@@ -46,6 +46,7 @@ final class SettingsStore: ObservableObject {
         d.set(settings.lastAuditFolderPath, forKey: Self.key("lastAuditFolderPath"))
         d.set(settings.lastAuditLibraryPath, forKey: Self.key("lastAuditLibraryPath"))
         d.set(settings.auditMatchMode, forKey: Self.key("auditMatchMode"))
+        d.set(settings.auditIncludeHiddenPhotos, forKey: Self.key("auditIncludeHiddenPhotos"))
         // Encode the filter map as JSON — UserDefaults can't store
         // `PhotoLibraryFilter` directly. Empty map writes nil, so a future
         // load reads back an empty dict cleanly.
@@ -94,6 +95,9 @@ final class SettingsStore: ObservableObject {
         s.lastAuditFolderPath = d.string(forKey: key("lastAuditFolderPath"))
         s.lastAuditLibraryPath = d.string(forKey: key("lastAuditLibraryPath"))
         if let m = d.string(forKey: key("auditMatchMode")) { s.auditMatchMode = m }
+        if d.object(forKey: key("auditIncludeHiddenPhotos")) != nil {
+            s.auditIncludeHiddenPhotos = d.bool(forKey: key("auditIncludeHiddenPhotos"))
+        }
         if let data = d.data(forKey: key("photoLibraryFilters")),
            let decoded = try? JSONDecoder().decode([String: PhotoLibraryFilter].self, from: data) {
             s.photoLibraryFilters = decoded
@@ -163,6 +167,9 @@ struct AppSettings: Equatable {
     var lastAuditLibraryPath: String?
     /// "exact" | "perceptual" — last-used audit match mode.
     var auditMatchMode: String = "perceptual"
+    /// When true (default), the audit compares against hidden Photos items too
+    /// and flags matches that are hidden.
+    var auditIncludeHiddenPhotos: Bool = true
 
     /// Per-Photos-library scan filters, keyed by absolute path string. When
     /// a `.photoslibrary` source has an entry here, the scan only walks the
