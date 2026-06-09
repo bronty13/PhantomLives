@@ -214,7 +214,13 @@ public actor AuditEngine {
         //    Hidden album (present in hiddenHashes, absent from visibleHashes).
         var audited: [AuditedFile] = []
         var stillMissing: [(DiscoveredFile, String?)] = []   // file + its hex (for re-eval)
-        let known = knownPhotoBasenames.map { Set($0.map { $0.lowercased() }) }
+        // Filename safety net keyed on the lowercased *stem* (no extension). The
+        // set comes from PhotoKit (every asset, including iCloud-only ones not on
+        // disk), so it's the only signal that survives Optimize-Mac-Storage. A
+        // Photos drag-export keeps the original filename stem even when the format
+        // changes (IMG_1234.HEIC → IMG_1234.jpeg), so stem matching catches it
+        // where full-basename matching would not.
+        let knownStems = knownPhotoBasenames.map { Set($0.map { Self.filenameStem($0) }) }
         for (f, hex) in hashed {
             if let hex, index.hashes.contains(hex) {
                 let hm = Self.hiddenMatch(inHidden: index.hiddenHashes.contains(hex),
@@ -261,7 +267,7 @@ public actor AuditEngine {
         // 5. Filename safety net + final missing.
         for (f, hex) in stillMissing where !resolved.contains(f.url) {
             let base = f.url.lastPathComponent
-            if let known, known.contains(base.lowercased()) {
+            if let knownStems, knownStems.contains(Self.filenameStem(base)) {
                 audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
                                            modificationTime: f.modificationTime,
                                            contentHashHex: hex,
@@ -307,6 +313,12 @@ public actor AuditEngine {
     /// hidden-asset stem set.
     private nonisolated static func stem(_ url: URL) -> String {
         (url.lastPathComponent as NSString).deletingPathExtension.uppercased()
+    }
+
+    /// Lowercased filename stem (no extension) for the filename safety net, so a
+    /// format-changing export (`IMG_1234.HEIC` → `IMG_1234.jpeg`) still matches.
+    private nonisolated static func filenameStem(_ name: String) -> String {
+        (name as NSString).deletingPathExtension.lowercased()
     }
 
     /// Collapse "matched a hidden copy?" / "matched a visible copy?" into the

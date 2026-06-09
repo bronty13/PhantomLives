@@ -69,11 +69,15 @@ lets you import the missing ones.
    "Imported by PurpleDedup" album. The list re-audits itself afterward.
 
 **Accuracy notes.** Exact mode misses recompressed copies — use perceptual
-(the default). If iCloud "Optimize Mac Storage" is on, some library originals
-are stubs on disk whose bytes differ; perceptual matching and the filename
-safety net guard against re-importing, but audit is most accurate with
-"Download Originals to this Mac" enabled. Live Photos import as separate still
-+ video assets in this version.
+(the default). **iCloud "Optimize Mac Storage":** when this is on, most
+full-resolution originals live in iCloud and are *not* in the on-disk
+`originals/` folder the byte/visual matcher reads — so those items can only be
+matched by **filename** (the "Same name" tag), which works because a Photos
+drag-export keeps the original name even across a format change
+(`IMG_1234.HEIC` → `IMG_1234.jpeg`). The audit shows a note when it detects
+this. For full exact/visual matching, pick "Download Originals to this Mac" in
+Photos › Settings › iCloud. Live Photos import as separate still + video assets
+in this version.
 
 ## CLI
 

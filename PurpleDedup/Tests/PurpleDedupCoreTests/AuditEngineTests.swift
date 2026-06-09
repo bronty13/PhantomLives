@@ -170,6 +170,28 @@ final class AuditEngineTests: XCTestCase {
         XCTAssertEqual(classification(result.inPhotos.first!), "filename")
     }
 
+    func testFilenameSafetyNetMatchesAcrossFormat() async throws {
+        // Mimics a Photos drag-export under Optimize Mac Storage: PhotoKit knows
+        // the asset as IMG_99.HEIC (no matching bytes on disk), and the exported
+        // folder file is IMG_99.jpeg — different bytes AND extension. Stem match
+        // must still flag it as in-Photos.
+        let lib = try TestFixtures.makeTempDir("audit-fmt-lib")
+        let folder = try TestFixtures.makeTempDir("audit-fmt-folder")
+        defer { TestFixtures.cleanup(lib); TestFixtures.cleanup(folder) }
+        try TestFixtures.write("UNRELATED", to: lib.appendingPathComponent("something.jpg"))
+        try TestFixtures.write("RE-ENCODED-BYTES", to: folder.appendingPathComponent("IMG_99.jpeg"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .exact, options: ScanOptions(kinds: [.all]),
+            knownPhotoBasenames: ["IMG_99.HEIC"]
+        )
+        XCTAssertEqual(result.missing.count, 0)
+        XCTAssertEqual(result.inPhotos.count, 1)
+        if case .likelyInPhotosFilename = result.inPhotos.first!.classification {} else {
+            XCTFail("expected filename match across format")
+        }
+    }
+
     // MARK: - Perceptual
 
     func testPerceptualReclassifiesResizedCopy() async throws {

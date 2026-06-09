@@ -479,6 +479,14 @@ struct Audit: AsyncParsableCommand {
             FileHandle.standardError.write(Data(
                 "Audited \(result.files.count) file(s) vs \(libraryURL.lastPathComponent): \(result.summary).\n".utf8
             ))
+            // Optimize-Mac-Storage hint: far fewer on-disk originals than PhotoKit
+            // assets means most originals are in iCloud (only filename-matchable).
+            let assetCount = knownBasenames.count
+            if assetCount > 0, result.photosIndexedCount < assetCount * 9 / 10 {
+                FileHandle.standardError.write(Data(
+                    "Note: only \(result.photosIndexedCount) of \(assetCount) library originals are on this Mac (Optimize Mac Storage). iCloud-only items match by filename only.\n".utf8
+                ))
+            }
         }
 
         // Import phase — only when explicitly requested.

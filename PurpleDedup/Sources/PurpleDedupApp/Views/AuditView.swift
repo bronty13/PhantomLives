@@ -23,6 +23,7 @@ struct AuditView: View {
     @State private var auditTask: Task<Void, Never>?
     @State private var progressLine = ""
     @State private var statusMessage = "Pick a folder and your Photos library, then click Audit."
+    @State private var storageNote: String?
 
     @State private var filter: AuditFilter = .all
     @State private var selectedMissing: Set<URL> = []
@@ -196,6 +197,11 @@ struct AuditView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(statusMessage).font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let storageNote {
+                Label(storageNote, systemImage: "icloud.and.arrow.down")
+                    .font(.caption2).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if !progressLine.isEmpty {
                 Text(progressLine).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
@@ -307,6 +313,7 @@ struct AuditView: View {
         statusMessage = "Auditing…"
 
         let throttle = ProgressThrottle()
+        storageNote = nil
         do {
             let known = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
             let hiddenStems = PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL: library).uuids
@@ -327,6 +334,14 @@ struct AuditView: View {
             self.filter = .all
             self.statusMessage = r.summary
             self.progressLine = ""
+            // Optimize-Mac-Storage detection: PhotoKit reports `known.count`
+            // assets, but only `photosIndexedCount` originals are on disk. A big
+            // gap means most originals live in iCloud, so byte/perceptual
+            // matching can't see them — only filename matching can.
+            let assetCount = known.count
+            if assetCount > 0, r.photosIndexedCount < assetCount * 9 / 10 {
+                self.storageNote = "Optimize Mac Storage looks ON: \(r.photosIndexedCount) of \(assetCount) originals are on this Mac. iCloud-only items can only be matched by filename (the \"Same name\" tag) — for exact/visual matching, choose \"Download Originals to this Mac\" in Photos › Settings › iCloud."
+            }
         } catch is CancellationError {
             statusMessage = "Audit cancelled"; progressLine = ""
         } catch {

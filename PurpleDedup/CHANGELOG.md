@@ -3,6 +3,28 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — find more matches under Optimize Mac Storage
+
+Fixes audits reporting library photos as "missing." Two causes, both addressed:
+
+- **Filename match is now by stem, not full basename.** A Photos drag-export
+  keeps the original filename but can change the format (`IMG_1234.HEIC` →
+  `IMG_1234.jpeg`), which defeated the old full-basename safety net. Matching
+  the lowercased stem (no extension) against PhotoKit's asset list — which
+  includes **iCloud-only** originals not on disk — recovers these. This is the
+  only signal that survives **Optimize Mac Storage**, where most full-res
+  originals live in iCloud and never appear in the on-disk `originals/` folder
+  the byte/perceptual matcher reads.
+- **Optimize-Mac-Storage note.** When far fewer originals are on disk than
+  PhotoKit reports assets, the audit now says so (GUI status + CLI stderr) and
+  explains that iCloud-only items can only be filename-matched — pick "Download
+  Originals to this Mac" for full exact/visual matching.
+
+(Calibration confirmed perceptual matching itself is fine: JPEG re-encodes /
+resizes of an on-disk original match at Hamming distance 0, so the default
+threshold was never the problem.) Covered by
+`testFilenameSafetyNetMatchesAcrossFormat`.
+
 ## Unreleased — audit hidden Photos items, with a tag to find them
 
 The audit can now distinguish **hidden** Photos items. Hidden assets live on
