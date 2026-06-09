@@ -17,7 +17,8 @@ final class ExportPlanTests: XCTestCase {
     func testOriginalsArgsHaveSafetyFlags() {
         let args = ExportPlan.arguments(profile: profile(), pass: .originals, dryRun: false)
         XCTAssertEqual(args.first, "export")
-        XCTAssertEqual(args[1], "/Volumes/SSD/PhotoArchive/originals")
+        // Default archiveSubfolder ("Photos Archive") is nested under the chosen base.
+        XCTAssertEqual(args[1], "/Volumes/SSD/PhotoArchive/Photos Archive/originals")
         XCTAssertTrue(args.contains("--update"), "incremental flag must always be present")
         XCTAssertTrue(args.contains("--sidecar"))
         XCTAssertTrue(args.contains("XMP"))
@@ -28,8 +29,39 @@ final class ExportPlanTests: XCTestCase {
 
     func testJpegPassConverts() {
         let args = ExportPlan.arguments(profile: profile(), pass: .jpeg, dryRun: false)
-        XCTAssertEqual(args[1], "/Volumes/SSD/PhotoArchive/jpeg")
+        XCTAssertEqual(args[1], "/Volumes/SSD/PhotoArchive/Photos Archive/jpeg")
         XCTAssertTrue(args.contains("--convert-to-jpeg"))
+    }
+
+    // MARK: Archive subfolder composition
+
+    func testArchiveRootNestsSubfolderForPhysicalBases() {
+        var p = profile()
+        p.primaryDestination = "/Volumes/PRO-G40"
+        p.mirrorDestinations = ["/Volumes/MirrorA", "/Volumes/MirrorB"]
+        p.archiveSubfolder = "Photos Archive"
+        XCTAssertEqual(p.primaryArchiveRoot, "/Volumes/PRO-G40/Photos Archive")
+        XCTAssertEqual(p.mirrorArchiveRoots,
+                       ["/Volumes/MirrorA/Photos Archive", "/Volumes/MirrorB/Photos Archive"])
+        // The export destination is the archive root + the pass subdir.
+        let args = ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
+        XCTAssertEqual(args[1], "/Volumes/PRO-G40/Photos Archive/originals")
+    }
+
+    func testEmptyArchiveSubfolderIsOptOut() {
+        var p = profile()
+        p.primaryDestination = "/Volumes/PRO-G40"
+        p.archiveSubfolder = ""
+        XCTAssertEqual(p.primaryArchiveRoot, "/Volumes/PRO-G40")
+        let args = ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
+        XCTAssertEqual(args[1], "/Volumes/PRO-G40/originals")
+    }
+
+    func testCustomArchiveSubfolderName() {
+        var p = profile()
+        p.primaryDestination = "/Volumes/PRO-G40"
+        p.archiveSubfolder = "Backups/PhotoArchive"
+        XCTAssertEqual(p.primaryArchiveRoot, "/Volumes/PRO-G40/Backups/PhotoArchive")
     }
 
     func testDryRunFlag() {

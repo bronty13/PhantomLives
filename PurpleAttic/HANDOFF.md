@@ -46,14 +46,19 @@ PurpleAtticCore (library)   — pure logic + IO; NO Photos framework, NO deletio
   PurgePlanner               records + policy + indices → PurgePlan (eligible/verified)
   ArchiveSchedule            daily/weekly cadence model
   LaunchAgentPlist           pure launchd plist builder
+  FreeSpaceCheck             estimate archive footprint vs per-volume free space (pure + statfs)
+  Permissions                Full Disk Access probe (shared by GUI preflight + `pattic doctor`)
   Tooling / ProcessRunner / AtticLogger   tool locator, subprocess, logging
 
 pattic (executable)         — CLI front-end. Subcommands: doctor/init/plan/export.
                               NO purge path. Safe to run headless / from the scheduler.
 
 PurpleAtticApp (executable) — the SwiftUI app (PurpleAttic.app). Imports Core.
-  AppState                   view-model; runs the engine off-main, streams log lines
+  AppState                   view-model; runs the engine off-main, streams log lines;
+                             holds the permissions report + free-space checks; gates runs
   SettingsStore/AppSettings  profile + app settings (backup, schedule) as JSON
+  Services/PermissionsService preflight: FDA (Core probe) + Photos Automation
+                             (AEDeterminePermissionToAutomateTarget) + Photos (PhotoKit)
   Services/PhotoKitPurger    the ONLY deletion code (import Photos) — GUI-only
   Services/SchedulerService  writes the LaunchAgent + launchctl bootstrap/kickstart
   Services/BackupService     launch-time backup of config (PhantomLives standard)
@@ -89,12 +94,41 @@ is the dev box + a passive follower; it holds ~1,571 of ~78,360 originals, so th
 library guard correctly blocks a real archive there. A third Mac on a different
 iCloud account is the reuse case → its own export-only profile (`purgeEnabled=false`).
 
+## Permissions preflight (0.6)
+
+Three macOS grants are **hard-gated** before a dry run or archive (UI disables the
+buttons; `AppState.runArchive` also refuses): **Full Disk Access**, **Photos
+Automation** (Apple Events → Photos), **Photos Library** (PhotoKit). The key
+insight that shaped this: **a spawned child inherits the parent's responsible-process
+TCC grants** — proven live when the GUI's osxphotos child read 45k photos fine on
+the app's FDA grant alone, while the *Automation* events it sent to Photos were
+denied (no Automation grant), causing the "AppleScript export failed 10 consecutive
+times, restarting Photos app" thrash. So checking the **GUI app's** grants is the
+correct gate; they cover the osxphotos subprocess. FDA is probed by reading the
+`.photoslibrary` `database/` dir (raw access ⇒ FDA, distinct from a PhotoKit grant).
+
+## Archive subfolder (0.6)
+
+`primaryDestination` / `mirrorDestinations` are now **drive/volume bases**; the
+archive lives under `archiveSubfolder` (default "Photos Archive") on each, composed
+by `profile.archiveRoot(forBase:)` / `primaryArchiveRoot` / `mirrorArchiveRoots`.
+**Every** physical-path consumer routes through these — `ExportPlan.destination`,
+`ExportEngine` mirror/verify/cloud, and `PurgePlanner`'s `ArchiveIndex.build` (the
+≥2-copy gate). The **Cryptomator vault is exempt** (copied to the vault root).
+Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
+`decodeIfPresent` so old profiles migrate cleanly.
+
 ## Gotchas / lessons baked in
 
 - **Entitlements file must be comment-free** — AMFI's XML parser rejects
   `<!-- -->` and codesign fails ("AMFIUnserializeXML: syntax error").
 - **osxphotos / pattic need Full Disk Access** to read the library, including the
   scheduled background run (grant FDA to the bundled `pattic`).
+- **`--download-missing` drives Photos via AppleScript** → it needs the **Photos
+  Automation** grant or it thrashes. The preflight blocks a run until it's granted.
+- **`AEDeterminePermissionToAutomateTarget` can hang** if Photos isn't frontmost —
+  `PermissionsService.requestPhotosAutomation` launches/activates Photos first and
+  calls the prompting form off the main thread.
 - **`AppSettings` decodes each key with `decodeIfPresent`** so adding a field
   doesn't reset older `settings.json`.
 - **osxphotos uuid → PHAsset.localIdentifier** is `"<uuid>/L0/001"`.
@@ -105,7 +139,8 @@ iCloud account is the reuse case → its own export-only profile (`purgeEnabled=
 
 All planned phases complete: **A** engine + CLI, **B** GUI + backup + bundle +
 library guard + vault status, **C** guarded purge (ships OFF), **D** launchd
-scheduler. 39 tests passing.
+scheduler. **0.6** added the permissions preflight, the "Photos Archive" subfolder
+(physical destinations; vault exempt), and the free-space warning. 54 tests passing.
 
 Not yet done / possible next:
 - First real **complete** archive on Vortex (gated on its iCloud download).

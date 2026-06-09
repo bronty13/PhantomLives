@@ -43,6 +43,12 @@ final class AppState: ObservableObject {
     @Published var isCheckingLibrary = false
     @Published var vaultStatus: VaultStatus = .notConfigured
 
+    /// macOS privacy grants — all three must be present before a dry run or archive (the
+    /// preflight gate). Refreshed on launch, when the Archive pane appears, and after a grant.
+    @Published var permissions = PermissionsReport()
+    /// Per-destination free-space estimate (a non-blocking warning aid).
+    @Published var spaceChecks: [FreeSpaceCheck.DestinationSpace] = []
+
     // Purge (Phase C) — all read-only until the user both enables purge and clicks through
     // the in-app + macOS confirmations.
     @Published var purgePlan: PurgePlan? = nil
@@ -66,7 +72,35 @@ final class AppState: ObservableObject {
             .store(in: &cancellables)
         BackupService.runOnLaunchIfDue(settingsStore: store)
         refreshVaultStatus()
+        refreshPermissions()
         schedulerLoaded = SchedulerService.isLoaded()
+    }
+
+    // MARK: - Permissions preflight
+
+    /// Re-read all three grants (no prompts).
+    func refreshPermissions() {
+        permissions = PermissionsService.current(libraryPath: store.profile.photosLibraryPath)
+    }
+
+    /// Trigger the system "control Photos" consent dialog, then refresh.
+    func requestPhotosAutomation() {
+        PermissionsService.requestPhotosAutomation { [weak self] state in
+            self?.permissions.photosAutomation = state
+            self?.refreshPermissions()
+        }
+    }
+
+    /// Trigger the PhotoKit authorization prompt, then refresh.
+    func requestPhotosLibrary() {
+        PermissionsService.requestPhotosLibrary { [weak self] state in
+            self?.permissions.photosLibrary = state
+            self?.refreshPermissions()
+        }
+    }
+
+    func openPermissionSettings(_ kind: PermissionKind) {
+        PermissionsService.openSettings(for: kind)
     }
 
     // MARK: - Scheduler (Phase D)
@@ -113,10 +147,13 @@ final class AppState: ObservableObject {
         guard !isCheckingLibrary else { return }
         isCheckingLibrary = true
         let path = store.profile.photosLibraryPath
+        let profile = store.profile
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = LibraryInspector.inspect(libraryPath: path)
+            let space = FreeSpaceCheck.evaluate(profile: profile, originalsBytes: result.originalsBytes)
             DispatchQueue.main.async {
                 self?.libraryInspection = result
+                self?.spaceChecks = space
                 self?.isCheckingLibrary = false
             }
         }
@@ -125,6 +162,15 @@ final class AppState: ObservableObject {
     /// Kick off an archival run. `dryRun` plans only (osxphotos --dry-run; no mirror/verify).
     func runArchive(dryRun: Bool) {
         guard !isRunning else { return }
+        // Preflight gate: refuse until every required macOS grant is in place, so a run can
+        // never degenerate into the AppleScript-denied restart loop again (defense in depth —
+        // the UI also disables the buttons).
+        refreshPermissions()
+        guard permissions.allGranted else {
+            runError = "Grant " + permissions.missing.map { $0.title }.joined(separator: ", ")
+                + " before running (see the Permissions panel above)."
+            return
+        }
         // Persist any pending edits so the run uses what's on screen.
         store.save()
         let profile = store.profile

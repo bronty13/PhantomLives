@@ -37,8 +37,8 @@ public enum ProfileStore {
         ArchiveProfile(
             name: "Main Photo Archive",
             photosLibraryPath: nil,
-            primaryDestination: "/Volumes/CHANGE_ME/PhotoArchive",
-            mirrorDestinations: ["/Volumes/CHANGE_ME_MIRROR/PhotoArchive"],
+            primaryDestination: "/Volumes/CHANGE_ME",
+            mirrorDestinations: ["/Volumes/CHANGE_ME_MIRROR"],
             cloudVaultPath: nil,
             keepHEIC: true,
             keepJPEG: true,

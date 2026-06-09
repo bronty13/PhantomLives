@@ -11,15 +11,20 @@ public struct LibraryInspection: Sendable {
     public let exists: Bool
     /// Count of master files under `<library>/originals/`. 0 when unreadable.
     public let originalsOnDisk: Int
+    /// Total bytes of the master files under `<library>/originals/`. 0 when unreadable.
+    /// Used to estimate the archive's on-disk footprint for the free-space sanity check.
+    public let originalsBytes: Int64
     /// Total assets from the library database, or nil if it couldn't be read.
     public let totalAssets: Int?
     /// False when the library bundle couldn't be read (missing, or Full Disk Access not granted).
     public let readable: Bool
 
-    public init(libraryPath: String, exists: Bool, originalsOnDisk: Int, totalAssets: Int?, readable: Bool) {
+    public init(libraryPath: String, exists: Bool, originalsOnDisk: Int, originalsBytes: Int64 = 0,
+                totalAssets: Int?, readable: Bool) {
         self.libraryPath = libraryPath
         self.exists = exists
         self.originalsOnDisk = originalsOnDisk
+        self.originalsBytes = originalsBytes
         self.totalAssets = totalAssets
         self.readable = readable
     }
@@ -70,35 +75,38 @@ public enum LibraryInspector {
         let exists = fm.fileExists(atPath: lib, isDirectory: &isDir) && isDir.boolValue
         guard exists else {
             return LibraryInspection(libraryPath: lib, exists: false, originalsOnDisk: 0,
-                                     totalAssets: nil, readable: false)
+                                     originalsBytes: 0, totalAssets: nil, readable: false)
         }
         let originalsDir = (lib as NSString).appendingPathComponent("originals")
-        let (count, readable) = countOriginals(originalsDir)
+        let (count, bytes, readable) = countOriginals(originalsDir)
         let total = readAssetCount((lib as NSString).appendingPathComponent("database/Photos.sqlite"))
         return LibraryInspection(libraryPath: lib, exists: true, originalsOnDisk: count,
-                                 totalAssets: total, readable: readable)
+                                 originalsBytes: bytes, totalAssets: total, readable: readable)
     }
 
     // MARK: - Internals
 
-    /// Count regular files under the originals tree. `readable` is false when the directory
-    /// can't be listed (TCC / Full Disk Access not granted, or no such folder).
-    static func countOriginals(_ dir: String) -> (count: Int, readable: Bool) {
+    /// Count regular files (and sum their bytes) under the originals tree. `readable` is
+    /// false when the directory can't be listed (TCC / Full Disk Access not granted, or no
+    /// such folder).
+    static func countOriginals(_ dir: String) -> (count: Int, bytes: Int64, readable: Bool) {
         let fm = FileManager.default
         guard (try? fm.contentsOfDirectory(atPath: dir)) != nil else {
-            return (0, false)
+            return (0, 0, false)
         }
         var count = 0
+        var bytes: Int64 = 0
         let url = URL(fileURLWithPath: dir)
-        if let en = fm.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey],
+        if let en = fm.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
                                   options: [.skipsHiddenFiles]) {
             for case let f as URL in en {
-                if (try? f.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
-                    count += 1
-                }
+                guard let vals = try? f.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                      vals.isRegularFile == true else { continue }
+                count += 1
+                bytes += Int64(vals.fileSize ?? 0)
             }
         }
-        return (count, true)
+        return (count, bytes, true)
     }
 
     /// Best-effort `SELECT COUNT(*) FROM ZASSET` against the live Photos database, opened

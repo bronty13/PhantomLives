@@ -91,8 +91,8 @@ public enum PurgePlanner {
             cutoff, osxphotos: osxphotos, libraryPath: profile.photosLibraryPath)
         logger?.info("Purge preview: \(records.count) candidate records; indexing archive…")
 
-        let primaryIndex = ArchiveIndex.build(archiveRoot: profile.primaryDestination)
-        let mirrorIndices = profile.mirrorDestinations.map { ArchiveIndex.build(archiveRoot: $0) }
+        let primaryIndex = ArchiveIndex.build(archiveRoot: profile.primaryArchiveRoot)
+        let mirrorIndices = profile.mirrorArchiveRoots.map { ArchiveIndex.build(archiveRoot: $0) }
         logger?.info("Purge preview: primary index \(primaryIndex.fileCount) files; \(mirrorIndices.count) mirror(s).")
 
         let plan = plan(records: records, policy: profile.retention, now: now,

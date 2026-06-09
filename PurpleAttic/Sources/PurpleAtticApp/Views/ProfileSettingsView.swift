@@ -44,10 +44,19 @@ struct ProfileSettingsView: View {
 
     private var destinationsCard: some View {
         Card(title: "Destinations") {
-            PathField(label: "Primary archive (disk 1)", path: $store.profile.primaryDestination,
-                      placeholder: "/Volumes/Vortex4TB/PhotoArchive")
+            PathField(label: "Primary archive drive (disk 1)", path: $store.profile.primaryDestination,
+                      placeholder: "/Volumes/Vortex4TB")
+            TextField("Archive subfolder", text: $store.profile.archiveSubfolder)
+                .textFieldStyle(.roundedBorder).font(.system(.body, design: .monospaced))
+            Text("Pick the drive; the archive is nested in this subfolder so the drive root stays tidy. "
+                 + "Applies to the primary + mirrors; the Cryptomator vault is exempt (written at its root).")
+                .font(.caption).foregroundStyle(.secondary)
+            if !store.profile.primaryDestination.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("→ originals at  \(store.profile.primaryArchiveRoot)/originals")
+                    .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+            }
             Divider()
-            Text("Mirrors (disk 2+). Kept in lockstep; required before any purge.")
+            Text("Mirror drives (disk 2+). Kept in lockstep; required before any purge.")
                 .font(.subheadline.weight(.medium))
             ForEach(store.profile.mirrorDestinations.indices, id: \.self) { i in
                 HStack(spacing: 6) {

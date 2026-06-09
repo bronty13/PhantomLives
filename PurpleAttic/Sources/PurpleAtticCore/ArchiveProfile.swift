@@ -13,16 +13,27 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// Path to a specific `.photoslibrary`, or nil to use the System Photo Library.
     public var photosLibraryPath: String?
 
-    /// Root of the primary archive (e.g. "/Volumes/Vortex4TB/PhotoArchive"). osxphotos
-    /// writes originals under `<primary>/originals` and the JPEG set under `<primary>/jpeg`.
+    /// The chosen **base** for the primary archive — normally a drive/volume root
+    /// (e.g. "/Volumes/Vortex4TB"). The actual archive lives in `archiveSubfolder` *under*
+    /// this base, so picking a drive root doesn't litter it: originals land at
+    /// `<base>/<archiveSubfolder>/originals` and the JPEG set at `<base>/<archiveSubfolder>/jpeg`.
     public var primaryDestination: String
 
-    /// Additional on-disk copies kept in lockstep with the primary (rsync, no --delete).
-    /// At least one mirror is required before any purge is permitted.
+    /// Additional on-disk copy bases kept in lockstep with the primary (rsync, no --delete).
+    /// The same `archiveSubfolder` is nested under each. At least one mirror is required
+    /// before any purge is permitted.
     public var mirrorDestinations: [String]
 
     /// Mounted Cryptomator vault directory for the encrypted offsite copy, or nil to skip.
+    /// The vault is **exempt** from `archiveSubfolder` — the archive is written at the vault
+    /// root (a Cryptomator vault is already a dedicated container).
     public var cloudVaultPath: String?
+
+    /// Folder nested under each physical destination *base* (primary + mirrors) to hold the
+    /// archive, so a drive root stays tidy and other content on the drive isn't intermixed.
+    /// Default "Photos Archive". Empty string opts out (archive written at the base itself).
+    /// Does NOT apply to the Cryptomator vault.
+    public var archiveSubfolder: String
 
     /// Export the untouched originals (HEIC/RAW/etc.). The fidelity copy.
     public var keepHEIC: Bool
@@ -56,7 +67,8 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         directoryTemplate: String = "{created.year}/{created.year}-{created.mm}",
         downloadMissingFromICloud: Bool = false,
         retention: RetentionPolicy = RetentionPolicy(),
-        purgeEnabled: Bool = false
+        purgeEnabled: Bool = false,
+        archiveSubfolder: String = "Photos Archive"
     ) {
         self.id = id
         self.name = name
@@ -70,11 +82,48 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.downloadMissingFromICloud = downloadMissingFromICloud
         self.retention = retention
         self.purgeEnabled = purgeEnabled
+        self.archiveSubfolder = archiveSubfolder
+    }
+
+    /// Resilient decoding: every key is `decodeIfPresent` with the same default as the
+    /// memberwise init, so adding a field never breaks an older `profile.json` (the lesson
+    /// baked into `AppSettings`). In particular a pre-0.6 profile with no `archiveSubfolder`
+    /// decodes to the "Photos Archive" default rather than throwing.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Main Photo Archive"
+        photosLibraryPath = try c.decodeIfPresent(String.self, forKey: .photosLibraryPath)
+        primaryDestination = try c.decodeIfPresent(String.self, forKey: .primaryDestination) ?? ""
+        mirrorDestinations = try c.decodeIfPresent([String].self, forKey: .mirrorDestinations) ?? []
+        cloudVaultPath = try c.decodeIfPresent(String.self, forKey: .cloudVaultPath)
+        keepHEIC = try c.decodeIfPresent(Bool.self, forKey: .keepHEIC) ?? true
+        keepJPEG = try c.decodeIfPresent(Bool.self, forKey: .keepJPEG) ?? true
+        directoryTemplate = try c.decodeIfPresent(String.self, forKey: .directoryTemplate)
+            ?? "{created.year}/{created.year}-{created.mm}"
+        downloadMissingFromICloud = try c.decodeIfPresent(Bool.self, forKey: .downloadMissingFromICloud) ?? false
+        retention = try c.decodeIfPresent(RetentionPolicy.self, forKey: .retention) ?? RetentionPolicy()
+        purgeEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeEnabled) ?? false
+        archiveSubfolder = try c.decodeIfPresent(String.self, forKey: .archiveSubfolder) ?? "Photos Archive"
     }
 
     // MARK: - Derived paths
 
-    /// Subdirectory under the primary archive for a given export pass.
+    /// Compose the archive root for a physical destination *base* by nesting `archiveSubfolder`.
+    /// An empty/whitespace subfolder yields the base unchanged (opt-out / pre-0.6 behavior).
+    public func archiveRoot(forBase base: String) -> String {
+        let sub = archiveSubfolder.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sub.isEmpty else { return base }
+        return (base as NSString).appendingPathComponent(sub)
+    }
+
+    /// The primary archive root (primary base + archive subfolder).
+    public var primaryArchiveRoot: String { archiveRoot(forBase: primaryDestination) }
+
+    /// Each mirror's archive root (mirror base + archive subfolder).
+    public var mirrorArchiveRoots: [String] { mirrorDestinations.map { archiveRoot(forBase: $0) } }
+
+    /// Subdirectory under an archive root for a given export pass.
     public func subdirectory(for pass: ExportPass) -> String {
         switch pass {
         case .originals: return "originals"
@@ -102,12 +151,12 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         } else if primary.contains("CHANGE_ME") {
             issues.append("Primary destination is still the placeholder — set it to your archive drive in Settings.")
         } else {
-            // The leaf folder is created on demand, but its parent (the drive/folder) must
-            // already exist. Catches "/Volumes/NotMounted/…" before osxphotos sees a bad path.
-            let parent = (primary as NSString).deletingLastPathComponent
+            // The archive subfolder is created on demand, but the chosen base (the
+            // drive/volume) must already exist. Catches "/Volumes/NotMounted" before
+            // osxphotos sees a bad path.
             var isDir: ObjCBool = false
-            if !FileManager.default.fileExists(atPath: parent, isDirectory: &isDir) || !isDir.boolValue {
-                issues.append("Primary destination isn’t available (is the drive mounted?): \(parent)")
+            if !FileManager.default.fileExists(atPath: primary, isDirectory: &isDir) || !isDir.boolValue {
+                issues.append("Primary destination isn’t available (is the drive mounted?): \(primary)")
             }
         }
         if !keepHEIC && !keepJPEG {

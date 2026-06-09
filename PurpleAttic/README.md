@@ -10,12 +10,14 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.5.0 — full pipeline + scheduler: engine + `pattic` CLI +
-> `PurpleAttic.app` GUI, with the previews-only guard, Cryptomator vault status,
-> the guarded purge, and a launchd scheduler.** Purge ships **disabled**
-> (`purgeEnabled` off) and deletes only photos verified in ≥2 archive copies,
-> behind two confirmations. The scheduler archives only — never purges. The CLI
-> never deletes.
+> **Status: 0.6.0 — full pipeline + scheduler, now with a permissions preflight,
+> a "Photos Archive" subfolder on physical drives, and a free-space check:**
+> engine + `pattic` CLI + `PurpleAttic.app` GUI, with the previews-only guard,
+> Cryptomator vault status, the guarded purge, and a launchd scheduler. A run
+> won't start until Full Disk Access, Photos Automation, and Photos Library are
+> all granted. Purge ships **disabled** (`purgeEnabled` off) and deletes only
+> photos verified in ≥2 archive copies, behind two confirmations. The scheduler
+> archives only — never purges. The CLI never deletes.
 
 **Docs:** step-by-step usage is in **[USER_MANUAL.md](USER_MANUAL.md)** (Vortex
 first-run, the purge workflow, troubleshooting); the architecture/dev snapshot is
@@ -57,8 +59,8 @@ in Photos on all your devices.
 ## Install the toolchain
 
 ```bash
-pipx install osxphotos     # or: brew install osxphotos
-brew install exiftool      # rsync ships with macOS
+brew install pipx && pipx install osxphotos   # osxphotos is a Python CLI (no Homebrew formula)
+brew install exiftool                          # rsync ships with macOS
 ```
 
 The host that runs the export must have **originals on disk** (Photos →
@@ -81,7 +83,25 @@ $BIN export --deep                # verify with SHA-256 (slow, thorough)
 
 Profiles live at `~/Library/Application Support/PurpleAttic/profile.json`
 (override with `--profile`). Edit `primaryDestination` and
-`mirrorDestinations` before your first run.
+`mirrorDestinations` before your first run — these are now the **drive/volume
+roots** (e.g. `/Volumes/PRO-G40`); the archive is nested under the
+`archiveSubfolder` (default **"Photos Archive"**) on each, so originals land at
+`/Volumes/PRO-G40/Photos Archive/originals`. The **Cryptomator vault is exempt**
+— its copy is written at the vault root. Set `archiveSubfolder` to `""` to write
+at the drive root instead.
+
+### Permissions (required before any run)
+
+The app **blocks Dry Run and Archive until three macOS grants are in place**, with
+inline *Grant…* / *Settings…* buttons in the Archive pane:
+
+- **Full Disk Access** — so osxphotos can read the `.photoslibrary` bundle.
+- **Photos Automation** (Apple Events → Photos) — so download-missing / edited
+  exports can drive Photos. *Without it osxphotos thrashes ("AppleScript export
+  failed 10 consecutive times, restarting Photos app").*
+- **Photos Library** (PhotoKit) — used by the guarded purge.
+
+`pattic doctor` reports Full Disk Access for the CLI / scheduled-run path.
 
 ## Output locations
 
@@ -117,3 +137,5 @@ Profiles live at `~/Library/Application Support/PurpleAttic/profile.json`
 - [x] Cryptomator vault unlock status in the UI.
 - [x] Guarded PhotoKit purge (osxphotos metadata + ≥2-copy verify + PhotoKit delete), default OFF.
 - [x] launchd scheduler (Schedule pane): automated archive, daily/weekly. Purge stays manual.
+- [x] Permissions preflight: Full Disk Access + Photos Automation + Photos Library, hard-gated before a run.
+- [x] "Photos Archive" subfolder on physical drives (vault exempt); free-space sanity warning.

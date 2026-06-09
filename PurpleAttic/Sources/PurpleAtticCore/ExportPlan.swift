@@ -6,9 +6,10 @@ import Foundation
 /// metadata. `ExportEngine` runs whatever this produces.
 public enum ExportPlan {
 
-    /// Destination directory for a pass under the profile's primary archive root.
+    /// Destination directory for a pass under the profile's primary archive root
+    /// (primary base + archive subfolder, e.g. "/Volumes/Drive/Photos Archive/originals").
     public static func destination(profile: ArchiveProfile, pass: ExportPass) -> String {
-        (profile.primaryDestination as NSString)
+        (profile.primaryArchiveRoot as NSString)
             .appendingPathComponent(profile.subdirectory(for: pass))
     }
 

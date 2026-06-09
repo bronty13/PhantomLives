@@ -14,12 +14,15 @@ struct RunView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
+            if !appState.permissions.allGranted { permissionsBanner }
             if !issues.isEmpty { issuesBanner }
             if appState.readiness.osxphotos == nil { osxphotosBanner }
+            if !spaceWarnings.isEmpty { spaceBanner }
             logPane
         }
         .onAppear {
             appState.refreshVaultStatus()
+            appState.refreshPermissions()
             if appState.libraryInspection == nil { appState.checkLibrary() }
         }
         .alert("This library looks incomplete", isPresented: $showIncompleteConfirm) {
@@ -65,7 +68,7 @@ struct RunView: View {
             Button {
                 appState.runArchive(dryRun: true)
             } label: { Label("Dry Run", systemImage: "eye") }
-                .disabled(appState.isRunning || !issues.isEmpty)
+                .disabled(appState.isRunning || !issues.isEmpty || !appState.permissions.allGranted)
             Button {
                 if appState.libraryInspection?.optimizeStorageLikely == true {
                     showIncompleteConfirm = true
@@ -75,9 +78,83 @@ struct RunView: View {
             } label: { Label("Run Archive", systemImage: "play.fill") }
                 .keyboardShortcut("r", modifiers: [.command])
                 .buttonStyle(.borderedProminent)
-                .disabled(appState.isRunning || !issues.isEmpty || appState.readiness.osxphotos == nil)
+                .disabled(appState.isRunning || !issues.isEmpty || appState.readiness.osxphotos == nil
+                          || !appState.permissions.allGranted)
         }
         .padding(16)
+    }
+
+    // MARK: Permissions preflight
+
+    private var permissionsBanner: some View {
+        banner(color: .red, icon: "lock.shield.fill") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Grant macOS permissions before running")
+                    .font(.callout.weight(.semibold))
+                Text("PurpleAttic needs all three to archive cleanly. The run buttons stay disabled until they’re granted.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(PermissionKind.allCases) { kind in
+                    permissionRow(kind)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func permissionRow(_ kind: PermissionKind) -> some View {
+        let state = grantState(kind)
+        HStack(spacing: 8) {
+            Image(systemName: state == .granted ? "checkmark.circle.fill" : "exclamationmark.circle")
+                .foregroundStyle(state == .granted ? .green : .orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(kind.title).font(.callout.weight(.medium))
+                Text(kind.why).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if state != .granted {
+                switch kind {
+                case .photosAutomation:
+                    Button("Grant…") { appState.requestPhotosAutomation() }
+                case .photosLibrary:
+                    Button("Grant…") { appState.requestPhotosLibrary() }
+                case .fullDiskAccess:
+                    EmptyView()
+                }
+                Button("Settings…") { appState.openPermissionSettings(kind) }
+                    .buttonStyle(.link).font(.caption)
+            }
+        }
+    }
+
+    private func grantState(_ kind: PermissionKind) -> GrantState {
+        switch kind {
+        case .fullDiskAccess:   return appState.permissions.fullDiskAccess
+        case .photosAutomation: return appState.permissions.photosAutomation
+        case .photosLibrary:    return appState.permissions.photosLibrary
+        }
+    }
+
+    // MARK: Free-space sanity check (warning only)
+
+    private var spaceWarnings: [FreeSpaceCheck.DestinationSpace] {
+        appState.spaceChecks.filter { !$0.sufficient && $0.requiredBytes > 0 }
+    }
+
+    private var spaceBanner: some View {
+        banner(color: .orange, icon: "externaldrive.badge.exclamationmark") {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Possible low free space (estimate)").font(.callout.weight(.medium))
+                ForEach(spaceWarnings) { d in
+                    Text(d.unmeasured
+                         ? "• \(d.label): \(d.base) — not mounted / can’t measure free space."
+                         : "• \(d.label): ~\(FreeSpaceCheck.humanBytes(d.requiredBytes)) needed, "
+                           + "\(FreeSpaceCheck.humanBytes(d.freeBytes ?? 0)) free on \(d.base).")
+                        .font(.caption)
+                }
+                Text("Rough estimate from your library’s originals; the archive may still fit. Not blocking the run.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var issuesBanner: some View {

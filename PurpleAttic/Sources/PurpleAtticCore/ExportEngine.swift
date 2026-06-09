@@ -71,7 +71,7 @@ public final class ExportEngine {
         }
 
         logger.info("=== PurpleAttic run: \(profile.name)\(dryRun ? " (DRY RUN)" : "") ===")
-        logger.info("Primary destination: \(profile.primaryDestination)")
+        logger.info("Primary archive: \(profile.primaryArchiveRoot)")
         logger.info("Formats: \(profile.enabledPasses.map { $0.label }.joined(separator: ", "))")
 
         // Completeness guard: warn loudly if the library looks optimized (originals only in
@@ -115,11 +115,13 @@ public final class ExportEngine {
             return Self.finish(profile: profile, started: started, steps: steps, logger: logger)
         }
 
-        // 2 + 3. Mirror then verify, per mirror.
+        // 2 + 3. Mirror then verify, per mirror. The archive lives in `archiveSubfolder`
+        // under each base, so we mirror primary-archive-root → mirror-archive-root.
         guard let rsync = Tooling.rsync else { throw EngineError.rsyncNotFound }
-        for mirror in profile.mirrorDestinations {
+        let primaryRoot = profile.primaryArchiveRoot
+        for mirror in profile.mirrorArchiveRoots {
             try? FileManager.default.createDirectory(atPath: mirror, withIntermediateDirectories: true)
-            let src = profile.primaryDestination.hasSuffix("/") ? profile.primaryDestination : profile.primaryDestination + "/"
+            let src = primaryRoot.hasSuffix("/") ? primaryRoot : primaryRoot + "/"
             logger.info("→ Mirror: \(src) ⇒ \(mirror)")
             let t0 = Date()
             // -a archive, -h human, --info=progress2 overall progress. No --delete: the
@@ -137,7 +139,7 @@ public final class ExportEngine {
             // Verify this mirror against the primary.
             logger.info("→ Verify: \(mirror) against primary\(deepVerify ? " (deep SHA-256)" : "")")
             let vt0 = Date()
-            let report = VerifyService.compare(primary: profile.primaryDestination,
+            let report = VerifyService.compare(primary: primaryRoot,
                                                mirror: mirror, deep: deepVerify) { n in
                 self.logger.debug("[verify] checked \(n) files…")
             }
@@ -163,7 +165,9 @@ public final class ExportEngine {
             let mounted = FileManager.default.fileExists(atPath: vault, isDirectory: &isDir) && isDir.boolValue
                 && FileManager.default.isWritableFile(atPath: vault)
             if mounted {
-                let src = profile.primaryDestination.hasSuffix("/") ? profile.primaryDestination : profile.primaryDestination + "/"
+                // The vault is exempt from archiveSubfolder — copy the archive contents to
+                // the vault root (it's already a dedicated encrypted container).
+                let src = primaryRoot.hasSuffix("/") ? primaryRoot : primaryRoot + "/"
                 logger.info("→ Cloud (Cryptomator): \(src) ⇒ \(vault)")
                 let t0 = Date()
                 let result = try ProcessRunner.run(executable: rsync,

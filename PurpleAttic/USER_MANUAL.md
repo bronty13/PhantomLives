@@ -28,13 +28,25 @@ the way old iPhoto/`.photoslibrary` bundles trap people.
   (`rsync` already ships with macOS.)
 - *(Optional)* **Cryptomator** + an unlocked vault, for an encrypted cloud copy.
 
-### Grant Full Disk Access
+### Grant the three permissions (required — the app blocks runs without them)
 
-osxphotos needs to read inside the Photos library, which macOS protects. Open
-**System Settings → Privacy & Security → Full Disk Access** and add
-**PurpleAttic** (and, if you'll use the scheduler, the bundled tool at
-`PurpleAttic.app/Contents/MacOS/pattic`). If a run fails with a *permissions*
-error, this is almost always why.
+PurpleAttic won't let you Dry Run or Archive until **all three** macOS grants are
+in place. The **Archive pane shows a Permissions panel** with a row per grant and
+*Grant…* / *Settings…* buttons:
+
+1. **Full Disk Access** — so osxphotos can read inside the protected Photos
+   library. Add **PurpleAttic** in **System Settings → Privacy & Security → Full
+   Disk Access** (the panel's *Settings…* button opens it). If you'll use the
+   scheduler, also add the bundled tool at `PurpleAttic.app/Contents/MacOS/pattic`.
+2. **Photos Automation** — lets the archive drive Photos.app to download/export
+   images. Click **Grant…** and approve *"PurpleAttic wants to control Photos."*
+   *Skip this and osxphotos thrashes — "AppleScript export failed 10 consecutive
+   times, restarting Photos app" — and stalls.*
+3. **Photos Library** — PhotoKit access used by the guarded purge. Click
+   **Grant…** and Allow.
+
+After granting, each row turns to a green check and the run buttons enable. (A
+new grant sometimes needs the app relaunched to register.)
 
 ---
 
@@ -45,14 +57,20 @@ error, this is almost always why.
    osxphotos / exiftool / rsync — fix any red one before continuing.
 
 2. **Settings → Destinations.**
-   - **Primary archive (disk 1):** choose your big drive, e.g.
-     `/Volumes/Vortex4TB/PhotoArchive`.
-   - **Mirror (disk 2):** add your second drive, e.g.
-     `/Volumes/Mirror2TB/PhotoArchive`. *(A mirror is required before purge —
-     it's the second copy verification depends on.)*
+   - **Primary archive drive (disk 1):** choose your big drive's *root*, e.g.
+     `/Volumes/Vortex4TB`.
+   - **Archive subfolder:** defaults to **"Photos Archive"**. The archive is
+     nested here so the drive root stays tidy — originals land at
+     `/Volumes/Vortex4TB/Photos Archive/originals` (the screen shows the composed
+     path). Leave it as-is unless you want a different folder; set it empty to
+     write at the drive root.
+   - **Mirror drive (disk 2):** add your second drive's root, e.g.
+     `/Volumes/Mirror2TB`. The same subfolder is used. *(A mirror is required
+     before purge — it's the second copy verification depends on.)*
    - **Cloud vault (optional):** if you use Cryptomator, unlock the vault and
      point this at its mounted path; the line below shows **Unlocked — ready** in
-     green when it's set.
+     green when it's set. *The vault is exempt from the subfolder — its copy is
+     written at the vault root.*
    - Leave **"Download missing originals from iCloud"** OFF on this Mac (you
      already have the originals). Click **Save**.
 
@@ -70,12 +88,19 @@ error, this is almost always why.
    likely … INCOMPLETE,"** stop — you're on the wrong Mac or the download hasn't
    finished.
 
+   If the Archive pane shows an orange **"Possible low free space"** warning,
+   sanity-check that drive — it's a rough estimate from your library's originals
+   size and won't block the run, but it's worth a look before a multi-hour
+   archive.
+
 6. **Archive → Run Archive.** Watch the live log: HEIC export, JPEG export, the
    rsync mirror, the verify step, then the cloud copy (if the vault is unlocked).
    The first run pulls every original to disk — **expect hours; let it run.** A
-   readable report lands in `~/Downloads/PurpleAttic/`.
+   readable report lands in `~/Downloads/PurpleAttic/`. (A handful of old scanned
+   JPEGs may log exiftool *"Bad MakerNotes"* errors — harmless: the file and its
+   `.xmp` sidecar are still archived; only the in-file metadata re-embed is skipped.)
 
-7. **Confirm it landed.** Open `/Volumes/Vortex4TB/PhotoArchive/originals/<year>/…`
+7. **Confirm it landed.** Open `/Volumes/Vortex4TB/Photos Archive/originals/<year>/…`
    in Finder — you'll see dated folders of originals with `.xmp` sidecars next to
    them, plus a parallel `jpeg/` tree.
 
@@ -158,8 +183,10 @@ only on the Mac with the complete archive.
 | **"Primary destination is still the placeholder…"** banner; buttons disabled | You haven't set real paths. Settings → Destinations → choose your drive → Save. |
 | **"Optimize Storage likely … INCOMPLETE"** warning | This Mac doesn't have all originals. Run on the Mac set to "Download Originals," or (last resort) enable "Download missing originals" in Settings. |
 | **"Primary destination isn't available (is the drive mounted?)"** | The external drive isn't connected/mounted. Plug it in. |
-| A run errors with a **permissions** message | Grant Full Disk Access to PurpleAttic (and `pattic`) — §1. |
-| **osxphotos** shows red in the footer | `pipx install osxphotos`, then reopen the app. |
+| Run buttons **disabled** with a red **Permissions** panel | One or more of Full Disk Access / Photos Automation / Photos Library isn't granted — use the panel's **Grant…** / **Settings…** buttons (§1). All three are required. |
+| Log floods with **"AppleScript export failed … restarting Photos app"** | **Photos Automation** isn't granted. Grant it from the Permissions panel and re-run. (The preflight now blocks this before it can start.) |
+| Orange **"Possible low free space"** warning | Estimate says a destination drive may be tight (or isn't mounted). Advisory only — verify the drive; the archive may still fit. |
+| **osxphotos** shows red in the footer | `brew install pipx && pipx install osxphotos`, then reopen the app. |
 | Cloud step says **"vault not mounted"** | Unlock the Cryptomator vault; the cloud copy catches up next run. Archiving never blocks on it. |
 | Scheduled run didn't happen | The Mac was asleep at the scheduled time, or `pattic` lacks Full Disk Access. Check the scheduler log (Schedule → Reveal Log). |
 | Purge shows lots of **Unverified** | Those photos aren't in both archive copies — usually the archive is incomplete on this Mac. Finish a full archive on the originals Mac first. |

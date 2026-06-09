@@ -3,6 +3,46 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.6.0] — 2026-06-09
+
+Run-cleanly hardening: a permissions preflight, a "Photos Archive" subfolder on
+physical destinations, and a free-space sanity check.
+
+### Added
+- **Permissions preflight (hard gate).** New `PermissionsService` (app) checks
+  the three macOS grants a clean run needs — **Full Disk Access** (probed via
+  the shared `Permissions.fullDiskAccessLikely` Core helper), **Photos
+  Automation** (Apple Events → Photos, via `AEDeterminePermissionToAutomateTarget`),
+  and **Photos Library** (PhotoKit). The Archive pane shows a per-grant panel
+  with inline *Grant…* / *Settings…* buttons, and **Dry Run + Run Archive stay
+  disabled until all three are granted** (`AppState.runArchive` also refuses as
+  defense-in-depth). This closes the failure mode where a missing Automation
+  grant sent osxphotos into the "AppleScript export failed 10 consecutive times,
+  restarting Photos app" loop.
+- **Archive subfolder.** New editable `archiveSubfolder` on the profile (default
+  **"Photos Archive"**). You pick a drive *root* (e.g. `/Volumes/PRO-G40`) and the
+  archive is nested under `<drive>/Photos Archive/…` so the drive root stays
+  tidy. Applies to the **primary + mirrors**; the **Cryptomator vault is exempt**
+  (archive written at the vault root). Threaded through `ExportPlan`,
+  `ExportEngine` (mirror/verify/cloud), and the `ArchiveIndex`/`PurgePlanner`
+  purge path. Empty subfolder = opt-out (archive at the base, pre-0.6 behavior).
+- **Free-space sanity check (warning).** New `FreeSpaceCheck` estimates the
+  archive footprint from the library's originals size and compares it against
+  each destination volume's free space; the Archive pane shows a non-blocking
+  warning when a volume looks too small or isn't mounted.
+- **`pattic doctor`** now also reports Full Disk Access (and notes the
+  Automation requirement); **`pattic plan`** shows the composed archive roots.
+
+### Changed
+- `ArchiveProfile` now decodes **every** key with `decodeIfPresent` + defaults,
+  so a pre-0.6 `profile.json` (no `archiveSubfolder`) loads cleanly instead of
+  failing — it defaults to "Photos Archive".
+- `primaryDestination` / `mirrorDestinations` now mean the **drive/volume base**;
+  the archive lives in `archiveSubfolder` beneath each. Validation checks the
+  base (drive) is mounted. Starter profile destinations are now drive roots.
+- Tests: 54 total (+15 — archive-root composition, profile-migration decoding,
+  free-space estimate/sufficiency/mount-boundary).
+
 ## [0.5.1] — 2026-06-09
 
 Docs only.

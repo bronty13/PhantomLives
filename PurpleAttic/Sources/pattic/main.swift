@@ -19,7 +19,7 @@ struct Pattic: ParsableCommand {
 
 struct Doctor: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Check that osxphotos, exiftool, and rsync are installed.")
+        abstract: "Check that osxphotos, exiftool, rsync, and Full Disk Access are in place.")
 
     func run() throws {
         let r = Tooling.readiness()
@@ -30,13 +30,26 @@ struct Doctor: ParsableCommand {
         line("osxphotos", r.osxphotos)
         line("exiftool", r.exiftool)
         line("rsync", r.rsync)
-        if !r.allPresent {
-            print("\nInstall the missing tools:")
-            if r.osxphotos == nil { print("  pipx install osxphotos   # or: brew install osxphotos") }
+
+        // Full Disk Access — pattic (and the scheduled run) must read the Photos library.
+        let fda = Permissions.fullDiskAccessLikely()
+        print("\nPermissions:")
+        print("  \(fda ? "✓" : "✗") Full Disk Access: \(fda ? "granted" : "NOT granted")")
+        if !fda {
+            print("    Grant it to this binary in System Settings → Privacy & Security → Full Disk Access:")
+            print("    \(CommandLine.arguments.first ?? "pattic")")
+        }
+        print("  • Photos Automation (Apple Events): checked by the app's preflight; needed only")
+        print("    when downloadMissingFromICloud is on. The GUI prompts for it.")
+
+        if !r.allPresent || !fda {
+            print("\nTo fix:")
+            if r.osxphotos == nil { print("  pipx install osxphotos") }
             if r.exiftool == nil { print("  brew install exiftool") }
+            if !fda { print("  Add this binary to Full Disk Access (see above), then re-run `pattic doctor`.") }
             throw ExitCode.failure
         }
-        print("\nAll tools present.")
+        print("\nAll set.")
     }
 }
 
@@ -96,8 +109,14 @@ struct Plan: ParsableCommand {
 
         print("Profile: \(profile.name)")
         print("Library: \(profile.photosLibraryPath ?? "(System Photo Library)")")
-        print("Primary: \(profile.primaryDestination)")
-        print("Mirrors: \(profile.mirrorDestinations.isEmpty ? "(none)" : profile.mirrorDestinations.joined(separator: ", "))")
+        print("Primary: \(profile.primaryDestination)  → archive at \(profile.primaryArchiveRoot)")
+        if profile.mirrorDestinations.isEmpty {
+            print("Mirrors: (none)")
+        } else {
+            print("Mirrors: " + zip(profile.mirrorDestinations, profile.mirrorArchiveRoots)
+                .map { "\($0) → \($1)" }.joined(separator: ", "))
+        }
+        print("Subfolder: \(profile.archiveSubfolder.isEmpty ? "(none — archive at drive root)" : profile.archiveSubfolder)  (vault exempt)")
         print("Cloud:   \(profile.cloudVaultPath ?? "(none)")")
         print("Formats: \(profile.enabledPasses.map { $0.label }.joined(separator: ", "))")
         print("")
