@@ -3,6 +3,40 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.2.0] — 2026-06-08
+
+Phase B: the **SwiftUI GUI** wrapping `PurpleAtticCore`, plus the app bundle.
+
+### Added
+- **`PurpleAttic.app`** (SwiftUI macOS app, `PurpleAtticApp` target):
+  - Manual `HStack` sidebar (PhantomLives pattern, not `NavigationSplitView`) +
+    `WindowStateGuard`. Four panes: Archive, Settings, Backup, Purge.
+  - **Archive** dashboard: Dry Run / Run Archive, a **live streaming log** (via a
+    new `AtticLogger.sink`), the last-run summary, and banners for config issues
+    / missing osxphotos. Runs the engine off the main thread.
+  - **Settings**: full `ArchiveProfile` editor — source library, primary +
+    mirror destinations, Cryptomator vault path, HEIC/JPEG toggles, folder
+    template, and retention (keep window, keep albums, keep keywords, favorites).
+    Shared JSON with the `pattic` CLI.
+  - **Backup**: launch-time `BackupService` (zips `~/Library/Application
+    Support/PurpleAttic/` → `~/Downloads/PurpleAttic backup/`, 14-day retention,
+    5-min debounce, never throws) + the full Settings → Backup UI (toggle,
+    retention, folder override, Run Now, recent-backups list). PhantomLives
+    ship-blocker satisfied.
+  - **Purge** pane: the guarded delete is **shipped disabled** — the
+    `purgeEnabled` flag sits behind an affirmative confirmation, and the pane
+    lays out every safety gate. No deletion engine yet (Phase C).
+  - Sidebar toolchain readiness footer (osxphotos / exiftool / rsync).
+- **Bundle infra**: `build-app.sh` (build → sign w/ Photos entitlements →
+  install → relaunch + freshness proof), `install.sh` (force-kill + verify),
+  `PurpleAttic.entitlements` (photos-library + apple-events), deterministic
+  `Scripts/generate-icon.swift` (photo-into-archive-box icon). The `pattic` CLI
+  is bundled inside the `.app`.
+
+### Notes
+- Built + installed + verified fresh (Developer-ID signed) at v0.2.x.
+- Purge remains absent from both the CLI and the GUI's execution paths.
+
 ## [0.1.0] — 2026-06-08
 
 Initial scaffold: the archival **engine** + the `pattic` CLI (the safe,

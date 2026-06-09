@@ -10,9 +10,9 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.1.0 — engine + `pattic` CLI (the safe, non-destructive half).**
-> The SwiftUI GUI and the guarded purge stage are coming. The CLI **never**
-> deletes from Photos.
+> **Status: 0.2.0 — engine + `pattic` CLI + the `PurpleAttic.app` GUI (the safe,
+> non-destructive half).** The guarded purge stage is shipped *disabled*; no
+> deletion engine exists yet. Neither the CLI nor the GUI deletes from Photos.
 
 ## How it works
 
@@ -92,11 +92,20 @@ Profiles live at `~/Library/Application Support/PurpleAttic/profile.json`
   a per-run dry-run preview, and macOS's own delete confirmation — and it is not
   in the CLI at all.
 
+## The app
+
+`./build-app.sh` builds, signs (Photos entitlements), installs to
+`/Applications/PurpleAttic.app`, and relaunches. The GUI has four panes —
+**Archive** (run + live log), **Settings** (profile editor), **Backup**, and
+**Purge** (shipped disabled). The `pattic` CLI is bundled inside the app at
+`PurpleAttic.app/Contents/MacOS/pattic`.
+
 ## Roadmap
 
-- [ ] SwiftUI GUI wrapping `PurpleAtticCore` (sidebar, settings, run dashboard, live log).
-- [ ] Launch-time backup + Settings → Backup UI (PhantomLives standard).
+- [x] Engine + `pattic` CLI (export → mirror → verify → cloud).
+- [x] SwiftUI GUI: sidebar, settings, run dashboard, live log.
+- [x] Launch-time backup + Settings → Backup UI (PhantomLives standard).
+- [x] `build-app.sh` / `install.sh` / icon bundle.
 - [ ] Cryptomator vault auto-detect + unlock status in the UI.
 - [ ] Guarded PhotoKit purge (reuses PurpleDedup's deletion service), default OFF.
 - [ ] launchd scheduler: nightly archive, monthly reviewed purge.
-- [ ] `build-app.sh` / `install.sh` / icon bundle.

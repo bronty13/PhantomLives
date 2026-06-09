@@ -1,0 +1,102 @@
+import Foundation
+import Combine
+import PurpleAtticCore
+
+/// Which detail pane the sidebar is showing.
+enum Pane: String, CaseIterable, Identifiable {
+    case run = "Archive"
+    case profile = "Settings"
+    case backup = "Backup"
+    case purge = "Purge"
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .run: return "externaldrive.badge.timemachine"
+        case .profile: return "slider.horizontal.3"
+        case .backup: return "arrow.clockwise.icloud"
+        case .purge: return "trash"
+        }
+    }
+}
+
+struct LogLine: Identifiable {
+    let id = UUID()
+    let level: AtticLogger.Level
+    let text: String
+}
+
+/// The app's view-model. Runs the (synchronous, blocking) `ExportEngine` off the main
+/// thread and streams its log lines back to the UI via the logger sink. Mutates
+/// `@Published` state only on the main queue.
+final class AppState: ObservableObject {
+    let store = SettingsStore()
+
+    @Published var selectedPane: Pane = .run
+    @Published var isRunning = false
+    @Published var logLines: [LogLine] = []
+    @Published var lastSummaryText: String? = nil
+    @Published var runError: String? = nil
+    @Published var readiness: Tooling.Readiness = Tooling.readiness()
+
+    /// Cap the in-memory log so a long run can't balloon memory; the full log is on disk.
+    private let maxLogLines = 5000
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        // Re-publish when the nested settings store changes so every pane stays fresh.
+        store.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        BackupService.runOnLaunchIfDue(settingsStore: store)
+    }
+
+    func refreshReadiness() {
+        readiness = Tooling.readiness()
+    }
+
+    /// Kick off an archival run. `dryRun` plans only (osxphotos --dry-run; no mirror/verify).
+    func runArchive(dryRun: Bool) {
+        guard !isRunning else { return }
+        // Persist any pending edits so the run uses what's on screen.
+        store.save()
+        let profile = store.profile
+
+        isRunning = true
+        runError = nil
+        lastSummaryText = nil
+        logLines = []
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let runName = profile.name.replacingOccurrences(of: " ", with: "_")
+            let logger = AtticLogger(runName: runName, echo: false)
+            logger.sink = { [weak self] level, message in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.logLines.append(LogLine(level: level, text: message))
+                    if self.logLines.count > self.maxLogLines {
+                        self.logLines.removeFirst(self.logLines.count - self.maxLogLines)
+                    }
+                }
+            }
+            let engine = ExportEngine(logger: logger)
+            do {
+                let summary = try engine.run(profile: profile, dryRun: dryRun)
+                let reportURL = summary.writeReport()
+                DispatchQueue.main.async {
+                    self.isRunning = false
+                    var text = summary.reportText()
+                    if let reportURL { text += "\nReport saved to: \(reportURL.path)" }
+                    self.lastSummaryText = text
+                }
+            } catch {
+                let message = (error as? ExportEngine.EngineError)?.description ?? error.localizedDescription
+                DispatchQueue.main.async {
+                    self.isRunning = false
+                    self.runError = message
+                }
+            }
+        }
+    }
+}

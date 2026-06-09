@@ -21,6 +21,11 @@ public final class AtticLogger: @unchecked Sendable {
     private let isoFormatter: DateFormatter
     public let logFileURL: URL?
 
+    /// Optional live sink — the GUI sets this to stream lines into its log view.
+    /// Invoked on the logger's serial queue; the receiver must hop to the main actor
+    /// before touching UI state.
+    public var sink: ((Level, String) -> Void)?
+
     /// - Parameters:
     ///   - runName: short slug for this run (used in the filename).
     ///   - logDirectory: override the default `~/Library/Logs/PurpleAttic/`.
@@ -61,6 +66,7 @@ public final class AtticLogger: @unchecked Sendable {
             if let handle, let data = (line + "\n").data(using: .utf8) {
                 handle.write(data)
             }
+            sink?(level, message)
         }
     }
 

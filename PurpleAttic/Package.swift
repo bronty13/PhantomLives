@@ -16,8 +16,11 @@ let package = Package(
     ],
     products: [
         .library(name: "PurpleAtticCore", targets: ["PurpleAtticCore"]),
+        // GUI app. Built into a .app bundle by build-app.sh (SwiftUI WindowGroup needs a
+        // proper bundle to activate its UI).
+        .executable(name: "PurpleAttic", targets: ["PurpleAtticApp"]),
         // CLI is named "pattic" (not "PurpleAttic") to avoid a case-insensitive APFS
-        // collision with the future GUI product "PurpleAttic" — the exact trap PurpleDedup
+        // collision with the GUI product "PurpleAttic" — the exact trap PurpleDedup
         // documented (CLI "purplededup" vs GUI "PurpleDedup" linked to the same bin path).
         .executable(name: "pattic", targets: ["pattic"]),
     ],
@@ -28,6 +31,11 @@ let package = Package(
         .target(
             name: "PurpleAtticCore",
             path: "Sources/PurpleAtticCore"
+        ),
+        .executableTarget(
+            name: "PurpleAtticApp",
+            dependencies: ["PurpleAtticCore"],
+            path: "Sources/PurpleAtticApp"
         ),
         .executableTarget(
             name: "pattic",
