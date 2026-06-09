@@ -335,6 +335,19 @@ public actor PhotoKitDeletionService {
     /// line. Best-effort: if the file can't be opened or the schema
     /// has shifted, returns an empty set with the failure reason.
     public static func readHiddenUUIDsFromPhotosSQLite(libraryURL: URL) -> (uuids: Set<String>, diagnostic: String) {
+        queryAssetUUIDs(libraryURL: libraryURL, sql: "SELECT ZUUID FROM ZASSET WHERE ZHIDDEN = 1", label: "hidden")
+    }
+
+    /// Every asset UUID in the library (`SELECT ZUUID FROM ZASSET`) — matches the
+    /// on-disk `originals/<x>/<UUID>.<ext>` stem. Includes iCloud-only assets, so
+    /// the audit can recognise a folder file that was exported under its asset
+    /// UUID (Photos does this when an asset has no meaningful original filename,
+    /// common for some videos) even when the original isn't on this Mac.
+    public static func readAllAssetUUIDsFromPhotosSQLite(libraryURL: URL) -> (uuids: Set<String>, diagnostic: String) {
+        queryAssetUUIDs(libraryURL: libraryURL, sql: "SELECT ZUUID FROM ZASSET", label: "all")
+    }
+
+    private static func queryAssetUUIDs(libraryURL: URL, sql: String, label: String) -> (uuids: Set<String>, diagnostic: String) {
         let dbURL = libraryURL
             .appendingPathComponent("database", isDirectory: true)
             .appendingPathComponent("Photos.sqlite")
@@ -351,7 +364,6 @@ public actor PhotoKitDeletionService {
         }
         defer { sqlite3_close(db) }
         var stmt: OpaquePointer? = nil
-        let sql = "SELECT ZUUID FROM ZASSET WHERE ZHIDDEN = 1"
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
             return ([], "Photos.sqlite prepare failed (\(String(cString: sqlite3_errmsg(db))))")
         }
@@ -362,7 +374,7 @@ public actor PhotoKitDeletionService {
                 out.insert(String(cString: cstr))
             }
         }
-        return (out, "Photos.sqlite hidden=\(out.count)")
+        return (out, "Photos.sqlite \(label)=\(out.count)")
     }
 
     /// All named people (ZPERSON rows with ZFULLNAME set) in the Photos

@@ -447,6 +447,7 @@ struct Audit: AsyncParsableCommand {
         // Hidden-asset stems (read straight from Photos.sqlite) so matches that
         // live only in the Hidden album can be flagged / excluded.
         let hiddenStems = PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL: libraryURL).uuids
+        let assetUUIDs = PhotoKitDeletionService.readAllAssetUUIDsFromPhotosSQLite(libraryURL: libraryURL).uuids
 
         let database = noCache ? nil : try? Database.openDefault()
         let engine = AuditEngine(database: database)
@@ -457,6 +458,7 @@ struct Audit: AsyncParsableCommand {
             options: options,
             perceptualThreshold: perceptualThreshold,
             knownPhotoBasenames: knownBasenames.isEmpty ? nil : knownBasenames,
+            knownAssetUUIDs: assetUUIDs,
             includeHidden: !excludeHiddenPhotos,
             hiddenAssetStems: hiddenStems,
             progress: progress

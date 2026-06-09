@@ -192,6 +192,28 @@ final class AuditEngineTests: XCTestCase {
         }
     }
 
+    func testUUIDNamedFileMatchesAssetUUID() async throws {
+        // Some assets (often videos) have no original filename, so Photos exports
+        // them under the asset UUID — which is also the on-disk originals/ stem.
+        // Such a file must match even with no original-filename and no on-disk bytes.
+        let lib = try TestFixtures.makeTempDir("audit-uuid-lib")
+        let folder = try TestFixtures.makeTempDir("audit-uuid-folder")
+        defer { TestFixtures.cleanup(lib); TestFixtures.cleanup(folder) }
+        let uuid = "8DFBAE08-AA28-4B59-8FA3-8BB0C7CC647F"
+        try TestFixtures.write("UNRELATED", to: lib.appendingPathComponent("x.mov"))
+        try TestFixtures.write("RE-ENCODED", to: folder.appendingPathComponent("\(uuid).mov"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .exact, options: ScanOptions(kinds: [.all]),
+            knownAssetUUIDs: [uuid]   // case-insensitive: stored as-is, matched lowercased
+        )
+        XCTAssertEqual(result.missing.count, 0)
+        XCTAssertEqual(result.inPhotos.count, 1)
+        if case .likelyInPhotosFilename = result.inPhotos.first!.classification {} else {
+            XCTFail("expected UUID/filename match")
+        }
+    }
+
     // MARK: - Perceptual
 
     func testPerceptualReclassifiesResizedCopy() async throws {

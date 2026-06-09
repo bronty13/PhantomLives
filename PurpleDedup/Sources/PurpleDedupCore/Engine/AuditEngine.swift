@@ -159,6 +159,7 @@ public actor AuditEngine {
         options: ScanOptions = ScanOptions(),
         perceptualThreshold: Int = PerceptualClusterer.defaultThreshold,
         knownPhotoBasenames: Set<String>? = nil,
+        knownAssetUUIDs: Set<String> = [],
         includeHidden: Bool = true,
         hiddenAssetStems: Set<String> = [],
         progress: (@Sendable (ScanProgress) -> Void)? = nil
@@ -221,6 +222,10 @@ public actor AuditEngine {
         // changes (IMG_1234.HEIC → IMG_1234.jpeg), so stem matching catches it
         // where full-basename matching would not.
         let knownStems = knownPhotoBasenames.map { Set($0.map { Self.filenameStem($0) }) }
+        // Asset UUIDs (lowercased) — a folder file named with the library's
+        // internal UUID (Photos exports some assets this way) is unambiguously
+        // from the library, even with no original filename and no on-disk bytes.
+        let knownUUIDStems = Set(knownAssetUUIDs.map { $0.lowercased() })
         for (f, hex) in hashed {
             if let hex, index.hashes.contains(hex) {
                 let hm = Self.hiddenMatch(inHidden: index.hiddenHashes.contains(hex),
@@ -264,10 +269,11 @@ public actor AuditEngine {
             }
         }
 
-        // 5. Filename safety net + final missing.
+        // 5. Filename / UUID safety net + final missing.
         for (f, hex) in stillMissing where !resolved.contains(f.url) {
             let base = f.url.lastPathComponent
-            if let knownStems, knownStems.contains(Self.filenameStem(base)) {
+            let stem = Self.filenameStem(base)
+            if (knownStems?.contains(stem) ?? false) || knownUUIDStems.contains(stem) {
                 audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
                                            modificationTime: f.modificationTime,
                                            contentHashHex: hex,

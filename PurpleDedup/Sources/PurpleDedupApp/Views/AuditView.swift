@@ -317,6 +317,7 @@ struct AuditView: View {
         do {
             let known = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
             let hiddenStems = PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL: library).uuids
+            let assetUUIDs = PhotoKitDeletionService.readAllAssetUUIDsFromPhotosSQLite(libraryURL: library).uuids
             let db = try? Database.openDefault()
             let engine = AuditEngine(database: db)
             let r = try await engine.audit(
@@ -324,6 +325,7 @@ struct AuditView: View {
                 photosLibrary: library,
                 mode: matchMode,
                 knownPhotoBasenames: known.isEmpty ? nil : known,
+                knownAssetUUIDs: assetUUIDs,
                 includeHidden: includeHiddenPhotos,
                 hiddenAssetStems: hiddenStems
             ) { p in

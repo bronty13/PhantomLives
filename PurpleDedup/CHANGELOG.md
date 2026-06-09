@@ -15,6 +15,13 @@ Fixes audits reporting library photos as "missing." Two causes, both addressed:
   only signal that survives **Optimize Mac Storage**, where most full-res
   originals live in iCloud and never appear in the on-disk `originals/` folder
   the byte/perceptual matcher reads.
+- **Match files named by asset UUID.** Some assets (often videos) have no
+  original filename, so Photos exports them under the asset's UUID
+  (`8DFBAE08-…-….mov`) — which is also the on-disk `originals/<x>/<UUID>.<ext>`
+  stem. The audit now matches a folder file's stem against the full set of asset
+  UUIDs read from `Photos.sqlite` (`ZASSET.ZUUID`, includes iCloud-only assets),
+  so such a file is recognised even with no filename, no perceptual signal, and
+  no on-disk original.
 - **Optimize-Mac-Storage note.** When far fewer originals are on disk than
   PhotoKit reports assets, the audit now says so (GUI status + CLI stderr) and
   explains that iCloud-only items can only be filename-matched — pick "Download
