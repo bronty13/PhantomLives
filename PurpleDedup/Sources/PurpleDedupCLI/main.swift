@@ -446,7 +446,12 @@ struct Audit: AsyncParsableCommand {
         // Filename safety net: ask PhotoKit for the library's original filenames so
         // iCloud-optimised stubs (whose on-disk bytes differ) aren't misreported as
         // missing. Best-effort — empty when auth isn't granted.
-        let knownBasenames = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
+        // Original filenames from PhotoKit UNION Photos.sqlite (the latter also
+        // covers hidden assets, which PhotoKit omits on macOS 14+).
+        let knownPK = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
+        let knownDB = PhotoKitDeletionService.readAllOriginalFilenamesFromPhotosSQLite(libraryURL: libraryURL).filenames
+        let knownBasenames = knownPK.union(knownDB)
+        let hiddenFilenames = PhotoKitDeletionService.readHiddenOriginalFilenamesFromPhotosSQLite(libraryURL: libraryURL).filenames
         // Hidden-asset stems (read straight from Photos.sqlite) so matches that
         // live only in the Hidden album can be flagged / excluded.
         let hiddenStems = PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL: libraryURL).uuids
@@ -461,6 +466,7 @@ struct Audit: AsyncParsableCommand {
             options: options,
             perceptualThreshold: perceptualThreshold,
             knownPhotoBasenames: knownBasenames.isEmpty ? nil : knownBasenames,
+            hiddenPhotoBasenames: hiddenFilenames,
             knownAssetUUIDs: assetUUIDs,
             includeHidden: !excludeHiddenPhotos,
             hiddenAssetStems: hiddenStems,

@@ -215,6 +215,29 @@ final class AuditEngineTests: XCTestCase {
         }
     }
 
+    func testHiddenFilenameMatchIsTaggedHidden() async throws {
+        // A hidden video whose original filename is a UUID-style name (and whose
+        // bytes aren't on disk — iCloud-only). It must match by filename AND carry
+        // the Hidden tag, even though PhotoKit never surfaced the hidden asset.
+        let lib = try TestFixtures.makeTempDir("audit-hfn-lib")
+        let folder = try TestFixtures.makeTempDir("audit-hfn-folder")
+        defer { TestFixtures.cleanup(lib); TestFixtures.cleanup(folder) }
+        try TestFixtures.write("UNRELATED", to: lib.appendingPathComponent("z.jpg"))
+        let name = "8DFBAE08-AA28-4B59-8FA3-8BB0C7CC647F.mov"
+        try TestFixtures.write("VIDEOBYTES", to: folder.appendingPathComponent(name))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .exact, options: ScanOptions(kinds: [.all]),
+            knownPhotoBasenames: [name], hiddenPhotoBasenames: [name]
+        )
+        XCTAssertEqual(result.missing.count, 0)
+        XCTAssertEqual(result.inPhotos.count, 1)
+        XCTAssertEqual(result.inPhotos.first?.hiddenMatch, .hiddenOnly)
+        if case .likelyInPhotosFilename = result.inPhotos.first!.classification {} else {
+            XCTFail("expected filename match")
+        }
+    }
+
     // MARK: - Perceptual
 
     func testPerceptualReclassifiesResizedCopy() async throws {

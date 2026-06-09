@@ -163,6 +163,7 @@ public actor AuditEngine {
         options: ScanOptions = ScanOptions(),
         perceptualThreshold: Int = PerceptualClusterer.defaultThreshold,
         knownPhotoBasenames: Set<String>? = nil,
+        hiddenPhotoBasenames: Set<String> = [],
         knownAssetUUIDs: Set<String> = [],
         includeHidden: Bool = true,
         hiddenAssetStems: Set<String> = [],
@@ -227,6 +228,9 @@ public actor AuditEngine {
         // changes (IMG_1234.HEIC → IMG_1234.jpeg), so stem matching catches it
         // where full-basename matching would not.
         let knownStems = knownPhotoBasenames.map { Set($0.map { Self.filenameStem($0) }) }
+        // Stems of hidden assets' original filenames — lets a filename match be
+        // tagged as hidden even when only the name (not the bytes) is available.
+        let hiddenFilenameStems = Set(hiddenPhotoBasenames.map { Self.filenameStem($0) })
         // Asset UUIDs (lowercased) — a folder file named with the library's
         // internal UUID (Photos exports some assets this way) is unambiguously
         // from the library, even with no original filename and no on-disk bytes.
@@ -303,10 +307,12 @@ public actor AuditEngine {
             let base = f.url.lastPathComponent
             let stem = Self.filenameStem(base)
             if (knownStems?.contains(stem) ?? false) || knownUUIDStems.contains(stem) {
+                let hidden = hiddenFilenameStems.contains(stem) || hiddenStems.contains(stem.uppercased())
                 audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
                                            modificationTime: f.modificationTime,
                                            contentHashHex: hex,
-                                           classification: .likelyInPhotosFilename(basename: base)))
+                                           classification: .likelyInPhotosFilename(basename: base),
+                                           hiddenMatch: hidden ? .hiddenOnly : .none))
             } else {
                 audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
                                            modificationTime: f.modificationTime,

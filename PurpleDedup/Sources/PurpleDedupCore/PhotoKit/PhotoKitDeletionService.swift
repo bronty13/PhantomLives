@@ -347,6 +347,32 @@ public actor PhotoKitDeletionService {
         queryAssetUUIDs(libraryURL: libraryURL, sql: "SELECT ZUUID FROM ZASSET", label: "all")
     }
 
+    /// Every asset's original filename (`ZADDITIONALASSETATTRIBUTES.ZORIGINALFILENAME`).
+    /// Read straight from SQLite because PhotoKit's `PHAsset` enumeration omits
+    /// **hidden** assets on macOS 14+ (the Locked Hidden Album gate) — so the
+    /// audit's filename net would otherwise never see a hidden item's filename.
+    public static func readAllOriginalFilenamesFromPhotosSQLite(libraryURL: URL) -> (filenames: Set<String>, diagnostic: String) {
+        let r = queryAssetUUIDs(
+            libraryURL: libraryURL,
+            sql: "SELECT ZORIGINALFILENAME FROM ZADDITIONALASSETATTRIBUTES WHERE ZORIGINALFILENAME IS NOT NULL",
+            label: "filenames")
+        return (r.uuids, r.diagnostic)
+    }
+
+    /// Original filenames of **hidden** assets only — lets the audit flag a
+    /// filename match as living in the Hidden album.
+    public static func readHiddenOriginalFilenamesFromPhotosSQLite(libraryURL: URL) -> (filenames: Set<String>, diagnostic: String) {
+        let r = queryAssetUUIDs(
+            libraryURL: libraryURL,
+            sql: """
+            SELECT att.ZORIGINALFILENAME FROM ZADDITIONALASSETATTRIBUTES att \
+            JOIN ZASSET a ON att.ZASSET = a.Z_PK \
+            WHERE a.ZHIDDEN = 1 AND att.ZORIGINALFILENAME IS NOT NULL
+            """,
+            label: "hidden-filenames")
+        return (r.uuids, r.diagnostic)
+    }
+
     private static func queryAssetUUIDs(libraryURL: URL, sql: String, label: String) -> (uuids: Set<String>, diagnostic: String) {
         let dbURL = libraryURL
             .appendingPathComponent("database", isDirectory: true)

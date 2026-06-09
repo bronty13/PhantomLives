@@ -3,6 +3,25 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — match hidden assets' filenames (read from Photos.sqlite)
+
+A hidden video kept showing as missing. Root cause: the audit's filename net
+sourced names from PhotoKit (`PHAsset` enumeration), but on **macOS 14+ the
+Locked Hidden Album gate makes PhotoKit omit hidden assets entirely** — so a
+hidden item's original filename never entered the match set. (The asset's
+filename was itself a UUID-style name and differed from its `ZUUID`, so the
+UUID net didn't catch it either, and it's a video so perceptual/derivative
+matching doesn't apply.)
+
+- New `readAllOriginalFilenamesFromPhotosSQLite` / `readHiddenOriginalFilenamesFromPhotosSQLite`
+  read `ZADDITIONALASSETATTRIBUTES.ZORIGINALFILENAME` straight from
+  `Photos.sqlite` (auth-free, **includes hidden assets**). The audit now unions
+  these with PhotoKit's filenames for the safety net, and tags a filename match
+  as hidden when the name belongs to a hidden asset.
+- Verified end-to-end on the real library: the previously-missing hidden video
+  now resolves to "Same name" + the Hidden tag. Covered by
+  `testHiddenFilenameMatchIsTaggedHidden`.
+
 ## Unreleased — content matching via on-device previews (Optimize Mac Storage)
 
 Audits now find photos whose **originals live in iCloud** by their *content*,

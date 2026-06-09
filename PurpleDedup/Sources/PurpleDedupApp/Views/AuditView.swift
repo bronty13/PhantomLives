@@ -326,7 +326,12 @@ struct AuditView: View {
         let throttle = ProgressThrottle()
         storageNote = nil
         do {
-            let known = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
+            // Original filenames from PhotoKit UNION the Photos.sqlite reader —
+            // the latter includes hidden assets, which PhotoKit omits on macOS 14+.
+            let knownPK = await PhotoKitDeletionService.shared.libraryOriginalFilenames()
+            let knownDB = PhotoKitDeletionService.readAllOriginalFilenamesFromPhotosSQLite(libraryURL: library).filenames
+            let known = knownPK.union(knownDB)
+            let hiddenFilenames = PhotoKitDeletionService.readHiddenOriginalFilenamesFromPhotosSQLite(libraryURL: library).filenames
             let hiddenStems = PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL: library).uuids
             let assetUUIDs = PhotoKitDeletionService.readAllAssetUUIDsFromPhotosSQLite(libraryURL: library).uuids
             let db = try? Database.openDefault()
@@ -336,6 +341,7 @@ struct AuditView: View {
                 photosLibrary: library,
                 mode: matchMode,
                 knownPhotoBasenames: known.isEmpty ? nil : known,
+                hiddenPhotoBasenames: hiddenFilenames,
                 knownAssetUUIDs: assetUUIDs,
                 includeHidden: includeHiddenPhotos,
                 hiddenAssetStems: hiddenStems,
