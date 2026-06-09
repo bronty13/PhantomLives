@@ -41,10 +41,14 @@ public enum FreeSpaceCheck {
         if probe.path != url.path && (probe.path == "/Volumes" || probe.path == "/") {
             return nil
         }
-        if let vals = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-           let cap = vals.volumeAvailableCapacityForImportantUsage {
-            return Int64(cap)
+        // Use statfs (what `df` uses): the only figure that's reliable across APFS/HFS *and*
+        // macFUSE volumes like a mounted Cryptomator vault, where the URL
+        // volumeAvailableCapacity* resource keys come back 0/absent and falsely look full.
+        var info = statfs()
+        if statfs(probe.path, &info) == 0 {
+            return Int64(info.f_bavail) * Int64(info.f_bsize)
         }
+        // Last-resort fallback to the Foundation key (APFS/HFS only).
         if let vals = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityKey]),
            let cap = vals.volumeAvailableCapacity {
             return Int64(cap)

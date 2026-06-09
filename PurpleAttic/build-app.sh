@@ -67,6 +67,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHumanReadableCopyright</key><string>PurpleAttic. Personal use.</string>
     <key>NSPhotoLibraryUsageDescription</key><string>PurpleAttic reads your Photos library to export originals to a plain-file archive, and (when you enable it) to remove aged, un-pinned photos after they are safely archived.</string>
+    <key>NSAppleEventsUsageDescription</key><string>PurpleAttic controls Photos to download and export originals from iCloud during an archive run. Without this, osxphotos cannot fetch images that aren't already on this Mac.</string>
 </dict>
 </plist>
 PLIST

@@ -3,6 +3,24 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.6.1] — 2026-06-09
+
+Fixes to the 0.6.0 preflight, from first use.
+
+### Fixed
+- **Photos Automation could never be granted** ("nothing to grant under
+  Automation; the error never clears"). The app sent Apple Events without an
+  `NSAppleEventsUsageDescription` in its Info.plist, so macOS never showed the
+  consent prompt and never listed PurpleAttic under Automation. Added the usage
+  string (the `com.apple.security.automation.apple-events` entitlement was
+  already present for hardened runtime) — the "PurpleAttic wants to control
+  Photos" prompt now appears and the grant sticks.
+- **False low-space warning on the Cryptomator vault.** The vault is a macFUSE
+  volume, which doesn't report the `volumeAvailableCapacityForImportantUsage`
+  resource key, so free space read as 0/absent despite ample room.
+  `FreeSpaceCheck.freeBytes` now uses `statfs()` (what `df` uses), which reports
+  correctly on APFS/HFS *and* macFUSE.
+
 ## [0.6.0] — 2026-06-09
 
 Run-cleanly hardening: a permissions preflight, a "Photos Archive" subfolder on
