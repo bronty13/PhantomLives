@@ -17,6 +17,10 @@ image viewer forever.
 > behind two confirmations. The scheduler archives only — never purges. The CLI
 > never deletes.
 
+**Docs:** step-by-step usage is in **[USER_MANUAL.md](USER_MANUAL.md)** (Vortex
+first-run, the purge workflow, troubleshooting); the architecture/dev snapshot is
+in **[HANDOFF.md](HANDOFF.md)**.
+
 ## How it works
 
 ```

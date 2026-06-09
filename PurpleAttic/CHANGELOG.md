@@ -3,6 +3,16 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.5.1] — 2026-06-09
+
+Docs only.
+
+### Added
+- `HANDOFF.md` — architecture snapshot (safety model, Core/CLI/App module split,
+  data flow, topology, gotchas). Registered PurpleAttic in the root `CLAUDE.md`.
+- `USER_MANUAL.md` — Vortex first-run walkthrough, pane-by-pane reference, the
+  purge workflow, output locations, troubleshooting, and the `pattic` CLI.
+
 ## [0.5.0] — 2026-06-09
 
 Phase D: the **scheduler** — a launchd agent that runs the archive on a cadence.
