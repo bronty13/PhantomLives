@@ -32,6 +32,7 @@ public final class ExportEngine {
         case osxphotosNotFound
         case rsyncNotFound
         case invalidProfile([String])
+        case destinationUnavailable(String)
 
         public var description: String {
             switch self {
@@ -41,6 +42,8 @@ public final class ExportEngine {
                 return "rsync not found (expected at /usr/bin/rsync)."
             case .invalidProfile(let issues):
                 return "Profile has problems:\n  - " + issues.joined(separator: "\n  - ")
+            case .destinationUnavailable(let path):
+                return "Couldn't create the archive folder at \(path). Is the drive mounted and the path set correctly in Settings?"
             }
         }
     }
@@ -84,7 +87,12 @@ public final class ExportEngine {
         // 1. Export passes.
         for pass in profile.enabledPasses {
             let dest = ExportPlan.destination(profile: profile, pass: pass)
-            try? FileManager.default.createDirectory(atPath: dest, withIntermediateDirectories: true)
+            do {
+                try FileManager.default.createDirectory(atPath: dest, withIntermediateDirectories: true)
+            } catch {
+                logger.error("Cannot create export folder \(dest): \(error.localizedDescription)")
+                throw EngineError.destinationUnavailable(dest)
+            }
             let args = ExportPlan.arguments(profile: profile, pass: pass, dryRun: dryRun)
             logger.info("→ Export (\(pass.label)): \(ExportPlan.shellCommand(osxphotos: osxphotos, profile: profile, pass: pass, dryRun: dryRun))")
             let t0 = Date()

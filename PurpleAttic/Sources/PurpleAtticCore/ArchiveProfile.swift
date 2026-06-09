@@ -96,8 +96,19 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// archival (purge has additional, stricter gates checked at purge time).
     public func validationIssues() -> [String] {
         var issues: [String] = []
-        if primaryDestination.trimmingCharacters(in: .whitespaces).isEmpty {
+        let primary = primaryDestination.trimmingCharacters(in: .whitespaces)
+        if primary.isEmpty {
             issues.append("Primary destination is not set.")
+        } else if primary.contains("CHANGE_ME") {
+            issues.append("Primary destination is still the placeholder — set it to your archive drive in Settings.")
+        } else {
+            // The leaf folder is created on demand, but its parent (the drive/folder) must
+            // already exist. Catches "/Volumes/NotMounted/…" before osxphotos sees a bad path.
+            let parent = (primary as NSString).deletingLastPathComponent
+            var isDir: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: parent, isDirectory: &isDir) || !isDir.boolValue {
+                issues.append("Primary destination isn’t available (is the drive mounted?): \(parent)")
+            }
         }
         if !keepHEIC && !keepJPEG {
             issues.append("No export format selected — enable HEIC originals and/or JPEG.")
