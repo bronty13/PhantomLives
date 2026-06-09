@@ -3,6 +3,38 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.4.0] — 2026-06-09
+
+Phase C: the **guarded purge** — wired but gated behind `purgeEnabled` (default
+OFF) and multiple safety checks. Removes aged, un-pinned photos from Photos
+*only* after they're verified in the archive.
+
+### Added
+- **`PhotoMetadataQuery`** — reads candidate metadata via `osxphotos query
+  --to-date <cutoff> --json` (osxphotos is the source because it reads
+  **keywords**, which PhotoKit can't). Decodes uuid/date/favorite/albums/
+  keywords/original_filename/original_filesize/ismissing/intrash.
+- **`ArchiveIndex`** — filename → byte-size index of an archive's `originals/`
+  tree. Verification matches on **filename AND exact size**, independent of the
+  osxphotos folder template.
+- **`PurgePlanner`** — applies `RetentionPolicy` to the candidates and verifies
+  each against the primary + mirrors. A photo is **deletable only when present +
+  size-matched in the primary AND ≥1 mirror** (the ≥2-copy gate). Skips trashed
+  and unparseable-date records. Pure `plan(...)` is unit-tested.
+- **`PhotoKitPurger`** (app target only — never Core/CLI) — the sole deletion
+  path: maps osxphotos UUIDs → `PHAsset`s and calls `deleteAssets`, which shows
+  macOS's own confirmation. Deletions go to Recently Deleted (30 days).
+- **Purge pane** — "Preview Eligible Photos" (read-only: eligible / verified /
+  unverified counts, freed space, date range, a sample list) and a guarded
+  "Delete N Verified Photos…" button. Delete requires: purge enabled, verified
+  candidates, an in-app confirmation, and the macOS confirmation.
+- Tests: 31 total (+9 — eligibility, ≥2-copy verification, size-mismatch,
+  pinning, trashed/undated skips, index matching).
+
+### Safety
+- Purge ships **OFF**. The CLI still has no purge path at all. Unverified
+  candidates (e.g. originals not on this Mac) are never deleted.
+
 ## [0.3.0] — 2026-06-09
 
 Phase B hardening: the **previews-only library guard** and **Cryptomator vault

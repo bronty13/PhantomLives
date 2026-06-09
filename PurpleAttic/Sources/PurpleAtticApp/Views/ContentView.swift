@@ -82,7 +82,7 @@ struct ContentView: View {
         case .run: RunView()
         case .profile: ProfileSettingsView(store: appState.store)
         case .backup: BackupSettingsView(store: appState.store)
-        case .purge: PurgeSettingsView(store: appState.store)
+        case .purge: PurgeSettingsView()
         }
     }
 }

@@ -62,4 +62,25 @@ public enum ProcessRunner {
         process.waitUntilExit()
         return Result(exitCode: process.terminationStatus, timedOut: false)
     }
+
+    /// Run a process and capture all of stdout (and stderr separately). Use for commands
+    /// whose entire output is the payload (e.g. `osxphotos query --json`).
+    public static func capture(
+        executable: String,
+        arguments: [String]
+    ) throws -> (exitCode: Int32, stdout: Data, stderr: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+        try process.run()
+        // Read fully before waiting to avoid pipe-buffer deadlock on large output.
+        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, outData, String(data: errData, encoding: .utf8) ?? "")
+    }
 }

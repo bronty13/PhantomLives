@@ -41,6 +41,13 @@ final class AppState: ObservableObject {
     @Published var isCheckingLibrary = false
     @Published var vaultStatus: VaultStatus = .notConfigured
 
+    // Purge (Phase C) — all read-only until the user both enables purge and clicks through
+    // the in-app + macOS confirmations.
+    @Published var purgePlan: PurgePlan? = nil
+    @Published var isPlanningPurge = false
+    @Published var isPurging = false
+    @Published var purgeMessage: String? = nil
+
     /// Cap the in-memory log so a long run can't balloon memory; the full log is on disk.
     private let maxLogLines = 5000
 
@@ -119,6 +126,59 @@ final class AppState: ObservableObject {
                 DispatchQueue.main.async {
                     self.isRunning = false
                     self.runError = message
+                }
+            }
+        }
+    }
+
+    // MARK: - Purge (Phase C)
+
+    /// Read-only: compute which photos are purge-eligible and which are verified-in-archive.
+    /// Always safe to call; deletes nothing.
+    func previewPurge() {
+        guard !isPlanningPurge, !isPurging else { return }
+        guard let osx = Tooling.osxphotos else { purgeMessage = "osxphotos not found."; return }
+        store.save()
+        let profile = store.profile
+        isPlanningPurge = true
+        purgeMessage = nil
+        purgePlan = nil
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let plan = try PurgePlanner.compute(osxphotos: osx, profile: profile, now: Date())
+                DispatchQueue.main.async { self?.purgePlan = plan; self?.isPlanningPurge = false }
+            } catch {
+                let message = (error as? PhotoMetadataQuery.QueryError)?.description ?? error.localizedDescription
+                DispatchQueue.main.async { self?.purgeMessage = message; self?.isPlanningPurge = false }
+            }
+        }
+    }
+
+    /// Delete the verified-in-≥2-copies subset via PhotoKit (which shows the macOS
+    /// confirmation). Refuses unless purge is enabled in Settings.
+    func executePurge() {
+        guard store.profile.purgeEnabled else {
+            purgeMessage = "Purge is disabled. Enable it in Settings → Purge first."
+            return
+        }
+        guard let plan = purgePlan, !plan.verified.isEmpty, !isPurging else { return }
+        let uuids = plan.verified.map { $0.uuid }
+        isPurging = true
+        purgeMessage = nil
+        PhotoKitPurger.deleteAssets(uuids: uuids) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isPurging = false
+                switch result {
+                case .success(let outcome):
+                    var msg = "Deleted \(outcome.deleted) photo(s) — now in Photos → Recently Deleted for 30 days."
+                    if outcome.resolved < outcome.requested {
+                        msg += " (\(outcome.requested - outcome.resolved) couldn't be matched in Photos and were left untouched.)"
+                    }
+                    self.purgeMessage = msg
+                    self.purgePlan = nil
+                case .failure(let error):
+                    self.purgeMessage = error.localizedDescription
                 }
             }
         }

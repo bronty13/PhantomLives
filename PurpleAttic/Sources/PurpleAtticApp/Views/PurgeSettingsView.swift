@@ -1,13 +1,17 @@
 import SwiftUI
 import PurpleAtticCore
 
-/// The guarded purge pane. In this release the delete ENGINE isn't wired yet — purge runs
-/// only once Phase C lands. This pane records intent (the `purgeEnabled` flag) behind an
-/// affirmative confirmation and lays out exactly what the future purge will and won't do,
-/// so the safety model is visible long before any photo can be deleted.
+/// The guarded purge pane. The delete engine is now wired, but every gate must pass:
+/// `purgeEnabled` ON, ≥1 mirror, the candidate is purge-eligible per the retention rule,
+/// AND its file is verified present in the primary + a mirror. Even then the user clicks
+/// through an in-app confirmation and macOS's own delete dialog.
 struct PurgeSettingsView: View {
-    @ObservedObject var store: SettingsStore
+    @EnvironmentObject var appState: AppState
     @State private var confirmEnable = false
+    @State private var confirmDelete = false
+
+    private var store: SettingsStore { appState.store }
+    private var profile: ArchiveProfile { store.profile }
 
     var body: some View {
         ScrollView {
@@ -17,61 +21,156 @@ struct PurgeSettingsView: View {
                     Text("Purge").font(.title3.weight(.semibold))
                 }
 
-                Card(title: "Status") {
-                    Label("Purge is not active in this release.", systemImage: "info.circle")
-                        .font(.callout)
-                    Text("Archiving runs and is safe to use now. The delete step — removing aged, un-pinned photos from Photos — ships in a later version. The toggle below records your intent; nothing is ever deleted until the purge engine is present AND every safety gate passes.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-
-                Card(title: "Intent") {
-                    Toggle("Enable purge (when available)", isOn: Binding(
-                        get: { store.profile.purgeEnabled },
-                        set: { newValue in
-                            if newValue {
-                                confirmEnable = true        // require explicit confirmation to turn ON
-                            } else {
-                                store.profile.purgeEnabled = false
-                                store.save()
-                            }
-                        }))
-                    if store.profile.mirrorDestinations.isEmpty {
-                        Label("Add at least one mirror in Settings first — purge requires a verified second on-disk copy.",
-                              systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption).foregroundStyle(.orange)
-                    }
-                }
-
-                Card(title: "What purge will do (when it ships)") {
-                    rule("Only touches photos OLDER than \(store.profile.retention.keepWindowDays) days.")
-                    rule("Never touches anything in a keep album (\(list(store.profile.retention.keepAlbumNames))) or with a keep keyword (\(list(store.profile.retention.keepKeywords)))\(store.profile.retention.keepFavorites ? ", or Favorites" : "").")
-                    rule("Requires each photo present + matching in ≥2 on-disk copies before deleting.")
-                    rule("Always previews (dry-run) and uses macOS's own delete confirmation.")
-                    rule("Deletions land in Photos’ Recently Deleted for 30 days.")
-                }
+                intentCard
+                previewCard
+                if let msg = appState.purgeMessage { messageBanner(msg) }
+                rulesCard
             }
             .padding(20)
         }
-        .alert("Enable purge intent?", isPresented: $confirmEnable) {
+        .alert("Enable purge?", isPresented: $confirmEnable) {
             Button("Cancel", role: .cancel) { }
-            Button("Enable", role: .destructive) {
-                store.profile.purgeEnabled = true
-                store.save()
-            }
+            Button("Enable", role: .destructive) { store.profile.purgeEnabled = true; store.save() }
         } message: {
-            Text("This only records that you intend to allow purging once the feature ships. No photo can be deleted yet. You can turn it off any time.")
+            Text("Turning this on allows PurpleAttic to delete aged, un-pinned photos that are verified in your archive — after you preview them and confirm again (and macOS asks once more). You can turn it off any time.")
+        }
+        .alert("Delete \(appState.purgePlan?.verified.count ?? 0) photos from Photos?", isPresented: $confirmDelete) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) { appState.executePurge() }
+        } message: {
+            Text("These are verified present in your primary archive and a mirror. They’ll move to Photos → Recently Deleted for 30 days, and disappear from all your devices. macOS will ask you to confirm once more.")
         }
     }
 
+    // MARK: Intent
+
+    private var intentCard: some View {
+        Card(title: "Enable") {
+            Toggle("Allow purge", isOn: Binding(
+                get: { profile.purgeEnabled },
+                set: { newValue in
+                    if newValue { confirmEnable = true }
+                    else { store.profile.purgeEnabled = false; store.save() }
+                }))
+            Text(profile.purgeEnabled
+                 ? "Purge is ENABLED. Deletion still requires verified candidates + two confirmations."
+                 : "Purge is OFF. Preview is always available; nothing can be deleted while this is off.")
+                .font(.caption).foregroundStyle(profile.purgeEnabled ? .orange : .secondary)
+            if profile.mirrorDestinations.isEmpty {
+                Label("Add a mirror in Settings — verification (and therefore deletion) requires a second on-disk copy.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
+    }
+
+    // MARK: Preview + delete
+
+    private var previewCard: some View {
+        Card(title: "Preview & delete") {
+            HStack {
+                Button {
+                    appState.previewPurge()
+                } label: { Label("Preview Eligible Photos", systemImage: "eye") }
+                    .disabled(appState.isPlanningPurge || appState.isPurging || appState.readiness.osxphotos == nil)
+                if appState.isPlanningPurge {
+                    ProgressView().controlSize(.small)
+                    Text("Scanning library + archive…").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            if let plan = appState.purgePlan {
+                planSummary(plan)
+            } else if !appState.isPlanningPurge {
+                Text("Preview reads your library (photos older than \(profile.retention.keepWindowDays) days, not pinned) and checks each against the archive. Nothing is deleted.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func planSummary(_ plan: PurgePlan) -> some View {
+        Divider()
+        VStack(alignment: .leading, spacing: 6) {
+            statRow("Eligible (old + not pinned)", "\(plan.candidates.count)", .primary)
+            statRow("Verified in ≥2 copies — deletable", "\(plan.verified.count)", .green)
+            statRow("Unverified — will be skipped", "\(plan.unverified.count)", plan.unverified.isEmpty ? .secondary : .orange)
+            statRow("Space freed in Photos/iCloud", ByteCountFormatter.string(fromByteCount: Int64(plan.verifiedBytes), countStyle: .file), .secondary)
+            if let range = plan.dateRange {
+                statRow("Date range", "\(short(range.earliest)) – \(short(range.latest))", .secondary)
+            }
+        }
+        .font(.callout)
+
+        if !plan.unverified.isEmpty {
+            Text("Unverified photos are NOT in both archive copies yet (often because their originals aren’t on this Mac, or this Mac’s archive is incomplete). They are never deleted — run the archive on the Mac with originals first.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+
+        if !plan.verified.isEmpty {
+            DisclosureGroup("Show \(min(plan.verified.count, 25)) of \(plan.verified.count) deletable") {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(plan.verified.prefix(25)) { c in
+                        HStack {
+                            Text(c.filename).font(.system(.caption, design: .monospaced)).lineLimit(1)
+                            Spacer()
+                            Text(short(c.date)).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+            .font(.caption)
+
+            Button(role: .destructive) {
+                confirmDelete = true
+            } label: {
+                Label("Delete \(plan.verified.count) Verified Photos…", systemImage: "trash")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .disabled(!profile.purgeEnabled || appState.isPurging || plan.verified.isEmpty)
+            if !profile.purgeEnabled {
+                Text("Enable purge above to delete.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func messageBanner(_ msg: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle").foregroundStyle(.secondary)
+            Text(msg).font(.callout)
+            Spacer()
+        }
+        .padding(12)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var rulesCard: some View {
+        Card(title: "Safety gates (all must pass)") {
+            rule("Photo is OLDER than \(profile.retention.keepWindowDays) days.")
+            rule("Not in a keep album (\(list(profile.retention.keepAlbumNames))) or with a keep keyword (\(list(profile.retention.keepKeywords)))\(profile.retention.keepFavorites ? ", and not a Favorite" : "").")
+            rule("File present + size-matched in the primary archive AND a mirror.")
+            rule("Purge enabled here + you confirm + macOS confirms.")
+            rule("Deletions sit in Photos’ Recently Deleted for 30 days.")
+        }
+    }
+
+    // MARK: Helpers
+
+    private func statRow(_ label: String, _ value: String, _ tint: Color) -> some View {
+        HStack { Text(label).foregroundStyle(.secondary); Spacer(); Text(value).foregroundStyle(tint).bold() }
+    }
     private func rule(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "checkmark.shield").foregroundStyle(.green).font(.caption)
-            Text(text).font(.callout)
-            Spacer()
+            Text(text).font(.callout); Spacer()
         }
     }
-
-    private func list(_ items: [String]) -> String {
-        items.isEmpty ? "none" : items.joined(separator: ", ")
+    private func list(_ items: [String]) -> String { items.isEmpty ? "none" : items.joined(separator: ", ") }
+    private func short(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none
+        return f.string(from: d)
     }
 }
