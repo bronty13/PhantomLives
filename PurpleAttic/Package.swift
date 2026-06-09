@@ -30,7 +30,11 @@ let package = Package(
     targets: [
         .target(
             name: "PurpleAtticCore",
-            path: "Sources/PurpleAtticCore"
+            path: "Sources/PurpleAtticCore",
+            linkerSettings: [
+                // LibraryInspector reads the Photos database via the system SQLite.
+                .linkedLibrary("sqlite3"),
+            ]
         ),
         .executableTarget(
             name: "PurpleAtticApp",

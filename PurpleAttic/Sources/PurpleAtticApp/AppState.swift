@@ -37,6 +37,9 @@ final class AppState: ObservableObject {
     @Published var lastSummaryText: String? = nil
     @Published var runError: String? = nil
     @Published var readiness: Tooling.Readiness = Tooling.readiness()
+    @Published var libraryInspection: LibraryInspection? = nil
+    @Published var isCheckingLibrary = false
+    @Published var vaultStatus: VaultStatus = .notConfigured
 
     /// Cap the in-memory log so a long run can't balloon memory; the full log is on disk.
     private let maxLogLines = 5000
@@ -49,10 +52,31 @@ final class AppState: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
         BackupService.runOnLaunchIfDue(settingsStore: store)
+        refreshVaultStatus()
     }
 
     func refreshReadiness() {
         readiness = Tooling.readiness()
+    }
+
+    /// Re-check whether the configured Cryptomator vault is currently unlocked.
+    func refreshVaultStatus() {
+        vaultStatus = VaultStatus.check(path: store.profile.cloudVaultPath)
+    }
+
+    /// Inspect the Photos library off-main (it walks the originals tree) and publish the
+    /// result so the UI can warn about an optimized / previews-only library before a run.
+    func checkLibrary() {
+        guard !isCheckingLibrary else { return }
+        isCheckingLibrary = true
+        let path = store.profile.photosLibraryPath
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = LibraryInspector.inspect(libraryPath: path)
+            DispatchQueue.main.async {
+                self?.libraryInspection = result
+                self?.isCheckingLibrary = false
+            }
+        }
     }
 
     /// Kick off an archival run. `dryRun` plans only (osxphotos --dry-run; no mirror/verify).

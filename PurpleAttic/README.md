@@ -10,9 +10,10 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.2.0 — engine + `pattic` CLI + the `PurpleAttic.app` GUI (the safe,
-> non-destructive half).** The guarded purge stage is shipped *disabled*; no
-> deletion engine exists yet. Neither the CLI nor the GUI deletes from Photos.
+> **Status: 0.3.0 — engine + `pattic` CLI + the `PurpleAttic.app` GUI (the safe,
+> non-destructive half), with a previews-only library guard and Cryptomator
+> vault status.** The guarded purge stage is shipped *disabled*; no deletion
+> engine exists yet. Neither the CLI nor the GUI deletes from Photos.
 
 ## How it works
 
@@ -106,6 +107,7 @@ Profiles live at `~/Library/Application Support/PurpleAttic/profile.json`
 - [x] SwiftUI GUI: sidebar, settings, run dashboard, live log.
 - [x] Launch-time backup + Settings → Backup UI (PhantomLives standard).
 - [x] `build-app.sh` / `install.sh` / icon bundle.
-- [ ] Cryptomator vault auto-detect + unlock status in the UI.
+- [x] Previews-only / Optimize-Storage library guard (warns + gates real runs).
+- [x] Cryptomator vault unlock status in the UI.
 - [ ] Guarded PhotoKit purge (reuses PurpleDedup's deletion service), default OFF.
 - [ ] launchd scheduler: nightly archive, monthly reviewed purge.

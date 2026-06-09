@@ -71,6 +71,14 @@ public final class ExportEngine {
         logger.info("Primary destination: \(profile.primaryDestination)")
         logger.info("Formats: \(profile.enabledPasses.map { $0.label }.joined(separator: ", "))")
 
+        // Completeness guard: warn loudly if the library looks optimized (originals only in
+        // iCloud) and we're not downloading them — the archive would be incomplete.
+        let inspection = LibraryInspector.inspect(libraryPath: profile.photosLibraryPath)
+        logger.info("Library: \(inspection.summary)")
+        if inspection.optimizeStorageLikely && !profile.downloadMissingFromICloud {
+            logger.warn("INCOMPLETE-ARCHIVE RISK: most originals are not on disk. Run on the Mac set to \"Download Originals,\" or enable downloadMissingFromICloud. Continuing with the local subset only.")
+        }
+
         var steps: [StepResult] = []
 
         // 1. Export passes.

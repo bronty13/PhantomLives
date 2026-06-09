@@ -3,6 +3,27 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.3.0] — 2026-06-09
+
+Phase B hardening: the **previews-only library guard** and **Cryptomator vault
+unlock status**. Still no deletion engine.
+
+### Added
+- **`LibraryInspector`** — detects whether a Photos library is in "Optimize Mac
+  Storage" mode (originals only in iCloud). Counts master files under
+  `<library>/originals/` and reads `SELECT COUNT(*) FROM ZASSET` from the live
+  `Photos.sqlite` (opened read-only + immutable). Flags the library when <90% of
+  originals are on disk. Pure threshold (`isLikelyOptimized`) is unit-tested;
+  reads degrade gracefully to "unreadable" without Full Disk Access.
+  - The Archive pane shows a live status line ("⚠︎ Optimize Storage likely — X
+    of Y originals on disk…") with a Recheck button, and a **real run on an
+    optimized library now requires an explicit "Run Anyway" confirmation** (dry
+    runs are unaffected). The engine logs the same INCOMPLETE-ARCHIVE warning.
+- **`VaultStatus`** — reports whether the Cryptomator vault is `notConfigured` /
+  `notMounted` / `ready` (mounted + writable). Settings shows a live indicator
+  next to the vault path so you know whether the 3rd copy will run.
+- Tests: 22 total (+8 — library threshold, path resolution, vault states).
+
 ## [0.2.0] — 2026-06-08
 
 Phase B: the **SwiftUI GUI** wrapping `PurpleAtticCore`, plus the app bundle.

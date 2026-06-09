@@ -70,7 +70,29 @@ struct ProfileSettingsView: View {
                       path: Binding(get: { store.profile.cloudVaultPath ?? "" },
                                     set: { store.profile.cloudVaultPath = $0.isEmpty ? nil : $0 }),
                       placeholder: "/Volumes/PhotoVault (unlocked Cryptomator drive)")
+            vaultStatusLine
         }
+    }
+
+    @ViewBuilder
+    private var vaultStatusLine: some View {
+        let status = VaultStatus.check(path: store.profile.cloudVaultPath)
+        let (icon, tint): (String, Color) = {
+            switch status {
+            case .ready: return ("lock.open.fill", .green)
+            case .notMounted: return ("lock.fill", .orange)
+            case .notConfigured: return ("minus.circle", .secondary)
+            }
+        }()
+        HStack(spacing: 5) {
+            Image(systemName: icon).foregroundStyle(tint)
+            Text("Vault: \(status.label)").foregroundStyle(.secondary)
+            if status == .notMounted {
+                Text("— unlock it in Cryptomator before a run, or the cloud copy is skipped (and caught up next run).")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
     }
 
     private var formatsCard: some View {
