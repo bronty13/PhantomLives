@@ -394,6 +394,9 @@ struct Audit: AsyncParsableCommand {
     @Flag(name: [.customLong("exclude-hidden-photos")], help: "Exclude hidden Photos items from the comparison. By default hidden items ARE compared, and matches that are hidden are flagged in the report.")
     var excludeHiddenPhotos: Bool = false
 
+    @Flag(name: [.customLong("no-derivatives")], help: "Don't match against on-device preview derivatives. By default the audit also matches photos whose originals are in iCloud (Optimize Mac Storage) using their on-device preview.")
+    var noDerivatives: Bool = false
+
     @Flag(name: [.customLong("import-missing")], help: "After auditing, import every missing file into Photos (copies originals, never moves).")
     var importMissing: Bool = false
 
@@ -461,6 +464,7 @@ struct Audit: AsyncParsableCommand {
             knownAssetUUIDs: assetUUIDs,
             includeHidden: !excludeHiddenPhotos,
             hiddenAssetStems: hiddenStems,
+            matchDerivatives: !noDerivatives,
             progress: progress
         )
         if !isQuiet { FileHandle.standardError.write(Data("\n".utf8)) }

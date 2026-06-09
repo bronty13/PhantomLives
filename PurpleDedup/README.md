@@ -19,7 +19,11 @@ What works today:
   "Imported by PurpleDedup" album). Matching is **perceptual by default**
   (SHA-1 exact OR pHash/dHash within threshold, so re-encoded copies count),
   with an exact-only mode and a same-filename safety net for iCloud-optimised
-  stubs. **Hidden** Photos items are compared too: a match that lives only in
+  stubs. Under **Optimize Mac Storage** (originals in iCloud), it also matches
+  against each asset's on-device **preview derivative** by content — tagging
+  those "In Photos (preview)" — so photos are found even when their full
+  original isn't on this Mac (toggle: "Match on-device previews" /
+  `--no-derivatives`). **Hidden** Photos items are compared too: a match that lives only in
   the Hidden album gets a pink "Hidden" tag (and one present both visibly and
   hidden gets an "Also Hidden" tag) so you can find them — toggle off with the
   "Include hidden Photos items" checkbox / `--exclude-hidden-photos`.

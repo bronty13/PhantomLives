@@ -77,6 +77,9 @@ struct AuditRow: View {
         switch file.classification {
         case .inPhotosExact:
             badge("In Photos", systemImage: "checkmark.seal.fill", color: .purple)
+        case .inPhotosPreview(let d):
+            badge("In Photos (preview)", systemImage: "icloud.fill", color: .green)
+                .help("Matched your library's on-device preview (distance \(d)). The full original is in iCloud, not on this Mac.")
         case .likelyInPhotosPerceptual(let d):
             badge("Likely · d=\(d)", systemImage: "photo.on.rectangle.angled", color: .indigo)
                 .help("A visually similar photo is already in your library (Hamming distance \(d)).")

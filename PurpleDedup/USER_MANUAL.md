@@ -55,10 +55,17 @@ lets you import the missing ones.
      Hidden album, and gives any match that lives *only* in Hidden a pink
      **Hidden** tag so you can find it. Turn it off to treat hidden-only
      matches as missing.
+   - **Match on-device previews** (default on): under iCloud "Optimize Mac
+     Storage", most full originals aren't on this Mac, but Photos keeps a small
+     preview of each. This matches your folder photos against those previews by
+     *content*, so a photo is found even when its original is in iCloud —
+     tagged **In Photos (preview)**. The first audit of a large library takes a
+     bit longer while previews are hashed; later audits are fast (cached).
 4. Click **Audit**. The results list shows every file with a status badge:
    **In Photos** (exact), **Likely · d=N** (perceptual match, with distance),
-   **Same name** (filename matches a library original — likely an
-   iCloud-optimised copy), or **Not in Photos**. Hidden items get an extra tag:
+   **In Photos (preview)** (matched your library's on-device preview — the
+   original is in iCloud), **Same name** (filename matches a library original —
+   likely an iCloud-optimised copy), or **Not in Photos**. Hidden items get an extra tag:
    a pink **Hidden** when the match lives *only* in your Hidden album, or an
    indigo **Also Hidden** when the same item is in Photos both normally and
    hidden.

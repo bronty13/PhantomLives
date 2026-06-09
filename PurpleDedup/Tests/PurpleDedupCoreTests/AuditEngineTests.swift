@@ -14,6 +14,7 @@ final class AuditEngineTests: XCTestCase {
     private func classification(_ f: AuditEngine.AuditedFile) -> String {
         switch f.classification {
         case .inPhotosExact: return "exact"
+        case .inPhotosPreview: return "preview"
         case .likelyInPhotosPerceptual: return "perceptual"
         case .likelyInPhotosFilename: return "filename"
         case .missing: return "missing"
@@ -248,6 +249,64 @@ final class AuditEngineTests: XCTestCase {
         XCTAssertEqual(result.missing.count, 1, "Exact mode must not perceptual-match a resized copy")
     }
 
+    // MARK: - Derivatives (Optimize Mac Storage)
+
+    func testDerivativeMatchFindsICloudOnlyPhoto() async throws {
+        // iCloud-only asset: NO original on disk, but a preview derivative exists.
+        let lib = try makePhotosLibrary("audit-deriv")
+        let folder = try TestFixtures.makeTempDir("audit-deriv-folder")
+        defer { TestFixtures.cleanup(lib.deletingLastPathComponent()); TestFixtures.cleanup(folder) }
+
+        let uuid = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+        try writeJPEG(gradient(side: 256),
+                      at: lib.appendingPathComponent("resources/derivatives/A/\(uuid)_1_105_c.jpeg"))
+        // Folder copy: same image resized (mimics a Photos export), unrelated name
+        // so only the derivative *content* can match it.
+        try writeJPEG(gradient(side: 384), at: folder.appendingPathComponent("exported.jpg"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .perceptual, options: ScanOptions(kinds: [.photo])
+        )
+        XCTAssertEqual(result.inPhotos.count, 1)
+        XCTAssertEqual(classification(result.inPhotos.first!), "preview",
+                       "iCloud-only photo should match via its on-device preview")
+    }
+
+    func testDerivativesOffLeavesICloudOnlyMissing() async throws {
+        let lib = try makePhotosLibrary("audit-derivoff")
+        let folder = try TestFixtures.makeTempDir("audit-derivoff-folder")
+        defer { TestFixtures.cleanup(lib.deletingLastPathComponent()); TestFixtures.cleanup(folder) }
+        let uuid = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+        try writeJPEG(gradient(side: 256),
+                      at: lib.appendingPathComponent("resources/derivatives/A/\(uuid)_1_105_c.jpeg"))
+        try writeJPEG(gradient(side: 384), at: folder.appendingPathComponent("exported.jpg"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .perceptual, options: ScanOptions(kinds: [.photo]),
+            matchDerivatives: false
+        )
+        XCTAssertEqual(result.missing.count, 1, "with derivatives off, an iCloud-only photo is missing")
+    }
+
+    func testDerivativeSkippedWhenOriginalOnDisk() async throws {
+        // When the original IS on disk, the asset is matched as an original
+        // (perceptual), NOT as a preview — the derivative is skipped.
+        let lib = try makePhotosLibrary("audit-derivskip")
+        let folder = try TestFixtures.makeTempDir("audit-derivskip-folder")
+        defer { TestFixtures.cleanup(lib.deletingLastPathComponent()); TestFixtures.cleanup(folder) }
+        let uuid = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+        try writeJPEG(gradient(side: 512), at: lib.appendingPathComponent("originals/A/\(uuid).jpeg"))
+        try writeJPEG(gradient(side: 256), at: lib.appendingPathComponent("resources/derivatives/A/\(uuid)_1_105_c.jpeg"))
+        try writeJPEG(gradient(side: 384), at: folder.appendingPathComponent("exported.jpg"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .perceptual, options: ScanOptions(kinds: [.photo])
+        )
+        XCTAssertEqual(result.inPhotos.count, 1)
+        XCTAssertEqual(classification(result.inPhotos.first!), "perceptual",
+                       "on-disk original should win over its derivative")
+    }
+
     // MARK: - Cache
 
     func testCacheSecondRunIdentical() async throws {
@@ -312,12 +371,33 @@ final class AuditEngineTests: XCTestCase {
 
     @discardableResult
     private func writePNG(_ image: CGImage, at url: URL) throws -> URL {
+        try write(image, at: url, type: UTType.png)
+    }
+
+    @discardableResult
+    private func writeJPEG(_ image: CGImage, at url: URL) throws -> URL {
+        try write(image, at: url, type: UTType.jpeg)
+    }
+
+    @discardableResult
+    private func write(_ image: CGImage, at url: URL, type: UTType) throws -> URL {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil) else {
             throw NSError(domain: "AuditEngineTests", code: 1)
         }
         CGImageDestinationAddImage(dest, image, nil)
         guard CGImageDestinationFinalize(dest) else { throw NSError(domain: "AuditEngineTests", code: 2) }
         return url
+    }
+
+    /// Build a temp `.photoslibrary` with the given originals + derivatives.
+    /// `originals`/`derivatives` are (relativePathUnderFolder, CGImage).
+    private func makePhotosLibrary(_ label: String) throws -> URL {
+        let root = try TestFixtures.makeTempDir(label)
+        let lib = root.appendingPathComponent("Test.photoslibrary", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: lib.appendingPathComponent("originals/0", isDirectory: true),
+            withIntermediateDirectories: true)
+        return lib
     }
 }

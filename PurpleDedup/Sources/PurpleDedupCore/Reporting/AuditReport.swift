@@ -43,6 +43,7 @@ public struct AuditReport: Codable, Sendable {
             var distance: Int?
             switch f.classification {
             case .inPhotosExact:                      kind = "in_photos_exact"
+            case .inPhotosPreview(let d):             kind = "in_photos_preview"; distance = d
             case .likelyInPhotosPerceptual(let d):    kind = "likely_in_photos_perceptual"; distance = d
             case .likelyInPhotosFilename:             kind = "likely_in_photos_filename"
             case .missing:                            kind = "missing"

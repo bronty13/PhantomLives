@@ -47,6 +47,7 @@ final class SettingsStore: ObservableObject {
         d.set(settings.lastAuditLibraryPath, forKey: Self.key("lastAuditLibraryPath"))
         d.set(settings.auditMatchMode, forKey: Self.key("auditMatchMode"))
         d.set(settings.auditIncludeHiddenPhotos, forKey: Self.key("auditIncludeHiddenPhotos"))
+        d.set(settings.auditMatchDerivatives, forKey: Self.key("auditMatchDerivatives"))
         // Encode the filter map as JSON — UserDefaults can't store
         // `PhotoLibraryFilter` directly. Empty map writes nil, so a future
         // load reads back an empty dict cleanly.
@@ -97,6 +98,9 @@ final class SettingsStore: ObservableObject {
         if let m = d.string(forKey: key("auditMatchMode")) { s.auditMatchMode = m }
         if d.object(forKey: key("auditIncludeHiddenPhotos")) != nil {
             s.auditIncludeHiddenPhotos = d.bool(forKey: key("auditIncludeHiddenPhotos"))
+        }
+        if d.object(forKey: key("auditMatchDerivatives")) != nil {
+            s.auditMatchDerivatives = d.bool(forKey: key("auditMatchDerivatives"))
         }
         if let data = d.data(forKey: key("photoLibraryFilters")),
            let decoded = try? JSONDecoder().decode([String: PhotoLibraryFilter].self, from: data) {
@@ -170,6 +174,10 @@ struct AppSettings: Equatable {
     /// When true (default), the audit compares against hidden Photos items too
     /// and flags matches that are hidden.
     var auditIncludeHiddenPhotos: Bool = true
+    /// When true (default), the audit also matches against on-device preview
+    /// derivatives, so photos whose originals are in iCloud (Optimize Mac
+    /// Storage) are found by content rather than only by filename.
+    var auditMatchDerivatives: Bool = true
 
     /// Per-Photos-library scan filters, keyed by absolute path string. When
     /// a `.photoslibrary` source has an entry here, the scan only walks the

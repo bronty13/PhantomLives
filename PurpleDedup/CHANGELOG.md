@@ -3,6 +3,28 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — content matching via on-device previews (Optimize Mac Storage)
+
+Audits now find photos whose **originals live in iCloud** by their *content*,
+not just their filename. Under Optimize Mac Storage almost no full-res originals
+are on this Mac (here: 1,515 of 78,365), but Photos keeps a per-asset preview
+derivative locally (~53,749) — a faithful pHash proxy (a full original and its
+1024px preview hash to **distance 0**, validated on the real library).
+
+- The perceptual pass now also indexes `resources/derivatives/<shard>/<UUID>_1_*_c.jpeg`
+  — one (largest) preview per asset, but **only for assets whose original isn't
+  on disk** (on-disk originals already match at full res). A folder photo that
+  matches a preview is tagged **"In Photos (preview)"** (green/iCloud), distinct
+  from the on-disk perceptual "Likely" tag. Hidden tagging still applies.
+- **On by default**, with a "Match on-device previews" toggle (GUI) /
+  `--no-derivatives` (CLI). Lazy + cache-aware: the preview index is built only
+  when there are still-missing photos, and persists, so repeat audits are fast.
+  First run on a large library is ~tens of seconds (54s for 78k assets here),
+  then cached. Videos are unchanged (filename/UUID match).
+- Validated end-to-end on the real library: an iCloud-only asset's preview,
+  re-encoded + resized + renamed, matched at distance 0. Unit tests cover
+  discovery, the iCloud-only gating, the preview classification, and the toggle.
+
 ## Unreleased — find more matches under Optimize Mac Storage
 
 Fixes audits reporting library photos as "missing." Two causes, both addressed:

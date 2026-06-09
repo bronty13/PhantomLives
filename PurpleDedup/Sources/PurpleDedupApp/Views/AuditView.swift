@@ -17,6 +17,7 @@ struct AuditView: View {
     @State private var libraryURL: URL?
     @State private var matchMode: AuditEngine.MatchMode = .perceptual
     @State private var includeHiddenPhotos = true
+    @State private var matchDerivatives = true
 
     @State private var result: AuditEngine.AuditResult?
     @State private var isAuditing = false
@@ -64,6 +65,7 @@ struct AuditView: View {
         .onChange(of: libraryURL?.path) { _, v in settingsStore.settings.lastAuditLibraryPath = v }
         .onChange(of: matchMode) { _, v in settingsStore.settings.auditMatchMode = v.rawValue }
         .onChange(of: includeHiddenPhotos) { _, v in settingsStore.settings.auditIncludeHiddenPhotos = v }
+        .onChange(of: matchDerivatives) { _, v in settingsStore.settings.auditMatchDerivatives = v }
     }
 
     // MARK: - Sidebar
@@ -108,6 +110,15 @@ struct AuditView: View {
                     .toggleStyle(.checkbox)
                     .disabled(isAuditing)
                 Text("Compares against the Hidden album too; matches that are hidden get a pink tag.")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle("Match on-device previews", isOn: $matchDerivatives)
+                    .toggleStyle(.checkbox)
+                    .disabled(isAuditing || matchMode == .exact)
+                Text("Also matches photos whose originals are in iCloud (Optimize Mac Storage), using the on-device preview. Tagged “In Photos (preview)”.")
                     .font(.caption2).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -327,7 +338,8 @@ struct AuditView: View {
                 knownPhotoBasenames: known.isEmpty ? nil : known,
                 knownAssetUUIDs: assetUUIDs,
                 includeHidden: includeHiddenPhotos,
-                hiddenAssetStems: hiddenStems
+                hiddenAssetStems: hiddenStems,
+                matchDerivatives: matchDerivatives
             ) { p in
                 if !throttle.shouldFire(interval: 0.2) { return }
                 Task { @MainActor in self.progressLine = ContentView.formatProgress(p) }
@@ -417,5 +429,6 @@ struct AuditView: View {
         }
         if let m = AuditEngine.MatchMode(rawValue: s.auditMatchMode) { matchMode = m }
         includeHiddenPhotos = s.auditIncludeHiddenPhotos
+        matchDerivatives = s.auditMatchDerivatives
     }
 }

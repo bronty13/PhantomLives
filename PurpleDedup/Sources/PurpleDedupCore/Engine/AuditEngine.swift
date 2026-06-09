@@ -62,7 +62,11 @@ public actor AuditEngine {
         public enum Classification: Sendable, Equatable {
             /// SHA-1 matched a library original — definitely present.
             case inPhotosExact
-            /// pHash/dHash within threshold of a library photo. Advisory.
+            /// pHash/dHash matched the library's on-device **preview** (the
+            /// `originals/` file is in iCloud, not on this Mac). Confident — the
+            /// preview is a faithful proxy for the original.
+            case inPhotosPreview(distance: Int)
+            /// pHash/dHash within threshold of an on-disk library original. Advisory.
             case likelyInPhotosPerceptual(distance: Int)
             /// Same filename as a known library original (hash differs — likely an
             /// iCloud-optimised stub). Advisory.
@@ -162,6 +166,7 @@ public actor AuditEngine {
         knownAssetUUIDs: Set<String> = [],
         includeHidden: Bool = true,
         hiddenAssetStems: Set<String> = [],
+        matchDerivatives: Bool = true,
         progress: (@Sendable (ScanProgress) -> Void)? = nil
     ) async throws -> AuditResult {
         let start = Date()
@@ -248,22 +253,46 @@ public actor AuditEngine {
             let missingPhotos = stillMissing.filter {
                 FileKind.photoExtensions.contains($0.0.url.pathExtension.lowercased())
             }.map { $0.0 }
-            if !missingPhotos.isEmpty, !index.photoFiles.isEmpty {
-                let libraryPhotoHashes = try await perceptualHashAll(
-                    index.photoFiles, cachedRows: cachedRows, progress: progress
-                )
-                let matches = try await perceptualMatch(
-                    missingPhotos, against: libraryPhotoHashes,
-                    threshold: perceptualThreshold, progress: progress
-                )
-                for (f, hex) in stillMissing {
-                    if let match = matches[f.url] {
-                        audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
-                                                   modificationTime: f.modificationTime,
-                                                   contentHashHex: hex,
-                                                   classification: .likelyInPhotosPerceptual(distance: match.distance),
-                                                   hiddenMatch: match.state))
-                        resolved.insert(f.url)
+            if !missingPhotos.isEmpty {
+                // Perceptual index = on-disk originals (full-res) PLUS the
+                // on-device preview derivatives of iCloud-only assets (those
+                // without an on-disk original). The derivative previews are
+                // faithful pHash proxies, so this finds photos whose originals
+                // live only in iCloud — the common case under Optimize Mac Storage.
+                var libraryPHashes: [LibraryPHash] = []
+                if !index.photoFiles.isEmpty {
+                    libraryPHashes += try await perceptualHashAll(
+                        index.photoFiles, source: .original, cachedRows: cachedRows, progress: progress
+                    )
+                }
+                if matchDerivatives {
+                    let derivatives = try await discoverDerivatives(
+                        library: photosLibrary, excluding: index.onDiskOriginalStems,
+                        includeHidden: includeHidden, hiddenStems: hiddenStems, progress: progress
+                    )
+                    if !derivatives.isEmpty {
+                        libraryPHashes += try await perceptualHashAll(
+                            derivatives, source: .derivative, cachedRows: cachedRows, progress: progress
+                        )
+                    }
+                }
+                if !libraryPHashes.isEmpty {
+                    let matches = try await perceptualMatch(
+                        missingPhotos, against: libraryPHashes,
+                        threshold: perceptualThreshold, progress: progress
+                    )
+                    for (f, hex) in stillMissing {
+                        if let match = matches[f.url] {
+                            let classification: AuditedFile.Classification = match.source == .derivative
+                                ? .inPhotosPreview(distance: match.distance)
+                                : .likelyInPhotosPerceptual(distance: match.distance)
+                            audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
+                                                       modificationTime: f.modificationTime,
+                                                       contentHashHex: hex,
+                                                       classification: classification,
+                                                       hiddenMatch: match.state))
+                            resolved.insert(f.url)
+                        }
                     }
                 }
             }
@@ -300,6 +329,10 @@ public actor AuditEngine {
 
     // MARK: - Library index
 
+    /// Where a perceptual match came from — a full-resolution on-disk original,
+    /// or the on-device preview derivative of an iCloud-only asset.
+    private enum MatchSource: Sendable { case original, derivative }
+
     private struct LibraryIndex {
         var hashes: Set<String> = []
         /// Hashes whose library file is a hidden asset, and those whose library
@@ -312,6 +345,9 @@ public actor AuditEngine {
         /// perceptual pass can hash them without re-walking — but only if some
         /// folder photo misses the exact match (see step 4 in `audit`).
         var photoFiles: [(file: DiscoveredFile, hidden: Bool)] = []
+        /// Uppercased UUID stems of every original actually on disk. Lets the
+        /// derivative pass skip assets whose full-res original we already have.
+        var onDiskOriginalStems: Set<String> = []
         var count = 0
     }
 
@@ -368,6 +404,7 @@ public actor AuditEngine {
 
         var index = LibraryIndex()
         index.count = libFiles.count
+        index.onDiskOriginalStems = Set(libFiles.map { Self.stem($0.url) })
         // Library photos for the deferred perceptual pass, carrying hidden state.
         // Drop hidden photos entirely when the user excluded them.
         index.photoFiles = libFiles.compactMap { f in
@@ -397,6 +434,44 @@ public actor AuditEngine {
             index.hashes.insert(hex)
         }
         return index
+    }
+
+    /// Find the on-device preview derivative for each iCloud-only asset (one per
+    /// asset, the largest available rendition), so the perceptual pass can match
+    /// photos whose full-res original isn't on this Mac. Derivatives live at
+    /// `resources/derivatives/<shard>/<UUID>_1_<code>_<q>.jpeg`; the UUID is the
+    /// filename's leading segment. Assets whose original IS on disk are skipped
+    /// (already matched at full res). `.ithmb` thumbnail packs are ignored
+    /// automatically (not a photo extension).
+    private func discoverDerivatives(
+        library: URL,
+        excluding onDiskStems: Set<String>,
+        includeHidden: Bool,
+        hiddenStems: Set<String>,
+        progress: (@Sendable (ScanProgress) -> Void)?
+    ) async throws -> [(file: DiscoveredFile, hidden: Bool)] {
+        let derivURL = library.appendingPathComponent("resources/derivatives", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: derivURL.path) else { return [] }
+
+        // Keep the largest derivative file per asset UUID — bigger renders are
+        // the best pHash source (resolution is irrelevant to the hash, but more
+        // detail is never worse).
+        var bestByUUID: [String: DiscoveredFile] = [:]
+        for try await f in walker.walk(sources: [ScanSource(url: derivURL)],
+                                       options: ScanOptions(kinds: [.photo])) {
+            try Task.checkCancellation()
+            let leading = f.url.deletingPathExtension().lastPathComponent
+                .split(separator: "_").first.map(String.init) ?? ""
+            let uuid = leading.uppercased()
+            guard !uuid.isEmpty, !onDiskStems.contains(uuid) else { continue }
+            if let cur = bestByUUID[uuid], cur.sizeBytes >= f.sizeBytes { continue }
+            bestByUUID[uuid] = f
+        }
+        return bestByUUID.compactMap { (uuid, f) in
+            let hidden = hiddenStems.contains(uuid)
+            if hidden && !includeHidden { return nil }
+            return (f, hidden)
+        }
     }
 
     // MARK: - Hashing
@@ -481,15 +556,17 @@ public actor AuditEngine {
         return (result, unreadable)
     }
 
-    /// A library photo's perceptual hash plus whether it's a hidden asset.
-    private struct LibraryPHash: Sendable { let hash: PerceptualHash; let hidden: Bool }
+    /// A library photo's perceptual hash plus whether it's a hidden asset and
+    /// whether it came from a full-res original or a preview derivative.
+    private struct LibraryPHash: Sendable { let hash: PerceptualHash; let hidden: Bool; let source: MatchSource }
 
     /// pHash/dHash a list of library photos (each tagged hidden/visible),
     /// cache-aware. Capped at 6 concurrent for the same HEVC-decoder reason as
-    /// the dedup engine. The hidden flag rides alongside each hash so a match
-    /// can be tagged.
+    /// the dedup engine. The hidden flag + `source` ride alongside each hash so a
+    /// match can be tagged.
     private func perceptualHashAll(
         _ photos: [(file: DiscoveredFile, hidden: Bool)],
+        source: MatchSource,
         cachedRows: [String: Database.CachedRow],
         progress: (@Sendable (ScanProgress) -> Void)?
     ) async throws -> [LibraryPHash] {
@@ -505,7 +582,7 @@ public actor AuditEngine {
                 hashes.append(LibraryPHash(hash: PerceptualHash(phash: UInt64(littleEndianHashData: ph),
                                              dhash: UInt64(littleEndianHashData: dh),
                                              width: Int(fp.width ?? 0), height: Int(fp.height ?? 0)),
-                                           hidden: p.hidden))
+                                           hidden: p.hidden, source: source))
             } else {
                 stale.append(p)
             }
@@ -534,7 +611,7 @@ public actor AuditEngine {
                     inFlight -= 1; done += 1
                     if let entry = r {
                         fresh.append((entry.0, entry.2))
-                        hashes.append(LibraryPHash(hash: entry.2, hidden: entry.1))
+                        hashes.append(LibraryPHash(hash: entry.2, hidden: entry.1, source: source))
                     }
                     if done % 32 == 0 {
                         progress?(ScanProgress(phase: .indexing, filesSeen: photos.count,
@@ -571,12 +648,12 @@ public actor AuditEngine {
         against library: [LibraryPHash],
         threshold: Int,
         progress: (@Sendable (ScanProgress) -> Void)?
-    ) async throws -> [URL: (distance: Int, state: AuditedFile.HiddenMatch)] {
+    ) async throws -> [URL: (distance: Int, state: AuditedFile.HiddenMatch, source: MatchSource)] {
         guard !candidates.isEmpty, !library.isEmpty else { return [:] }
         let hasher = perceptualHasher
         let lib = library
         let thr = threshold
-        return try await withThrowingTaskGroup(of: (URL, Int, AuditedFile.HiddenMatch)?.self) { group in
+        return try await withThrowingTaskGroup(of: (URL, Int, AuditedFile.HiddenMatch, MatchSource)?.self) { group in
             let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
             var iterator = candidates.makeIterator()
             var inFlight = 0
@@ -586,28 +663,30 @@ public actor AuditEngine {
                 inFlight += 1
                 group.addTask {
                     guard let h = try? hasher.hash(imageAt: next.url) else { return nil }
-                    // Scan all library photos: track the best distance and whether
-                    // any within-threshold match is hidden / visible, so the
-                    // verdict distinguishes hidden-only from also-hidden.
+                    // Scan all library photos: track the best distance (and its
+                    // source) and whether any within-threshold match is hidden /
+                    // visible, so the verdict distinguishes hidden-only from
+                    // also-hidden and original from preview.
                     var best = Int.max
+                    var bestSource: MatchSource = .original
                     var sawHidden = false, sawVisible = false
                     for l in lib {
                         let d = min(PerceptualHash.hammingDistance(h.phash, l.hash.phash),
                                     PerceptualHash.hammingDistance(h.dhash, l.hash.dhash))
-                        if d < best { best = d }
+                        if d < best { best = d; bestSource = l.source }
                         if d <= thr { if l.hidden { sawHidden = true } else { sawVisible = true } }
                     }
                     let state = Self.hiddenMatch(inHidden: sawHidden, inVisible: sawVisible)
-                    return best <= thr ? (next.url, best, state) : nil
+                    return best <= thr ? (next.url, best, state, bestSource) : nil
                 }
             }
             for _ in 0..<limit { submit() }
-            var out: [URL: (distance: Int, state: AuditedFile.HiddenMatch)] = [:]
+            var out: [URL: (distance: Int, state: AuditedFile.HiddenMatch, source: MatchSource)] = [:]
             while inFlight > 0 {
                 if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
                     inFlight -= 1
-                    if let entry = r { out[entry.0] = (entry.1, entry.2) }
+                    if let entry = r { out[entry.0] = (entry.1, entry.2, entry.3) }
                     submit()
                 } else { break }
             }
