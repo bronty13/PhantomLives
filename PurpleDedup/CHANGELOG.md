@@ -3,6 +3,15 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — faster preview hashing (use all cores for JPEG derivatives)
+
+The derivative perceptual pass was capped at 6 concurrent decodes — a cap that
+exists for HEIC *originals* (their embedded thumbnails go through the hardware
+HEVC decoder, which serializes). Preview derivatives are JPEG (software decode)
+and parallelise freely, so they now use every core. Measured on a 16-core Mac
+against the real 78k-asset library: cold first-run audit ~54s → ~38s (~30%
+faster); cached runs unchanged.
+
 ## Unreleased — match hidden assets' filenames (read from Photos.sqlite)
 
 A hidden video kept showing as missing. Root cause: the audit's filename net

@@ -597,7 +597,13 @@ public actor AuditEngine {
         let hasher = perceptualHasher
         var fresh: [(DiscoveredFile, PerceptualHash)] = []
         try await withThrowingTaskGroup(of: (DiscoveredFile, Bool, PerceptualHash)?.self) { group in
-            let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
+            // Originals are HEIC — their embedded thumbnails decode through the
+            // hardware HEVC decoder, which serializes, so cap at 6. Preview
+            // derivatives are JPEG (software decode) and parallelise across all
+            // cores — the bulk of the work under Optimize Mac Storage, so let it
+            // use every core.
+            let cores = ProcessInfo.processInfo.activeProcessorCount
+            let limit = source == .derivative ? max(2, cores) : max(2, min(6, cores))
             var iterator = stale.makeIterator()
             var inFlight = 0
             func submit() {
