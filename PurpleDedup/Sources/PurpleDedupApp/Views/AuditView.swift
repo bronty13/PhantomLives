@@ -334,12 +334,14 @@ struct AuditView: View {
         ) { done, total in
             Task { @MainActor in self.importProgress = (done, total) }
         }
-        self.importResult = r
         self.photosAuthStatus = PhotoKitImportService.shared.currentStatus()
-        self.statusMessage = r.summary
 
-        // Re-audit so the list reflects the newly-imported files.
+        // Re-audit so the list reflects the newly-imported files, THEN surface
+        // the import summary — runAudit() resets importResult/statusMessage, so
+        // restoring them afterward keeps the "Imported N" banner visible.
         await runAudit()
+        self.importResult = r
+        self.statusMessage = r.summary
     }
 
     // MARK: - Pickers & persistence

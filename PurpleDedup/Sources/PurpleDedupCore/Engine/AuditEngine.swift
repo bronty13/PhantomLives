@@ -148,7 +148,6 @@ public actor AuditEngine {
         let index = try await buildLibraryIndex(
             library: photosLibrary,
             options: options,
-            mode: mode,
             cachedRows: cachedRows,
             progress: progress
         )
@@ -187,22 +186,30 @@ public actor AuditEngine {
         }
 
         // 4. Perceptual reclassification of still-missing photos (perceptual mode).
+        //    The library's perceptual index is built LAZILY here — only when at
+        //    least one folder photo missed the exact match. A fully-backed-up
+        //    folder skips the (minutes-long, cache-aside) library pHash pass.
         var resolved: Set<URL> = []
-        if mode == .perceptual, !index.photoHashes.isEmpty {
+        if mode == .perceptual {
             let missingPhotos = stillMissing.filter {
                 FileKind.photoExtensions.contains($0.0.url.pathExtension.lowercased())
             }.map { $0.0 }
-            let matches = try await perceptualMatch(
-                missingPhotos, against: index.photoHashes,
-                threshold: perceptualThreshold, progress: progress
-            )
-            for (f, hex) in stillMissing {
-                if let distance = matches[f.url] {
-                    audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
-                                               modificationTime: f.modificationTime,
-                                               contentHashHex: hex,
-                                               classification: .likelyInPhotosPerceptual(distance: distance)))
-                    resolved.insert(f.url)
+            if !missingPhotos.isEmpty, !index.photoFiles.isEmpty {
+                let libraryPhotoHashes = try await perceptualHashAll(
+                    index.photoFiles, cachedRows: cachedRows, progress: progress
+                )
+                let matches = try await perceptualMatch(
+                    missingPhotos, against: libraryPhotoHashes,
+                    threshold: perceptualThreshold, progress: progress
+                )
+                for (f, hex) in stillMissing {
+                    if let distance = matches[f.url] {
+                        audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
+                                                   modificationTime: f.modificationTime,
+                                                   contentHashHex: hex,
+                                                   classification: .likelyInPhotosPerceptual(distance: distance)))
+                        resolved.insert(f.url)
+                    }
                 }
             }
         }
@@ -239,17 +246,22 @@ public actor AuditEngine {
 
     private struct LibraryIndex {
         var hashes: Set<String> = []
-        var photoHashes: [PerceptualHash] = []
+        /// Library photo files, kept so a *deferred* perceptual pass can hash
+        /// them without re-walking — but only if some folder photo misses the
+        /// exact match (see step 4 in `audit`). Building the library's
+        /// perceptual index up front would waste minutes on a folder that's
+        /// already fully backed up.
+        var photoFiles: [DiscoveredFile] = []
         var count = 0
     }
 
-    /// Walk the Photos library and build its content-hash set (always) plus the
-    /// perceptual-hash list (perceptual mode only). Cache-aware: a file already in
-    /// the SQLite cache with matching `(size, mtime)` is read straight from cache.
+    /// Walk the Photos library and build its content-hash set. Cache-aware: a
+    /// file already in the SQLite cache with matching `(size, mtime)` is read
+    /// straight from cache. The library's perceptual hashes are NOT built here —
+    /// that's deferred to `audit` so it only runs when there's something to match.
     private func buildLibraryIndex(
         library: URL,
         options: ScanOptions,
-        mode: MatchMode,
         cachedRows: [String: Database.CachedRow],
         progress: (@Sendable (ScanProgress) -> Void)?
     ) async throws -> LibraryIndex {
@@ -268,6 +280,9 @@ public actor AuditEngine {
         }
         var index = LibraryIndex()
         index.count = libFiles.count
+        index.photoFiles = libFiles.filter {
+            FileKind.photoExtensions.contains($0.url.pathExtension.lowercased())
+        }
         guard !libFiles.isEmpty else { return index }
 
         // Content hashes.
@@ -275,14 +290,6 @@ public actor AuditEngine {
             libFiles, cachedRows: cachedRows, totalCandidates: libFiles.count, progress: progress, phase: .indexing
         )
         for (_, hex) in hashed { if let hex { index.hashes.insert(hex) } }
-
-        // Perceptual hashes of library photos (perceptual mode only).
-        if mode == .perceptual {
-            let photos = libFiles.filter {
-                FileKind.photoExtensions.contains($0.url.pathExtension.lowercased())
-            }
-            index.photoHashes = try await perceptualHashAll(photos, cachedRows: cachedRows, progress: progress)
-        }
         return index
     }
 

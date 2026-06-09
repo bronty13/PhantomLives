@@ -19,7 +19,9 @@ already in Photos vs missing — then import the missing ones with one click.
   iCloud-optimised stubs), or `missing`. Cache-aware (reuses the SQLite hash
   cache), so a re-audit is near-instant. **Perceptual is the default** match
   mode; `exact` is available for byte-only matching. Videos are matched
-  exact-only in v1.
+  exact-only in v1. The library's (expensive) perceptual index is built
+  **lazily** — only when a folder photo actually misses the exact match — so
+  auditing a fully-backed-up folder skips that pass entirely.
 - **`PhotoKitImportService`** — imports the missing files directly into Photos
   via `PHAssetCreationRequest`. Originals are **copied, never moved**
   (`shouldMoveFile = false`); imports optionally land in an "Imported by
