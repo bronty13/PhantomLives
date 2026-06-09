@@ -143,17 +143,11 @@ public actor AuditEngine {
 
         let cachedRows = (try? database?.loadAllCachedRows()) ?? [:]
 
-        // 1. Index the Photos library (content hashes + optional perceptual hashes).
-        let indexStart = Date()
-        let index = try await buildLibraryIndex(
-            library: photosLibrary,
-            options: options,
-            cachedRows: cachedRows,
-            progress: progress
-        )
-        timing.exactSeconds = Date().timeIntervalSince(indexStart)
-
-        // 2. Walk the target folder.
+        // 1. Walk + hash the target folder FIRST. We need the folder's content
+        //    hashes anyway, and learning its set of file SIZES lets us skip
+        //    hashing every library file that can't possibly match: a byte-exact
+        //    duplicate must have an identical byte length, so a library file
+        //    whose size matches no folder file can never be an exact match.
         let walkStart = Date()
         var folderFiles: [DiscoveredFile] = []
         for try await f in walker.walk(sources: [ScanSource(url: folder, isLocked: false)], options: options) {
@@ -166,12 +160,28 @@ public actor AuditEngine {
         }
         timing.walkSeconds = Date().timeIntervalSince(walkStart)
 
-        // 3. Hash every folder file (cache-aware) and partition exact in/missing.
         let hashStart = Date()
         let (hashed, unreadable) = try await hashFolderFiles(
             folderFiles, cachedRows: cachedRows, totalCandidates: folderFiles.count, progress: progress
         )
+        let folderSizes = Set(folderFiles.map(\.sizeBytes))
 
+        // 2. Index the Photos library's content hashes — but only hash library
+        //    files whose size appears in the folder (the size short-circuit
+        //    above). On a large library audited against a small folder this is
+        //    the dominant speedup: tens of files hashed instead of the whole
+        //    library. Cache-aware regardless.
+        let indexStart = Date()
+        let index = try await buildLibraryIndex(
+            library: photosLibrary,
+            options: options,
+            relevantSizes: folderSizes,
+            cachedRows: cachedRows,
+            progress: progress
+        )
+        timing.exactSeconds = Date().timeIntervalSince(indexStart)
+
+        // 3. Partition folder files into exact-in-Photos vs still-missing.
         var audited: [AuditedFile] = []
         var stillMissing: [(DiscoveredFile, String?)] = []   // file + its hex (for re-eval)
         let known = knownPhotoBasenames.map { Set($0.map { $0.lowercased() }) }
@@ -255,13 +265,18 @@ public actor AuditEngine {
         var count = 0
     }
 
-    /// Walk the Photos library and build its content-hash set. Cache-aware: a
-    /// file already in the SQLite cache with matching `(size, mtime)` is read
-    /// straight from cache. The library's perceptual hashes are NOT built here —
-    /// that's deferred to `audit` so it only runs when there's something to match.
+    /// Walk the Photos library and build its content-hash set, hashing ONLY
+    /// files whose size is in `relevantSizes` (the sizes present in the folder
+    /// being audited) — a byte-exact match must share an exact byte length, so
+    /// size-mismatched library files can be skipped without reading them.
+    /// Cache-aware: a file already in the SQLite cache with matching
+    /// `(size, mtime)` is read straight from cache. The library's perceptual
+    /// hashes are NOT built here — that's deferred to `audit` so it only runs
+    /// when there's something to match.
     private func buildLibraryIndex(
         library: URL,
         options: ScanOptions,
+        relevantSizes: Set<Int64>,
         cachedRows: [String: Database.CachedRow],
         progress: (@Sendable (ScanProgress) -> Void)?
     ) async throws -> LibraryIndex {
@@ -285,9 +300,12 @@ public actor AuditEngine {
         }
         guard !libFiles.isEmpty else { return index }
 
-        // Content hashes.
+        // Content hashes — only for library files whose size matches a folder
+        // file. Everything else can't be a byte-exact duplicate, so we never
+        // read its bytes.
+        let candidates = libFiles.filter { relevantSizes.contains($0.sizeBytes) }
         let (hashed, _) = try await hashFolderFiles(
-            libFiles, cachedRows: cachedRows, totalCandidates: libFiles.count, progress: progress, phase: .indexing
+            candidates, cachedRows: cachedRows, totalCandidates: candidates.count, progress: progress, phase: .indexing
         )
         for (_, hex) in hashed { if let hex { index.hashes.insert(hex) } }
         return index

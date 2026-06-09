@@ -64,6 +64,30 @@ final class AuditEngineTests: XCTestCase {
         XCTAssertEqual(inURLs.count + missingURLs.count, result.files.count)
     }
 
+    func testSizeShortCircuitStillFindsMatch() async throws {
+        // A bunch of differently-sized library files are never hashed (their
+        // size matches nothing in the folder), but the one size-matching
+        // duplicate is still found.
+        let lib = try TestFixtures.makeTempDir("audit-size-lib")
+        let folder = try TestFixtures.makeTempDir("audit-size-folder")
+        defer { TestFixtures.cleanup(lib); TestFixtures.cleanup(folder) }
+
+        try TestFixtures.write("HELLO", to: lib.appendingPathComponent("match.jpg"))   // 5 bytes
+        for (i, bytes) in ["a", "bb", "cccc", "ddddddd", "eeeeeeeeee"].enumerated() {
+            try TestFixtures.write(bytes, to: lib.appendingPathComponent("decoy\(i).jpg"))
+        }
+        try TestFixtures.write("HELLO", to: folder.appendingPathComponent("copy.jpg")) // 5 bytes
+        try TestFixtures.write("XYZ", to: folder.appendingPathComponent("unique.jpg"))  // 3 bytes
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .exact, options: ScanOptions(kinds: [.all])
+        )
+        XCTAssertEqual(result.inPhotos.count, 1)
+        XCTAssertEqual(result.inPhotos.first?.url.lastPathComponent, "copy.jpg")
+        XCTAssertEqual(result.missing.count, 1)
+        XCTAssertEqual(result.missing.first?.url.lastPathComponent, "unique.jpg")
+    }
+
     // MARK: - Filename safety net
 
     func testFilenameSafetyNet() async throws {

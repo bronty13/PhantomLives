@@ -3,6 +3,19 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — faster audit on large libraries (size short-circuit)
+
+The audit hashed every file in the Photos library to build its content-hash
+index. But a byte-exact duplicate must share an exact byte length, so a library
+file whose size matches no file in the audited folder can never be a match.
+`AuditEngine` now hashes the folder first, then content-hashes only the library
+files whose size appears in the folder. On a large library audited against a
+small folder this is the dominant first-run speedup — tens of files read
+instead of the whole library. Correctness is unchanged (perceptual matching
+still considers all library photos, since visually-equal copies differ in
+size); covered by a new `testSizeShortCircuitStillFindsMatch`. Per-file hashes
+remain cached in SQLite, so repeat audits stay near-instant.
+
 ## 0.23.0 — Audit a folder against Photos + import the missing
 
 New top-level workflow alongside dedup: point at a folder, compare every
