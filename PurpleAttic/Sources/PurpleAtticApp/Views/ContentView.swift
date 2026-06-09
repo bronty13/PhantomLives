@@ -80,6 +80,7 @@ struct ContentView: View {
     private var detail: some View {
         switch appState.selectedPane {
         case .run: RunView()
+        case .schedule: ScheduleView()
         case .profile: ProfileSettingsView(store: appState.store)
         case .backup: BackupSettingsView(store: appState.store)
         case .purge: PurgeSettingsView()

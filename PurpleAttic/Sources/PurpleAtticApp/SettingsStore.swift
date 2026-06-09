@@ -9,6 +9,20 @@ struct AppSettings: Codable {
     var backupRetentionDays: Int = 14
     var backupDirectoryOverride: String? = nil
     var lastBackupAt: String? = nil
+    var schedule: ArchiveSchedule = ArchiveSchedule()
+
+    init() {}
+
+    // Decode each key with a default so older settings.json files (written before a field
+    // existed) still load cleanly instead of resetting all settings.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        autoBackupEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoBackupEnabled) ?? true
+        backupRetentionDays = try c.decodeIfPresent(Int.self, forKey: .backupRetentionDays) ?? 14
+        backupDirectoryOverride = try c.decodeIfPresent(String.self, forKey: .backupDirectoryOverride)
+        lastBackupAt = try c.decodeIfPresent(String.self, forKey: .lastBackupAt)
+        schedule = try c.decodeIfPresent(ArchiveSchedule.self, forKey: .schedule) ?? ArchiveSchedule()
+    }
 }
 
 /// Owns the persisted `AppSettings` and the single editable `ArchiveProfile`, exposing both

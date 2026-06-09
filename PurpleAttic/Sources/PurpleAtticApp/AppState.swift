@@ -5,6 +5,7 @@ import PurpleAtticCore
 /// Which detail pane the sidebar is showing.
 enum Pane: String, CaseIterable, Identifiable {
     case run = "Archive"
+    case schedule = "Schedule"
     case profile = "Settings"
     case backup = "Backup"
     case purge = "Purge"
@@ -12,6 +13,7 @@ enum Pane: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .run: return "externaldrive.badge.timemachine"
+        case .schedule: return "clock.arrow.2.circlepath"
         case .profile: return "slider.horizontal.3"
         case .backup: return "arrow.clockwise.icloud"
         case .purge: return "trash"
@@ -48,6 +50,10 @@ final class AppState: ObservableObject {
     @Published var isPurging = false
     @Published var purgeMessage: String? = nil
 
+    // Scheduler (Phase D)
+    @Published var schedulerLoaded = false
+    @Published var schedulerMessage: String? = nil
+
     /// Cap the in-memory log so a long run can't balloon memory; the full log is on disk.
     private let maxLogLines = 5000
 
@@ -60,6 +66,36 @@ final class AppState: ObservableObject {
             .store(in: &cancellables)
         BackupService.runOnLaunchIfDue(settingsStore: store)
         refreshVaultStatus()
+        schedulerLoaded = SchedulerService.isLoaded()
+    }
+
+    // MARK: - Scheduler (Phase D)
+
+    func refreshSchedulerStatus() {
+        schedulerLoaded = SchedulerService.isLoaded()
+    }
+
+    /// Install or remove the launchd agent to match the current schedule setting.
+    func applySchedule() {
+        store.save()
+        do {
+            try SchedulerService.apply(store.settings.schedule,
+                                       profilePath: ProfileStore.defaultProfileURL().path)
+            refreshSchedulerStatus()
+            schedulerMessage = store.settings.schedule.enabled
+                ? "Schedule installed — \(store.settings.schedule.humanDescription.lowercased())."
+                : "Schedule removed."
+        } catch {
+            schedulerMessage = error.localizedDescription
+            refreshSchedulerStatus()
+        }
+    }
+
+    /// Trigger the scheduled archive immediately (out of band).
+    func runScheduledNow() {
+        SchedulerService.runNow()
+        refreshSchedulerStatus()
+        schedulerMessage = "Triggered a run — output goes to the scheduler log."
     }
 
     func refreshReadiness() {

@@ -1,0 +1,79 @@
+import XCTest
+@testable import PurpleAtticCore
+
+final class SchedulerTests: XCTestCase {
+
+    func testDailyCalendarKeysOmitWeekday() {
+        let s = ArchiveSchedule(enabled: true, cadence: .daily, hour: 2, minute: 30)
+        let keys = s.calendarKeys
+        XCTAssertEqual(keys.map { $0.key }, ["Hour", "Minute"])
+        XCTAssertEqual(keys.first { $0.key == "Hour" }?.value, 2)
+        XCTAssertEqual(keys.first { $0.key == "Minute" }?.value, 30)
+    }
+
+    func testWeeklyCalendarKeysIncludeWeekday() {
+        let s = ArchiveSchedule(enabled: true, cadence: .weekly, hour: 9, minute: 0, weekday: 3)
+        let keys = s.calendarKeys
+        XCTAssertEqual(keys.map { $0.key }, ["Weekday", "Hour", "Minute"])
+        XCTAssertEqual(keys.first { $0.key == "Weekday" }?.value, 3)
+    }
+
+    func testPlistContainsExpectedFields() {
+        let s = ArchiveSchedule(enabled: true, cadence: .daily, hour: 2, minute: 0)
+        let xml = LaunchAgentPlist.build(
+            label: "com.bronty13.PurpleAttic.archive",
+            programArguments: ["/Applications/PurpleAttic.app/Contents/MacOS/pattic", "export"],
+            schedule: s,
+            stdoutPath: "/tmp/out.log",
+            stderrPath: "/tmp/err.log")
+        XCTAssertTrue(xml.contains("<key>Label</key>"))
+        XCTAssertTrue(xml.contains("com.bronty13.PurpleAttic.archive"))
+        XCTAssertTrue(xml.contains("<string>export</string>"))
+        XCTAssertTrue(xml.contains("<key>StartCalendarInterval</key>"))
+        XCTAssertTrue(xml.contains("<key>Hour</key>"))
+        XCTAssertTrue(xml.contains("<integer>2</integer>"))
+        XCTAssertTrue(xml.contains("<key>RunAtLoad</key>"))
+        XCTAssertTrue(xml.contains("<false/>"), "must not run at load — only on schedule")
+        XCTAssertFalse(xml.contains("<key>Weekday</key>"), "daily schedule has no Weekday")
+    }
+
+    func testPlistWeeklyHasWeekday() {
+        let s = ArchiveSchedule(enabled: true, cadence: .weekly, hour: 1, minute: 15, weekday: 0)
+        let xml = LaunchAgentPlist.build(label: "x", programArguments: ["a"], schedule: s,
+                                         stdoutPath: "/tmp/o", stderrPath: "/tmp/e")
+        XCTAssertTrue(xml.contains("<key>Weekday</key>"))
+        XCTAssertTrue(xml.contains("<integer>0</integer>"))
+    }
+
+    func testNextRunDailyIsInFuture() {
+        let now = Date()
+        let s = ArchiveSchedule(enabled: true, cadence: .daily, hour: 2, minute: 0)
+        let next = s.nextRun(after: now)
+        XCTAssertNotNil(next)
+        XCTAssertGreaterThan(next!, now)
+        XCTAssertEqual(Calendar.current.component(.hour, from: next!), 2)
+        XCTAssertEqual(Calendar.current.component(.minute, from: next!), 0)
+    }
+
+    func testNextRunWeeklyLandsOnWeekday() {
+        let s = ArchiveSchedule(enabled: true, cadence: .weekly, hour: 8, minute: 0, weekday: 2) // Tuesday
+        let next = s.nextRun(after: Date())
+        XCTAssertNotNil(next)
+        // launchd weekday 2 == Calendar weekday 3 (Sun=1).
+        XCTAssertEqual(Calendar.current.component(.weekday, from: next!), 3)
+    }
+
+    func testHumanDescription() {
+        XCTAssertEqual(ArchiveSchedule(cadence: .daily, hour: 2, minute: 5).humanDescription,
+                       "Every day at 02:05")
+        XCTAssertEqual(ArchiveSchedule(cadence: .weekly, hour: 9, minute: 0, weekday: 1).humanDescription,
+                       "Every Monday at 09:00")
+    }
+
+    func testXMLEscaping() {
+        let xml = LaunchAgentPlist.build(label: "a&b", programArguments: ["<x>"], schedule: ArchiveSchedule(),
+                                         stdoutPath: "/o", stderrPath: "/e")
+        XCTAssertTrue(xml.contains("a&amp;b"))
+        XCTAssertTrue(xml.contains("&lt;x&gt;"))
+    }
+}

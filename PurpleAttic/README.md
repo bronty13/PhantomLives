@@ -10,11 +10,12 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.4.0 — full pipeline: engine + `pattic` CLI + `PurpleAttic.app` GUI,
-> with the previews-only guard, Cryptomator vault status, and the guarded
-> purge.** Purge is wired but ships **disabled** (`purgeEnabled` off by default)
-> and deletes only photos verified in ≥2 archive copies, behind two
-> confirmations. The CLI never deletes.
+> **Status: 0.5.0 — full pipeline + scheduler: engine + `pattic` CLI +
+> `PurpleAttic.app` GUI, with the previews-only guard, Cryptomator vault status,
+> the guarded purge, and a launchd scheduler.** Purge ships **disabled**
+> (`purgeEnabled` off) and deletes only photos verified in ≥2 archive copies,
+> behind two confirmations. The scheduler archives only — never purges. The CLI
+> never deletes.
 
 ## How it works
 
@@ -111,4 +112,4 @@ Profiles live at `~/Library/Application Support/PurpleAttic/profile.json`
 - [x] Previews-only / Optimize-Storage library guard (warns + gates real runs).
 - [x] Cryptomator vault unlock status in the UI.
 - [x] Guarded PhotoKit purge (osxphotos metadata + ≥2-copy verify + PhotoKit delete), default OFF.
-- [ ] launchd scheduler: nightly archive, monthly reviewed purge.
+- [x] launchd scheduler (Schedule pane): automated archive, daily/weekly. Purge stays manual.

@@ -3,6 +3,32 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.5.0] — 2026-06-09
+
+Phase D: the **scheduler** — a launchd agent that runs the archive on a cadence.
+
+### Added
+- **`ArchiveSchedule`** — daily/weekly cadence + time (Codable, persisted in
+  settings with backward-compatible decoding). `nextRun(after:)` and
+  `calendarKeys` are unit-tested.
+- **`LaunchAgentPlist`** — pure builder for the launchd plist (StartCalendar
+  Interval, `RunAtLoad` false so it only fires on schedule, Background
+  ProcessType, log paths). Unit-tested incl. XML escaping.
+- **`SchedulerService`** (app target) — writes the agent to
+  `~/Library/LaunchAgents/com.bronty13.PurpleAttic.archive.plist` and loads it
+  via `launchctl bootstrap gui/<uid>` (with bootout/retry); `runNow` kickstarts;
+  `isLoaded`/`lastRunDate` for status. The agent runs the **bundled `pattic
+  export`** — which has no purge path, so automated runs can never delete.
+- **Schedule pane** — enable + daily/weekly + time pickers, Apply, live status
+  (loaded?, next run, last run), Run Now, Reveal Log, and notes (run on the
+  originals Mac; grant Full Disk Access to bundled pattic; purge is never
+  automated).
+- Tests: 39 total (+8 — schedule keys, plist fields, next-run, escaping).
+  The launchctl bootstrap/print/kickstart/bootout sequence was smoke-tested live.
+
+### Notes
+- The scheduler archives only. Purge remains manual (Purge pane), OFF by default.
+
 ## [0.4.0] — 2026-06-09
 
 Phase C: the **guarded purge** — wired but gated behind `purgeEnabled` (default
