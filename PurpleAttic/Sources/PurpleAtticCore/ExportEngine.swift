@@ -1,0 +1,230 @@
+import Foundation
+
+/// Orchestrates one archival run (the safe, non-destructive half of PurpleAttic):
+///   1. osxphotos export — once per enabled format pass (HEIC originals, JPEG set)
+///   2. rsync mirror — replicate the primary to each configured mirror (no --delete)
+///   3. verify — confirm each mirror matches the primary (inventory; deep optional)
+///   4. cloud — rsync the primary into the mounted Cryptomator vault, if available
+///
+/// Every step logs in detail and contributes to a `RunSummary`, which the caller renders
+/// into a human-readable report under ~/Downloads/PurpleAttic/. The engine never deletes
+/// from the Photos library — purge is a separate, guarded stage shipped later.
+public final class ExportEngine {
+
+    public struct StepResult: Sendable {
+        public let name: String
+        public let success: Bool
+        public let detail: String
+        public let duration: TimeInterval
+    }
+
+    public struct RunSummary: Sendable {
+        public let profileName: String
+        public let startedAt: Date
+        public let finishedAt: Date
+        public let steps: [StepResult]
+        public let logFile: String?
+        public var allSucceeded: Bool { steps.allSatisfy { $0.success } }
+        public var duration: TimeInterval { finishedAt.timeIntervalSince(startedAt) }
+    }
+
+    public enum EngineError: Error, CustomStringConvertible {
+        case osxphotosNotFound
+        case rsyncNotFound
+        case invalidProfile([String])
+
+        public var description: String {
+            switch self {
+            case .osxphotosNotFound:
+                return "osxphotos not found. Install it with `pipx install osxphotos` (or `brew install osxphotos`)."
+            case .rsyncNotFound:
+                return "rsync not found (expected at /usr/bin/rsync)."
+            case .invalidProfile(let issues):
+                return "Profile has problems:\n  - " + issues.joined(separator: "\n  - ")
+            }
+        }
+    }
+
+    private let logger: AtticLogger
+    public init(logger: AtticLogger) {
+        self.logger = logger
+    }
+
+    /// Run the archival pipeline. `dryRun` passes `--dry-run` to osxphotos and skips mirror,
+    /// verify, and cloud (so a dry run touches nothing on disk).
+    public func run(profile: ArchiveProfile, dryRun: Bool, deepVerify: Bool = false) throws -> RunSummary {
+        let started = Date()
+        let issues = profile.validationIssues()
+        // A missing mirror only blocks purge, not archival; filter that one out for a run.
+        let blocking = issues.filter { !$0.contains("Purge is enabled") }
+        if !blocking.isEmpty { throw EngineError.invalidProfile(blocking) }
+
+        guard let osxphotos = Tooling.osxphotos else { throw EngineError.osxphotosNotFound }
+        logger.info("osxphotos: \(osxphotos)")
+        if let exif = Tooling.exiftool {
+            logger.info("exiftool: \(exif)")
+        } else {
+            logger.warn("exiftool not found — metadata embedding (--exiftool) will fail. Install with `brew install exiftool`.")
+        }
+
+        logger.info("=== PurpleAttic run: \(profile.name)\(dryRun ? " (DRY RUN)" : "") ===")
+        logger.info("Primary destination: \(profile.primaryDestination)")
+        logger.info("Formats: \(profile.enabledPasses.map { $0.label }.joined(separator: ", "))")
+
+        var steps: [StepResult] = []
+
+        // 1. Export passes.
+        for pass in profile.enabledPasses {
+            let dest = ExportPlan.destination(profile: profile, pass: pass)
+            try? FileManager.default.createDirectory(atPath: dest, withIntermediateDirectories: true)
+            let args = ExportPlan.arguments(profile: profile, pass: pass, dryRun: dryRun)
+            logger.info("→ Export (\(pass.label)): \(ExportPlan.shellCommand(osxphotos: osxphotos, profile: profile, pass: pass, dryRun: dryRun))")
+            let t0 = Date()
+            let result = try ProcessRunner.run(executable: osxphotos, arguments: args) { line in
+                self.logger.debug("[osxphotos:\(pass.rawValue)] \(line)")
+            }
+            let ok = result.exitCode == 0
+            let dur = Date().timeIntervalSince(t0)
+            (ok ? logger.info : logger.error)("← Export (\(pass.label)) exit \(result.exitCode) in \(Self.fmt(dur))")
+            steps.append(.init(name: "Export \(pass.label)", success: ok,
+                               detail: "exit \(result.exitCode)", duration: dur))
+            if !ok {
+                logger.error("Export failed — skipping mirror/verify/cloud to avoid propagating a partial archive.")
+                return Self.finish(profile: profile, started: started, steps: steps, logger: logger)
+            }
+        }
+
+        if dryRun {
+            logger.info("Dry run — skipping mirror, verify, and cloud sync.")
+            return Self.finish(profile: profile, started: started, steps: steps, logger: logger)
+        }
+
+        // 2 + 3. Mirror then verify, per mirror.
+        guard let rsync = Tooling.rsync else { throw EngineError.rsyncNotFound }
+        for mirror in profile.mirrorDestinations {
+            try? FileManager.default.createDirectory(atPath: mirror, withIntermediateDirectories: true)
+            let src = profile.primaryDestination.hasSuffix("/") ? profile.primaryDestination : profile.primaryDestination + "/"
+            logger.info("→ Mirror: \(src) ⇒ \(mirror)")
+            let t0 = Date()
+            // -a archive, -h human, --info=progress2 overall progress. No --delete: the
+            // mirror is never allowed to lose files just because the primary did.
+            let result = try ProcessRunner.run(executable: rsync,
+                                               arguments: ["-ah", "--info=progress2", src, mirror]) { line in
+                self.logger.debug("[rsync] \(line)")
+            }
+            let ok = result.exitCode == 0
+            let dur = Date().timeIntervalSince(t0)
+            (ok ? logger.info : logger.error)("← Mirror exit \(result.exitCode) in \(Self.fmt(dur))")
+            steps.append(.init(name: "Mirror → \(mirror)", success: ok,
+                               detail: "exit \(result.exitCode)", duration: dur))
+
+            // Verify this mirror against the primary.
+            logger.info("→ Verify: \(mirror) against primary\(deepVerify ? " (deep SHA-256)" : "")")
+            let vt0 = Date()
+            let report = VerifyService.compare(primary: profile.primaryDestination,
+                                               mirror: mirror, deep: deepVerify) { n in
+                self.logger.debug("[verify] checked \(n) files…")
+            }
+            let vdur = Date().timeIntervalSince(vt0)
+            if report.matches {
+                logger.info("← Verify OK: \(report.primaryFileCount) files match in \(Self.fmt(vdur))")
+            } else {
+                logger.error("← Verify FOUND \(report.discrepancies.count) discrepancy(ies):")
+                for d in report.discrepancies.prefix(50) {
+                    logger.error("    [\(d.kind.rawValue)] \(d.relativePath) — \(d.detail)")
+                }
+                if report.discrepancies.count > 50 {
+                    logger.error("    …and \(report.discrepancies.count - 50) more (see full inventory).")
+                }
+            }
+            steps.append(.init(name: "Verify \(mirror)", success: report.matches,
+                               detail: "\(report.discrepancies.count) discrepancies", duration: vdur))
+        }
+
+        // 4. Cloud (Cryptomator vault). Never blocks the run.
+        if let vault = profile.cloudVaultPath, !vault.isEmpty {
+            var isDir: ObjCBool = false
+            let mounted = FileManager.default.fileExists(atPath: vault, isDirectory: &isDir) && isDir.boolValue
+                && FileManager.default.isWritableFile(atPath: vault)
+            if mounted {
+                let src = profile.primaryDestination.hasSuffix("/") ? profile.primaryDestination : profile.primaryDestination + "/"
+                logger.info("→ Cloud (Cryptomator): \(src) ⇒ \(vault)")
+                let t0 = Date()
+                let result = try ProcessRunner.run(executable: rsync,
+                                                   arguments: ["-ah", "--info=progress2", src, vault]) { line in
+                    self.logger.debug("[rsync:cloud] \(line)")
+                }
+                let ok = result.exitCode == 0
+                let dur = Date().timeIntervalSince(t0)
+                (ok ? logger.info : logger.warn)("← Cloud exit \(result.exitCode) in \(Self.fmt(dur))")
+                steps.append(.init(name: "Cloud → vault", success: ok,
+                                   detail: "exit \(result.exitCode)", duration: dur))
+            } else {
+                logger.warn("Cryptomator vault not mounted/writable at \(vault) — skipping cloud copy (will catch up next run).")
+                steps.append(.init(name: "Cloud → vault", success: true,
+                                   detail: "skipped (vault not mounted)", duration: 0))
+            }
+        }
+
+        return Self.finish(profile: profile, started: started, steps: steps, logger: logger)
+    }
+
+    // MARK: - Helpers
+
+    private static func finish(profile: ArchiveProfile, started: Date,
+                               steps: [StepResult], logger: AtticLogger) -> RunSummary {
+        let summary = RunSummary(profileName: profile.name, startedAt: started,
+                                 finishedAt: Date(), steps: steps,
+                                 logFile: logger.logFileURL?.path)
+        logger.info("=== Run finished in \(fmt(summary.duration)) — \(summary.allSucceeded ? "ALL OK" : "WITH FAILURES") ===")
+        return summary
+    }
+
+    static func fmt(_ t: TimeInterval) -> String {
+        if t < 60 { return String(format: "%.1fs", t) }
+        let m = Int(t) / 60, s = Int(t) % 60
+        return "\(m)m \(s)s"
+    }
+}
+
+// MARK: - Run report
+
+public extension ExportEngine.RunSummary {
+    /// Human-readable report body written to ~/Downloads/PurpleAttic/.
+    func reportText() -> String {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        var lines: [String] = []
+        lines.append("PurpleAttic — Archive Run Report")
+        lines.append(String(repeating: "=", count: 40))
+        lines.append("Profile:   \(profileName)")
+        lines.append("Started:   \(df.string(from: startedAt))")
+        lines.append("Finished:  \(df.string(from: finishedAt))")
+        lines.append("Duration:  \(ExportEngine.fmt(duration))")
+        lines.append("Result:    \(allSucceeded ? "ALL OK" : "WITH FAILURES")")
+        if let logFile { lines.append("Log:       \(logFile)") }
+        lines.append("")
+        lines.append("Steps:")
+        for s in steps {
+            let mark = s.success ? "OK " : "FAIL"
+            lines.append("  [\(mark)] \(s.name) — \(s.detail) (\(ExportEngine.fmt(s.duration)))")
+        }
+        lines.append("")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Write the report to ~/Downloads/PurpleAttic/ and return its URL.
+    @discardableResult
+    func writeReport() -> URL? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let dir = home.appendingPathComponent("Downloads/PurpleAttic", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyyMMdd-HHmmss"
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        let url = dir.appendingPathComponent("report-\(stamp.string(from: startedAt)).txt")
+        try? reportText().data(using: .utf8)?.write(to: url)
+        return url
+    }
+}
