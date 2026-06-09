@@ -44,10 +44,20 @@ public actor AuditEngine {
         public let modificationTime: Date
         public let contentHashHex: String?
         public let classification: Classification
-        /// True when the matching Photos item is **hidden** (and has no
-        /// non-hidden copy). Lets the UI flag matches that live only in the
-        /// Hidden album so the user can find them. Always false for `.missing`.
-        public let inPhotosHidden: Bool
+        /// How the match relates to the Hidden album. Lets the UI flag matches
+        /// that live only in Hidden (so the user can find them) distinctly from
+        /// matches that are present both visibly AND hidden. `.none` for
+        /// `.missing` and visible-only matches.
+        public let hiddenMatch: HiddenMatch
+
+        public enum HiddenMatch: Sendable, Equatable {
+            /// No hidden copy (visible-only match, or not in Photos).
+            case none
+            /// The only library copy is in the Hidden album.
+            case hiddenOnly
+            /// Present in Photos both visibly AND as a hidden copy.
+            case alsoHidden
+        }
 
         public enum Classification: Sendable, Equatable {
             /// SHA-1 matched a library original — definitely present.
@@ -63,13 +73,13 @@ public actor AuditEngine {
 
         public init(url: URL, sizeBytes: Int64, modificationTime: Date,
                     contentHashHex: String?, classification: Classification,
-                    inPhotosHidden: Bool = false) {
+                    hiddenMatch: HiddenMatch = .none) {
             self.url = url
             self.sizeBytes = sizeBytes
             self.modificationTime = modificationTime
             self.contentHashHex = contentHashHex
             self.classification = classification
-            self.inPhotosHidden = inPhotosHidden
+            self.hiddenMatch = hiddenMatch
         }
 
         /// True for every non-`.missing` verdict.
@@ -77,6 +87,9 @@ public actor AuditEngine {
             if case .missing = classification { return false }
             return true
         }
+
+        /// True when the match involves a hidden copy (hidden-only or also-hidden).
+        public var inPhotosHidden: Bool { hiddenMatch != .none }
     }
 
     public struct AuditResult: Sendable {
@@ -204,11 +217,12 @@ public actor AuditEngine {
         let known = knownPhotoBasenames.map { Set($0.map { $0.lowercased() }) }
         for (f, hex) in hashed {
             if let hex, index.hashes.contains(hex) {
-                let hidden = index.hiddenHashes.contains(hex) && !index.visibleHashes.contains(hex)
+                let hm = Self.hiddenMatch(inHidden: index.hiddenHashes.contains(hex),
+                                          inVisible: index.visibleHashes.contains(hex))
                 audited.append(AuditedFile(url: f.url, sizeBytes: f.sizeBytes,
                                            modificationTime: f.modificationTime,
                                            contentHashHex: hex, classification: .inPhotosExact,
-                                           inPhotosHidden: hidden))
+                                           hiddenMatch: hm))
             } else {
                 stillMissing.append((f, hex))
             }
@@ -237,7 +251,7 @@ public actor AuditEngine {
                                                    modificationTime: f.modificationTime,
                                                    contentHashHex: hex,
                                                    classification: .likelyInPhotosPerceptual(distance: match.distance),
-                                                   inPhotosHidden: match.hidden))
+                                                   hiddenMatch: match.state))
                         resolved.insert(f.url)
                     }
                 }
@@ -293,6 +307,13 @@ public actor AuditEngine {
     /// hidden-asset stem set.
     private nonisolated static func stem(_ url: URL) -> String {
         (url.lastPathComponent as NSString).deletingPathExtension.uppercased()
+    }
+
+    /// Collapse "matched a hidden copy?" / "matched a visible copy?" into the
+    /// three-state verdict.
+    private nonisolated static func hiddenMatch(inHidden: Bool, inVisible: Bool) -> AuditedFile.HiddenMatch {
+        guard inHidden else { return .none }
+        return inVisible ? .alsoHidden : .hiddenOnly
     }
 
     /// Walk the Photos library and build its content-hash set, hashing ONLY
@@ -532,12 +553,12 @@ public actor AuditEngine {
         against library: [LibraryPHash],
         threshold: Int,
         progress: (@Sendable (ScanProgress) -> Void)?
-    ) async throws -> [URL: (distance: Int, hidden: Bool)] {
+    ) async throws -> [URL: (distance: Int, state: AuditedFile.HiddenMatch)] {
         guard !candidates.isEmpty, !library.isEmpty else { return [:] }
         let hasher = perceptualHasher
         let lib = library
         let thr = threshold
-        return try await withThrowingTaskGroup(of: (URL, Int, Bool)?.self) { group in
+        return try await withThrowingTaskGroup(of: (URL, Int, AuditedFile.HiddenMatch)?.self) { group in
             let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
             var iterator = candidates.makeIterator()
             var inFlight = 0
@@ -547,18 +568,23 @@ public actor AuditEngine {
                 inFlight += 1
                 group.addTask {
                     guard let h = try? hasher.hash(imageAt: next.url) else { return nil }
+                    // Scan all library photos: track the best distance and whether
+                    // any within-threshold match is hidden / visible, so the
+                    // verdict distinguishes hidden-only from also-hidden.
                     var best = Int.max
-                    var bestHidden = false
+                    var sawHidden = false, sawVisible = false
                     for l in lib {
                         let d = min(PerceptualHash.hammingDistance(h.phash, l.hash.phash),
                                     PerceptualHash.hammingDistance(h.dhash, l.hash.dhash))
-                        if d < best { best = d; bestHidden = l.hidden; if best == 0 { break } }
+                        if d < best { best = d }
+                        if d <= thr { if l.hidden { sawHidden = true } else { sawVisible = true } }
                     }
-                    return best <= thr ? (next.url, best, bestHidden) : nil
+                    let state = Self.hiddenMatch(inHidden: sawHidden, inVisible: sawVisible)
+                    return best <= thr ? (next.url, best, state) : nil
                 }
             }
             for _ in 0..<limit { submit() }
-            var out: [URL: (distance: Int, hidden: Bool)] = [:]
+            var out: [URL: (distance: Int, state: AuditedFile.HiddenMatch)] = [:]
             while inFlight > 0 {
                 if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {

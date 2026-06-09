@@ -108,8 +108,26 @@ final class AuditEngineTests: XCTestCase {
         XCTAssertEqual(result.inPhotos.count, 2)
         XCTAssertEqual(result.hiddenInPhotos.count, 1)
         let byName = Dictionary(uniqueKeysWithValues: result.files.map { ($0.url.lastPathComponent, $0) })
-        XCTAssertTrue(byName["a.jpg"]!.inPhotosHidden)
-        XCTAssertFalse(byName["b.jpg"]!.inPhotosHidden)
+        XCTAssertEqual(byName["a.jpg"]!.hiddenMatch, .hiddenOnly)
+        XCTAssertEqual(byName["b.jpg"]!.hiddenMatch, .none)
+    }
+
+    func testAlsoHiddenWhenBothVisibleAndHidden() async throws {
+        let lib = try TestFixtures.makeTempDir("audit-also-lib")
+        let folder = try TestFixtures.makeTempDir("audit-also-folder")
+        defer { TestFixtures.cleanup(lib); TestFixtures.cleanup(folder) }
+        // Same bytes exist as BOTH a hidden and a visible library asset.
+        try TestFixtures.write("DUP", to: lib.appendingPathComponent("abchidden.jpg"))
+        try TestFixtures.write("DUP", to: lib.appendingPathComponent("zzzvisible.jpg"))
+        try TestFixtures.write("DUP", to: folder.appendingPathComponent("a.jpg"))
+
+        let result = try await AuditEngine().audit(
+            folder: folder, photosLibrary: lib, mode: .exact, options: ScanOptions(kinds: [.all]),
+            includeHidden: true, hiddenAssetStems: ["abchidden"]
+        )
+        XCTAssertEqual(result.files.count, 1)
+        XCTAssertEqual(result.files.first?.hiddenMatch, .alsoHidden)
+        XCTAssertTrue(result.files.first!.inPhotosHidden)
     }
 
     func testExcludeHiddenMakesHiddenOnlyMatchMissing() async throws {

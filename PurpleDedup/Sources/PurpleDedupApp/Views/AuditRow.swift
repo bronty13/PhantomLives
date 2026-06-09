@@ -44,10 +44,7 @@ struct AuditRow: View {
 
             Spacer()
 
-            if file.inPhotosHidden {
-                badge("Hidden", systemImage: "eye.slash.fill", color: .pink)
-                    .help("This file is in your Photos library but only as a HIDDEN item.")
-            }
+            hiddenBadge
             statusBadge
         }
         .padding(.vertical, 4)
@@ -58,6 +55,20 @@ struct AuditRow: View {
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([file.url])
             }
+        }
+    }
+
+    @ViewBuilder
+    private var hiddenBadge: some View {
+        switch file.hiddenMatch {
+        case .none:
+            EmptyView()
+        case .hiddenOnly:
+            badge("Hidden", systemImage: "eye.slash.fill", color: .pink)
+                .help("In your Photos library ONLY as a hidden item.")
+        case .alsoHidden:
+            badge("Also Hidden", systemImage: "eye.slash", color: .indigo)
+                .help("In your Photos library both normally AND as a hidden copy.")
         }
     }
 

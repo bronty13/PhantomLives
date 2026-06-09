@@ -58,8 +58,10 @@ lets you import the missing ones.
 4. Click **Audit**. The results list shows every file with a status badge:
    **In Photos** (exact), **Likely · d=N** (perceptual match, with distance),
    **Same name** (filename matches a library original — likely an
-   iCloud-optimised copy), or **Not in Photos** — plus a pink **Hidden** tag
-   when the matching item is hidden in Photos.
+   iCloud-optimised copy), or **Not in Photos**. Hidden items get an extra tag:
+   a pink **Hidden** when the match lives *only* in your Hidden album, or an
+   indigo **Also Hidden** when the same item is in Photos both normally and
+   hidden.
 5. Use the **All / In Photos / Missing** filter at the top to focus. Click
    **Select all missing**, review, then **Import N → Photos**. A preflight
    confirms the count; importing **copies** the originals into Photos (your
