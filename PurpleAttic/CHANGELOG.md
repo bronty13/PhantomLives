@@ -3,6 +3,24 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.6.3] — 2026-06-10
+
+Cloud-copy fix found by the first end-to-end run (mirror + verify now confirmed).
+
+### Fixed
+- **Cloud copy to a Cryptomator vault aborted on `.DS_Store`.** With the 0.6.2
+  rsync flags, mirror (→ APFS) and verify both succeeded (verify: 350,500 files
+  match — the openrsync fix is confirmed), but the cloud rsync to the macFUSE
+  Cryptomator vault died at the first file: openrsync copies each file to a temp
+  name then renames it into place, and that `renameat` fails on the FUSE volume
+  ("renameat: No such file or directory") for `.DS_Store`, aborting the whole
+  transfer (exit 1, 0 files copied). `ExportEngine.rsyncCopyArgs` now excludes
+  `.DS_Store` and `.osxphotos_export.db*` from every copy (mirror + cloud).
+  Verified end-to-end against the live vault. These are dotfiles, which
+  `VerifyService` and `ArchiveIndex` already skip (`.skipsHiddenFiles`), so
+  excluding them creates no verify discrepancies and they were never archive
+  content. (59 tests.)
+
 ## [0.6.2] — 2026-06-10
 
 Critical mirror/cloud fix found by the first full run.

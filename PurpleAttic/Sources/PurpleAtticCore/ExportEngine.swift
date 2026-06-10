@@ -229,7 +229,14 @@ public final class ExportEngine {
         let v = versionBanner.lowercased()
         let isModern = !v.contains("openrsync")
             && v.range(of: #"version [3-9]\."#, options: .regularExpression) != nil
-        return isModern ? ["-ah", "--info=progress2"] : ["-ahv"]
+        let base = isModern ? ["-ah", "--info=progress2"] : ["-ahv"]
+        // Exclude junk from the copies: Finder's `.DS_Store` and osxphotos' per-destination
+        // export database. Both are dotfiles, so VerifyService / ArchiveIndex (which skip
+        // hidden files) already ignore them — excluding them here can't create false verify
+        // discrepancies. Critically, copying `.DS_Store` to a **Cryptomator/macFUSE** vault
+        // makes openrsync's temp-then-rename fail ("renameat: No such file or directory") and
+        // abort the ENTIRE cloud transfer — so this is also the cloud-copy fix.
+        return base + ["--exclude=.DS_Store", "--exclude=.osxphotos_export.db*"]
     }
 }
 
