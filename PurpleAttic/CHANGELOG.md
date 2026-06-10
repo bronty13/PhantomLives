@@ -3,6 +3,39 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.7.0] — 2026-06-10
+
+The three post-first-run enhancements: live progress, graceful errors, mount guard.
+
+### Added
+- **Live progress dashboard.** The Archive pane now shows a **phase stepper**
+  (Export HEIC → Export JPEG → Mirror → Verify → Cloud) with per-phase state
+  (pending/running/done/failed/skipped) + elapsed, total elapsed, the current
+  file being copied (rsync) / files checked (verify), and a live count of files
+  written during each export pass (polled, since osxphotos' own progress is
+  TTY-only and silent when piped). Replaces the bare "Running…" spinner for
+  these multi-hour runs. New `RunProgress` + `RunProgressTracker` in Core;
+  `ExportEngine(onProgress:)` streams snapshots; `AppState.progress` publishes them.
+- **Graceful error handling.** The benign exiftool *metadata-embed* failures
+  (Bad/Truncated MakerNotes, "Not a valid HEIC/JPEG/PNG", Bad ExifIFD, "Error
+  reading image data") no longer flood the log as scary "❌️ Error" lines. New
+  `OsxphotosLine.classify` reclassifies them as a counted **"sidecar-only"**
+  notice (the image + `.xmp` are archived; only the in-file embed was skipped),
+  suppresses the per-file/retry spam, keeps genuine export failures distinct, and
+  lists the affected photos in the run report. The run summary carries
+  `metadataEmbedSkips`.
+- **Mirror/vault mount guard.** New `VolumeReadiness` — before copying, each
+  mirror base must exist and (for a `/Volumes/*` path) be a genuinely mounted
+  separate volume. An unmounted drive is **skipped with a warning** instead of
+  the engine creating the folder on the **boot disk** and rsyncing hundreds of GB
+  there. (Found as a risk in 0.6.2.)
+
+### Changed
+- Mirror/verify are now reported as aggregate phases across all configured
+  mirrors (N ok / skipped / failed), and a failed/skipped mirror is no longer
+  verified.
+- Tests: 78 total (+16 — line classification, volume readiness, progress tracker).
+
 ## [0.6.5] — 2026-06-10
 
 Third cloud-copy fix — the vault rsync also can't create temp files (`--inplace`).

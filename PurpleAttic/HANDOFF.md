@@ -48,6 +48,9 @@ PurpleAtticCore (library)   — pure logic + IO; NO Photos framework, NO deletio
   LaunchAgentPlist           pure launchd plist builder
   FreeSpaceCheck             estimate archive footprint vs per-volume free space (pure + statfs)
   Permissions                Full Disk Access probe (shared by GUI preflight + `pattic doctor`)
+  VolumeReadiness            mount guard — destination base exists + is a real mounted volume
+  OsxphotosLine              classify export output (benign embed-skip vs real failure vs noise)
+  RunProgress / RunProgressTracker   live phase-stepper progress model (engine → GUI callback)
   Tooling / ProcessRunner / AtticLogger   tool locator, subprocess, logging
 
 pattic (executable)         — CLI front-end. Subcommands: doctor/init/plan/export.
@@ -146,7 +149,12 @@ Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
 All planned phases complete: **A** engine + CLI, **B** GUI + backup + bundle +
 library guard + vault status, **C** guarded purge (ships OFF), **D** launchd
 scheduler. **0.6** added the permissions preflight, the "Photos Archive" subfolder
-(physical destinations; vault exempt), and the free-space warning. 54 tests passing.
+(physical destinations; vault exempt), and the free-space warning. **0.6.2–0.6.5**
+fixed the openrsync↔Cryptomator cloud-copy issues (progress2 / `.DS_Store` /
+chown / temp-file — see Gotchas). **0.7** added the live progress dashboard,
+graceful embed-error handling, and the mirror mount guard. The full 3-copy
+pipeline (export → mirror → verify → cloud) is validated end-to-end on test
+drives (vault = 350,525 files, 0 errors). 78 tests passing.
 
 Not yet done / possible next:
 - First real **complete** archive on Vortex (gated on its iCloud download).

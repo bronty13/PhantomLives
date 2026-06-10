@@ -38,6 +38,8 @@ final class AppState: ObservableObject {
     @Published var logLines: [LogLine] = []
     @Published var lastSummaryText: String? = nil
     @Published var runError: String? = nil
+    /// Live phase-by-phase progress for the run dashboard (nil when no run is active/recent).
+    @Published var progress: RunProgress? = nil
     @Published var readiness: Tooling.Readiness = Tooling.readiness()
     @Published var libraryInspection: LibraryInspection? = nil
     @Published var isCheckingLibrary = false
@@ -179,6 +181,7 @@ final class AppState: ObservableObject {
         runError = nil
         lastSummaryText = nil
         logLines = []
+        progress = nil
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
@@ -193,7 +196,9 @@ final class AppState: ObservableObject {
                     }
                 }
             }
-            let engine = ExportEngine(logger: logger)
+            let engine = ExportEngine(logger: logger, onProgress: { [weak self] prog in
+                DispatchQueue.main.async { self?.progress = prog }
+            })
             do {
                 let summary = try engine.run(profile: profile, dryRun: dryRun)
                 let reportURL = summary.writeReport()

@@ -18,6 +18,7 @@ struct RunView: View {
             if !issues.isEmpty { issuesBanner }
             if appState.readiness.osxphotos == nil { osxphotosBanner }
             if !spaceWarnings.isEmpty { spaceBanner }
+            if let progress = appState.progress { progressPanel(progress); Divider() }
             logPane
         }
         .onAppear {
@@ -82,6 +83,79 @@ struct RunView: View {
                           || !appState.permissions.allGranted)
         }
         .padding(16)
+    }
+
+    // MARK: Progress dashboard (phase stepper)
+
+    @ViewBuilder
+    private func progressPanel(_ p: RunProgress) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                ForEach(p.steps) { step in
+                    phaseChip(step)
+                    if step.id != p.steps.last?.id {
+                        Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary).font(.caption2)
+                    }
+                }
+                Spacer()
+                Text(fmtElapsed(p.totalSeconds)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 14) {
+                if let active = p.activeStep {
+                    Label("\(active.kind.rawValue): \(active.detail.isEmpty ? "working…" : active.detail)",
+                          systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else if p.finished {
+                    Label("Run finished", systemImage: "checkmark.seal").font(.caption).foregroundStyle(.secondary)
+                }
+                if p.embedSkips > 0 {
+                    Label("\(p.embedSkips) sidecar-only", systemImage: "info.circle")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .help("Photos archived with metadata in the .xmp sidecar only (in-file embed skipped — damaged EXIF). Not errors.")
+                }
+                Spacer()
+            }
+            if !p.currentFile.isEmpty {
+                Text(p.currentFile)
+                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+        }
+        .padding(12)
+        .background(.background.secondary)
+    }
+
+    @ViewBuilder
+    private func phaseChip(_ step: RunProgress.Step) -> some View {
+        let (icon, tint): (String, Color) = {
+            switch step.state {
+            case .pending:  return ("circle", .secondary)
+            case .running:  return ("circle.dotted", .accentColor)
+            case .done:     return ("checkmark.circle.fill", .green)
+            case .failed:   return ("xmark.circle.fill", .red)
+            case .skipped:  return ("minus.circle", .orange)
+            }
+        }()
+        HStack(spacing: 4) {
+            Image(systemName: icon).foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(step.kind.rawValue).font(.caption.weight(step.state == .running ? .semibold : .regular))
+                if step.state == .running || step.state == .done || step.state == .failed {
+                    Text(step.seconds >= 1 ? fmtElapsed(step.seconds) : "")
+                        .font(.system(size: 9).monospacedDigit()).foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(step.state == .running ? Color.accentColor.opacity(0.12) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func fmtElapsed(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return "\(s/60)m \(s%60)s" }
+        return "\(s/3600)h \((s%3600)/60)m"
     }
 
     // MARK: Permissions preflight

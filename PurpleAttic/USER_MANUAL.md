@@ -93,12 +93,16 @@ new grant sometimes needs the app relaunched to register.)
    size and won't block the run, but it's worth a look before a multi-hour
    archive.
 
-6. **Archive → Run Archive.** Watch the live log: HEIC export, JPEG export, the
-   rsync mirror, the verify step, then the cloud copy (if the vault is unlocked).
-   The first run pulls every original to disk — **expect hours; let it run.** A
-   readable report lands in `~/Downloads/PurpleAttic/`. (A handful of old scanned
-   JPEGs may log exiftool *"Bad MakerNotes"* errors — harmless: the file and its
-   `.xmp` sidecar are still archived; only the in-file metadata re-embed is skipped.)
+6. **Archive → Run Archive.** A **progress bar across the top** shows the phase
+   stepper — **Export HEIC → Export JPEG → Mirror → Verify → Cloud** — with the
+   active phase highlighted, its elapsed time, the current file being copied, and
+   a live count of files written. (The detailed log scrolls below it.) The first
+   run pulls every original to disk — **expect hours; let it run.** A readable
+   report lands in `~/Downloads/PurpleAttic/`. A handful of old scans show up as
+   *"N sidecar-only"* — harmless: the image **and** its `.xmp` sidecar are
+   archived; only the in-file metadata re-embed was skipped (damaged EXIF). The
+   report lists them. If a **mirror drive isn't mounted**, that mirror is **skipped
+   with a warning** (never written to the boot disk) — mount it and re-run.
 
 7. **Confirm it landed.** Open `/Volumes/Vortex4TB/Photos Archive/originals/<year>/…`
    in Finder — you'll see dated folders of originals with `.xmp` sidecars next to

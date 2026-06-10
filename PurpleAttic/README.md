@@ -10,14 +10,16 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.6.0 — full pipeline + scheduler, now with a permissions preflight,
-> a "Photos Archive" subfolder on physical drives, and a free-space check:**
-> engine + `pattic` CLI + `PurpleAttic.app` GUI, with the previews-only guard,
-> Cryptomator vault status, the guarded purge, and a launchd scheduler. A run
-> won't start until Full Disk Access, Photos Automation, and Photos Library are
-> all granted. Purge ships **disabled** (`purgeEnabled` off) and deletes only
-> photos verified in ≥2 archive copies, behind two confirmations. The scheduler
-> archives only — never purges. The CLI never deletes.
+> **Status: 0.7.0 — full pipeline validated end-to-end, with a live progress
+> dashboard, graceful error handling, and a mount guard:** engine + `pattic` CLI
+> + `PurpleAttic.app` GUI, with the permissions preflight, "Photos Archive"
+> subfolder, free-space check, previews-only guard, Cryptomator vault status,
+> guarded purge, and launchd scheduler. The Archive pane shows a phase stepper
+> (Export → Mirror → Verify → Cloud) with per-phase progress; a run won't start
+> until Full Disk Access, Photos Automation, and Photos Library are all granted.
+> Purge ships **disabled** (`purgeEnabled` off) and deletes only photos verified
+> in ≥2 archive copies, behind two confirmations. The scheduler archives only —
+> never purges. The CLI never deletes.
 
 **Docs:** step-by-step usage is in **[USER_MANUAL.md](USER_MANUAL.md)** (Vortex
 first-run, the purge workflow, troubleshooting); the architecture/dev snapshot is
