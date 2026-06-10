@@ -516,6 +516,12 @@ final class ChatModel: ObservableObject {
                 $0.matchesAnyNetwork(nick: nick)
             }?.alertOverride
         }
+        // Quiet-mode resolver: mention / highlight-rule alerts are
+        // suppressed when the user is already looking at the buffer the
+        // message landed in (see `isViewingBuffer`).
+        watchlist.alertSuppressionResolver = { [weak self] network, buffer in
+            self?.isViewingBuffer(network: network, bufferName: buffer) ?? false
+        }
         seedFromSelectedProfile()
         applySettingsToAll()
         bot.attach(self)
@@ -532,7 +538,9 @@ final class ChatModel: ObservableObject {
         // Fan out bot-visible events to the sound player.
         events
             .sink { [weak self] tuple in
-                Task { @MainActor in self?.playSoundFor(event: tuple.1) }
+                Task { @MainActor in
+                    self?.playSoundFor(event: tuple.1, network: tuple.0)
+                }
             }
             .store(in: &cancellables)
         // Cross-network presence feed for the Watch Monitor window.
@@ -805,6 +813,18 @@ final class ChatModel: ObservableObject {
         activeConnectionID = id
     }
 
+    /// Open the per-network `*server*` console for a connection: make it
+    /// the active connection and select (creating on demand) its server
+    /// buffer. This is the only way the console surfaces now that server
+    /// rows no longer occupy the sidebar's Private section — reach it by
+    /// clicking the already-active network row or via the row's context
+    /// menu.
+    func showServerConsole(for connectionID: UUID) {
+        guard let conn = connections.first(where: { $0.id == connectionID }) else { return }
+        activeConnectionID = connectionID
+        conn.selectServerConsole()
+    }
+
     // MARK: - Settings sync
 
     private func onSettingsChanged() {
@@ -1015,7 +1035,22 @@ final class ChatModel: ObservableObject {
         return true
     }
 
-    private func playSoundFor(event: IRCConnectionEvent) {
+    /// True when the user is actively looking at `bufferName` on `network`
+    /// right now: quiet-mode enabled, app frontmost, that connection active,
+    /// that buffer selected. Message-driven alerts and sounds consult this
+    /// before firing — a banner or beep for the conversation already on
+    /// screen is pure noise.
+    func isViewingBuffer(network: UUID, bufferName: String) -> Bool {
+        guard settings.settings.quietWhenBufferVisible else { return false }
+        guard NSApp.isActive else { return false }
+        guard activeConnectionID == network,
+              let conn = activeConnection,
+              let sel = conn.selectedBufferID,
+              let buf = conn.buffers.first(where: { $0.id == sel }) else { return false }
+        return buf.name.caseInsensitiveCompare(bufferName) == .orderedSame
+    }
+
+    private func playSoundFor(event: IRCConnectionEvent, network: UUID) {
         let s = settings.settings
         switch event {
         case .state(.connected):
@@ -1025,6 +1060,10 @@ final class ChatModel: ObservableObject {
         case .ctcpRequest:
             SoundPlayer.play(.ctcp, settings: s)
         case .privmsg(let from, let target, _, _, let isMention):
+            // Quiet-mode: the conversation is on screen — no sound at all.
+            let isPrivate = !target.hasPrefix("#") && !target.hasPrefix("&")
+            let bufferName = isPrivate ? from : target
+            if isViewingBuffer(network: network, bufferName: bufferName) { return }
             // A per-contact message sound wins for ANY message from that
             // contact — channel line or private query alike (the user opted
             // this contact into being audible everywhere).
@@ -1037,7 +1076,6 @@ final class ChatModel: ObservableObject {
             }
             // Otherwise: private query (target is our own nick) OR a mention —
             // each its own global sound. Private takes precedence if both apply.
-            let isPrivate = !target.hasPrefix("#") && !target.hasPrefix("&")
             if isPrivate {
                 SoundPlayer.play(.privateMessage, settings: s)
             } else if isMention {

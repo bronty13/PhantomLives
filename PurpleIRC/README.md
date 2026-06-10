@@ -124,8 +124,12 @@ personal builds embed a safe non-installing key).
 - Input history (↑ / ↓) and a raw protocol log viewer (IRC → Show Raw Log)
 - Auto-join list on the connect form, unread badges in the sidebar
 - **Own-nick highlight**: messages mentioning your nick are tinted orange,
-  marked with `@`, and fire the same sound / banner / dock-bounce alerts
-  used for the watchlist
+  marked with `@`, play the *mention* event sound, and fire the banner /
+  dock-bounce alert channels. Alerts are **deduped per sender** (one alert
+  per person per few seconds, shared across the mention / highlight-rule /
+  watchlist paths) and **quiet mode** (on by default, Setup → Notifications
+  & Sounds) skips the sound + banner + bounce entirely when you're already
+  looking at the buffer the message landed in
 - **Right-click a nick → “Find … in logs”** — a dedicated sheet that surfaces
   every persisted log line *authored by* that nick, with **fuzzy variant
   matching** (finding `john_doe` also turns up `johndoe1`, `johnny1`, …). A
@@ -135,9 +139,9 @@ personal builds embed a safe non-installing key).
 - **Per-contact message sounds** — each Address Book contact can name its own
   sound (Address Book → Alert overrides → *Message sound*) that plays on **any**
   message from that person, a private query or a channel line. Contacts without
-  one fall back to the global per-event sounds in Setup → Sounds (which carry
-  the customizable defaults for own-nick mentions, private messages, etc.). A
-  configurable **per-nick throttle** (Setup → Sounds, default 5s) keeps a
+  one fall back to the global per-event sounds in Setup → Notifications &
+  Sounds (which carry the customizable defaults for own-nick mentions, private
+  messages, etc.). A configurable **per-nick throttle** (same tab, default 5s) keeps a
   chatty contact from stuttering the sound — at most one play per contact per
   window
 - **Query scrollback from logs** — opening a private conversation pre-loads the
@@ -169,15 +173,22 @@ personal builds embed a safe non-installing key).
 ### Setup window (⌘,)
 
 Open it from **PurpleIRC → Settings…** (⌘,) or the toolbar gear.
-20 tabs in 6 sidebar groups (mirroring macOS System Settings), all
+19 tabs in 6 sidebar groups (mirroring macOS System Settings), all
 persisted to `~/Library/Application Support/PurpleIRC/settings.json`:
 
-- **Connections** — Servers, Identities, Proxy & DCC
-- **People & places** — Address Book, Channels, Ignore, Highlights
-- **Behavior** — Behavior, Notifications, Logging
-- **Personalization** — Appearance, Themes, Fonts, Sounds
-- **Power-user** — Bot, PurpleBot, Assistant, Shortcuts & Aliases, Backup
+- **Connections** — Servers, Identities, DCC Transfers
+- **People & places** — Channels, Ignore, Highlights
+- **Behavior** — Behavior, Notifications & Sounds, Logging
+- **Personalization** — Appearance, Themes, Fonts
+- **Power-user** — Bot, PurpleBot, Assistant, Shortcuts & Aliases, Backup, Updates
 - **Security** — Security
+
+Every alert-related knob — quiet mode, watch-hit channels, own-nick
+mention, per-event sounds, the per-contact sound throttle — lives in the
+single **Notifications & Sounds** tab (the old separate Sounds tab was
+merged into it). The only alert settings elsewhere are deliberately
+scoped: per-rule overrides on the Highlights rule editor, per-contact
+overrides on the Address Book contact card.
 
 The biggest tabs:
 
@@ -229,7 +240,7 @@ section's `ForEach` is `.onMove`-enabled, so picking up a row and dragging
 it to a new position within the same section reorders the underlying
 list. Reorders within a kind (e.g. channel buffers) preserve the
 positions of other kinds in the underlying array, so a channel reorder
-doesn't disturb queries or server-console rows.
+doesn't disturb queries or the (hidden) server-console buffer.
 
 **Per-buffer message-kind filter.** The funnel icon in any buffer header
 opens a checkbox grid for system info, errors, MOTD, notices, joins,
@@ -240,10 +251,14 @@ edited in Setup → Behavior → "Default message filter". PRIVMSG / ACTION
 lines always render — the popover footer flags this so the user doesn't
 go looking for a toggle that would silently swallow the conversation.
 
-The per-network `*server*` console row under **Private** is **purged at app
-launch** so each session starts clean. The buffer is in-memory only — the
-connection re-creates it the moment something needs to log to it — so the
-purge never loses persisted state.
+**The per-network `*server*` console has no sidebar row of its own.** The
+**Networks** row *is* the server: click the already-active network's row
+(or right-click → **Server Console**) to open the console with the MOTD,
+notices, and raw server replies; unread console traffic badges on the
+network row. The console buffer is in-memory only and **purged at app
+launch** so each session starts clean — the connection re-creates it the
+moment something needs to log to it, so the purge never loses persisted
+state.
 
 ### Watchlist / online alerts
 - Who is watched comes from Setup → Address Book (entries with the bell

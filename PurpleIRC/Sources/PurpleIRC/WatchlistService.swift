@@ -60,6 +60,16 @@ final class WatchlistService: ObservableObject {
     /// the four global toggles above.
     var contactAlertOverrideResolver: ((String) -> ContactAlertOverride?)? = nil
 
+    /// "Is the user already looking at this conversation?" resolver,
+    /// installed by ChatModel. Receives the originating network's
+    /// `IRCConnection.id` and the buffer name the message landed in;
+    /// returns true when the app is frontmost AND that buffer is the
+    /// selected one — in which case message-driven alerts (mention /
+    /// highlight-rule banners, sounds, dock bounces) are suppressed.
+    /// Gated behind `AppSettings.quietWhenBufferVisible`, which the
+    /// resolver itself consults. nil (tests) = never suppress.
+    var alertSuppressionResolver: ((UUID, String) -> Bool)? = nil
+
     private weak var delegate: WatchlistDelegate?
 
     /// All watch state that is genuinely per-network. Previously these
@@ -75,12 +85,35 @@ final class WatchlistService: ObservableObject {
     }
     private var networks: [UUID: NetworkWatchState] = [:]
 
-    /// Per-nick last-alert timestamp for short-window dedupe across the
-    /// MONITOR / ISON / observed-activity sources. Without this, a watched
-    /// user's PRIVMSG firing handleObservedActivity at roughly the same
-    /// instant a poll cycle returns ISON for them produces two banners.
+    /// Per-nick last-alert timestamp for short-window dedupe across EVERY
+    /// alert path — watch-online (MONITOR / ISON / observed activity),
+    /// own-nick mention, and highlight-rule matches. Without this, one
+    /// message from one person could stack a mention banner + a rule
+    /// banner + a watch banner within the same second. One audible/visible
+    /// alert per person per window; the in-buffer row tint and the
+    /// recent-hits feeds still record everything.
     private var lastAlertAt: [String: Date] = [:]
     private static let alertDedupeWindow: TimeInterval = 3.0
+
+    /// Check-and-stamp the per-nick dedupe gate. Returns false when an
+    /// alert for `nick` fired within the window (caller should stay
+    /// silent), true otherwise — and records `now` so subsequent callers
+    /// across any path see the stamp. Factored out of `fireOnlineAlert`
+    /// so mention and rule alerts share the same gate (and so it's
+    /// directly testable without touching UNUserNotificationCenter).
+    func shouldFireAlert(forNick nick: String, now: Date = Date()) -> Bool {
+        let key = nick.lowercased()
+        if let last = lastAlertAt[key],
+           now.timeIntervalSince(last) < Self.alertDedupeWindow {
+            return false
+        }
+        lastAlertAt[key] = now
+        if lastAlertAt.count > 256 {
+            let cutoff = now.addingTimeInterval(-Self.alertDedupeWindow * 4)
+            lastAlertAt = lastAlertAt.filter { $0.value > cutoff }
+        }
+        return true
+    }
 
     init() {
         requestAuth()
@@ -296,17 +329,9 @@ final class WatchlistService: ObservableObject {
         // single sighting that simultaneously trips two paths produces one
         // banner, not two. Manual test alerts skip the gate by design so
         // users can verify notification permission repeatedly.
-        let key = nick.lowercased()
         let now = Date()
-        if source != "manual test",
-           let last = lastAlertAt[key],
-           now.timeIntervalSince(last) < Self.alertDedupeWindow {
+        if source != "manual test", !shouldFireAlert(forNick: nick, now: now) {
             return
-        }
-        lastAlertAt[key] = now
-        if lastAlertAt.count > 256 {
-            let cutoff = now.addingTimeInterval(-Self.alertDedupeWindow * 4)
-            lastAlertAt = lastAlertAt.filter { $0.value > cutoff }
         }
 
         let hit = WatchHit(nick: nick, source: source, timestamp: now)
@@ -324,11 +349,21 @@ final class WatchlistService: ObservableObject {
         )
     }
 
-    /// Called by ChatModel when the user's own nick is mentioned in a PRIVMSG.
-    func fireHighlightAlert(nick: String, channel: String, text: String) {
+    /// Called by the connection when the user's own nick is mentioned in a
+    /// PRIVMSG. The hit is always recorded for the recent-highlights feed;
+    /// the alert channels (banner / dock bounce) are skipped when the user
+    /// is already viewing that buffer, and deduped per sender so a burst of
+    /// mentions from one person produces one alert per window. The mention
+    /// *sound* is owned by `ChatModel.playSoundFor` (the per-event "mention"
+    /// sound) — this path deliberately stays silent so a single message
+    /// can't play two sounds.
+    func fireHighlightAlert(nick: String, channel: String, text: String, network: UUID) {
         let hit = HighlightHit(nick: nick, channel: channel, text: text, timestamp: Date())
         recentHighlights.insert(hit, at: 0)
         if recentHighlights.count > 50 { recentHighlights.removeLast(recentHighlights.count - 50) }
+
+        if alertSuppressionResolver?(network, channel) == true { return }
+        guard shouldFireAlert(forNick: nick) else { return }
 
         // Mention alerts also consult per-contact overrides — if the
         // mentioner is in the address book with an alert override, it
@@ -338,7 +373,8 @@ final class WatchlistService: ObservableObject {
             title: "\(nick) mentioned you",
             subtitle: channel,
             body: text,
-            identifier: "mention-\(nick)-\(Int(Date().timeIntervalSince1970))"
+            identifier: "mention-\(nick)-\(Int(Date().timeIntervalSince1970))",
+            includeSound: false
         )
     }
 
@@ -346,14 +382,21 @@ final class WatchlistService: ObservableObject {
     /// `playSound` / `bounceDock` / `systemNotify` toggles instead of the
     /// watchlist-global flags, so rules are independent of watchlist settings.
     /// `soundName` is the user's configured "highlight" event sound.
+    /// Shares the per-sender dedupe gate with mention and watch alerts —
+    /// when a message both mentions you and matches a rule, exactly one
+    /// alert fires.
     func fireRuleAlert(rule: HighlightRule,
                        from: String,
                        channel: String,
                        text: String,
-                       soundName: String) {
+                       soundName: String,
+                       network: UUID) {
         let hit = HighlightHit(nick: from, channel: channel, text: text, timestamp: Date())
         recentHighlights.insert(hit, at: 0)
         if recentHighlights.count > 50 { recentHighlights.removeLast(recentHighlights.count - 50) }
+
+        if alertSuppressionResolver?(network, channel) == true { return }
+        guard shouldFireAlert(forNick: from) else { return }
 
         if rule.bounceDock {
             NSApp.requestUserAttention(.criticalRequest)
@@ -382,11 +425,16 @@ final class WatchlistService: ObservableObject {
     /// `forContactNick` is the nick this alert is about — `nil` for
     /// non-contact-scoped alerts (none today, but the parameter keeps
     /// the API honest about the override boundary).
+    ///
+    /// `includeSound: false` is the mention path: the per-event "mention"
+    /// sound is played by `ChatModel.playSoundFor` on the same message, so
+    /// playing the watch-hit sound here too would double up.
     private func fireSystemAlert(forContactNick nick: String?,
                                  title: String,
                                  subtitle: String,
                                  body: String,
-                                 identifier: String) {
+                                 identifier: String,
+                                 includeSound: Bool = true) {
         let override = nick.flatMap { contactAlertOverrideResolver?($0) }
         let effectiveBounce  = override?.bounceDock   ?? bounceDock
         let effectiveSound   = override?.playSound    ?? playSound
@@ -397,7 +445,7 @@ final class WatchlistService: ObservableObject {
         if effectiveBounce {
             NSApp.requestUserAttention(.criticalRequest)
         }
-        if effectiveSound, !effectiveSound2.isEmpty {
+        if includeSound, effectiveSound, !effectiveSound2.isEmpty {
             NSSound(named: effectiveSound2)?.play()
         }
         if effectiveBanner {

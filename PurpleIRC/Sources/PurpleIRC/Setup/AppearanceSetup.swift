@@ -102,17 +102,16 @@ struct AppearanceSetup: View {
                     .font(.caption).foregroundStyle(.tertiary)
             }
             Section("Reading aids") {
-                Toggle("Bold chat text", isOn: $settings.settings.boldChatText)
                 Toggle("Relaxed row spacing (accessibility)", isOn: $settings.settings.relaxedRowSpacing)
                 Toggle("Collapse runs of join / part / quit lines",
                        isOn: $settings.settings.collapseJoinPart)
-                Text("Each toggle applies immediately. Bold pairs well with High Contrast.")
+                Text("Each toggle applies immediately.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
             Section("Where to find moved settings") {
                 Text("• Theme grid → **Themes** tab")
-                Text("• Font family / size / weight → **Fonts** tab")
-                Text("• Per-event sound chooser → **Sounds** tab")
+                Text("• Font family / size / weight / bold → **Fonts** tab")
+                Text("• Sounds + alert channels → **Notifications & Sounds** tab")
             }
             .font(.caption)
         }

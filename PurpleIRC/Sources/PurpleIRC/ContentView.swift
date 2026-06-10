@@ -555,14 +555,15 @@ struct SidebarView: View {
                 }
             }
 
-            // Private grouping — direct queries with users plus the
-            // network/server console rows. The server rows live here so the
-            // sidebar reads as "channels above, anything addressed to *you*
-            // below". A subtle divider + dim styling on the server rows keeps
-            // them distinct from query rows above and saved/contacts below.
-            let queries  = parts.queries
-            let servers  = parts.servers
-            if !queries.isEmpty || !servers.isEmpty {
+            // Private grouping — direct queries only. The per-network
+            // `*server*` console no longer occupies a sidebar row (it read
+            // as a second row per server and made networks feel like they
+            // "hang out" in the spine); the console is reached through the
+            // Networks row instead — click the active network's row, or
+            // right-click → Server Console. Unread console traffic badges
+            // on the network row.
+            let queries = parts.queries
+            if !queries.isEmpty {
                 Section("Private") {
                     ForEach(queries) { buf in
                         BufferRow(buffer: buf, icon: "person.fill")
@@ -570,17 +571,6 @@ struct SidebarView: View {
                     .onMove { source, destination in
                         model.activeConnection?.moveBuffers(
                             kind: .query, from: source, to: destination)
-                    }
-                    if !queries.isEmpty && !servers.isEmpty {
-                        // Visual separator between user queries and the
-                        // network console rows. Pulled in from the row edge
-                        // so it reads as a divider, not a real list row.
-                        Divider()
-                            .padding(.horizontal, 6)
-                            .listRowSeparator(.hidden)
-                    }
-                    ForEach(servers) { buf in
-                        ServerConsoleRow(buffer: buf)
                     }
                 }
             }
@@ -634,20 +624,19 @@ struct SidebarView: View {
     }
 
     /// Partition the active connection's buffers by kind in a single pass.
-    /// The sidebar needs all three groups every render; folding them once
-    /// avoids three separate `.filter` sweeps over `model.buffers`.
-    private var partitionedBuffers: (channels: [Buffer], queries: [Buffer], servers: [Buffer]) {
+    /// Server-console buffers are deliberately omitted — they have no
+    /// sidebar row (see the Private-section comment above).
+    private var partitionedBuffers: (channels: [Buffer], queries: [Buffer]) {
         var channels: [Buffer] = []
         var queries: [Buffer] = []
-        var servers: [Buffer] = []
         for buf in model.buffers {
             switch buf.kind {
             case .channel: channels.append(buf)
             case .query:   queries.append(buf)
-            case .server:  servers.append(buf)
+            case .server:  break
             }
         }
-        return (channels, queries, servers)
+        return (channels, queries)
     }
 
     private var savedForCurrentServer: [SavedChannel] {
@@ -744,6 +733,18 @@ struct NetworkRow: View {
                 }
             }
             Spacer(minLength: 4)
+            // Unread server-console traffic badges here now that the
+            // console has no sidebar row of its own — click through to
+            // read it.
+            if serverUnread > 0, !hovering {
+                Text("\(serverUnread)")
+                    .font(.caption2)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.secondary.opacity(0.35)))
+                    .foregroundStyle(.white)
+                    .help("\(serverUnread) unread server-console lines")
+            }
             if hovering, connection.state == .connected {
                 Button {
                     connection.disconnect()
@@ -758,15 +759,27 @@ struct NetworkRow: View {
         .padding(.vertical, 1)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { model.selectConnection(id: connection.id) }
+        .onTapGesture {
+            // First click activates the network; clicking the already-
+            // active network opens its server console (MOTD, notices,
+            // raw server replies) — the row IS the server.
+            if isActive {
+                model.showServerConsole(for: connection.id)
+            } else {
+                model.selectConnection(id: connection.id)
+            }
+        }
         .background(isActive ? Color.accentColor.opacity(0.18) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
-        .help("\(connection.displayName) — \(stateLabel)")
+        .help("\(connection.displayName) — \(stateLabel). Click the active network again for its server console.")
         .contextMenu {
             if connection.state == .connected || connection.state == .connecting {
                 Button("Disconnect") { connection.disconnect() }
             } else {
                 Button("Connect") { connection.connect() }
+            }
+            Button("Server Console") {
+                model.showServerConsole(for: connection.id)
             }
             Divider()
             Button("Remove from list", role: .destructive) {
@@ -774,6 +787,11 @@ struct NetworkRow: View {
                 DispatchQueue.main.async { model.removeConnection(id: id) }
             }
         }
+    }
+
+    /// Unread count on this connection's `*server*` console buffer, if any.
+    private var serverUnread: Int {
+        connection.buffers.first(where: { $0.kind == .server })?.unread ?? 0
     }
 }
 
@@ -815,56 +833,6 @@ struct AddNetworkRow: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .help("Connect to another server — same profile twice is fine")
-    }
-}
-
-/// Server console row in the sidebar — the network-info buffer that holds
-/// raw notices, MOTD, server replies, etc. Styled distinctly from channel and
-/// query rows: smaller/secondary type with a subtle accent dot so it reads as
-/// "this is the network itself" rather than a peer or a topic.
-struct ServerConsoleRow: View {
-    let buffer: Buffer
-    @EnvironmentObject var model: ChatModel
-    @State private var isHovering: Bool = false
-
-    private var isSelected: Bool { model.selectedBufferID == buffer.id }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "server.rack")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(buffer.name)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 4)
-            if buffer.unread > 0, !isHovering {
-                Text("\(buffer.unread)")
-                    .font(.caption2)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.secondary.opacity(0.35)))
-                    .foregroundStyle(.white)
-            }
-        }
-        .padding(.vertical, 1)
-        .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .tag(buffer.id as Buffer.ID?)
-        .contextMenu {
-            Button("Copy network name") {
-                #if canImport(AppKit)
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(buffer.name, forType: .string)
-                #endif
-            }
-            Divider()
-            if isSelected {
-                Button("Disconnect from this network") { model.disconnect() }
-            }
-        }
     }
 }
 

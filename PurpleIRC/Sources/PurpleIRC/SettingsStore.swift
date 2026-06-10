@@ -735,6 +735,12 @@ struct AppSettings: Codable {
     var bounceDockOnWatchHit: Bool = true
     var systemNotificationsOnWatchHit: Bool = true
     var highlightOnOwnNick: Bool = true
+    /// Suppress message-driven alerts (sound / banner / dock bounce) when
+    /// the app is frontmost AND the message landed in the buffer the user
+    /// is currently looking at. You're already reading the conversation —
+    /// a banner on top of it is pure noise. On by default; the row tint /
+    /// @ marker still render either way.
+    var quietWhenBufferVisible: Bool = true
     /// When a watched contact's PRIVMSG creates a fresh query buffer
     /// (first message of session from that contact), auto-switch to
     /// that network and select the query. Off by default — opt-in
@@ -932,6 +938,7 @@ struct AppSettings: Codable {
         self.bounceDockOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .bounceDockOnWatchHit) ?? true
         self.systemNotificationsOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .systemNotificationsOnWatchHit) ?? true
         self.highlightOnOwnNick = try c.decodeIfPresent(Bool.self, forKey: .highlightOnOwnNick) ?? true
+        self.quietWhenBufferVisible = try c.decodeIfPresent(Bool.self, forKey: .quietWhenBufferVisible) ?? true
         self.enablePersistentLogs = try c.decodeIfPresent(Bool.self, forKey: .enablePersistentLogs) ?? false
         self.logMotdAndNumerics = try c.decodeIfPresent(Bool.self, forKey: .logMotdAndNumerics) ?? false
         self.seedQueryFromLogs = try c.decodeIfPresent(Bool.self, forKey: .seedQueryFromLogs) ?? true
@@ -986,6 +993,21 @@ struct AppSettings: Codable {
             ?? MessageKindFilter()
         self.messageFiltersByBuffer = try c.decodeIfPresent([String: MessageKindFilter].self, forKey: .messageFiltersByBuffer)
             ?? [:]
+        // These eight were written by the synthesized encoder but never
+        // read back — every relaunch silently reset user aliases, custom
+        // themes, density, zoom, and the per-element font overrides to
+        // factory defaults. Keep this list in sync with the property
+        // block above whenever a field is added (regression test:
+        // SettingsRoundtripTests.decoderCoversEveryPersistedField).
+        self.userAliases = try c.decodeIfPresent([String: String].self, forKey: .userAliases) ?? [:]
+        self.chatDensity = try c.decodeIfPresent(ChatDensity.self, forKey: .chatDensity) ?? .cozy
+        self.viewZoom = min(2.0, max(0.5,
+            try c.decodeIfPresent(Double.self, forKey: .viewZoom) ?? 1.0))
+        self.userThemes = try c.decodeIfPresent([UserTheme].self, forKey: .userThemes) ?? []
+        self.chatBodyFont = try c.decodeIfPresent(FontStyle.self, forKey: .chatBodyFont) ?? FontStyle()
+        self.nickFont = try c.decodeIfPresent(FontStyle.self, forKey: .nickFont) ?? FontStyle()
+        self.timestampFont = try c.decodeIfPresent(FontStyle.self, forKey: .timestampFont) ?? FontStyle()
+        self.systemLineFont = try c.decodeIfPresent(FontStyle.self, forKey: .systemLineFont) ?? FontStyle()
     }
 }
 

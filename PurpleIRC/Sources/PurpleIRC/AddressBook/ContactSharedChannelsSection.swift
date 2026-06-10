@@ -8,8 +8,16 @@ struct ContactSharedChannelsSection: View {
     let entry: AddressEntry
     @EnvironmentObject var model: ChatModel
 
+    /// Cached result of the per-connection × per-buffer × per-user scan.
+    /// Computing this inside `body` meant every keystroke in the contact
+    /// editor walked every user list of every joined channel on every
+    /// network. Refreshes on selection / nick-binding changes instead;
+    /// channel membership churn between refreshes is invisible at the
+    /// cadence this section is read.
+    @State private var groups: [ChannelGroup] = []
+    @State private var refreshDebounce: Task<Void, Never>? = nil
+
     var body: some View {
-        let groups = sharedChannels()
         VStack(alignment: .leading, spacing: 6) {
             if groups.isEmpty {
                 Text("Not currently sharing any channels with this contact across the connected networks. Channels populate the moment they show up in a NAMES reply or speak.")
@@ -40,6 +48,25 @@ struct ContactSharedChannelsSection: View {
                     }
                 }
             }
+        }
+        .onAppear { refreshNow() }
+        .onChange(of: entry.id) { _, _ in refreshNow() }
+        .onChange(of: entry.nick) { _, _ in scheduleRefresh() }
+        .onChange(of: entry.linkedNicks) { _, _ in scheduleRefresh() }
+        .onDisappear { refreshDebounce?.cancel() }
+    }
+
+    private func refreshNow() {
+        refreshDebounce?.cancel()
+        groups = sharedChannels()
+    }
+
+    private func scheduleRefresh() {
+        refreshDebounce?.cancel()
+        refreshDebounce = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            refreshNow()
         }
     }
 

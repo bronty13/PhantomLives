@@ -36,6 +36,53 @@ struct SettingsRoundtripTests {
         #expect(roundtripped?.restoreOpenBuffersOnLaunch == true)
     }
 
+    // MARK: - Regression: fields the decoder used to drop (2026-06-09)
+
+    /// Eight persisted fields were written by the synthesized encoder but
+    /// never read back in `init(from:)` — every relaunch silently reset
+    /// user aliases, custom themes, chat density, zoom, and all four
+    /// per-element font overrides to factory defaults. This pins the fix:
+    /// a customized value of each must survive a roundtrip.
+    @Test func decoderCoversEveryPersistedField() throws {
+        var original = AppSettings()
+        original.userAliases = ["greet": "/msg $1 hello"]
+        original.chatDensity = .compact
+        original.viewZoom = 1.4
+        original.userThemes = [UserTheme.duplicate(of: Theme.all[0], name: "Test Theme")]
+        original.chatBodyFont = FontStyle(family: "Menlo", size: 15)
+        original.nickFont = FontStyle(family: "Avenir", size: 12)
+        original.timestampFont = FontStyle(family: "Monaco", size: 10)
+        original.systemLineFont = FontStyle(family: "Helvetica", size: 11)
+
+        let r = try #require(roundtrip(original))
+        #expect(r.userAliases == ["greet": "/msg $1 hello"])
+        #expect(r.chatDensity == .compact)
+        #expect(r.viewZoom == 1.4)
+        #expect(r.userThemes.count == 1)
+        #expect(r.userThemes.first?.name == "Test Theme")
+        #expect(r.chatBodyFont.family == "Menlo")
+        #expect(r.nickFont.family == "Avenir")
+        #expect(r.timestampFont.family == "Monaco")
+        #expect(r.systemLineFont.family == "Helvetica")
+    }
+
+    @Test func quietWhenBufferVisibleDefaultsOnAndRoundtrips() throws {
+        // Default ON for both fresh installs and pre-existing settings
+        // files that don't carry the key.
+        let fromEmpty = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+        #expect(fromEmpty.quietWhenBufferVisible == true)
+
+        var s = AppSettings()
+        s.quietWhenBufferVisible = false
+        #expect(roundtrip(s)?.quietWhenBufferVisible == false)
+    }
+
+    @Test func viewZoomIsClampedOnDecode() throws {
+        let data = Data(#"{"viewZoom": 99.0}"#.utf8)
+        let s = try JSONDecoder().decode(AppSettings.self, from: data)
+        #expect(s.viewZoom == 2.0)   // /zoom's documented 0.5–2.0 range
+    }
+
     // MARK: - Forward compatibility — minimal payload still decodes
 
     @Test func decodesEmptyJSONObject() throws {

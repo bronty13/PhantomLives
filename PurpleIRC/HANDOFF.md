@@ -31,7 +31,10 @@ BufferKey, BufferInputState, 1.0.236–238), Tier #15 (quick-wins
 batch — pop-on-watch, irc.store, activity sparkline, Shortcuts.app
 + Focus Filter, 1.0.239–241), Tier #16 (Person model + world-class
 Address Book workspace, 1.0.243), and Tier #17 (cross-network
-unified search ⌘⇧F, 1.0.247) all closed. Test count 332.
+unified search ⌘⇧F, 1.0.247) all closed. Tier #20 (2026-06-09:
+quiet-mode + cross-path alert dedupe, server-console rows out of the
+sidebar, Sounds merged into Notifications & Sounds, Address Book perf,
+decoder 8-field data-loss fix — see the Tier #20 section). Test count 409.
 Bundle is notarisation-ready (hardened runtime + Apple timestamp).
 
 ## What it is
@@ -110,6 +113,51 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 17 | Cross-network unified search ⌘⇧F (`LogStore.search` + `UnifiedSearchView`; case-sensitivity + network filter chips + click-to-jump routing through existing `/join` / `/query` auto-create) | Done | `1.0.247` |
 | 18 | Sidebar off `NavigationSplitView` → manual `HStack` (fixed 220 px, `@AppStorage("sidebarVisible")` toggle ⌃⌘S); `WindowStateGuard` + `AppDelegate` (resetVersion 1) + Window → Reset Window State…; gitignore Finder ` 2.app`/` 3.app` dupes + delete stray bundle; README/HANDOFF doc sync | Done | 2026-05-24 |
 | 19 | Fuzzy "Find nick in logs" — user-list right-click → dedicated `NickFindView` sheet over `LogStore.searchAuthored` (authored-by, not mention); `NickFuzzyMatcher` (normalize + Jaro-Winkler + log-line author parse); live fuzziness slider + matched-variant chips; jump routing factored into shared `ChatModel.jumpToLogHit` (also used by `UnifiedSearchView`) | Done | 2026-06-04 |
+| 20 | Notification-overload + Setup-cohesion + perf pass (see below) | Done | 2026-06-09 |
+
+## Tier #20 — notifications, sidebar, Setup cohesion, perf (2026-06-09)
+
+User-driven review pass ("notifications are excessive, servers hang out
+in the left spine, options feel all over the place, app is sluggish in
+Settings / Address Book"). What a future session needs to know:
+
+- **Quiet mode.** `AppSettings.quietWhenBufferVisible` (default ON).
+  `ChatModel.isViewingBuffer(network:bufferName:)` is the single gate
+  (app frontmost + connection active + buffer selected); the watchlist
+  consults it via `WatchlistService.alertSuppressionResolver`, and
+  `ChatModel.playSoundFor` consults it directly for message sounds.
+- **Cross-path alert dedupe.** `WatchlistService.shouldFireAlert(forNick:now:)`
+  is a check-and-stamp gate shared by ALL THREE alert paths (watch-online,
+  own-nick mention, highlight rule) — one alert per sender per 3 s window.
+  Suppressed (quiet-mode) alerts deliberately do NOT stamp the gate.
+  Mention sounds are owned by `playSoundFor` (per-event "mention" sound);
+  `fireHighlightAlert` passes `includeSound: false` to `fireSystemAlert`
+  so a mention can't play two sounds. Don't re-add a sound there.
+- **Server console has no sidebar row.** `ServerConsoleRow` was deleted;
+  the Private section is queries-only. `ChatModel.showServerConsole(for:)`
+  → `IRCConnection.selectServerConsole()` (creates on demand). The
+  NetworkRow opens it on click-when-already-active + context menu, and
+  shows the console's unread badge.
+- **Setup tabs are 19.** Sounds tab merged into **Notifications & Sounds**
+  (`NotificationsSetup.swift`; `SoundsSetup.swift` deleted). Bold-text
+  toggle removed from Appearance (Fonts owns it); FactoryResetRow removed
+  from Security (Backup owns it); `.proxyDcc` renamed "DCC Transfers".
+- **Decoder data-loss fix.** `AppSettings.init(from:)` is a CUSTOM
+  decoder — any new persisted field MUST get a `decodeIfPresent` line
+  there or it silently resets every relaunch. Eight fields (userAliases,
+  chatDensity, viewZoom, userThemes, chatBodyFont, nickFont,
+  timestampFont, systemLineFont) had been missing for months.
+  `SettingsRoundtripTests.decoderCoversEveryPersistedField` pins them;
+  extend it when adding fields.
+- **Address Book perf pattern.** Detail-pane sections must NOT compute
+  cross-store scans in `body` (every keystroke re-renders the Form).
+  `ContactActivityTimelineSection` / `ContactSharedChannelsSection` /
+  the sparkline bins cache into `@State`, refreshed on `entry.id` change
+  immediately and on nick/linkedNicks edits behind a 300 ms debounce —
+  same shape as the pre-existing `loadMatches` debounce. Follow this
+  pattern for any new detail section.
+
+Test count 409.
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 

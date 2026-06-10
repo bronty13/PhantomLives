@@ -12,6 +12,97 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.764] — 2026-06-09
+
+A user-driven UX + performance pass: notifications were excessive, the
+sidebar carried two rows per server, alert settings spanned four tabs,
+and the Setup / Address Book windows stuttered. Plus one serious
+data-loss bug found along the way.
+
+### Fixed
+
+- **Settings decoder dropped eight persisted fields on every relaunch**
+  (`SettingsStore.swift`). `AppSettings.init(from:)` is a custom decoder,
+  and it never read back `userAliases`, `chatDensity`, `viewZoom`,
+  `userThemes`, `chatBodyFont`, `nickFont`, `timestampFont`, or
+  `systemLineFont` — so user aliases, custom themes, chat density, zoom,
+  and all four per-element font overrides silently reset to factory
+  defaults at every launch (they encoded fine; they just were never
+  decoded). All eight now decode with their proper defaults (`viewZoom`
+  clamped to /zoom's 0.5–2.0 range). Regression-pinned by
+  `SettingsRoundtripTests.decoderCoversEveryPersistedField`.
+- **One message could stack three alerts** (`WatchlistService.swift`,
+  `IRCConnection.swift`, `ChatModel.swift`). A single PRIVMSG that
+  mentioned your nick, matched a highlight rule, and came from a contact
+  with a message sound could fire two banners, two dock bounces, and
+  two-to-three sounds. The per-nick 3 s dedupe window that already
+  guarded watch-online alerts now spans **all three** alert paths
+  (watch-online / own-nick mention / highlight rule) via the shared
+  `shouldFireAlert(forNick:)` gate — one audible/visible alert per
+  sender per window. The mention path also no longer plays the
+  watch-hit sound on top of the per-event *mention* sound: sounds for
+  messages are owned by the per-event sound map, banners + dock bounces
+  by the alert path.
+
+### Added
+
+- **Quiet mode — don't alert for the conversation you're viewing**
+  (`AppSettings.quietWhenBufferVisible`, default **on**; Setup →
+  Notifications & Sounds). When PurpleIRC is frontmost and a message
+  lands in the buffer you have selected, the sound, banner, and Dock
+  bounce are skipped — you're already reading it. The row tint, @
+  marker, and recent-highlights feed still record everything. Alerts
+  for other buffers and while the app is backgrounded are unaffected.
+
+### Changed
+
+- **Servers no longer hang out in the sidebar's Private section**
+  (`ContentView.swift`, `ChatModel.swift`, `IRCConnection.swift`). Every
+  network used to occupy *two* rows — its Networks row up top and an
+  uncloseable `*server*` console row under Private. The console row is
+  gone: the **Networks row is the server** — click the already-active
+  network's row (or right-click → **Server Console**) to open the
+  console, and unread console traffic now badges on the network row.
+  The Private section is queries-only.
+- **One tab for everything alert-related** (`SetupView.swift`,
+  `Setup/NotificationsSetup.swift`; `Setup/SoundsSetup.swift` deleted).
+  Notification knobs were spread across four tabs (Notifications,
+  Sounds, Highlights, Behavior). The Sounds tab is merged into a single
+  **Notifications & Sounds** tab: quiet mode, watch-hit channels,
+  own-nick mention, per-event sounds, and the per-contact throttle in
+  one place. Per-rule overrides stay on the Highlights rule editor and
+  per-contact overrides on the Address Book card — deliberately scoped,
+  cross-referenced from the tab.
+- **Setup cohesion cleanups.** The duplicated *Bold chat text* toggle is
+  gone from Appearance (Fonts owns it); the duplicated *Factory reset*
+  row is gone from Security (Backup owns it, next to the restore tools);
+  *Proxy & DCC* is renamed **DCC Transfers** to match what it actually
+  contains (per-server proxy config lives on each Servers profile);
+  stale "moved settings" cross-references updated.
+
+### Performance
+
+- **Address Book detail pane no longer scans cross-network stores on
+  every keystroke** (`ContactActivityTimelineSection.swift`,
+  `ContactSharedChannelsSection.swift`, `ContactDetailView.swift`).
+  The activity timeline (full SeenStore fold + sort), shared-channels
+  list (every user list of every joined channel on every network), and
+  the 14-day sparkline bins were all computed inside `body` — re-running
+  on every re-render of the editor Form, i.e. every keystroke in any
+  field. All three are now cached `@State`, refreshed on selection
+  change and on debounced nick/linked-nick edits.
+- **Highlight rule editor no longer recompiles the validation regex per
+  render** (`Setup/HighlightsSetup.swift`). Pattern validation moved
+  from a computed property to cached `@State` recomputed via `.onChange`
+  of the pattern / regex-toggle only.
+
+### Tests
+
+- 409 tests passing: new coverage for the per-sender dedupe window,
+  mention-stamps-the-shared-gate, suppressed-alert-doesn't-stamp-gate,
+  the eight-field decoder regression, `quietWhenBufferVisible` default +
+  roundtrip, and `viewZoom` decode clamping.
+
 ## [1.0.690] — 2026-06-06
 
 ### Added

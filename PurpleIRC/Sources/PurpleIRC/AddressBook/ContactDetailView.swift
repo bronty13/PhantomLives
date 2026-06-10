@@ -17,6 +17,11 @@ struct ContactDetailView: View {
     @EnvironmentObject var model: ChatModel
 
     @State private var matches: ContactMatchResult = ContactMatchResult()
+    /// Cached 14-day sparkline bins. Computed in `body` this re-scanned the
+    /// SeenStore on every keystroke in the editor; now it refreshes with
+    /// the same cadence as the cross-store match scan (selection change +
+    /// debounced nick edits) via `loadMatches`.
+    @State private var sparklineBins: [Int] = []
     @State private var showAddTagPopover: Bool = false
     /// Debounces the cross-store match scan. Editing the nick field used to
     /// kick off a full seen-store scan (every connection × every seen entry)
@@ -123,9 +128,7 @@ struct ContactDetailView: View {
             // MARK: Activity sparkline
             if !entry.nick.isEmpty {
                 Section {
-                    ContactActivitySparkline(
-                        bins: model.recentMessageDayBins(nick: entry.nick, days: 14)
-                    )
+                    ContactActivitySparkline(bins: sparklineBins)
                 } header: { Text("Recent activity (14-day sparkline)") }
             }
 
@@ -270,6 +273,7 @@ struct ContactDetailView: View {
 
     private func loadMatches() {
         let nick = entry.nick.trimmingCharacters(in: .whitespaces)
+        sparklineBins = nick.isEmpty ? [] : model.recentMessageDayBins(nick: nick, days: 14)
         guard !nick.isEmpty else {
             matches = ContactMatchResult()
             return

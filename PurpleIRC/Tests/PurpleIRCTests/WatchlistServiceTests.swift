@@ -128,6 +128,44 @@ struct WatchlistServiceTests {
 
     // MARK: - MONITOR online/offline are per-network too
 
+    // MARK: - Cross-path alert dedupe + quiet-mode suppression
+
+    @Test func dedupeGateIsPerSenderAndTimeWindowed() {
+        let (svc, _) = makeService()
+        let t0 = Date()
+        #expect(svc.shouldFireAlert(forNick: "Alice", now: t0))
+        // Same sender (case-insensitive) inside the window → suppressed.
+        #expect(!svc.shouldFireAlert(forNick: "alice", now: t0.addingTimeInterval(1)))
+        // A different sender gets its own gate.
+        #expect(svc.shouldFireAlert(forNick: "bob", now: t0.addingTimeInterval(1)))
+        // Same sender after the window expires → fires again.
+        #expect(svc.shouldFireAlert(forNick: "alice", now: t0.addingTimeInterval(10)))
+    }
+
+    @Test func mentionAlertStampsTheSharedGateSoRulePathStaysQuiet() {
+        let (svc, _) = makeService()
+        svc.fireHighlightAlert(nick: "alice", channel: "#swift",
+                               text: "ping you", network: UUID())
+        #expect(svc.recentHighlights.count == 1)
+        // fireRuleAlert consults this same per-sender gate, so a message
+        // that both mentions the user and matches a rule produces exactly
+        // one audible/visible alert.
+        #expect(!svc.shouldFireAlert(forNick: "alice"))
+    }
+
+    @Test func suppressedMentionStillRecordsHitButDoesNotStampGate() {
+        let (svc, _) = makeService()
+        // Quiet-mode resolver says the user is viewing this buffer.
+        svc.alertSuppressionResolver = { _, _ in true }
+        svc.fireHighlightAlert(nick: "alice", channel: "#swift",
+                               text: "hey", network: UUID())
+        // The recent-highlights feed still records it…
+        #expect(svc.recentHighlights.count == 1)
+        // …but the dedupe gate was NOT stamped — a follow-up mention in a
+        // buffer the user is NOT viewing must still alert.
+        #expect(svc.shouldFireAlert(forNick: "alice"))
+    }
+
     @Test func monitorOfflineOnOneNetworkKeepsOnlineFromAnother() {
         let (svc, _) = makeService()
         let a = UUID(); let b = UUID()

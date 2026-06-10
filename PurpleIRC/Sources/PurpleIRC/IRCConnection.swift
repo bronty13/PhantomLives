@@ -1255,7 +1255,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             markUnread(at: bIdx)
             emit(.privmsg(from: from, target: bufferName, text: text, isAction: true, isMention: mention))
             if mention {
-                watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: "* \(from) \(IRCFormatter.stripCodes(text))")
+                watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: "* \(from) \(IRCFormatter.stripCodes(text))", network: id)
             }
             fireHighlightHits(hits, from: from, channel: bufferName, plain: plainForMatch)
             maybeSendAwayAutoReply(to: from, target: target, isNotice: false)
@@ -1299,7 +1299,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         markUnread(at: bIdx)
 
         if mention {
-            watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: IRCFormatter.stripCodes(text))
+            watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: IRCFormatter.stripCodes(text), network: id)
         }
         fireHighlightHits(hits, from: from, channel: bufferName, plain: plainForMatch)
 
@@ -1475,7 +1475,8 @@ final class IRCConnection: ObservableObject, Identifiable {
                 from: from,
                 channel: channel,
                 text: plain,
-                soundName: highlightSoundName
+                soundName: highlightSoundName,
+                network: id
             )
         }
     }
@@ -2073,6 +2074,13 @@ final class IRCConnection: ObservableObject, Identifiable {
         serverBufferID = buf.id
         if selectedBufferID == nil { selectedBufferID = buf.id }
         return buf.id
+    }
+
+    /// Select the `*server*` console buffer, creating it on demand. The
+    /// console no longer has its own sidebar row — the Networks row is the
+    /// entry point — so selection happens here rather than via the List.
+    func selectServerConsole() {
+        selectBuffer(ensureServerBufferID())
     }
 
     /// Reorder the buffers of a given kind (channels or queries) in place.

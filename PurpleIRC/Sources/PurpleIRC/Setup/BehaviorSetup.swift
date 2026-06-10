@@ -44,10 +44,9 @@ struct BehaviorSetup: View {
             }
             messageFilterDefaultsSection
             Section("Where to find moved settings") {
-                Text("• Notifications (sound / dock / banner alerts) → **Notifications** tab")
+                Text("• Alerts and sounds (banner / dock / per-event sounds) → **Notifications & Sounds** tab")
                 Text("• Persistent logs and retention → **Logging** tab")
-                Text("• Per-event sound chooser → **Sounds** tab")
-                Text("• DCC + proxy → **Proxy & DCC** tab")
+                Text("• DCC file transfers → **DCC Transfers** tab (per-server proxy lives on each profile under **Servers**)")
                 Text("• Backups → **Backup** tab")
             }
             .font(.caption)

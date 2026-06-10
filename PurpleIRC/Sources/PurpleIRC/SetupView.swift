@@ -20,17 +20,16 @@ struct SetupView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case servers      = "Servers"
         case identities   = "Identities"
-        case proxyDcc     = "Proxy & DCC"
+        case proxyDcc     = "DCC Transfers"
         case channels     = "Channels"
         case ignores      = "Ignore"
         case highlights   = "Highlights"
         case behavior     = "Behavior"
-        case notifications = "Notifications"
+        case notifications = "Notifications & Sounds"
         case logging      = "Logging"
         case appearance   = "Appearance"
         case themes       = "Themes"
         case fonts        = "Fonts"
-        case sounds       = "Sounds"
         case bot          = "Bot"
         case scripts      = "PurpleBot"
         case assistant    = "Assistant"
@@ -53,7 +52,6 @@ struct SetupView: View {
             case .appearance:    return "paintpalette"
             case .themes:        return "swatchpalette"
             case .fonts:         return "textformat"
-            case .sounds:        return "speaker.wave.2"
             case .bot:           return "bolt.badge.a"
             case .scripts:       return "curlybraces"
             case .assistant:     return "brain"
@@ -66,13 +64,17 @@ struct SetupView: View {
     }
 
     /// Logical grouping used by the sidebar — six sections, mirroring
-    /// macOS System Settings. A segmented bar at 20 tabs would be
+    /// macOS System Settings. A segmented bar at 19 tabs would be
     /// unreadable; a sectioned sidebar scales indefinitely.
+    ///
+    /// Every alert-related knob lives in ONE tab (Notifications & Sounds);
+    /// the old separate Sounds tab was merged into it in 1.0.764 — a user
+    /// tuning "why is this app so loud" shouldn't have to visit four tabs.
     private static let groups: [(String, [Tab])] = [
         ("Connections",     [.servers, .identities, .proxyDcc]),
         ("People & places", [.channels, .ignores, .highlights]),
         ("Behavior",        [.behavior, .notifications, .logging]),
-        ("Personalization", [.appearance, .themes, .fonts, .sounds]),
+        ("Personalization", [.appearance, .themes, .fonts]),
         ("Power-user",      [.bot, .scripts, .assistant, .shortcuts, .backup, .updates]),
         ("Security",        [.security]),
     ]
@@ -153,7 +155,6 @@ struct SetupView: View {
             case .appearance:    AppearanceSetup(settings: settings)
             case .themes:        ThemesSetup(settings: settings)
             case .fonts:         FontsSetup(settings: settings)
-            case .sounds:        SoundsSetup(settings: settings)
             case .behavior:      BehaviorSetup(settings: settings)
             case .notifications: NotificationsSetup(settings: settings)
             case .logging:       LoggingSetup(settings: settings)

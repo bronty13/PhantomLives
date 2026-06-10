@@ -81,14 +81,23 @@ struct HighlightRuleEditor: View {
     /// chokes on Color/hex conversion drift, and the user's selection
     /// silently doesn't stick. Sync explicitly via .onChange.
     @State private var pickerColor: Color = .orange
+    /// Validation result for the pattern field. Cached in @State because a
+    /// computed property re-compiled the NSRegularExpression on every
+    /// re-render of the Form — which, with the whole-store objectWillChange
+    /// fanout, meant every keystroke anywhere in Setup. Recomputed only
+    /// when the pattern / regex toggle actually change.
+    @State private var regexError: String? = nil
 
-    private var regexError: String? {
-        guard rule.isRegex, !rule.pattern.isEmpty else { return nil }
+    private func validatePattern() {
+        guard rule.isRegex, !rule.pattern.isEmpty else {
+            regexError = nil
+            return
+        }
         do {
             _ = try NSRegularExpression(pattern: rule.pattern, options: [])
-            return nil
+            regexError = nil
         } catch {
-            return "Invalid regex: \(error.localizedDescription)"
+            regexError = "Invalid regex: \(error.localizedDescription)"
         }
     }
 
@@ -139,8 +148,10 @@ struct HighlightRuleEditor: View {
             }
             // Keep pickerColor in sync when the user switches between rules
             // or when colorHex is mutated from elsewhere (e.g. settings reload).
-            .onAppear { syncPickerColor() }
-            .onChange(of: rule.id) { _, _ in syncPickerColor() }
+            .onAppear { syncPickerColor(); validatePattern() }
+            .onChange(of: rule.id) { _, _ in syncPickerColor(); validatePattern() }
+            .onChange(of: rule.pattern) { _, _ in validatePattern() }
+            .onChange(of: rule.isRegex) { _, _ in validatePattern() }
             Section("Actions on match") {
                 Toggle("Play highlight sound", isOn: $rule.playSound)
                 Toggle("Bounce Dock icon", isOn: $rule.bounceDock)

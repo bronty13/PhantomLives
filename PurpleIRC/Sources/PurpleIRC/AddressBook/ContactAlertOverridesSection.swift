@@ -68,7 +68,7 @@ struct ContactAlertOverridesSection: View {
                         .buttonStyle(.borderless)
                 }
             }
-            Text("Plays on **any** message from this contact — a private query or a channel line. Leave at “None” to use the global per-event sounds on Setup → Sounds.")
+            Text("Plays on **any** message from this contact — a private query or a channel line. Leave at “None” to use the global per-event sounds on Setup → Notifications & Sounds.")
                 .font(.caption).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -90,7 +90,7 @@ struct ContactAlertOverridesSection: View {
                 .disabled(entry.alertOverride.isDefault)
             }
 
-            Text("Per-contact overrides win over the global toggles on Setup → Notifications. Inherit = use the global value (shown after each toggle).")
+            Text("Per-contact overrides win over the global toggles on Setup → Notifications & Sounds. Inherit = use the global value (shown after each toggle).")
                 .font(.caption).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }

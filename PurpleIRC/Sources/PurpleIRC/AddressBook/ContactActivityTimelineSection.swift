@@ -10,11 +10,17 @@ struct ContactActivityTimelineSection: View {
     @EnvironmentObject var model: ChatModel
     private static let maxRows = 100
 
+    /// Cached fold of every linked-nick's SeenStore history. As a direct
+    /// `body` computation this re-ran the full cross-network scan + sort on
+    /// EVERY re-render of the detail Form — i.e. every keystroke in any
+    /// field of the contact editor — which is the "Address Book feels
+    /// sluggish" complaint. Now it recomputes only when the selection or
+    /// the contact's nick bindings change (typing in the nick field rides
+    /// a short debounce).
+    @State private var sightings: [ContactSighting] = []
+    @State private var refreshDebounce: Task<Void, Never>? = nil
+
     var body: some View {
-        let sightings = entry.allSightings(
-            across: model.connections,
-            store: model.botEngine.seenStore
-        )
         let shown = Array(sightings.prefix(Self.maxRows))
         VStack(alignment: .leading, spacing: 4) {
             if shown.isEmpty {
@@ -29,6 +35,28 @@ struct ContactActivityTimelineSection: View {
                         .font(.caption).foregroundStyle(.tertiary)
                 }
             }
+        }
+        .onAppear { refreshNow() }
+        .onChange(of: entry.id) { _, _ in refreshNow() }
+        .onChange(of: entry.nick) { _, _ in scheduleRefresh() }
+        .onChange(of: entry.linkedNicks) { _, _ in scheduleRefresh() }
+        .onDisappear { refreshDebounce?.cancel() }
+    }
+
+    private func refreshNow() {
+        refreshDebounce?.cancel()
+        sightings = entry.allSightings(
+            across: model.connections,
+            store: model.botEngine.seenStore
+        )
+    }
+
+    private func scheduleRefresh() {
+        refreshDebounce?.cancel()
+        refreshDebounce = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            refreshNow()
         }
     }
 

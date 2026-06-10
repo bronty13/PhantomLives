@@ -89,7 +89,8 @@ struct SecuritySetup: View {
             }
 
             Section("Factory reset") {
-                FactoryResetRow()
+                Text("Wiping all data (settings, keystore, logs, scripts) lives on the **Backup** tab next to the restore tools, so reset and recover sit side by side.")
+                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
         .formStyle(.grouped)

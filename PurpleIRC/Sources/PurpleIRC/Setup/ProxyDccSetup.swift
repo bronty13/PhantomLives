@@ -2,12 +2,12 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-// MARK: - Proxy & DCC
+// MARK: - DCC Transfers
 
-/// Network plumbing that used to live at the bottom of Behavior. Splitting
-/// it out keeps the per-network proxy + DCC settings together so a user
-/// configuring a corporate proxy doesn't have to scroll past quit / away
-/// toggles to find them.
+/// Global DCC plumbing (external IP + port range). The tab is named for
+/// what it actually contains — per-server proxy settings live on each
+/// server profile under Servers, and the Proxy section below just points
+/// there.
 struct ProxyDccSetup: View {
     @ObservedObject var settings: SettingsStore
 
