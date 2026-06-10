@@ -3,6 +3,27 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.8.0] — 2026-06-10
+
+"NEW PHOTOS TO REVIEW" — stage each incremental run's new items for review.
+
+### Added
+- **New-photo review staging (on by default).** On an **incremental** run, the
+  items newly added to the archive (originals + JPEG, with sidecars) are also
+  copied into a dated batch folder under **"NEW PHOTOS TO REVIEW"** (default
+  `~/Downloads/PurpleAttic/NEW PHOTOS TO REVIEW/<timestamp>/`), so just-arrived
+  photos can be handed off (to keep) or deleted after review — without touching
+  the backup set. New `ReviewStaging` (Core) snapshots each export pass's files
+  before the run and copies the set-difference afterwards. **Skipped on the
+  first/baseline run** (everything is "new" then, so nothing is duplicated) and
+  whenever a pass adds nothing. Re-exported edits of existing photos keep their
+  path and are not re-staged.
+- Profile gains `reviewNewItems` (default true) + `reviewFolderPath` (nil →
+  default); Settings → **New-photo review** card (toggle + folder). The run
+  report and log show the staged count + batch path; `pattic plan` shows the
+  setting. Old profiles decode with the feature **on**.
+- Tests: 84 total (+6 — set-difference, snapshot/copy round-trip, profile defaults).
+
 ## [0.7.0] — 2026-06-10
 
 The three post-first-run enhancements: live progress, graceful errors, mount guard.

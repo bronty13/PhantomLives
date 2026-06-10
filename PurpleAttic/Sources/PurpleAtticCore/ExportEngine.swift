@@ -27,17 +27,24 @@ public final class ExportEngine {
         /// Filenames whose in-file metadata embed was skipped (damaged EXIF). The image + its
         /// `.xmp` sidecar were still archived — informational, NOT failures.
         public let metadataEmbedSkips: [String]
+        /// Count of new items copied into "NEW PHOTOS TO REVIEW" this run (incremental only).
+        public let reviewStagedCount: Int
+        /// The dated review-batch folder, if anything was staged.
+        public let reviewPath: String?
         public var allSucceeded: Bool { steps.allSatisfy { $0.success } }
         public var duration: TimeInterval { finishedAt.timeIntervalSince(startedAt) }
 
         public init(profileName: String, startedAt: Date, finishedAt: Date, steps: [StepResult],
-                    logFile: String?, metadataEmbedSkips: [String] = []) {
+                    logFile: String?, metadataEmbedSkips: [String] = [],
+                    reviewStagedCount: Int = 0, reviewPath: String? = nil) {
             self.profileName = profileName
             self.startedAt = startedAt
             self.finishedAt = finishedAt
             self.steps = steps
             self.logFile = logFile
             self.metadataEmbedSkips = metadataEmbedSkips
+            self.reviewStagedCount = reviewStagedCount
+            self.reviewPath = reviewPath
         }
     }
 
@@ -65,6 +72,9 @@ public final class ExportEngine {
     private let onProgress: ((RunProgress) -> Void)?
     /// Filenames (deduped by uuid) whose in-file metadata embed was skipped this run.
     private var embedSkipFiles: [String] = []
+    /// Running tally of items copied to "NEW PHOTOS TO REVIEW" this run + the batch folder.
+    private var reviewStagedCount = 0
+    private var reviewBatchPath: String?
 
     public init(logger: AtticLogger, onProgress: ((RunProgress) -> Void)? = nil) {
         self.logger = logger
@@ -102,6 +112,8 @@ public final class ExportEngine {
 
         var steps: [StepResult] = []
         embedSkipFiles = []
+        reviewStagedCount = 0
+        reviewBatchPath = nil
 
         // Live progress: a phase stepper for the GUI (the run is hours long).
         var kinds: [RunProgress.PhaseKind] = profile.enabledPasses.map {
@@ -118,6 +130,10 @@ public final class ExportEngine {
             let phaseKind: RunProgress.PhaseKind = (pass == .originals) ? .exportHEIC : .exportJPEG
             tracker.startPhase(phaseKind, detail: "starting…")
             let dest = ExportPlan.destination(profile: profile, pass: pass)
+            // Snapshot the pass's files BEFORE export so we can stage only the newly-added
+            // items for review afterwards. Empty on the baseline run → nothing staged.
+            let stageReview = !dryRun && profile.reviewNewItems
+            let beforeFiles: Set<String> = stageReview ? ReviewStaging.snapshot(dest) : []
             do {
                 try FileManager.default.createDirectory(atPath: dest, withIntermediateDirectories: true)
             } catch {
@@ -153,8 +169,26 @@ public final class ExportEngine {
             (ok ? logger.info : logger.error)("← Export (\(pass.label)) exit \(result.exitCode) in \(Self.fmt(dur))")
             steps.append(.init(name: "Export \(pass.label)", success: ok,
                                detail: "exit \(result.exitCode)", duration: dur))
+
+            // Stage newly-added items for review (incremental runs only).
+            var stagedThisPass = 0
+            if ok && stageReview {
+                let added = ReviewStaging.newPaths(before: beforeFiles, after: ReviewStaging.snapshot(dest))
+                if beforeFiles.isEmpty {
+                    logger.debug("Review staging skipped for \(pass.label) — baseline run (no prior items).")
+                } else if !added.isEmpty {
+                    let batch = self.reviewBatch(profile: profile, runStart: started)
+                    tracker.update(detail: "staging \(added.count) new for review…")
+                    let r = ReviewStaging.copyNew(relPaths: added, sourceDir: dest,
+                                                  batchDir: batch, subfolder: profile.subdirectory(for: pass))
+                    self.reviewStagedCount += r.copied
+                    stagedThisPass = r.copied
+                    logger.info("Staged \(r.copied) new \(pass.label) item(s) for review → \(batch)/\(profile.subdirectory(for: pass))"
+                                + (r.failed > 0 ? " (\(r.failed) failed)" : ""))
+                }
+            }
             tracker.finishPhase(phaseKind, state: ok ? .done : .failed,
-                                detail: ok ? "exit 0" : "exit \(result.exitCode)")
+                                detail: ok ? "exit 0\(stagedThisPass > 0 ? " · \(stagedThisPass) staged" : "")" : "exit \(result.exitCode)")
             if !ok {
                 logger.error("Export failed — skipping mirror/verify/cloud to avoid propagating a partial archive.")
                 return self.finishRun(profile: profile, started: started, steps: steps, tracker: tracker)
@@ -282,13 +316,28 @@ public final class ExportEngine {
             logger.info("ℹ️ \(embedSkipFiles.count) photo(s) archived with sidecar-only metadata "
                         + "(in-file embed skipped — damaged EXIF; the file + .xmp are fine). Listed in the report.")
         }
+        if reviewStagedCount > 0, let batch = reviewBatchPath {
+            logger.info("ℹ️ \(reviewStagedCount) new item(s) copied to NEW PHOTOS TO REVIEW → \(batch)")
+        }
         let summary = RunSummary(profileName: profile.name, startedAt: started,
                                  finishedAt: Date(), steps: steps,
                                  logFile: logger.logFileURL?.path,
-                                 metadataEmbedSkips: embedSkipFiles)
+                                 metadataEmbedSkips: embedSkipFiles,
+                                 reviewStagedCount: reviewStagedCount, reviewPath: reviewBatchPath)
         logger.info("=== Run finished in \(Self.fmt(summary.duration)) — \(summary.allSucceeded ? "ALL OK" : "WITH FAILURES") ===")
         tracker.finishRun()
         return summary
+    }
+
+    /// The dated "NEW PHOTOS TO REVIEW" batch folder for this run (memoized).
+    private func reviewBatch(profile: ArchiveProfile, runStart: Date) -> String {
+        if let p = reviewBatchPath { return p }
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        let p = (profile.effectiveReviewRoot as NSString).appendingPathComponent(f.string(from: runStart))
+        reviewBatchPath = p
+        return p
     }
 
     /// A repeating background timer that counts files under the export destination so the GUI
@@ -400,6 +449,12 @@ public extension ExportEngine.RunSummary {
             lines.append("  These images + their .xmp sidecars were archived, but osxphotos couldn't")
             lines.append("  re-embed metadata into the file (damaged EXIF). Not failures.")
             for f in metadataEmbedSkips.sorted() { lines.append("    \(f)") }
+            lines.append("")
+        }
+        if reviewStagedCount > 0, let reviewPath {
+            lines.append("New items staged for review: \(reviewStagedCount)")
+            lines.append("  → \(reviewPath)")
+            lines.append("  (originals + JPEG duplicates of this run's new photos — hand off or delete after review)")
             lines.append("")
         }
         return lines.joined(separator: "\n")

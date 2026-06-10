@@ -118,6 +118,7 @@ struct Plan: ParsableCommand {
         }
         print("Subfolder: \(profile.archiveSubfolder.isEmpty ? "(none — archive at drive root)" : profile.archiveSubfolder)  (vault exempt)")
         print("Cloud:   \(profile.cloudVaultPath ?? "(none)")")
+        print("Review:  \(profile.reviewNewItems ? "new items → \(profile.effectiveReviewRoot)" : "off")  (incremental runs only)")
         print("Formats: \(profile.enabledPasses.map { $0.label }.joined(separator: ", "))")
         print("")
         print("Retention:")

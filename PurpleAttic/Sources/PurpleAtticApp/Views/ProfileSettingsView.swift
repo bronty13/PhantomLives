@@ -13,6 +13,7 @@ struct ProfileSettingsView: View {
                 sourceCard
                 destinationsCard
                 formatsCard
+                reviewCard
                 retentionCard
 
                 HStack {
@@ -112,6 +113,23 @@ struct ProfileSettingsView: View {
                       path: $store.profile.directoryTemplate,
                       chooser: { _ in nil },
                       placeholder: "{created.year}/{created.year}-{created.mm}")
+        }
+    }
+
+    private var reviewCard: some View {
+        Card(title: "New-photo review") {
+            Toggle("Copy each run's new items to a “NEW PHOTOS TO REVIEW” folder",
+                   isOn: $store.profile.reviewNewItems)
+            Text("On incremental runs, photos newly added since the last run (originals + JPEG) "
+                 + "are also copied into a dated batch under the folder below — so you can hand "
+                 + "them off to others or delete them after review, without touching the archive. "
+                 + "Skipped on the first/baseline run.")
+                .font(.caption).foregroundStyle(.secondary)
+            PathField(label: "Review folder",
+                      path: Binding(get: { store.profile.reviewFolderPath ?? "" },
+                                    set: { store.profile.reviewFolderPath = $0.isEmpty ? nil : $0 }),
+                      placeholder: ArchiveProfile.defaultReviewRoot())
+                .disabled(!store.profile.reviewNewItems)
         }
     }
 

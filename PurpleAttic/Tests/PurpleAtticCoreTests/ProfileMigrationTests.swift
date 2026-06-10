@@ -44,6 +44,20 @@ final class ProfileMigrationTests: XCTestCase {
         XCTAssertFalse(p.downloadMissingFromICloud)
     }
 
+    func testReviewDefaultsOnForOldProfiles() throws {
+        // A pre-review profile must come back with reviewNewItems ON (the feature default).
+        let p = try decode(#"{"primaryDestination":"/Volumes/X"}"#)
+        XCTAssertTrue(p.reviewNewItems)
+        XCTAssertNil(p.reviewFolderPath)
+        XCTAssertTrue(p.effectiveReviewRoot.hasSuffix("Downloads/PurpleAttic/NEW PHOTOS TO REVIEW"))
+    }
+
+    func testReviewFolderOverridePreserved() throws {
+        let p = try decode(#"{"reviewNewItems":false,"reviewFolderPath":"/Volumes/Handoff/Review"}"#)
+        XCTAssertFalse(p.reviewNewItems)
+        XCTAssertEqual(p.effectiveReviewRoot, "/Volumes/Handoff/Review")
+    }
+
     func testExplicitSubfolderPreserved() throws {
         let p = try decode(#"{"primaryDestination":"/Volumes/X","archiveSubfolder":"Backups/Photos"}"#)
         XCTAssertEqual(p.archiveSubfolder, "Backups/Photos")

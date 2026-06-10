@@ -51,6 +51,8 @@ PurpleAtticCore (library)   — pure logic + IO; NO Photos framework, NO deletio
   VolumeReadiness            mount guard — destination base exists + is a real mounted volume
   OsxphotosLine              classify export output (benign embed-skip vs real failure vs noise)
   RunProgress / RunProgressTracker   live phase-stepper progress model (engine → GUI callback)
+  ReviewStaging              copy each incremental run's NEW items → "NEW PHOTOS TO REVIEW"
+                             (snapshot dest before/after, set-difference, copy; baseline-safe)
   Tooling / ProcessRunner / AtticLogger   tool locator, subprocess, logging
 
 pattic (executable)         — CLI front-end. Subcommands: doctor/init/plan/export.
@@ -152,9 +154,11 @@ scheduler. **0.6** added the permissions preflight, the "Photos Archive" subfold
 (physical destinations; vault exempt), and the free-space warning. **0.6.2–0.6.5**
 fixed the openrsync↔Cryptomator cloud-copy issues (progress2 / `.DS_Store` /
 chown / temp-file — see Gotchas). **0.7** added the live progress dashboard,
-graceful embed-error handling, and the mirror mount guard. The full 3-copy
+graceful embed-error handling, and the mirror mount guard. **0.8** added
+"NEW PHOTOS TO REVIEW" staging of each incremental run's new items (on by
+default; baseline-safe). The full 3-copy
 pipeline (export → mirror → verify → cloud) is validated end-to-end on test
-drives (vault = 350,525 files, 0 errors). 78 tests passing.
+drives (vault = 350,525 files, 0 errors). 84 tests passing.
 
 Not yet done / possible next:
 - First real **complete** archive on Vortex (gated on its iCloud download).

@@ -55,6 +55,15 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// when true, every purge run still previews (dry-run) and is gated on the verify check.
     public var purgeEnabled: Bool
 
+    /// On each **incremental** run, also copy the newly-added items into a dated batch under
+    /// `reviewFolderPath` ("NEW PHOTOS TO REVIEW") so they can be handed off or deleted after
+    /// review. On by default. Never runs on the baseline population (everything is "new" then).
+    public var reviewNewItems: Bool
+
+    /// Where the "NEW PHOTOS TO REVIEW" batches go. nil → `defaultReviewRoot()`
+    /// (`~/Downloads/PurpleAttic/NEW PHOTOS TO REVIEW`).
+    public var reviewFolderPath: String?
+
     public init(
         id: UUID = UUID(),
         name: String = "Main Photo Archive",
@@ -68,7 +77,9 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         downloadMissingFromICloud: Bool = false,
         retention: RetentionPolicy = RetentionPolicy(),
         purgeEnabled: Bool = false,
-        archiveSubfolder: String = "Photos Archive"
+        archiveSubfolder: String = "Photos Archive",
+        reviewNewItems: Bool = true,
+        reviewFolderPath: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -83,6 +94,8 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.retention = retention
         self.purgeEnabled = purgeEnabled
         self.archiveSubfolder = archiveSubfolder
+        self.reviewNewItems = reviewNewItems
+        self.reviewFolderPath = reviewFolderPath
     }
 
     /// Resilient decoding: every key is `decodeIfPresent` with the same default as the
@@ -105,6 +118,20 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         retention = try c.decodeIfPresent(RetentionPolicy.self, forKey: .retention) ?? RetentionPolicy()
         purgeEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeEnabled) ?? false
         archiveSubfolder = try c.decodeIfPresent(String.self, forKey: .archiveSubfolder) ?? "Photos Archive"
+        reviewNewItems = try c.decodeIfPresent(Bool.self, forKey: .reviewNewItems) ?? true
+        reviewFolderPath = try c.decodeIfPresent(String.self, forKey: .reviewFolderPath)
+    }
+
+    /// Default location for "NEW PHOTOS TO REVIEW" batches (PhantomLives output convention).
+    public static func defaultReviewRoot() -> String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads/PurpleAttic/NEW PHOTOS TO REVIEW").path
+    }
+
+    /// The effective review root (explicit path, or the default).
+    public var effectiveReviewRoot: String {
+        let p = (reviewFolderPath ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return p.isEmpty ? Self.defaultReviewRoot() : p
     }
 
     // MARK: - Derived paths

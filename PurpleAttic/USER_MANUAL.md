@@ -119,6 +119,16 @@ deleting anything.**
 Re-running **Run Archive** is incremental (osxphotos `--update`): only new or
 changed photos are copied. You can do that by hand, or automate it:
 
+**New-photo review.** On these incremental runs, PurpleAttic also copies the
+*newly-added* photos (originals + JPEG) into a dated batch under **`~/Downloads/
+PurpleAttic/NEW PHOTOS TO REVIEW/`** — so you have just-the-new-stuff in one place
+to hand off to someone (to keep) or delete after a look, without disturbing the
+archive. It's **on by default** (Settings → New-photo review, where you can change
+the folder or turn it off) and is **skipped on the first/baseline run** (when
+everything is "new"). Each run's batch is its own timestamped folder; delete a
+batch once you've reviewed it.
+
+
 **Schedule pane** → turn on **Run the archive automatically**, pick **Daily** or
 **Weekly** and a time (a quiet hour like 2:00 AM is good), then **Apply**. Status
 shows **Loaded**, the next run, and the last run; **Run Now** fires it on demand
@@ -172,6 +182,7 @@ only on the Mac with the complete archive.
 | Thing | Location |
 |---|---|
 | Run reports (human-readable) | `~/Downloads/PurpleAttic/report-*.txt` |
+| New items to review (per run) | `~/Downloads/PurpleAttic/NEW PHOTOS TO REVIEW/<timestamp>/` (configurable) |
 | Detailed logs | `~/Library/Logs/PurpleAttic/` |
 | Scheduler logs | `~/Library/Logs/PurpleAttic/scheduler.*.log` |
 | Profile + settings | `~/Library/Application Support/PurpleAttic/` |
