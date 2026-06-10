@@ -12,6 +12,23 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.767] — 2026-06-09
+
+### Fixed
+
+- **Release pre-flight now verifies the Sparkle private key matches
+  `SPARKLE_PUBLIC_KEY`** (`Scripts/release.sh`). The 1.0.764 release was
+  cut on a Mac whose Keychain held a stray EdDSA key: `sign_update`
+  succeeded, but every install rejected the update as *"improperly
+  signed"* because the signature didn't verify against the public key
+  embedded in shipped apps. The bad appcast item was pulled from the
+  feed (the notarized zip itself is fine — it embeds the correct public
+  key). Pre-flight now runs `generate_keys -p` and hard-fails on a
+  mismatch with import instructions, so a wrong-key release can never
+  reach the appcast again. The 1.0.764 item will be restored once the
+  canonical private key is imported on the release machine and the zip
+  re-signed.
+
 ## [1.0.764] — 2026-06-09
 
 A user-driven UX + performance pass: notifications were excessive, the

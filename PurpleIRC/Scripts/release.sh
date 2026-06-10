@@ -117,7 +117,25 @@ fi
 SPARKLE_BIN="$(find .build/artifacts/sparkle/Sparkle/bin -maxdepth 1 -type d 2>/dev/null | head -1)"
 [ -x "$SPARKLE_BIN/sign_update" ] || die "Sparkle's sign_update not found under
        .build/artifacts. Run \`swift package resolve\` first."
-note "Sparkle public key set; sign_update present ✓"
+# The private key in THIS Mac's Keychain must be the same keypair as
+# SPARKLE_PUBLIC_KEY, or the published zip gets signed with a key the
+# installed apps don't trust and every update fails with "improperly
+# signed" — sign_update succeeding is NOT proof of the right key.
+# (Incident: the 1.0.764 appcast item was signed with a stray local key
+# and had to be pulled from the feed, 2026-06-09.)
+KEYCHAIN_PUB="$("$SPARKLE_BIN/generate_keys" -p 2>/dev/null || true)"
+if [ "$KEYCHAIN_PUB" != "$SPARKLE_PUBLIC_KEY" ]; then
+    die "Sparkle key mismatch — the Keychain's private key does not match
+       SPARKLE_PUBLIC_KEY, so installed apps would reject the update as
+       improperly signed.
+         Keychain public half:  ${KEYCHAIN_PUB:-<none — no key in Keychain>}
+         SPARKLE_PUBLIC_KEY:    $SPARKLE_PUBLIC_KEY
+       Import the canonical private key from the Mac that has it:
+         on that Mac:  \"\$SPARKLE_BIN/generate_keys\" -x /tmp/sparkle_key.pem
+         on this Mac:  \"\$SPARKLE_BIN/generate_keys\" -f /tmp/sparkle_key.pem
+       See RELEASING.md → 'Both Macs must hold the SAME key'."
+fi
+note "Sparkle public key set; Keychain private key matches ✓"
 
 # 1d. On main, clean, pushed — a release must be reproducible from origin.
 # "Clean" is scoped to the PurpleIRC subtree (cwd): this is a polyglot monorepo,

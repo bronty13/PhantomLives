@@ -250,7 +250,15 @@ count) before releasing again.
 - **Users see "Update is improperly signed"** → the public key embedded in
   their installed app doesn't match the private key that signed the zip. Both
   Macs must share one key (step 5); confirm `SPARKLE_PUBLIC_KEY` matches
-  `generate_keys -p` on the Mac you released from.
+  `generate_keys -p` on the Mac you released from. Since the 1.0.764 incident
+  (a stray Keychain key signed the zip; the appcast item had to be pulled),
+  `release.sh` pre-flight runs this exact check and refuses to release on a
+  mismatch — if you hit that error, import the canonical private key
+  (`generate_keys -x` on the Mac that has it, delete the stray key from this
+  Keychain, `generate_keys -f` here). The fix for an already-published bad
+  item is to revert its `<item>` from `appcast.xml` (the zip itself is fine),
+  re-sign the same zip with the right key, and re-add the item with the new
+  `sparkle:edSignature` — no rebuild or re-notarization needed.
 - **Sparkle never finds the new release** → confirm the appcast commit reached
   `origin/main` and `raw.githubusercontent.com/.../PurpleIRC/appcast.xml`
   serves the new `<item>` (CDN + browser cache can lag a minute). Validate the
