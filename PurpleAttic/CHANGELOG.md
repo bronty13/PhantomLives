@@ -3,6 +3,20 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.6.4] — 2026-06-10
+
+Second cloud-copy fix — the vault rsync also can't preserve owner/group/perms.
+
+### Fixed
+- **Cloud copy to the Cryptomator vault still aborted (`fchownat: Function not
+  implemented`).** With 0.6.3 the copy got past `.DS_Store` and transferred the
+  first file, then died because rsync `-a` preserves owner/group/perms and the
+  macFUSE/Cryptomator volume doesn't implement `chown`/`chmod`. The cloud copy
+  now adds `--no-owner --no-group --no-perms` (content + timestamps still
+  transfer; perms are moot inside an encrypted container). The **on-disk mirror
+  keeps `-a`** (APFS supports those). Verified against the live vault. Mirror +
+  verify remain confirmed (verify: 350,513 files match). 61 tests.
+
 ## [0.6.3] — 2026-06-10
 
 Cloud-copy fix found by the first end-to-end run (mirror + verify now confirmed).

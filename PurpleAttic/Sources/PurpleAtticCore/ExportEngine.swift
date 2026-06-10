@@ -121,8 +121,9 @@ public final class ExportEngine {
         let primaryRoot = profile.primaryArchiveRoot
         // Pick rsync flags that the available binary actually supports: macOS's default rsync
         // is openrsync, which rejects --info=progress2 (an rsync-3.x flag) and aborts instantly.
-        let copyArgs = Self.rsyncCopyArgs(versionBanner: Self.rsyncVersionBanner(rsync))
-        logger.info("rsync: \(rsync) [\(copyArgs.joined(separator: " "))]")
+        let banner = Self.rsyncVersionBanner(rsync)
+        let mirrorArgs = Self.rsyncCopyArgs(versionBanner: banner)
+        logger.info("rsync: \(rsync) [\(mirrorArgs.joined(separator: " "))]")
         for mirror in profile.mirrorArchiveRoots {
             try? FileManager.default.createDirectory(atPath: mirror, withIntermediateDirectories: true)
             let src = primaryRoot.hasSuffix("/") ? primaryRoot : primaryRoot + "/"
@@ -131,7 +132,7 @@ public final class ExportEngine {
             // No --delete: the mirror is never allowed to lose files just because the
             // primary did.
             let result = try ProcessRunner.run(executable: rsync,
-                                               arguments: copyArgs + [src, mirror]) { line in
+                                               arguments: mirrorArgs + [src, mirror]) { line in
                 self.logger.debug("[rsync] \(line)")
             }
             let ok = result.exitCode == 0
@@ -170,12 +171,15 @@ public final class ExportEngine {
                 && FileManager.default.isWritableFile(atPath: vault)
             if mounted {
                 // The vault is exempt from archiveSubfolder — copy the archive contents to
-                // the vault root (it's already a dedicated encrypted container).
+                // the vault root (it's already a dedicated encrypted container). It's also a
+                // Cryptomator/macFUSE volume, so use the vault-safe flag set (no owner/group/
+                // perms — that filesystem doesn't implement chown/chmod).
+                let cloudArgs = Self.rsyncCopyArgs(versionBanner: banner, forVault: true)
                 let src = primaryRoot.hasSuffix("/") ? primaryRoot : primaryRoot + "/"
-                logger.info("→ Cloud (Cryptomator): \(src) ⇒ \(vault)")
+                logger.info("→ Cloud (Cryptomator): \(src) ⇒ \(vault) [\(cloudArgs.joined(separator: " "))]")
                 let t0 = Date()
                 let result = try ProcessRunner.run(executable: rsync,
-                                                   arguments: copyArgs + [src, vault]) { line in
+                                                   arguments: cloudArgs + [src, vault]) { line in
                     self.logger.debug("[rsync:cloud] \(line)")
                 }
                 let ok = result.exitCode == 0
@@ -225,18 +229,26 @@ public final class ExportEngine {
     /// Only a real rsync 3.x (e.g. Homebrew at /opt/homebrew/bin) supports progress2; for it
     /// we keep the nice overall progress, otherwise we fall back to plain verbose (`-ahv`),
     /// which every rsync understands. `-a` archive, `-h` human, `-v` per-file lines for the log.
-    static func rsyncCopyArgs(versionBanner: String) -> [String] {
+    static func rsyncCopyArgs(versionBanner: String, forVault: Bool = false) -> [String] {
         let v = versionBanner.lowercased()
         let isModern = !v.contains("openrsync")
             && v.range(of: #"version [3-9]\."#, options: .regularExpression) != nil
-        let base = isModern ? ["-ah", "--info=progress2"] : ["-ahv"]
+        var args = isModern ? ["-ah", "--info=progress2"] : ["-ahv"]
         // Exclude junk from the copies: Finder's `.DS_Store` and osxphotos' per-destination
         // export database. Both are dotfiles, so VerifyService / ArchiveIndex (which skip
         // hidden files) already ignore them — excluding them here can't create false verify
         // discrepancies. Critically, copying `.DS_Store` to a **Cryptomator/macFUSE** vault
         // makes openrsync's temp-then-rename fail ("renameat: No such file or directory") and
-        // abort the ENTIRE cloud transfer — so this is also the cloud-copy fix.
-        return base + ["--exclude=.DS_Store", "--exclude=.osxphotos_export.db*"]
+        // abort the ENTIRE cloud transfer.
+        args += ["--exclude=.DS_Store", "--exclude=.osxphotos_export.db*"]
+        // The Cryptomator/macFUSE vault doesn't implement chown/chmod — preserving
+        // owner/group/perms (rsync `-a` ⇒ `-ogp`) fails with "fchownat: Function not
+        // implemented" and aborts the cloud copy. Drop them for the vault; content +
+        // timestamps still transfer (and perms are moot inside an encrypted container).
+        if forVault {
+            args += ["--no-owner", "--no-group", "--no-perms"]
+        }
+        return args
     }
 }
 

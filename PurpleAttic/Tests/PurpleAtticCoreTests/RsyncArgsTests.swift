@@ -45,4 +45,26 @@ final class RsyncArgsTests: XCTestCase {
             XCTAssertTrue(args.contains("--exclude=.osxphotos_export.db*"))
         }
     }
+
+    func testMirrorKeepsOwnerGroupPerms() {
+        // The on-disk (APFS) mirror preserves attributes — no --no-* flags.
+        let args = ExportEngine.rsyncCopyArgs(versionBanner: "openrsync: protocol version 29")
+        XCTAssertFalse(args.contains("--no-owner"))
+        XCTAssertFalse(args.contains("--no-group"))
+        XCTAssertFalse(args.contains("--no-perms"))
+    }
+
+    func testVaultDropsOwnerGroupPerms() {
+        // The Cryptomator/macFUSE vault can't chown/chmod (fchownat → "Function not
+        // implemented"), so owner/group/perms preservation must be disabled or the cloud
+        // copy aborts.
+        for banner in ["openrsync: protocol version 29", "rsync version 3.2.7", ""] {
+            let args = ExportEngine.rsyncCopyArgs(versionBanner: banner, forVault: true)
+            XCTAssertTrue(args.contains("--no-owner"))
+            XCTAssertTrue(args.contains("--no-group"))
+            XCTAssertTrue(args.contains("--no-perms"))
+            // still excludes the junk
+            XCTAssertTrue(args.contains("--exclude=.DS_Store"))
+        }
+    }
 }
