@@ -235,6 +235,24 @@ export function validateYouTubeFiles(files: BundleFileInfo[]): ValidationIssue[]
   return issues;
 }
 
+/** YouTube bundles must carry a cover thumbnail (the image YouTube shows for
+ *  the video). Mirrors src-tauri/src/bundles.rs::validate_youtube_thumbnail. */
+export function validateYouTubeThumbnail(
+  thumbnailRelpath: string | null | undefined,
+): ValidationIssue[] {
+  if (!thumbnailRelpath) {
+    return [
+      {
+        fieldPath: 'thumbnail',
+        message: 'Upload a thumbnail image for this video.',
+        severity: 'error',
+        jumpToFieldId: 'bundle-preview-thumbnail-image',
+      },
+    ];
+  }
+  return [];
+}
+
 /** Validate a Content bundle against all rules. Returns full issue list. */
 export function validateContentBundle(bundle: Bundle, ctx: ValidationCtx): ValidationIssue[] {
   return [
@@ -263,6 +281,7 @@ export function validateYouTubeBundle(bundle: Bundle, ctx: ValidationCtx): Valid
       bundle.descriptionAudioRelpath,
       ctx.prohibitedWords,
     ),
+    ...validateYouTubeThumbnail(bundle.thumbnailRelpath),
     ...validateYouTubeFiles(bundle.files),
   ];
 }

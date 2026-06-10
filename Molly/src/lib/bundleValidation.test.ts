@@ -324,20 +324,35 @@ describe('validateYouTubeBundle', () => {
     id: 1, bundleUid: 'x', fansiteDayId: null, position: 1, relpath: 'r',
     absolutePath: 'r', originalName: 'v.mp4', kind: 'video', sizeBytes: 1, sha256: '',
   };
-  it('passes with video + text description', () => {
+  it('passes with video + text description + thumbnail', () => {
     const issues = validateYouTubeBundle(
-      ytBundle({ descriptionMode: 'text', descriptionText: 'A cute clip', files: [video] }),
+      ytBundle({
+        descriptionMode: 'text',
+        descriptionText: 'A cute clip',
+        files: [video],
+        thumbnailRelpath: 'attachments/x/thumb.jpg',
+      }),
       ctx,
     );
     expect(issues.filter((i) => i.severity === 'error')).toEqual([]);
   });
   it('requires a description', () => {
-    const issues = validateYouTubeBundle(ytBundle({ files: [video] }), ctx);
+    const issues = validateYouTubeBundle(
+      ytBundle({ files: [video], thumbnailRelpath: 'attachments/x/thumb.jpg' }),
+      ctx,
+    );
     expect(issues.some((i) => i.fieldPath === 'description' && i.severity === 'error')).toBe(true);
+  });
+  it('requires a thumbnail', () => {
+    const issues = validateYouTubeBundle(
+      ytBundle({ descriptionMode: 'text', descriptionText: 'desc', files: [video] }),
+      ctx,
+    );
+    expect(issues.some((i) => i.fieldPath === 'thumbnail' && i.severity === 'error')).toBe(true);
   });
   it('requires at least one video', () => {
     const issues = validateYouTubeBundle(
-      ytBundle({ descriptionMode: 'text', descriptionText: 'desc' }),
+      ytBundle({ descriptionMode: 'text', descriptionText: 'desc', thumbnailRelpath: 'attachments/x/thumb.jpg' }),
       ctx,
     );
     expect(issues.some((i) => i.fieldPath === 'files' && i.severity === 'error')).toBe(true);

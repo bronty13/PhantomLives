@@ -4,6 +4,26 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] — 2026-06-10
+
+### Added — YouTube bundles now carry a required thumbnail
+
+A YouTube bundle now prompts Sallie to upload a **cover thumbnail** — the image
+YouTube shows for the video — right under the description, using the same
+single-slot upload pattern as the Content bundle's preview assets (pick a JPG or
+PNG up to 5 MB, or **✨ Grab a frame from a video** straight off one of the
+clips). The thumbnail lives on the `bundles` row (reusing the existing
+`thumbnail_relpath` / `thumbnail_sha256` columns from migration 038 — no new
+migration) and is composed into the published ZIP under `Preview/`, exactly like
+a Content thumbnail.
+
+The thumbnail is **required** for YouTube bundles (the description already was).
+Both the live form and the Review & Publish pre-flight checklist now block
+publishing until a thumbnail is present, and the Review page shows a thumbnail
+preview under its own **Thumbnail** section for Sallie to approve. Validation is
+enforced in both the JS mirror (`validateYouTubeThumbnail`) and the authoritative
+Rust validator (`validate_youtube_thumbnail`), with matching tests on both sides.
+
 ## [1.29.4] — 2026-06-04
 
 ### Fixed — short video clips no longer fail with "maxrate out of range" (Windows)

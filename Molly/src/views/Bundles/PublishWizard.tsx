@@ -127,8 +127,8 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                     <span className="opacity-60 italic">No description set.</span>
                   )}
                 </ReviewSection>
-                {bundle.summary.bundleType === 'content' && (bundle.thumbnailAbsolutePath || bundle.teaserGifAbsolutePath) && (
-                  <ReviewSection title="Preview assets">
+                {(bundle.summary.bundleType === 'content' || bundle.summary.bundleType === 'youtube') && (bundle.thumbnailAbsolutePath || bundle.teaserGifAbsolutePath) && (
+                  <ReviewSection title={bundle.summary.bundleType === 'youtube' ? 'Thumbnail' : 'Preview assets'}>
                     <div className="flex flex-wrap gap-4">
                       {bundle.thumbnailAbsolutePath && (
                         <figure className="space-y-1">

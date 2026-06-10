@@ -17,8 +17,10 @@ import { ContentTagPicker } from './components/ContentTagPicker';
 import { DescriptionField } from './components/DescriptionField';
 import { GoLiveDatePicker } from './components/GoLiveDatePicker';
 import { OrderedFileList } from './components/OrderedFileList';
+import { PreviewAssetField } from './components/PreviewAssetField';
 import { SpecialInstructionsField } from './components/SpecialInstructionsField';
 import { TitleField } from './components/TitleField';
+import { FrameGrabber } from '../GifStudio/FrameGrabber';
 
 interface Props {
   uid: string;
@@ -39,6 +41,7 @@ export function YouTubeBundleForm({ uid, onPublishRequested, onClose, onDeleted,
   const [contentTags, setContentTags] = useState<ContentTag[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [frameOpen, setFrameOpen] = useState(false);
 
   // reload depends only on `uid` — see the ContentBundleForm note about the
   // infinite-reload trap if a parent callback sneaks into the dep list.
@@ -121,6 +124,39 @@ export function YouTubeBundleForm({ uid, onPublishRequested, onClose, onDeleted,
          SET description_audio_relpath = NULL, description_audio_sha256 = NULL,
              description_mode = NULL, updated_at = datetime('now')
          WHERE uid = $1`,
+        [uid],
+      );
+      if (rel) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        try { await invoke('delete_attachment', { relativePath: rel }); } catch { /* tolerate missing file */ }
+      }
+      await reload();
+    });
+  }
+
+  // --- Required thumbnail (single-slot, same lift pattern as the audio
+  // description and the Content bundle's preview assets) -----------------
+  async function onThumbnailSaved(info: BundleFileInfo) {
+    await withBusy(async () => {
+      const conn = await db();
+      await conn.execute(
+        `UPDATE bundles SET thumbnail_relpath = $1, thumbnail_sha256 = $2, updated_at = datetime('now') WHERE uid = $3`,
+        [info.relpath, info.sha256, uid],
+      );
+      await conn.execute('DELETE FROM bundle_files WHERE id = $1', [info.id]);
+      await reload();
+    });
+  }
+  async function onThumbnailRemoved() {
+    await withBusy(async () => {
+      const conn = await db();
+      const rows = await conn.select<{ thumbnail_relpath: string | null }[]>(
+        'SELECT thumbnail_relpath FROM bundles WHERE uid = $1',
+        [uid],
+      );
+      const rel = rows[0]?.thumbnail_relpath;
+      await conn.execute(
+        `UPDATE bundles SET thumbnail_relpath = NULL, thumbnail_sha256 = NULL, updated_at = datetime('now') WHERE uid = $1`,
         [uid],
       );
       if (rel) {
@@ -216,6 +252,29 @@ export function YouTubeBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           disabled={busy || locked}
         />
 
+        <PreviewAssetField
+          bundleUid={uid}
+          label="Thumbnail Image"
+          emoji="🖼️"
+          hint="The cover image YouTube shows for this video (JPG/PNG, max 5 MB)."
+          accept={['jpg', 'jpeg', 'png']}
+          pickTitle="Pick a thumbnail image"
+          filterName="Image"
+          maxBytes={5 * 1024 * 1024}
+          required
+          relpath={bundle.thumbnailRelpath}
+          absolutePath={bundle.thumbnailAbsolutePath}
+          originalName={bundle.thumbnailOriginalName}
+          onSaved={onThumbnailSaved}
+          onRemoved={onThumbnailRemoved}
+          disabled={busy || locked}
+          accessory={
+            <button type="button" className="pretty-button secondary" disabled={busy || locked} onClick={() => setFrameOpen(true)}>
+              ✨ Grab a frame from a video
+            </button>
+          }
+        />
+
         <ContentTagPicker
           tags={contentTags}
           selected={bundle.summary.tagIds}
@@ -251,6 +310,20 @@ export function YouTubeBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           ▶️ Review &amp; Publish…
         </button>
       </div>
+
+      {frameOpen && (
+        <FrameGrabber
+          bundleVideos={bundle.files
+            .filter((f) => f.kind === 'video')
+            .map((f) => ({ absolutePath: f.absolutePath, name: f.originalName }))}
+          onUseAsThumbnail={async (bytes, name) => {
+            const { saveBundleFrame } = await import('../../data/bundles');
+            const info = await saveBundleFrame(uid, bytes, name);
+            await onThumbnailSaved(info);
+          }}
+          onClose={() => setFrameOpen(false)}
+        />
+      )}
     </div>
   );
 }

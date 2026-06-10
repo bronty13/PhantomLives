@@ -614,8 +614,25 @@ pub(crate) fn validate_youtube_files(
     }
 }
 
+/// YouTube bundles must carry a cover thumbnail (the image YouTube shows for
+/// the video). Mirrors validateYouTubeThumbnail on the JS side.
+pub(crate) fn validate_youtube_thumbnail(
+    thumbnail_relpath: Option<&str>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if thumbnail_relpath.is_none() {
+        issues.push(ValidationIssue {
+            field_path: "thumbnail".into(),
+            message: "Upload a thumbnail image for this video.".into(),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-preview-thumbnail-image".into(),
+        });
+    }
+}
+
 /// Top-level validator for the YouTube bundle type. Same shape as Content
-/// minus categories, with the file list restricted to video.
+/// minus categories, with the file list restricted to video and a required
+/// cover thumbnail.
 pub(crate) fn validate_youtube_bundle(
     bundle: &Bundle,
     today: NaiveDate,
@@ -631,6 +648,7 @@ pub(crate) fn validate_youtube_bundle(
         prohibited_words,
         &mut issues,
     );
+    validate_youtube_thumbnail(bundle.thumbnail_relpath.as_deref(), &mut issues);
     validate_youtube_files(&bundle.files, &mut issues);
     issues
 }
@@ -2807,16 +2825,32 @@ mod tests {
     }
 
     #[test]
-    fn youtube_validation_passes_with_video_and_description() {
+    fn youtube_validation_passes_with_video_description_and_thumbnail() {
         let mut b = mk_bundle("x", "youtube");
         b.description_mode = Some("text".into());
         b.description_text = "A cute little clip".into();
+        b.thumbnail_relpath = Some("attachments/x/thumb.jpg".into());
         b.files.push(mk_video_file());
         let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
         let issues = validate_youtube_bundle(&b, today, &[]);
         assert!(
             !issues.iter().any(|i| i.severity == Severity::Error),
             "expected no errors, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn youtube_validation_requires_thumbnail() {
+        let mut b = mk_bundle("x", "youtube");
+        b.description_mode = Some("text".into());
+        b.description_text = "desc".into();
+        b.files.push(mk_video_file());
+        // No thumbnail set.
+        let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
+        let issues = validate_youtube_bundle(&b, today, &[]);
+        assert!(
+            issues.iter().any(|i| i.field_path == "thumbnail" && i.severity == Severity::Error),
+            "expected a thumbnail-required error, got {issues:?}"
         );
     }
 

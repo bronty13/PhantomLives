@@ -512,11 +512,12 @@ Fill in:
 - **Persona** — required. CoC, PoA, or Sa.
 - **Title** — at least two words, same sweet safeguards as everywhere else.
 - **Description** — pick **📝 Type** to write it out, or **🎙️ Upload audio** to leave Robert a voice note. Exactly one, just like Content. (And yes, the prohibited-word scan still has your back.)
+- **🖼️ Thumbnail Image** — **required** for YouTube, lovely! This is the cover image YouTube shows for the video, so every YouTube bundle needs one. Pick a **JPG or PNG (up to 5 MB)**, or tap **✨ Grab a frame from a video** to snip the perfect still right off one of your clips — no leaving the app. You'll see a little preview the moment it's in, and a **Remove** button if you change your mind. (It tucks itself onto the bundle and rides along in the ZIP under `Preview/`, just like a Content thumbnail.)
 - **Video clips** — pop in **one or as many as you like**! This one's videos *only* — the picker won't even show photos, so there's no way to slip the wrong thing in. Drag the rows to reorder; each clip gets renamed `00001_…` in the final ZIP so Robert gets them in your order.
 - **Go-live date** — required, no dates in the past. The little calendar tucks itself away the moment you pick a day. If it's today or within 5 days I'll gently ask *"are you allowing enough time for editing?"* — no pressure, just looking out for you. 🌷
 - **Special instructions** — optional notes for Robert.
 
-No categories here — that's a Content thing. Everything else (publishing, the preview wizard with sample frames, the locked-after-publish flow, the **💖 Clips row** that drops your go-live date onto the Calendar) works exactly like a Content bundle, so you already know the dance. ✨
+No categories here — that's a Content thing. When you hit **▶️ Review & Publish**, your thumbnail shows up in its own **Thumbnail** section for one last look-over before you approve, and the pre-flight checklist will gently keep the **Approve & Publish** button locked until both your description *and* your thumbnail are in. Everything else (publishing, the preview wizard with sample frames, the locked-after-publish flow, the **💖 Clips row** that drops your go-live date onto the Calendar) works exactly like a Content bundle, so you already know the dance. ✨
 
 ### Creating a Custom Bundle
 

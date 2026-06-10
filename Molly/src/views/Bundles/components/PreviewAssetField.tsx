@@ -25,6 +25,9 @@ interface Props {
   accessory?: ReactNode;
   /** Reject a picked file larger than this many bytes (e.g. 5 MB thumbnail cap). */
   maxBytes?: number;
+  /** When true the slot is mandatory (YouTube thumbnail) — the label reads
+   *  "(required)" instead of "(optional)". Validation is enforced separately. */
+  required?: boolean;
   disabled?: boolean;
 }
 
@@ -34,7 +37,7 @@ interface Props {
  * relpath onto the bundles row (not bundle_files). Shows an inline preview. */
 export function PreviewAssetField({
   bundleUid, label, hint, emoji, accept, pickTitle, filterName,
-  relpath, absolutePath, originalName, onSaved, onRemoved, accessory, maxBytes, disabled,
+  relpath, absolutePath, originalName, onSaved, onRemoved, accessory, maxBytes, required, disabled,
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +79,11 @@ export function PreviewAssetField({
 
   return (
     <div className="space-y-2" id={`bundle-preview-${label.replace(/\s+/g, '-').toLowerCase()}`} tabIndex={-1}>
-      <div className="text-xs font-semibold opacity-75">{emoji} {label} <span className="opacity-50 font-normal">(optional)</span></div>
+      <div className="text-xs font-semibold opacity-75">{emoji} {label}{' '}
+        {required
+          ? <span className="font-normal" style={{ color: 'rgb(var(--persona-accent))' }}>(required)</span>
+          : <span className="opacity-50 font-normal">(optional)</span>}
+      </div>
       {hint && <div className="text-xs opacity-60">{hint}</div>}
       {relpath ? (
         <div className="flex items-start gap-3">
