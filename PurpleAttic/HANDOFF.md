@@ -129,6 +129,12 @@ Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
 - **`AEDeterminePermissionToAutomateTarget` can hang** if Photos isn't frontmost —
   `PermissionsService.requestPhotosAutomation` launches/activates Photos first and
   calls the prompting form off the main thread.
+- **macOS's default rsync is openrsync** (reports "2.6.9 compatible"), which rejects
+  `--info=progress2` / `--progress` / `-P` and aborts instantly with a usage error.
+  `ExportEngine.rsyncCopyArgs(versionBanner:)` branches on the `--version` banner —
+  progress2 only for a real rsync 3.x, else plain `-ahv`. Don't reintroduce progress2
+  unconditionally. (Broke mirror+verify+cloud on the first full run; verify's huge
+  "discrepancy" count was a cascade from the empty mirror, not corruption.)
 - **`AppSettings` decodes each key with `decodeIfPresent`** so adding a field
   doesn't reset older `settings.json`.
 - **osxphotos uuid → PHAsset.localIdentifier** is `"<uuid>/L0/001"`.

@@ -119,15 +119,19 @@ public final class ExportEngine {
         // under each base, so we mirror primary-archive-root → mirror-archive-root.
         guard let rsync = Tooling.rsync else { throw EngineError.rsyncNotFound }
         let primaryRoot = profile.primaryArchiveRoot
+        // Pick rsync flags that the available binary actually supports: macOS's default rsync
+        // is openrsync, which rejects --info=progress2 (an rsync-3.x flag) and aborts instantly.
+        let copyArgs = Self.rsyncCopyArgs(versionBanner: Self.rsyncVersionBanner(rsync))
+        logger.info("rsync: \(rsync) [\(copyArgs.joined(separator: " "))]")
         for mirror in profile.mirrorArchiveRoots {
             try? FileManager.default.createDirectory(atPath: mirror, withIntermediateDirectories: true)
             let src = primaryRoot.hasSuffix("/") ? primaryRoot : primaryRoot + "/"
             logger.info("→ Mirror: \(src) ⇒ \(mirror)")
             let t0 = Date()
-            // -a archive, -h human, --info=progress2 overall progress. No --delete: the
-            // mirror is never allowed to lose files just because the primary did.
+            // No --delete: the mirror is never allowed to lose files just because the
+            // primary did.
             let result = try ProcessRunner.run(executable: rsync,
-                                               arguments: ["-ah", "--info=progress2", src, mirror]) { line in
+                                               arguments: copyArgs + [src, mirror]) { line in
                 self.logger.debug("[rsync] \(line)")
             }
             let ok = result.exitCode == 0
@@ -171,7 +175,7 @@ public final class ExportEngine {
                 logger.info("→ Cloud (Cryptomator): \(src) ⇒ \(vault)")
                 let t0 = Date()
                 let result = try ProcessRunner.run(executable: rsync,
-                                                   arguments: ["-ah", "--info=progress2", src, vault]) { line in
+                                                   arguments: copyArgs + [src, vault]) { line in
                     self.logger.debug("[rsync:cloud] \(line)")
                 }
                 let ok = result.exitCode == 0
@@ -204,6 +208,28 @@ public final class ExportEngine {
         if t < 60 { return String(format: "%.1fs", t) }
         let m = Int(t) / 60, s = Int(t) % 60
         return "\(m)m \(s)s"
+    }
+
+    /// The `rsync --version` banner (stdout+stderr), used to pick compatible copy flags.
+    static func rsyncVersionBanner(_ rsync: String) -> String {
+        guard let r = try? ProcessRunner.capture(executable: rsync, arguments: ["--version"]) else {
+            return ""
+        }
+        return (String(data: r.stdout, encoding: .utf8) ?? "") + r.stderr
+    }
+
+    /// rsync flags for the mirror/cloud copy, chosen for the *available* rsync. macOS's
+    /// default is **openrsync** ("openrsync: protocol version …", self-reports "2.6.9
+    /// compatible"), which rejects `--info=progress2` / `--progress` / `-P` and aborts
+    /// instantly with a usage error — the bug that silently broke mirror + cloud + verify.
+    /// Only a real rsync 3.x (e.g. Homebrew at /opt/homebrew/bin) supports progress2; for it
+    /// we keep the nice overall progress, otherwise we fall back to plain verbose (`-ahv`),
+    /// which every rsync understands. `-a` archive, `-h` human, `-v` per-file lines for the log.
+    static func rsyncCopyArgs(versionBanner: String) -> [String] {
+        let v = versionBanner.lowercased()
+        let isModern = !v.contains("openrsync")
+            && v.range(of: #"version [3-9]\."#, options: .regularExpression) != nil
+        return isModern ? ["-ah", "--info=progress2"] : ["-ahv"]
     }
 }
 

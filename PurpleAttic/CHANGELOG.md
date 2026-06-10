@@ -3,6 +3,22 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.6.2] — 2026-06-10
+
+Critical mirror/cloud fix found by the first full run.
+
+### Fixed
+- **Mirror, verify, and cloud all failed on stock macOS.** The engine hard-coded
+  rsync's `--info=progress2`, but macOS's default rsync is **openrsync** (reports
+  "2.6.9 compatible"), which rejects that flag and aborts in 0.1s with a usage
+  error. Result: the mirror copied nothing, **verify then reported every primary
+  file as a discrepancy** (349k false positives — an empty mirror, not real
+  corruption), and the cloud copy failed identically. The exports themselves were
+  fine. `ExportEngine.rsyncCopyArgs` now picks flags the available rsync supports
+  — `--info=progress2` only for a real rsync 3.x (e.g. Homebrew), otherwise plain
+  `-ahv` which every rsync understands. Tested across openrsync / rsync 3.x /
+  classic 2.6.9 / empty-banner. (58 tests.)
+
 ## [0.6.1] — 2026-06-09
 
 Fixes to the 0.6.0 preflight, from first use.
