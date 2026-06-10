@@ -4,6 +4,33 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] — 2026-06-10
+
+### Added — YouTube bundles: "Make private" + "Also Post SFW ManyVids"
+
+Two new controls on the YouTube bundle, both with Settings-configurable defaults:
+
+- **🔒 Make private** — a checkbox up where the go-live date lives. When checked
+  (the default — configurable in **Settings → Bundler → YouTube bundle
+  defaults**), the video is treated as private and goes live the moment Sallie
+  publishes, so the **go-live date picker disappears and a date is no longer
+  required**. Unchecking it brings the date picker back, and a go-live date is
+  required again. Toggling private *on* also clears any date already set, in a
+  single atomic patch.
+- **Also Post SFW ManyVids — Yes / No** at the bottom of the form (default
+  **No**, configurable in the same Settings card). A pure informational flag for
+  Robert.
+
+Both flags persist on the `bundles` row (new migration `039_youtube_visibility`,
+`make_private` + `also_post_sfw_manyvids`), seed from the Settings defaults at
+create time, show up on the **Review & Publish** page (Visibility + Also-post
+rows, with the go-live row hidden for private videos), and are written into the
+published bundle's `info.md`, `info.json` manifest, and `Molly.log` so Robert
+knows whether to upload private and whether to also post a SFW cut to ManyVids.
+Go-live validation (JS + Rust) now skips the date requirement for private
+videos. Tests added on both sides; `BundlerSettings` gained the two defaults with
+`#[serde(default)]` so existing settings files keep parsing.
+
 ## [1.30.0] — 2026-06-10
 
 ### Added — YouTube bundles now carry a required thumbnail

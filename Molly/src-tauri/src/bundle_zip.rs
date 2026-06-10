@@ -114,6 +114,11 @@ pub struct BundleSnapshot {
     pub title: String,
     pub content_date: String,
     pub go_live_date: Option<String>,
+    /// YouTube-only: visibility + ManyVids cross-post flags, surfaced in the
+    /// info.md / Molly.log so Robert knows whether to upload private and
+    /// whether to also post a SFW cut to ManyVids.
+    pub make_private: bool,
+    pub also_post_sfw_manyvids: bool,
     pub special_instructions: String,
 
     // Content
@@ -217,8 +222,18 @@ struct ManifestDoc {
     tags: Vec<String>,
     delivery: ManifestDelivery,
     fan_site: ManifestFanSite,
+    /// YouTube-only visibility flags. Null for other bundle types. Additive
+    /// in manifest v1 — older consumers ignore unknown keys.
+    youtube: Option<ManifestYouTube>,
     files: Vec<ManifestFile>,
     published_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestYouTube {
+    make_private: bool,
+    also_post_sfw_manyvids: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -602,8 +617,20 @@ fn render_info_md(s: &BundleSnapshot) -> String {
         s.persona_code.as_deref().unwrap_or("(unassigned)")
     ));
     md.push_str(&format!("- **Content date:** `{}`\n", s.content_date));
+    if s.bundle_type == BundleType::YouTube {
+        md.push_str(&format!(
+            "- **Visibility:** `{}`\n",
+            if s.make_private { "private (goes live on publish)" } else { "public" }
+        ));
+    }
     if let Some(g) = &s.go_live_date {
         md.push_str(&format!("- **Go-live date:** `{}`\n", g));
+    }
+    if s.bundle_type == BundleType::YouTube {
+        md.push_str(&format!(
+            "- **Also post SFW to ManyVids:** `{}`\n",
+            if s.also_post_sfw_manyvids { "yes" } else { "no" }
+        ));
     }
     md.push_str(&format!("- **Published at:** `{}`\n\n", s.published_at));
 
@@ -806,8 +833,20 @@ fn render_molly_log(
     log.push_str("[INPUTS]\n");
     log.push_str(&format!("Title:              {}\n", s.title));
     log.push_str(&format!("Content date:       {}\n", s.content_date));
+    if s.bundle_type == BundleType::YouTube {
+        log.push_str(&format!(
+            "Visibility:         {}\n",
+            if s.make_private { "private (goes live on publish)" } else { "public" }
+        ));
+    }
     if let Some(g) = &s.go_live_date {
         log.push_str(&format!("Go-live date:       {}\n", g));
+    }
+    if s.bundle_type == BundleType::YouTube {
+        log.push_str(&format!(
+            "Also post ManyVids: {}\n",
+            if s.also_post_sfw_manyvids { "yes (SFW)" } else { "no" }
+        ));
     }
 
     match s.bundle_type {
@@ -1122,6 +1161,14 @@ pub fn render_manifest_json(snapshot: &BundleSnapshot) -> Vec<u8> {
             month: snapshot.fansite_month,
             days: fan_days,
         },
+        youtube: if snapshot.bundle_type == BundleType::YouTube {
+            Some(ManifestYouTube {
+                make_private: snapshot.make_private,
+                also_post_sfw_manyvids: snapshot.also_post_sfw_manyvids,
+            })
+        } else {
+            None
+        },
         files,
         published_at: snapshot.published_at.clone(),
     };
@@ -1210,6 +1257,8 @@ mod tests {
             title: "Test Bundle One".to_string(),
             content_date: "2026-05-22".to_string(),
             go_live_date: Some("2026-05-29".to_string()),
+            make_private: false,
+            also_post_sfw_manyvids: false,
             special_instructions: "be cute".to_string(),
             description_text: "Hello there".to_string(),
             description_audio: None,
@@ -1410,7 +1459,8 @@ mod tests {
         let snap = BundleSnapshot {
             uid: "X".into(), bundle_type: BundleType::FanSite,
             persona_code: None, title: "T".into(), content_date: "2026-06-01".into(),
-            go_live_date: None, special_instructions: String::new(),
+            go_live_date: None, make_private: false, also_post_sfw_manyvids: false,
+            special_instructions: String::new(),
             description_text: String::new(), description_audio: None,
             thumbnail: None, teaser_gif: None,
             categories: Vec::new(), tags: Vec::new(),
@@ -1456,6 +1506,8 @@ mod tests {
             title: "May 2026 fan site".to_string(),
             content_date: "2026-05-22".to_string(),
             go_live_date: None,
+            make_private: false,
+            also_post_sfw_manyvids: false,
             special_instructions: String::new(),
             description_text: String::new(),
             description_audio: None,
@@ -1683,6 +1735,8 @@ mod tests {
             title: "@username 5min custom".to_string(),
             content_date: "2026-05-22".to_string(),
             go_live_date: None,
+            make_private: false,
+            also_post_sfw_manyvids: false,
             special_instructions: String::new(),
             description_text: String::new(),
             description_audio: None,
@@ -1742,6 +1796,8 @@ mod tests {
             title: "May 2026 fan site".to_string(),
             content_date: "2026-05-22".to_string(),
             go_live_date: None,
+            make_private: false,
+            also_post_sfw_manyvids: false,
             special_instructions: String::new(),
             description_text: String::new(),
             description_audio: None,
@@ -1828,6 +1884,8 @@ mod tests {
             title: "audio-described".to_string(),
             content_date: "2026-05-22".to_string(),
             go_live_date: None,
+            make_private: false,
+            also_post_sfw_manyvids: false,
             special_instructions: String::new(),
             description_text: String::new(),
             description_audio: Some(FileEntry {

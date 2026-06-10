@@ -91,6 +91,18 @@ export function YouTubeBundleForm({ uid, onPublishRequested, onClose, onDeleted,
   async function commitSpecial(s: string) {
     await withBusy(async () => { await updateBundleFields(uid, { specialInstructions: s }); await reload(); });
   }
+  async function commitMakePrivate(v: boolean) {
+    await withBusy(async () => {
+      // Turning private ON clears any go-live date — a private video goes live
+      // when Sallie publishes it, so the date is meaningless (and the picker
+      // disappears). Done in one patch so the row never lands half-updated.
+      await updateBundleFields(uid, v ? { makePrivate: true, goLiveDate: null } : { makePrivate: false });
+      await reload();
+    });
+  }
+  async function commitAlsoPostManyvids(v: boolean) {
+    await withBusy(async () => { await updateBundleFields(uid, { alsoPostSfwManyvids: v }); await reload(); });
+  }
   async function commitDescriptionMode(mode: 'audio' | 'text' | null) {
     await withBusy(async () => { await updateBundleFields(uid, { descriptionMode: mode }); await reload(); });
   }
@@ -282,11 +294,31 @@ export function YouTubeBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           disabled={busy || locked}
         />
 
-        <GoLiveDatePicker
-          value={bundle.summary.goLiveDate}
-          onChange={commitGoLive}
-          disabled={busy || locked}
-        />
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              id="bundle-make-private"
+              type="checkbox"
+              className="w-5 h-5"
+              checked={bundle.makePrivate}
+              onChange={(e) => commitMakePrivate(e.target.checked)}
+              disabled={busy || locked}
+            />
+            <span className="font-semibold">🔒 Make private</span>
+            <span className="opacity-60 text-xs">goes live when you publish — no go-live date needed</span>
+          </label>
+          {bundle.makePrivate ? (
+            <div className="text-xs opacity-60 italic pl-7">
+              This video will be uploaded <strong>private</strong> and go live the moment you publish. 💕
+            </div>
+          ) : (
+            <GoLiveDatePicker
+              value={bundle.summary.goLiveDate}
+              onChange={commitGoLive}
+              disabled={busy || locked}
+            />
+          )}
+        </div>
 
         <OrderedFileList
           files={bundle.files.filter((f) => f.fansiteDayId === null)}
@@ -303,6 +335,27 @@ export function YouTubeBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           onCommit={commitSpecial}
           disabled={busy || locked}
         />
+
+        <div className="space-y-1" id="bundle-also-post-manyvids">
+          <div className="text-xs font-semibold opacity-75">Also Post SFW ManyVids</div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => commitAlsoPostManyvids(true)}
+              className={`pretty-button ${bundle.alsoPostSfwManyvids ? '' : 'secondary'}`}
+              disabled={busy || locked}
+            >Yes</button>
+            <button
+              type="button"
+              onClick={() => commitAlsoPostManyvids(false)}
+              className={`pretty-button ${bundle.alsoPostSfwManyvids ? 'secondary' : ''}`}
+              disabled={busy || locked}
+            >No</button>
+          </div>
+          <div className="text-xs opacity-60">
+            When <strong>Yes</strong>, Robert also posts a SFW cut to ManyVids. It rides along in the bundle's notes.
+          </div>
+        </div>
       </fieldset>
 
       <div className="flex justify-end gap-2 pt-2 border-t border-black/5">

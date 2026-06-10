@@ -88,6 +88,11 @@ export interface Bundle {
   handledInPlatform: boolean;
   fansiteYear: number | null;
   fansiteMonth: number | null;
+  // YouTube-only visibility flags (ignored for other types). When
+  // `makePrivate` is true the video uploads private + goes live on publish,
+  // so no go-live date is needed. `alsoPostSfwManyvids` is informational.
+  makePrivate: boolean;
+  alsoPostSfwManyvids: boolean;
   outerSha256: string | null;
   innerSha256: string | null;
   files: BundleFileInfo[];
@@ -112,6 +117,8 @@ export interface BundleFieldPatch {
   handledInPlatform?: boolean;
   fansiteYear?: number | null;
   fansiteMonth?: number | null;
+  makePrivate?: boolean;
+  alsoPostSfwManyvids?: boolean;
 }
 
 export interface BundlePublishResult {
@@ -145,6 +152,10 @@ export interface BundlerSettings {
   purgeThresholdDays: number;
   autoPurgeEnabled: boolean;
   lastPurgeAt: string | null;
+  /** Default "Make private" state for a new YouTube bundle (default true). */
+  youtubeDefaultPrivate: boolean;
+  /** Default "Also Post SFW ManyVids" state for a new YouTube bundle (default false). */
+  youtubeDefaultPostSfwManyvids: boolean;
 }
 
 export interface ValidationIssueDto {

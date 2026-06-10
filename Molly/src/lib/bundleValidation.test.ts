@@ -45,6 +45,8 @@ function mkBundle(overrides: Partial<Bundle> = {}): Bundle {
     handledInPlatform: false,
     fansiteYear: null,
     fansiteMonth: null,
+    makePrivate: false,
+    alsoPostSfwManyvids: false,
     outerSha256: null,
     innerSha256: null,
     files: [],
@@ -356,6 +358,24 @@ describe('validateYouTubeBundle', () => {
       ctx,
     );
     expect(issues.some((i) => i.fieldPath === 'files' && i.severity === 'error')).toBe(true);
+  });
+  it('requires a go-live date when public', () => {
+    const b = ytBundle({
+      descriptionMode: 'text', descriptionText: 'desc', files: [video],
+      thumbnailRelpath: 'attachments/x/thumb.jpg', makePrivate: false,
+    });
+    b.summary.goLiveDate = null;
+    const issues = validateYouTubeBundle(b, ctx);
+    expect(issues.some((i) => i.fieldPath === 'goLiveDate' && i.severity === 'error')).toBe(true);
+  });
+  it('does not require a go-live date when private', () => {
+    const b = ytBundle({
+      descriptionMode: 'text', descriptionText: 'desc', files: [video],
+      thumbnailRelpath: 'attachments/x/thumb.jpg', makePrivate: true,
+    });
+    b.summary.goLiveDate = null;
+    const issues = validateYouTubeBundle(b, ctx);
+    expect(issues.filter((i) => i.severity === 'error')).toEqual([]);
   });
 });
 

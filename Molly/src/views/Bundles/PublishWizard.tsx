@@ -104,8 +104,14 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
               <ReviewRow label="Persona" value={<span className="font-mono">{persona}</span>} />
               <ReviewRow label="Title" value={<span className="font-medium">{bundle.summary.title || <em className="opacity-50">(blank)</em>}</span>} />
               <ReviewRow label="Content date" value={<span className="font-mono">{bundle.summary.contentDate}</span>} />
-              {bundle.summary.bundleType !== 'fansite' && (
+              {bundle.summary.bundleType === 'youtube' && (
+                <ReviewRow label="Visibility" value={bundle.makePrivate ? '🔒 Private (goes live on publish)' : '🌐 Public'} />
+              )}
+              {bundle.summary.bundleType !== 'fansite' && !(bundle.summary.bundleType === 'youtube' && bundle.makePrivate) && (
                 <ReviewRow label="Go-live date" value={<span className="font-mono">{bundle.summary.goLiveDate ?? '(not set)'}</span>} />
+              )}
+              {bundle.summary.bundleType === 'youtube' && (
+                <ReviewRow label="Also post SFW ManyVids" value={bundle.alsoPostSfwManyvids ? 'Yes' : 'No'} />
               )}
               {bundle.summary.bundleType === 'fansite' && (
                 <ReviewRow label="Month" value={

@@ -138,6 +138,31 @@ export function BundlerSettings() {
       </section>
 
       <section className="pretty-card space-y-3">
+        <h3 className="font-semibold">YouTube bundle defaults</h3>
+        <p className="text-xs opacity-70">
+          The starting state for a brand-new YouTube bundle. You can still override either one per-bundle.
+        </p>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            className="w-5 h-5"
+            checked={settings.youtubeDefaultPrivate}
+            onChange={(e) => save({ youtubeDefaultPrivate: e.target.checked })}
+          />
+          <span>🔒 New videos default to <strong>private</strong> (no go-live date)</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            className="w-5 h-5"
+            checked={settings.youtubeDefaultPostSfwManyvids}
+            onChange={(e) => save({ youtubeDefaultPostSfwManyvids: e.target.checked })}
+          />
+          <span>Also Post SFW ManyVids defaults to <strong>Yes</strong></span>
+        </label>
+      </section>
+
+      <section className="pretty-card space-y-3">
         <h3 className="font-semibold">Prohibited words (Content description)</h3>
         <p className="text-xs opacity-70">
           The description validator flags any of these substrings (case-insensitive). Defaults seeded on install.

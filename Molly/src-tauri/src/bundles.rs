@@ -210,6 +210,12 @@ pub struct Bundle {
     pub handled_in_platform: bool,
     pub fansite_year: Option<i64>,
     pub fansite_month: Option<i64>,
+    /// YouTube-only visibility flags (ignored for other types). When
+    /// `make_private` is true the video is uploaded private and goes live on
+    /// publish, so no go-live date is required. `also_post_sfw_manyvids` is a
+    /// pure informational flag carried into the bundle's info.md / Molly.log.
+    pub make_private: bool,
+    pub also_post_sfw_manyvids: bool,
     pub outer_sha256: Option<String>,
     pub inner_sha256: Option<String>,
     pub files: Vec<BundleFileInfo>,
@@ -233,6 +239,8 @@ pub struct BundleFieldPatch {
     pub handled_in_platform: Option<bool>,
     pub fansite_year: Option<Option<i64>>,
     pub fansite_month: Option<Option<i64>>,
+    pub make_private: Option<bool>,
+    pub also_post_sfw_manyvids: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -274,6 +282,18 @@ pub struct BundlerSettings {
     pub purge_threshold_days: u32,
     pub auto_purge_enabled: bool,
     pub last_purge_at: Option<String>,
+    /// Default "Make private" state for a new YouTube bundle. `#[serde(default)]`
+    /// (→ the `default_true` fn) keeps older settings.json files — written
+    /// before these keys existed — parsing instead of resetting every setting.
+    #[serde(default = "default_true")]
+    pub youtube_default_private: bool,
+    /// Default "Also Post SFW ManyVids" state for a new YouTube bundle.
+    #[serde(default)]
+    pub youtube_default_post_sfw_manyvids: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for BundlerSettings {
@@ -284,6 +304,8 @@ impl Default for BundlerSettings {
             purge_threshold_days: 60,
             auto_purge_enabled: true,
             last_purge_at: None,
+            youtube_default_private: true,
+            youtube_default_post_sfw_manyvids: false,
         }
     }
 }
@@ -641,7 +663,11 @@ pub(crate) fn validate_youtube_bundle(
     let mut issues = Vec::new();
     validate_title(&bundle.summary.title, &mut issues);
     validate_persona(bundle.summary.persona_code.as_deref(), &mut issues);
-    validate_go_live(bundle.summary.go_live_date.as_deref(), today, &mut issues);
+    // A private video goes live on publish, so no go-live date is needed (the
+    // form hides the picker). Only a public video requires one.
+    if !bundle.make_private {
+        validate_go_live(bundle.summary.go_live_date.as_deref(), today, &mut issues);
+    }
     validate_content_description(
         &bundle.description_text,
         bundle.description_audio_relpath.as_deref(),
@@ -1026,6 +1052,7 @@ pub(crate) fn pure_get_bundle(
                 delivery_kind, delivery_site_id, delivery_url, delivery_recipient,
                 price_cents, handled_in_platform,
                 fansite_year, fansite_month,
+                make_private, also_post_sfw_manyvids,
                 published_at, bundle_path, bundle_size_bytes,
                 outer_sha256, inner_sha256,
                 created_at, updated_at,
@@ -1080,6 +1107,8 @@ pub(crate) fn pure_get_bundle(
         handled_in_platform: row.get::<_, i64>("handled_in_platform")? != 0,
         fansite_year: row.get("fansite_year")?,
         fansite_month: row.get("fansite_month")?,
+        make_private: row.get::<_, i64>("make_private")? != 0,
+        also_post_sfw_manyvids: row.get::<_, i64>("also_post_sfw_manyvids")? != 0,
         outer_sha256: row.get("outer_sha256")?,
         inner_sha256: row.get("inner_sha256")?,
         files,
@@ -1432,6 +1461,8 @@ fn build_snapshot(
         handled_in_platform: bundle.handled_in_platform,
         fansite_year: bundle.fansite_year,
         fansite_month: bundle.fansite_month,
+        make_private: bundle.make_private,
+        also_post_sfw_manyvids: bundle.also_post_sfw_manyvids,
         fan_days: bundle
             .fan_days
             .iter()
@@ -1642,7 +1673,21 @@ pub fn create_bundle<R: Runtime>(
 ) -> Result<String, BundleError> {
     let app_data = app_data_dir(&handle)?;
     let conn = open_conn(&app_data)?;
-    pure_create_bundle(&conn, &iso_today(), &bundle_type, persona_code.as_deref())
+    let uid = pure_create_bundle(&conn, &iso_today(), &bundle_type, persona_code.as_deref())?;
+    // YouTube bundles seed their visibility flags from the Settings-configured
+    // defaults (private-by-default, ManyVids-off-by-default out of the box).
+    if bundle_type == "youtube" {
+        let settings = load_settings(&app_data);
+        conn.execute(
+            "UPDATE bundles SET make_private = ?1, also_post_sfw_manyvids = ?2 WHERE uid = ?3",
+            params![
+                if settings.youtube_default_private { 1 } else { 0 },
+                if settings.youtube_default_post_sfw_manyvids { 1 } else { 0 },
+                uid,
+            ],
+        )?;
+    }
+    Ok(uid)
 }
 
 #[tauri::command]
@@ -1690,6 +1735,18 @@ fn apply_patch(conn: &Connection, uid: &str, patch: &BundleFieldPatch) -> Result
     if let Some(v) = patch.handled_in_platform {
         conn.execute(
             "UPDATE bundles SET handled_in_platform = ?1, updated_at = datetime('now') WHERE uid = ?2",
+            params![if v { 1 } else { 0 }, uid],
+        )?;
+    }
+    if let Some(v) = patch.make_private {
+        conn.execute(
+            "UPDATE bundles SET make_private = ?1, updated_at = datetime('now') WHERE uid = ?2",
+            params![if v { 1 } else { 0 }, uid],
+        )?;
+    }
+    if let Some(v) = patch.also_post_sfw_manyvids {
+        conn.execute(
+            "UPDATE bundles SET also_post_sfw_manyvids = ?1, updated_at = datetime('now') WHERE uid = ?2",
             params![if v { 1 } else { 0 }, uid],
         )?;
     }
@@ -2449,6 +2506,7 @@ mod tests {
             include_str!("../migrations/034_return_file_import.sql"),
             include_str!("../migrations/036_youtube_bundle.sql"),
             include_str!("../migrations/038_bundle_preview_assets.sql"),
+            include_str!("../migrations/039_youtube_visibility.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -2766,6 +2824,8 @@ mod tests {
             handled_in_platform: false,
             fansite_year: None,
             fansite_month: None,
+            make_private: false,
+            also_post_sfw_manyvids: false,
             outer_sha256: None,
             inner_sha256: None,
             files: vec![],
@@ -2851,6 +2911,40 @@ mod tests {
         assert!(
             issues.iter().any(|i| i.field_path == "thumbnail" && i.severity == Severity::Error),
             "expected a thumbnail-required error, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn youtube_validation_requires_go_live_when_public() {
+        let mut b = mk_bundle("x", "youtube");
+        b.description_mode = Some("text".into());
+        b.description_text = "desc".into();
+        b.thumbnail_relpath = Some("attachments/x/thumb.jpg".into());
+        b.files.push(mk_video_file());
+        b.make_private = false;
+        b.summary.go_live_date = None; // public but no date → error
+        let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
+        let issues = validate_youtube_bundle(&b, today, &[]);
+        assert!(
+            issues.iter().any(|i| i.field_path == "goLiveDate" && i.severity == Severity::Error),
+            "expected a go-live-required error, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn youtube_validation_skips_go_live_when_private() {
+        let mut b = mk_bundle("x", "youtube");
+        b.description_mode = Some("text".into());
+        b.description_text = "desc".into();
+        b.thumbnail_relpath = Some("attachments/x/thumb.jpg".into());
+        b.files.push(mk_video_file());
+        b.make_private = true;
+        b.summary.go_live_date = None; // private → no date needed, no error
+        let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
+        let issues = validate_youtube_bundle(&b, today, &[]);
+        assert!(
+            !issues.iter().any(|i| i.severity == Severity::Error),
+            "expected no errors for a complete private bundle, got {issues:?}"
         );
     }
 

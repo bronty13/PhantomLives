@@ -275,7 +275,9 @@ export function validateYouTubeBundle(bundle: Bundle, ctx: ValidationCtx): Valid
   return [
     ...validateTitle(bundle.summary.title),
     ...validatePersona(bundle.summary.personaCode),
-    ...validateGoLiveDate(bundle.summary.goLiveDate, ctx.today),
+    // A private video goes live on publish, so no go-live date is required
+    // (the form hides the picker). Only a public video needs one.
+    ...(bundle.makePrivate ? [] : validateGoLiveDate(bundle.summary.goLiveDate, ctx.today)),
     ...validateContentDescription(
       bundle.descriptionText,
       bundle.descriptionAudioRelpath,

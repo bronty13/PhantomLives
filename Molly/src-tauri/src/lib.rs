@@ -257,6 +257,12 @@ pub fn run() {
             sql: include_str!("../migrations/038_bundle_preview_assets.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 39,
+            description: "youtube-visibility",
+            sql: include_str!("../migrations/039_youtube_visibility.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -756,6 +762,8 @@ mod camel_case_contract {
             handled_in_platform: false,
             fansite_year: None,
             fansite_month: None,
+            make_private: false,
+            also_post_sfw_manyvids: false,
             outer_sha256: None,
             inner_sha256: None,
             files: vec![],
