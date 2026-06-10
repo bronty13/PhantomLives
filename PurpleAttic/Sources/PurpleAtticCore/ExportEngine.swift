@@ -241,12 +241,16 @@ public final class ExportEngine {
         // makes openrsync's temp-then-rename fail ("renameat: No such file or directory") and
         // abort the ENTIRE cloud transfer.
         args += ["--exclude=.DS_Store", "--exclude=.osxphotos_export.db*"]
-        // The Cryptomator/macFUSE vault doesn't implement chown/chmod — preserving
-        // owner/group/perms (rsync `-a` ⇒ `-ogp`) fails with "fchownat: Function not
-        // implemented" and aborts the cloud copy. Drop them for the vault; content +
-        // timestamps still transfer (and perms are moot inside an encrypted container).
+        // The Cryptomator/macFUSE vault is hostile to openrsync's defaults in three ways,
+        // each of which aborted a real cloud copy until handled:
+        //  • `--inplace` — write directly to the final file. openrsync's default
+        //    copy-to-temp-then-rename fails on the vault ("mkstempat"/"renameat: No such file
+        //    or directory") for some names; --inplace skips the temp file entirely.
+        //  • `--no-owner --no-group --no-perms` — the volume doesn't implement chown/chmod
+        //    ("fchownat: Function not implemented"); content + timestamps still transfer and
+        //    perms are moot inside an encrypted container.
         if forVault {
-            args += ["--no-owner", "--no-group", "--no-perms"]
+            args += ["--inplace", "--no-owner", "--no-group", "--no-perms"]
         }
         return args
     }

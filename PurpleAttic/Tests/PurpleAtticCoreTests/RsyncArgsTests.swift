@@ -60,11 +60,18 @@ final class RsyncArgsTests: XCTestCase {
         // copy aborts.
         for banner in ["openrsync: protocol version 29", "rsync version 3.2.7", ""] {
             let args = ExportEngine.rsyncCopyArgs(versionBanner: banner, forVault: true)
+            XCTAssertTrue(args.contains("--inplace"), "vault copy must write in place (no temp file)")
             XCTAssertTrue(args.contains("--no-owner"))
             XCTAssertTrue(args.contains("--no-group"))
             XCTAssertTrue(args.contains("--no-perms"))
             // still excludes the junk
             XCTAssertTrue(args.contains("--exclude=.DS_Store"))
         }
+    }
+
+    func testMirrorIsNotInplace() {
+        // The APFS mirror keeps atomic temp-then-rename writes (safer); only the FUSE vault
+        // needs --inplace.
+        XCTAssertFalse(ExportEngine.rsyncCopyArgs(versionBanner: "openrsync").contains("--inplace"))
     }
 }

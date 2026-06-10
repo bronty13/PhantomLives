@@ -3,6 +3,22 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.6.5] — 2026-06-10
+
+Third cloud-copy fix — the vault rsync also can't create temp files (`--inplace`).
+
+### Fixed
+- **Cloud copy to the Cryptomator vault still aborted (`mkstempat`/`utimensat:
+  No such file or directory`)** after the 0.6.4 chown fix — this time ~24k files
+  in, on a duplicate-named file (`_MG_4667 (1).JPG`). openrsync writes each file
+  to a temp name then renames it, and that temp-file creation fails on the
+  macFUSE/Cryptomator volume for some names. The vault copy now adds `--inplace`
+  (write directly to the final file, no temp/rename). Verified by re-copying the
+  exact folder that failed (1,044 files, exit 0). Combined with 0.6.3
+  (`.DS_Store` exclude) and 0.6.4 (`--no-owner --no-group --no-perms`), all three
+  openrsync↔Cryptomator incompatibilities are handled. The APFS mirror keeps
+  atomic temp-then-rename writes (only the FUSE vault needs `--inplace`). 62 tests.
+
 ## [0.6.4] — 2026-06-10
 
 Second cloud-copy fix — the vault rsync also can't preserve owner/group/perms.
