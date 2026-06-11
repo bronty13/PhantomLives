@@ -10,8 +10,10 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.11.0 — fixes the purge preview crashing on osxphotos' non-standard
-> JSON (`Infinity`/`NaN` literals); excludes "Shared with You" + shared-album items from the
+> **Status: 0.12.0 — fixes the purge ≥2-copy verification that rejected ~all photos
+> (it matched the pre-export Photos size, but `--exiftool` enlarges archived files; now
+> verifies by filename + primary↔mirror byte-consistency); fixes the purge preview crashing
+> on osxphotos' non-standard JSON (`Infinity`/`NaN` literals); excludes "Shared with You" + shared-album items from the
 > export (`excludeSharedAndSyndicated`, on by default) so non-owned content with
 > no master stops showing as bogus "missing" originals; `--download-missing` uses
 > the reliable PhotoKit path (`usePhotoKitForDownload`, on by default) instead of

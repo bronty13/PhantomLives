@@ -58,17 +58,24 @@ public enum PurgePlanner {
             guard let asset = r.asPhotoAsset() else { continue }   // unparseable date → keep
             guard policy.isPurgeEligible(asset, asOf: now) else { continue }
 
+            // Verify by FILENAME presence + cross-copy size consistency — NOT against the
+            // Photos `original_filesize`. The export embeds metadata via `--exiftool`, so an
+            // archived original is a few hundred bytes larger than its pre-export size; matching
+            // the Photos size rejected ~all files (incident 2026-06-11). A candidate is verified
+            // when the primary holds the named file AND a mirror holds a byte-identical copy
+            // (their size-sets for that name intersect) → two consistent copies exist.
             let name = r.originalFilename ?? ""
-            let size = r.originalFilesize
-            let inPrimary = !name.isEmpty && primary.contains(filename: name, size: size)
-            let mirrorsMatched = name.isEmpty ? 0
-                : mirrors.filter { $0.contains(filename: name, size: size) }.count
+            let primarySizes = name.isEmpty ? Set<Int>() : primary.sizes(forFilename: name)
+            let inPrimary = !primarySizes.isEmpty
+            let mirrorsMatched = inPrimary
+                ? mirrors.filter { !$0.sizes(forFilename: name).isDisjoint(with: primarySizes) }.count
+                : 0
 
             candidates.append(PurgeCandidate(
                 uuid: r.uuid,
                 filename: name.isEmpty ? "(unknown)" : name,
                 date: asset.created,
-                sizeBytes: size ?? 0,
+                sizeBytes: r.originalFilesize ?? 0,   // Photos' pre-export size, for the freed-space estimate
                 ismissing: r.ismissing,
                 verification: VerificationResult(inPrimary: inPrimary, mirrorsMatched: mirrorsMatched)
             ))

@@ -3,6 +3,33 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.12.0] — 2026-06-11
+
+Fix purge verification rejecting ~all photos (the `--exiftool` size delta).
+
+### Fixed
+- **The ≥2-copy purge gate verified almost nothing** — a real preview marked only **368 of
+  66,279** eligible photos "deletable" and skipped 65,911, making purge useless. Root cause:
+  verification matched each photo's archived file against the **Photos `original_filesize`**,
+  but the export embeds metadata via **`osxphotos --exiftool`**, so every archived original is
+  a few hundred bytes **larger** than its pre-export size — the exact-size check failed for
+  67,122 of the present files (only files exiftool happened not to resize matched).
+- **New verification model:** a candidate is verified when its filename is present in the
+  primary **and** a mirror holds a **byte-identical** copy (the primary/mirror size-sets for
+  that name intersect). This proves two *consistent* copies exist — the real intent of the
+  gate — without depending on the pre-export size. After the fix, the same library verifies
+  **65,627 of 66,279** (the 652 still skipped are the shared/"Shared with You" items excluded
+  from the archive in 0.10, which correctly have no archived copy and must never be deleted).
+  Validated end-to-end against the live 68,151-record library + both mounted drives.
+- Tests: 100 total (regression: exiftool-resized file still verifies; primary/mirror size
+  disagreement → unverified; name-absent → unverified).
+
+### Note
+The ideal long-term correlation is osxphotos' export DB (uuid → archived path), noted in
+HANDOFF; the name + cross-copy-consistency model is the robust, version-independent fix shipped
+now. The 30-day Recently Deleted net and the independently-verified complete archive remain
+backstops.
+
 ## [0.11.0] — 2026-06-11
 
 Fix the purge preview crashing on osxphotos' non-standard JSON.

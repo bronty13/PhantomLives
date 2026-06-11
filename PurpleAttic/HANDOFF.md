@@ -154,6 +154,13 @@ Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
   "discrepancy" count was a cascade from the empty mirror, not corruption.)
 - **`AppSettings` decodes each key with `decodeIfPresent`** so adding a field
   doesn't reset older `settings.json`.
+- **Purge ≥2-copy verification matches by FILENAME + primary↔mirror size CONSISTENCY, NOT the
+  Photos `original_filesize`.** The export runs `--exiftool`, which writes metadata *into* each
+  file, so an archived original is a few hundred bytes larger than its pre-export size. Matching
+  the Photos size verified only 368/66,279 on the first real preview; the fix (filename present
+  in primary + a mirror whose size-set intersects primary's) verifies 65,627/66,279. Don't
+  reintroduce an `original_filesize` comparison. Future-proof option: correlate uuid→archived
+  path via the osxphotos export DB. (Incident 2026-06-11.)
 - **osxphotos `query --json` emits NON-STANDARD JSON** — bare `Infinity`/`-Infinity`/`NaN`
   literals (video audio `energyValues`, unset scores). Python parses them; **Swift's JSON
   parser rejects them** ("not valid JSON"), which silently broke the entire purge preview.

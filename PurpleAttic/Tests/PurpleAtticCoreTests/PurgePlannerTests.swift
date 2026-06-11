@@ -51,12 +51,35 @@ final class PurgePlannerTests: XCTestCase {
         XCTAssertEqual(plan.unverified.count, 1)
     }
 
-    func testSizeMismatchFailsVerification() {
-        let primary = ArchiveIndex(map: ["img.heic": [999]]) // wrong size
-        let mirror = ArchiveIndex(map: ["img.heic": [999]])
+    // REGRESSION (incident 2026-06-11): the archived file is a few hundred bytes LARGER than the
+    // Photos `original_filesize` because `--exiftool` embeds metadata on export. Verification must
+    // NOT reject it for that — it depends on cross-copy consistency, not the pre-export size.
+    func testExiftoolResizedFileStillVerifies() {
+        // record's Photos size is 1000; the archived copies are 1198 (metadata added). Consistent
+        // across primary + mirror → must verify.
+        let primary = ArchiveIndex(map: ["img.heic": [1198]])
+        let mirror  = ArchiveIndex(map: ["img.heic": [1198]])
         let plan = PurgePlanner.plan(records: [record(uuid: "a", daysAgo: 500, size: 1000)],
                                      policy: policy, now: now, primary: primary, mirrors: [mirror])
-        XCTAssertEqual(plan.verified.count, 0, "name matches but size differs → unverified")
+        XCTAssertEqual(plan.verified.count, 1, "archived size differs from Photos size by metadata → still verified")
+    }
+
+    func testPrimaryMirrorSizeDisagreementNotVerified() {
+        // Same name in both, but different bytes (primary 1198, mirror 2000) → NOT a consistent
+        // pair → not deletable. Guards against an inconsistent/corrupt mirror copy.
+        let primary = ArchiveIndex(map: ["img.heic": [1198]])
+        let mirror  = ArchiveIndex(map: ["img.heic": [2000]])
+        let plan = PurgePlanner.plan(records: [record(uuid: "a", daysAgo: 500, size: 1000)],
+                                     policy: policy, now: now, primary: primary, mirrors: [mirror])
+        XCTAssertEqual(plan.verified.count, 0, "primary/mirror sizes disjoint → unverified")
+    }
+
+    func testNameAbsentFromArchiveNotVerified() {
+        let primary = ArchiveIndex(map: ["other.heic": [1198]])
+        let mirror  = ArchiveIndex(map: ["other.heic": [1198]])
+        let plan = PurgePlanner.plan(records: [record(uuid: "a", daysAgo: 500, size: 1000)],
+                                     policy: policy, now: now, primary: primary, mirrors: [mirror])
+        XCTAssertEqual(plan.verified.count, 0, "filename not in archive → unverified")
     }
 
     func testPinnedBySaveAlbumExcluded() {
