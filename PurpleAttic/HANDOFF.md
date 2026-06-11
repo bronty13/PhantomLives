@@ -169,7 +169,7 @@ Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
   (~727 MB / 68k records on a full library) because `--json` dumps every field; only ~9 are
   used. (Incident 2026-06-11: first real purge preview.)
 - **osxphotos uuid → PHAsset.localIdentifier** is `"<uuid>/L0/001"`.
-- **Deletion MUST be batched** — `PhotoKitPurger.deleteAssets` chunks (`defaultBatchSize` 5000)
+- **Deletion MUST be batched** — `PhotoKitPurger.deleteAssets` chunks (`defaultBatchSize` 1000)
   with one `performChanges` per chunk, continue-on-error, cancel-aware. A single atomic delete of
   the whole verified set fails with `PHPhotosErrorDomain 3300` at scale (and atomically, so one
   bad asset kills the batch). Don't revert to a one-shot delete. macOS confirms per chunk; re-runs

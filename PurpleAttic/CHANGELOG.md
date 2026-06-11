@@ -12,12 +12,16 @@ Delete in resilient batches — fix `PHPhotosErrorDomain 3300` on a large purge.
   (PHPhotosErrorDomain error 3300)"*. Cause: `PhotoKitPurger` deleted **all 65,627 assets in a
   single atomic `performChanges`** — PhotoKit rejects a delete that large, and (being atomic)
   one un-deletable asset would also fail the entire request, so **nothing** was deleted.
-- **`deleteAssets` now deletes in chunks** (`defaultBatchSize` 5000), each its own
+- **`deleteAssets` now deletes in chunks** (`defaultBatchSize` 1000), each its own
   `performChanges`. A chunk that fails is **skipped and counted** (the run continues instead of
   aborting), the user dismissing a macOS confirmation **stops cleanly** and reports what was
   already deleted, and re-running the purge retries anything not yet removed. `Outcome` gained
   `failed` / `batchError` / `cancelled`; the Purge pane shows per-batch progress and a precise
-  summary (deleted / skipped-retry-next-run / unmatched).
+  summary (deleted / skipped-retry-next-run / unmatched). PhotoKit's atomic-delete ceiling sits
+  between 1000 and 5000 (1000 proven; 5000 also returns 3300), so 1000 is the chunk size — macOS
+  confirms once per chunk.
+- **Purge pane text is now selectable** (`.textSelection(.enabled)`) so counts, the file list,
+  and error messages can be copied (e.g. to report an issue).
 
 ### Note
 PhotoKit deletion requires the app's Photos grant + the macOS GUI, so it can't be validated by a

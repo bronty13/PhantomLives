@@ -27,6 +27,7 @@ struct PurgeSettingsView: View {
                 rulesCard
             }
             .padding(20)
+            .textSelection(.enabled)   // let the user select + copy counts, errors, file lists
         }
         .alert("Enable purge?", isPresented: $confirmEnable) {
             Button("Cancel", role: .cancel) { }
@@ -151,7 +152,7 @@ struct PurgeSettingsView: View {
         Card(title: "Safety gates (all must pass)") {
             rule("Photo is OLDER than \(profile.retention.keepWindowDays) days.")
             rule("Not in a keep album (\(list(profile.retention.keepAlbumNames))) or with a keep keyword (\(list(profile.retention.keepKeywords)))\(profile.retention.keepFavorites ? ", and not a Favorite" : "").")
-            rule("File present + size-matched in the primary archive AND a mirror.")
+            rule("File present in the primary archive AND a mirror, byte-consistent between them.")
             rule("Purge enabled here + you confirm + macOS confirms.")
             rule("Deletions sit in Photos’ Recently Deleted for 30 days.")
         }

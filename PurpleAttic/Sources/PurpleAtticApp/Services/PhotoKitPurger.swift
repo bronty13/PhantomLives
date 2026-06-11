@@ -16,12 +16,13 @@ import Photos
 /// error 3300.)
 enum PhotoKitPurger {
 
-    /// Per-chunk asset count. Large enough to keep the macOS per-`performChanges` confirmation
-    /// count low (~13 for a 65k purge), but well under the atomic-delete ceiling that fails at
-    /// the full set (65k → error 3300). A failed chunk is skipped and retried on the next run, so
-    /// erring a little large is safe. (Tuned up from 1000 after the per-batch confirm count was
-    /// too high in practice — 2026-06-11.)
-    static let defaultBatchSize = 5000
+    /// Per-chunk asset count. PhotoKit's atomic-delete ceiling sits between 1000 and 5000:
+    /// 1000-asset chunks delete reliably (proven — cleared ~24k in a run), but 5000 fails with
+    /// `PHPhotosErrorDomain 3300`, same as the full set. So 1000 it is. macOS confirms once per
+    /// chunk, so a big purge is many prompts — that's the unavoidable cost of staying under the
+    /// ceiling (there's no API to suppress the per-`performChanges` confirmation). A failed chunk
+    /// is skipped + retried next run. (2026-06-11: 5000 overshot; reverted to the proven 1000.)
+    static let defaultBatchSize = 1000
 
     enum PurgeError: LocalizedError {
         case notAuthorized
