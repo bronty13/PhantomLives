@@ -3,6 +3,33 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.14.0] — 2026-06-11
+
+"Stage to album" — the scalable purge path for tens of thousands of photos.
+
+### Added
+- **Stage-to-album deletion.** A new **"Stage N to 'To Delete' album"** button adds the
+  verified-deletable photos to a regular album (**`PurpleAttic — To Delete`**) and then the user
+  deletes them **inside Photos.app** with a single confirmation. Why this is the right
+  architecture at scale:
+  - **Adding to an album is non-destructive → shows no confirmation**, so PurpleAttic stages the
+    whole set **unattended, batched, with a progress bar** (`PhotoKitPurger.stageToAlbum` +
+    `findOrCreateAlbum`; `AppState.stageForDeletion`).
+  - **Photos.app's own engine then does the bulk delete**, which **paces itself through iCloud
+    sync and shows native progress** — so it avoids *both* walls that break direct deletion at
+    scale: the **un-suppressible macOS confirmation that fires per `deleteAssets` call** (~66
+    prompts at 1000/batch) and the **`PHPhotosErrorDomain 3300` choke** when iCloud is busy
+    digesting a large deletion backlog.
+- The **direct-delete** path remains (now labelled as such) for small sets, with copy explaining
+  the per-batch confirmation + 3300 trade-offs.
+
+### Why
+A real 65k-photo purge exposed that direct third-party `deleteAssets` can't scale: macOS forces a
+confirmation per batch (un-suppressible), and after ~24k deletions iCloud chokes (`cloudd` pegged)
+so further deletes fail 3300 until the backlog clears — no amount of retry/backoff can outrun that
+hands-off, because the confirmation re-prompts. Staging sidesteps both: the app does the silent
+correlation + album-population, and Apple's native delete handles the throttling.
+
 ## [0.13.0] — 2026-06-11
 
 Delete in resilient batches — fix `PHPhotosErrorDomain 3300` on a large purge.

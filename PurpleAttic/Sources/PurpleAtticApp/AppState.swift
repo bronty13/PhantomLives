@@ -56,7 +56,11 @@ final class AppState: ObservableObject {
     @Published var purgePlan: PurgePlan? = nil
     @Published var isPlanningPurge = false
     @Published var isPurging = false
+    @Published var isStaging = false
     @Published var purgeMessage: String? = nil
+
+    /// Album the staging path drops verified-deletable photos into for one-shot deletion in Photos.
+    static let toDeleteAlbumName = "PurpleAttic — To Delete"
 
     // Scheduler (Phase D)
     @Published var schedulerLoaded = false
@@ -277,6 +281,46 @@ final class AppState: ObservableObject {
                     if outcome.cancelled { msg += " Stopped early — you dismissed a confirmation." }
                     self.purgeMessage = msg
                     self.purgePlan = nil   // force a fresh preview before any further deletion
+                case .failure(let error):
+                    self.purgeMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// The scalable path: add the verified-deletable photos to a regular album (non-destructive,
+    /// unattended, no confirmations), then the user deletes them in Photos.app with one click —
+    /// where Apple's engine handles the bulk delete + iCloud pacing. Avoids the per-batch macOS
+    /// confirmation and the 3300 choke that plague direct deletion at scale.
+    func stageForDeletion() {
+        guard let plan = purgePlan, !plan.verified.isEmpty, !isStaging, !isPurging else { return }
+        let uuids = plan.verified.map { $0.uuid }
+        let album = Self.toDeleteAlbumName
+        isStaging = true
+        purgeMessage = "Staging to “\(album)”…"
+        PhotoKitPurger.stageToAlbum(
+            uuids: uuids,
+            albumName: album,
+            progress: { [weak self] done, total in
+                DispatchQueue.main.async { self?.purgeMessage = "Staging… \(done) / \(total)" }
+            },
+            status: { [weak self] message in
+                DispatchQueue.main.async { self?.purgeMessage = message }
+            }
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isStaging = false
+                switch result {
+                case .success(let o):
+                    var msg = "Staged \(o.added) photo(s) into the album “\(o.albumName)”. "
+                    msg += "Now in Photos.app: open that album → Edit ▸ Select All → right-click ▸ "
+                    msg += "“Delete \(o.added) Photos” (or the Image menu) — NOT the Delete key (that only removes them from the album). "
+                    msg += "Confirm once; Photos handles the deletion + iCloud sync (it paces itself, no 3300)."
+                    if o.resolved < o.requested {
+                        msg += " (\(o.requested - o.resolved) couldn't be matched in Photos and weren't staged.)"
+                    }
+                    self.purgeMessage = msg
                 case .failure(let error):
                     self.purgeMessage = error.localizedDescription
                 }

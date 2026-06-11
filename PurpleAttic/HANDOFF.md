@@ -86,7 +86,13 @@ it is structurally incapable of purging.
 - **Purge (guarded, GUI-only):** `PurgePlanner.compute` runs `osxphotos query
   --to-date <cutoff> --json` → `RetentionPolicy` filters → `ArchiveIndex` verifies
   each against primary + mirrors → `PurgePlan`. UI previews it; on confirm,
-  `PhotoKitPurger` maps osxphotos uuid → `PHAsset` (`"<uuid>/L0/001"`) → `deleteAssets`.
+  `PhotoKitPurger` maps osxphotos uuid → `PHAsset` (`"<uuid>/L0/001"`) → `deleteAssets`
+  (batched + retry-backoff). **At scale, prefer staging:** `PhotoKitPurger.stageToAlbum` adds the
+  verified set to the `PurpleAttic — To Delete` album (non-destructive → no confirmation,
+  unattended, batched), then the user deletes inside Photos.app once — Apple's engine paces the
+  iCloud sync. This avoids the two walls that break direct `deleteAssets` at scale: the
+  un-suppressible per-`performChanges` macOS confirmation, and the `PHPhotosErrorDomain 3300`
+  choke when iCloud is digesting a large deletion backlog (`cloudd` pegged). (Incident 2026-06-11.)
 - **Scheduler:** `SchedulerService` installs `~/Library/LaunchAgents/com.bronty13.
   PurpleAttic.archive.plist` running the bundled `pattic export` on a calendar.
 

@@ -148,4 +148,90 @@ enum PhotoKitPurger {
             run(0)
         }
     }
+
+    // MARK: - Stage to album (the scalable path for large purges)
+
+    struct StageOutcome {
+        let requested: Int
+        let resolved: Int
+        let added: Int
+        let albumName: String
+    }
+
+    /// Add the verified-deletable assets to a regular album so the user can delete them **inside
+    /// Photos.app** with a single confirmation. Adding to an album is **non-destructive → shows no
+    /// confirmation**, so this runs fully unattended (batched, with progress), and Photos' own
+    /// engine then handles the bulk delete + iCloud pacing far more robustly than third-party
+    /// `deleteAssets` (no per-batch prompts, no 3300 choke). This is the recommended path at scale.
+    static func stageToAlbum(uuids: [String],
+                             albumName: String,
+                             batchSize: Int = 2000,
+                             progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
+                             status: ((_ message: String) -> Void)? = nil,
+                             completion: @escaping (Result<StageOutcome, Error>) -> Void) {
+        authorize { ok in
+            guard ok else { completion(.failure(PurgeError.notAuthorized)); return }
+
+            let ids = uuids.map { "\($0)/L0/001" }
+            let fetch = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            var assets: [PHAsset] = []
+            fetch.enumerateObjects { asset, _, _ in assets.append(asset) }
+            guard !assets.isEmpty else { completion(.failure(PurgeError.noAssetsResolved)); return }
+            let resolved = assets.count
+
+            findOrCreateAlbum(named: albumName) { albumResult in
+                switch albumResult {
+                case .failure(let e):
+                    completion(.failure(e))
+                case .success(let album):
+                    let step = max(1, batchSize)
+                    let batches: [[PHAsset]] = stride(from: 0, to: resolved, by: step).map {
+                        Array(assets[$0 ..< min($0 + step, resolved)])
+                    }
+                    var added = 0
+                    func run(_ i: Int) {
+                        if i >= batches.count {
+                            completion(.success(StageOutcome(requested: uuids.count, resolved: resolved,
+                                                             added: added, albumName: albumName)))
+                            return
+                        }
+                        let batch = batches[i]
+                        PHPhotoLibrary.shared().performChanges {
+                            let req = PHAssetCollectionChangeRequest(for: album)
+                            req?.addAssets(batch as NSArray)
+                        } completionHandler: { success, _ in
+                            if success { added += batch.count }   // add failures are non-fatal: just continue
+                            status?("Staging to “\(albumName)”…")
+                            progress?(min((i + 1) * step, resolved), resolved)
+                            run(i + 1)
+                        }
+                    }
+                    run(0)
+                }
+            }
+        }
+    }
+
+    /// Fetch the regular album named `name`, creating it if absent. Album create/modify is
+    /// non-destructive, so neither step prompts.
+    private static func findOrCreateAlbum(named name: String,
+                                          completion: @escaping (Result<PHAssetCollection, Error>) -> Void) {
+        let opts = PHFetchOptions()
+        opts.predicate = NSPredicate(format: "title = %@", name)
+        let existing = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: opts)
+        if let album = existing.firstObject { completion(.success(album)); return }
+
+        var placeholder: PHObjectPlaceholder?
+        PHPhotoLibrary.shared().performChanges {
+            let req = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+            placeholder = req.placeholderForCreatedAssetCollection
+        } completionHandler: { success, error in
+            if success, let id = placeholder?.localIdentifier,
+               let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [id], options: nil).firstObject {
+                completion(.success(album))
+            } else {
+                completion(.failure(PurgeError.changeFailed(error?.localizedDescription ?? "Couldn't create the album.")))
+            }
+        }
+    }
 }

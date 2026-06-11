@@ -124,14 +124,34 @@ struct PurgeSettingsView: View {
             }
             .font(.caption)
 
+            // Recommended path (any size, esp. large): stage to an album, delete once in Photos.
+            Button {
+                appState.stageForDeletion()
+            } label: {
+                Label("Stage \(plan.verified.count) to “To Delete” album", systemImage: "rectangle.stack.badge.minus")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!profile.purgeEnabled || appState.isStaging || appState.isPurging || plan.verified.isEmpty)
+            if appState.isStaging {
+                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Staging…").font(.caption).foregroundStyle(.secondary) }
+            }
+            Text("Recommended — adds them to an album with **no prompts**, then you delete once inside Photos.app (⌘A → right-click ▸ “Delete N Photos”). Apple’s engine handles the bulk delete + iCloud pacing, so no per-batch confirmations and no error 3300.")
+                .font(.caption).foregroundStyle(.secondary)
+
+            Divider()
+
+            // Direct delete — fine for small sets, but per-batch confirmations + 3300 at scale.
             Button(role: .destructive) {
                 confirmDelete = true
             } label: {
-                Label("Delete \(plan.verified.count) Verified Photos…", systemImage: "trash")
+                Label("Delete \(plan.verified.count) directly…", systemImage: "trash")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .tint(.red)
-            .disabled(!profile.purgeEnabled || appState.isPurging || plan.verified.isEmpty)
+            .disabled(!profile.purgeEnabled || appState.isPurging || appState.isStaging || plan.verified.isEmpty)
+            Text("Direct delete works for small sets, but macOS confirms once per 1,000 and PhotoKit chokes (error 3300) on tens of thousands. Use staging above for large purges.")
+                .font(.caption).foregroundStyle(.secondary)
+
             if !profile.purgeEnabled {
                 Text("Enable purge above to delete.").font(.caption).foregroundStyle(.secondary)
             }
