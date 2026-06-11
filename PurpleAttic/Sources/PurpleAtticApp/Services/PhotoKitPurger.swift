@@ -62,12 +62,21 @@ enum PhotoKitPurger {
         }
     }
 
+    /// How many times to retry a chunk that fails, and the back-off (seconds) before each retry.
+    /// Error 3300 is often **transient** — Photos chokes while syncing a bulk deletion, then
+    /// recovers — so waiting and retrying the same chunk turns a skip into a success. After these
+    /// are exhausted the chunk is skipped (and a later re-run picks it up).
+    static let retryBackoff: [Double] = [5, 15, 30]
+
     /// Resolve osxphotos UUIDs to `PHAsset`s and delete them in chunks. `progress(done,total)`
-    /// fires after each chunk. macOS shows its confirmation per chunk; dismissing one stops the
-    /// run and reports what was already deleted.
+    /// fires after each chunk; `status` reports human-readable state (e.g. a back-off wait) so the
+    /// UI doesn't look frozen. macOS shows its confirmation per chunk; dismissing one stops the
+    /// run and reports what was already deleted. A chunk that fails is retried with back-off
+    /// (transient 3300), then skipped if it still won't go.
     static func deleteAssets(uuids: [String],
                              batchSize: Int = defaultBatchSize,
                              progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
+                             status: ((_ message: String) -> Void)? = nil,
                              completion: @escaping (Result<Outcome, Error>) -> Void) {
         authorize { ok in
             guard ok else { completion(.failure(PurgeError.notAuthorized)); return }
@@ -103,7 +112,8 @@ enum PhotoKitPurger {
                                             batchError: firstError, cancelled: cancelled)))
             }
 
-            func run(_ i: Int) {
+            // `tries` = retries already spent on batch `i`.
+            func run(_ i: Int, _ tries: Int = 0) {
                 if i >= batches.count { finish(); return }
                 let batch = batches[i]
                 PHPhotoLibrary.shared().performChanges {
@@ -111,17 +121,28 @@ enum PhotoKitPurger {
                 } completionHandler: { success, error in
                     if success {
                         deleted += batch.count
+                        progress?(min(deleted + failed, resolved), resolved)
+                        run(i + 1)
                     } else if let error {
-                        failed += batch.count
-                        if firstError == nil { firstError = error.localizedDescription }
+                        if tries < retryBackoff.count {
+                            // Transient (3300 while Photos syncs a bulk delete) → back off + retry.
+                            let wait = retryBackoff[tries]
+                            status?("A batch hit a temporary Photos error — waiting \(Int(wait))s and retrying (\(tries + 1)/\(retryBackoff.count))…")
+                            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + wait) {
+                                run(i, tries + 1)
+                            }
+                        } else {
+                            failed += batch.count
+                            if firstError == nil { firstError = error.localizedDescription }
+                            progress?(min(deleted + failed, resolved), resolved)
+                            run(i + 1)
+                        }
                     } else {
                         // nil error = user dismissed the macOS confirmation → stop here.
                         cancelled = true
                         finish()
                         return
                     }
-                    progress?(min(deleted + failed, resolved), resolved)
-                    run(i + 1)
                 }
             }
             run(0)

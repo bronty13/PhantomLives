@@ -256,6 +256,9 @@ final class AppState: ObservableObject {
             uuids: uuids,
             progress: { [weak self] done, total in
                 DispatchQueue.main.async { self?.purgeMessage = "Deleting… \(done) / \(total)" }
+            },
+            status: { [weak self] message in
+                DispatchQueue.main.async { self?.purgeMessage = message }
             }
         ) { [weak self] result in
             DispatchQueue.main.async {

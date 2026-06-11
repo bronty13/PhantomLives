@@ -22,6 +22,11 @@ Delete in resilient batches — fix `PHPhotosErrorDomain 3300` on a large purge.
   confirms once per chunk.
 - **Purge pane text is now selectable** (`.textSelection(.enabled)`) so counts, the file list,
   and error messages can be copied (e.g. to report an issue).
+- **Retry-with-back-off on transient 3300.** A chunk that fails is retried with a 5/15/30 s
+  back-off before being skipped — error 3300 frequently means Photos is briefly choked while
+  syncing a bulk deletion, and a short wait lets it recover, turning a skip into a success. The
+  Purge pane shows the wait so the UI doesn't look frozen. (Deep choking still needs Photos/the
+  Mac restarted — the documented cure — but transient hiccups now ride through automatically.)
 
 ### Note
 PhotoKit deletion requires the app's Photos grant + the macOS GUI, so it can't be validated by a
