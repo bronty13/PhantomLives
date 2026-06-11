@@ -12,7 +12,7 @@ Delete in resilient batches — fix `PHPhotosErrorDomain 3300` on a large purge.
   (PHPhotosErrorDomain error 3300)"*. Cause: `PhotoKitPurger` deleted **all 65,627 assets in a
   single atomic `performChanges`** — PhotoKit rejects a delete that large, and (being atomic)
   one un-deletable asset would also fail the entire request, so **nothing** was deleted.
-- **`deleteAssets` now deletes in chunks** (`defaultBatchSize` 1000), each its own
+- **`deleteAssets` now deletes in chunks** (`defaultBatchSize` 5000), each its own
   `performChanges`. A chunk that fails is **skipped and counted** (the run continues instead of
   aborting), the user dismissing a macOS confirmation **stops cleanly** and reports what was
   already deleted, and re-running the purge retries anything not yet removed. `Outcome` gained

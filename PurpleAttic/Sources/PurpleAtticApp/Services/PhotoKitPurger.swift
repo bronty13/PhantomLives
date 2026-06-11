@@ -16,9 +16,12 @@ import Photos
 /// error 3300.)
 enum PhotoKitPurger {
 
-    /// Per-chunk asset count. Small enough to stay well under PhotoKit's atomic-delete ceiling
-    /// and to isolate any single un-deletable asset to its own chunk.
-    static let defaultBatchSize = 1000
+    /// Per-chunk asset count. Large enough to keep the macOS per-`performChanges` confirmation
+    /// count low (~13 for a 65k purge), but well under the atomic-delete ceiling that fails at
+    /// the full set (65k → error 3300). A failed chunk is skipped and retried on the next run, so
+    /// erring a little large is safe. (Tuned up from 1000 after the per-batch confirm count was
+    /// too high in practice — 2026-06-11.)
+    static let defaultBatchSize = 5000
 
     enum PurgeError: LocalizedError {
         case notAuthorized
