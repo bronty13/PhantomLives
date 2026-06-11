@@ -3,6 +3,39 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.15.0] — 2026-06-11
+
+Auto-pause-and-resume on a busy library — the purge rides out iCloud sync instead of failing.
+
+### Added
+- **Auto-pause / auto-resume on `PHPhotosErrorDomain 3300`.** Both the stage-to-album and direct-
+  delete paths now treat a 3300 as *"the library is busy"*, not *"this batch is bad"*. When a large
+  purge backs up Photos' iCloud sync, PhotoKit rejects **every** asset-mutation (delete *and*
+  album-add) until the backlog drains — and a relaunch/reboot does **not** clear it (verified:
+  even a trivial 8-asset album-add throws 3300 in that state). So instead of burning through every
+  batch and failing, PurpleAttic now **pauses on the failing batch with escalating back-off
+  (30s → 60s → 120s → 300s, capped) and re-probes, resuming automatically the moment Photos accepts
+  the change** — pacing the purge to iCloud's own throughput. It reports `done/total (%)` and the
+  next retry time throughout, so the run never looks frozen and you can leave it unattended. After
+  ~45 min of a single batch staying blocked it stops cleanly and tells you to re-run once sync
+  settles (`PhotoKitPurger.runBatches` / `pauseBackoff` / `maxBusyProbesPerBatch`).
+- **Cancel + determinate progress.** A **Cancel** button stops a stage/delete after the current
+  batch (and during a back-off wait) via a thread-safe `PurgeCancellation` token, and a determinate
+  progress bar replaces the old indeterminate spinner (`AppState.purgeFraction` / `cancelPurge()`).
+
+### Fixed
+- **Case-sensitive UUID resolution.** `PHAsset.fetchAssets(withLocalIdentifiers:)` is
+  case-sensitive and `PHAsset.localIdentifier` carries the UUID **uppercase**; a lowercase UUID
+  resolves to nothing (verified: lowercased UUIDs resolved 0/8, uppercase 8/8). osxphotos already
+  emits uppercase, but `resolveAssets` now normalises defensively so a future metadata source can't
+  silently match zero assets.
+
+### Notes
+- The 3300 wall is a Photos/iCloud library-state condition, **not** a PurpleAttic bug — proven via a
+  live PhotoKit diagnostic (read/resolve and empty-album *creation* succeed, but any op touching
+  existing assets fails until sync settles). PhotoKit can't be unit-tested headlessly; this change
+  was validated against the real library with the diagnostic harness.
+
 ## [0.14.0] — 2026-06-11
 
 "Stage to album" — the scalable purge path for tens of thousands of photos.

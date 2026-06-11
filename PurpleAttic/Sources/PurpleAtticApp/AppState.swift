@@ -58,6 +58,11 @@ final class AppState: ObservableObject {
     @Published var isPurging = false
     @Published var isStaging = false
     @Published var purgeMessage: String? = nil
+    /// 0…1 while a purge/stage runs (for a determinate bar); nil when idle.
+    @Published var purgeFraction: Double? = nil
+
+    /// Live cancel handle for the in-flight purge/stage; flipped by `cancelPurge()`.
+    private var purgeCancellation: PurgeCancellation? = nil
 
     /// Album the staging path drops verified-deletable photos into for one-shot deletion in Photos.
     static let toDeleteAlbumName = "PurpleAttic — To Delete"
@@ -254,12 +259,19 @@ final class AppState: ObservableObject {
         }
         guard let plan = purgePlan, !plan.verified.isEmpty, !isPurging else { return }
         let uuids = plan.verified.map { $0.uuid }
+        let token = PurgeCancellation()
+        purgeCancellation = token
         isPurging = true
+        purgeFraction = 0
         purgeMessage = "Deleting in batches… (macOS will confirm each batch)"
         PhotoKitPurger.deleteAssets(
             uuids: uuids,
+            cancellation: token,
             progress: { [weak self] done, total in
-                DispatchQueue.main.async { self?.purgeMessage = "Deleting… \(done) / \(total)" }
+                DispatchQueue.main.async {
+                    self?.purgeFraction = total > 0 ? Double(done) / Double(total) : nil
+                    self?.purgeMessage = "Deleting… \(done) / \(total)"
+                }
             },
             status: { [weak self] message in
                 DispatchQueue.main.async { self?.purgeMessage = message }
@@ -268,6 +280,8 @@ final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isPurging = false
+                self.purgeFraction = nil
+                self.purgeCancellation = nil
                 switch result {
                 case .success(let outcome):
                     var msg = "Deleted \(outcome.deleted) photo(s) — now in Photos → Recently Deleted for 30 days."
@@ -275,10 +289,13 @@ final class AppState: ObservableObject {
                         msg += " \(outcome.failed) couldn't be deleted this pass and were skipped — re-run the purge to retry them."
                         if let e = outcome.batchError { msg += " (First error: \(e))" }
                     }
+                    if outcome.pausedOut {
+                        msg += " Photos/iCloud stayed busy too long, so the run paused with photos still pending — re-run once sync settles and it’ll pick up the rest."
+                    }
                     if outcome.resolved < outcome.requested {
                         msg += " (\(outcome.requested - outcome.resolved) couldn't be matched in Photos and were left untouched.)"
                     }
-                    if outcome.cancelled { msg += " Stopped early — you dismissed a confirmation." }
+                    if outcome.cancelled { msg += " Stopped early — you cancelled." }
                     self.purgeMessage = msg
                     self.purgePlan = nil   // force a fresh preview before any further deletion
                 case .failure(let error):
@@ -286,6 +303,12 @@ final class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Stop the in-flight purge/stage after the current batch (and during a back-off wait).
+    func cancelPurge() {
+        purgeCancellation?.cancel()
+        purgeMessage = "Cancelling — stopping after the current batch…"
     }
 
     /// The scalable path: add the verified-deletable photos to a regular album (non-destructive,
@@ -296,13 +319,20 @@ final class AppState: ObservableObject {
         guard let plan = purgePlan, !plan.verified.isEmpty, !isStaging, !isPurging else { return }
         let uuids = plan.verified.map { $0.uuid }
         let album = Self.toDeleteAlbumName
+        let token = PurgeCancellation()
+        purgeCancellation = token
         isStaging = true
+        purgeFraction = 0
         purgeMessage = "Staging to “\(album)”…"
         PhotoKitPurger.stageToAlbum(
             uuids: uuids,
             albumName: album,
+            cancellation: token,
             progress: { [weak self] done, total in
-                DispatchQueue.main.async { self?.purgeMessage = "Staging… \(done) / \(total)" }
+                DispatchQueue.main.async {
+                    self?.purgeFraction = total > 0 ? Double(done) / Double(total) : nil
+                    self?.purgeMessage = "Staging… \(done) / \(total)"
+                }
             },
             status: { [weak self] message in
                 DispatchQueue.main.async { self?.purgeMessage = message }
@@ -311,12 +341,18 @@ final class AppState: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isStaging = false
+                self.purgeFraction = nil
+                self.purgeCancellation = nil
                 switch result {
                 case .success(let o):
                     var msg = "Staged \(o.added) photo(s) into the album “\(o.albumName)”. "
                     msg += "Now in Photos.app: open that album → Edit ▸ Select All → right-click ▸ "
                     msg += "“Delete \(o.added) Photos” (or the Image menu) — NOT the Delete key (that only removes them from the album). "
                     msg += "Confirm once; Photos handles the deletion + iCloud sync (it paces itself, no 3300)."
+                    if o.pausedOut {
+                        msg += " (Photos/iCloud stayed busy too long, so staging paused before adding everything — re-run once sync settles to stage the rest.)"
+                    }
+                    if o.cancelled { msg += " Stopped early — you cancelled." }
                     if o.resolved < o.requested {
                         msg += " (\(o.requested - o.resolved) couldn't be matched in Photos and weren't staged.)"
                     }

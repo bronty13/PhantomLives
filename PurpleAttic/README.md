@@ -10,7 +10,14 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.14.0 — adds "Stage to 'To Delete' album", the scalable purge path:
+> **Status: 0.15.0 — the purge now rides out a busy iCloud library instead of failing:
+> a `PHPhotosErrorDomain 3300` (Photos rejecting *every* asset-mutation while it digests a big
+> sync backlog) is treated as "library busy", so PurpleAttic **pauses on the stuck batch with
+> escalating back-off and auto-resumes the instant Photos accepts the change** — pacing the purge
+> to iCloud's own throughput, reporting `done/total (%)` + the next retry, leave-it-running
+> unattended, with a **Cancel** button and a determinate progress bar; also fixes case-sensitive
+> UUID resolution (`fetchAssets(withLocalIdentifiers:)` needs the uppercase UUID). Prior 0.14.0 —
+> adds "Stage to 'To Delete' album", the scalable purge path:
 > PurpleAttic stages the verified-deletable photos into an album with no prompts, then you
 > delete them once inside Photos.app (Apple's engine paces the iCloud sync) — avoiding both
 > the per-batch macOS confirmation and the `PHPhotosErrorDomain 3300` choke that break direct

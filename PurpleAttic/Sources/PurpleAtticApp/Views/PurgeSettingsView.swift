@@ -132,10 +132,8 @@ struct PurgeSettingsView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!profile.purgeEnabled || appState.isStaging || appState.isPurging || plan.verified.isEmpty)
-            if appState.isStaging {
-                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Staging…").font(.caption).foregroundStyle(.secondary) }
-            }
-            Text("Recommended — adds them to an album with **no prompts**, then you delete once inside Photos.app (⌘A → right-click ▸ “Delete N Photos”). Apple’s engine handles the bulk delete + iCloud pacing, so no per-batch confirmations and no error 3300.")
+            if appState.isStaging || appState.isPurging { runningControls }
+            Text("Recommended — adds them to an album with **no prompts**, then you delete once inside Photos.app (⌘A → right-click ▸ “Delete N Photos”). Apple’s engine handles the bulk delete + iCloud pacing, so no per-batch confirmations and no error 3300. If Photos/iCloud is busy, PurpleAttic pauses and resumes automatically — you can leave it running.")
                 .font(.caption).foregroundStyle(.secondary)
 
             Divider()
@@ -155,6 +153,21 @@ struct PurgeSettingsView: View {
             if !profile.purgeEnabled {
                 Text("Enable purge above to delete.").font(.caption).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Live progress + Cancel, shown while a stage or direct-delete is running. The bar is
+    /// determinate when we have a fraction, indeterminate otherwise (e.g. during a back-off wait).
+    private var runningControls: some View {
+        HStack(spacing: 10) {
+            if let f = appState.purgeFraction {
+                ProgressView(value: f).frame(maxWidth: 220)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+            Button("Cancel") { appState.cancelPurge() }
+                .controlSize(.small)
+            Spacer()
         }
     }
 
