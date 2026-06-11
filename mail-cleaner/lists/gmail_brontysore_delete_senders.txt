@@ -1,0 +1,72 @@
+# mail-cleaner — Gmail brontysore@gmail.com DELETE list
+# Curated from the 2026-06-11 analyze (7,174 msgs, mostly newsletters/promos).
+# On Gmail these move to [Gmail]/Trash from [Gmail]/All Mail — 30-day recoverable.
+# KEPT (excluded on purpose): apneaboard@gmail.com (CPAP research),
+#   robert.olen@icloud.com (personal), Apple/Google account+security
+#   (appleid@id.apple.com, no_reply@email.apple.com, *accounts.google.com*),
+#   Samsung/Adobe/Instagram account+security, Warp.
+#
+# ---- Apple News / TV / Store / Music marketing (insideapple.apple.com) ----
+newsdigest@insideapple.apple.com
+news@insideapple.apple.com
+applenews@insideapple.apple.com
+applenewsplus@insideapple.apple.com
+appletv@insideapple.apple.com
+appletvplus@insideapple.apple.com
+appletvstore@insideapple.apple.com
+applearcade@insideapple.apple.com
+applebooks@insideapple.apple.com
+applemusic@insideapple.apple.com
+new@applemusic.com
+applefitnessplus@insideapple.apple.com
+appstore@insideapple.apple.com
+appleone@insideapple.apple.com
+developer@insideapple.apple.com
+applecreatorstudio@insideapple.apple.com
+# ---- Apple Card / Pay / Cash (you chose: trash these too) ----
+applecard@insideapple.apple.com
+applepay@insideapple.apple.com
+applecash@insideapple.apple.com
+# ---- iTunes-domain Apple marketing ----
+appstore@new.itunes.com
+appletvapp@new.itunes.com
+applebooks@new.itunes.com
+discover@new.itunes.com
+do_not_reply@itunes.com
+# ---- HP ----
+hp@us.shopping.hp.com
+hp-feedback@express.medallia.com
+# ---- Quora digests ----
+english-personalized-digest@quora.com
+digest-noreply@quora.com
+english-quora-digest@quora.com
+english-digest-noreply@quora.com
+spaces-suggestions-noreply@quora.com
+curiosity-noreply@quora.com
+noreply@quora.com
+# ---- Samsung marketing ----
+samsung@innovations.samsungusa.com
+info@samsungusa.com
+samsunggalaxystore@us.apps.samsung.com
+# ---- Adobe marketing ----
+mail@mail.adobe.com
+mail@email.adobe.com
+message@adobe.com
+adobe@surveys.illuminas.com
+# ---- Instagram (non-security) ----
+no-reply@mail.instagram.com
+notification@priority.instagram.com
+stories-recap@mail.instagram.com
+follow-suggestions@mail.instagram.com
+posts-recap@mail.instagram.com
+# ---- Twitch ----
+no-reply@twitch.tv
+# ---- Wacom ----
+wacomamericas@news.wacom.com
+wacom@wacomnews.wacom.com
+wacom@news.wacom.com
+# ---- Behance ----
+noreply-behance@behance.com
+# ---- bardotbrush art newsletter (you chose: trash) ----
+lisa@bardotbrush.com
+lisa@emails.bardotbrush.com

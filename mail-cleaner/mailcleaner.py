@@ -31,7 +31,7 @@ Output: ~/Downloads/mail-cleaner/<account>_<timestamp>/
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 import argparse
 import csv
@@ -416,7 +416,7 @@ def expunge_until_drained(M: imaplib.IMAP4_SSL, mailbox: str, target: int,
             pass  # 'NO' — another expunge in progress; wait and re-poll
         cnt = mailbox_count(M, mailbox)
         sys.stdout.write(
-            f"\r  {label} expunge: INBOX {cnt:,} (target ~{target:,})    ")
+            f"\r  {label} expunge: {mailbox} {cnt:,} (target ~{target:,})    ")
         sys.stdout.flush()
         if cnt <= target:
             break
@@ -537,6 +537,9 @@ def cmd_act(args: argparse.Namespace) -> None:
                  "--confirm DELETE (irreversible).")
 
     # --- execute in batches ---
+    # Capture the count BEFORE flagging so the post-expunge target is correct
+    # even on servers (Gmail) that auto-expunge \Deleted during the loop.
+    pre = mailbox_count(M, args.mailbox)
     done = 0
     for batch in chunked(all_uids, 1000):
         ids = b",".join(batch).decode()
@@ -566,12 +569,11 @@ def cmd_act(args: argparse.Namespace) -> None:
     # we poll to completion (iCloud drains lazily — see helper).
     needs_drain = not have_move or args.action == "delete"
     if needs_drain:
-        pre = mailbox_count(M, args.mailbox)
         target = max(0, pre - done)
-        print(f"flagged {done:,}; expunging "
-              f"(iCloud drains lazily, this can take a while)...")
+        print(f"flagged {done:,}; expunging from {args.mailbox} "
+              f"(may drain slowly on iCloud)...")
         final = expunge_until_drained(M, args.mailbox, target, args.action)
-        print(f"Done. {done:,} {verb}; INBOX now {final:,} "
+        print(f"Done. {done:,} {verb}; {args.mailbox} now {final:,} "
               f"(expected ~{target:,}).")
     else:
         print(f"Done. {done:,} messages processed ({verb}).")

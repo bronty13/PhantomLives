@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 — 2026-06-11
+
+Cosmetic/correctness fixes found running the Gmail (brontysore) trash pass.
+
+- Post-action drain target is now computed from the count captured **before**
+  flagging, so it's correct on servers that auto-expunge `\Deleted` mid-loop
+  (Gmail) — previously the target went negative and the drain idled ~2 min.
+- Progress/summary text no longer hardcodes "iCloud" / "INBOX"; it names the
+  actual mailbox acted on (e.g. `[Gmail]/All Mail`).
+
 ## 0.2.0 — 2026-06-11
 
 Drain-aware expunge, hardened for iCloud's IMAP quirks (found while purging a
