@@ -1,0 +1,15 @@
+node_modules/
+out/
+out-types/
+dist/
+dist
+.DS_Store
+*.log
+.env
+.env.local
+build/png/
+build/icon.iconset/
+resources/convex-local-backend
+resources/.backend-tag
+.convex/
+.env.local

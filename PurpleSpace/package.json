@@ -1,0 +1,134 @@
+{
+  "name": "purple-space",
+  "productName": "Purple Space",
+  "version": "1.0.0",
+  "description": "Notion-style personal workspace: pages, blocks, and databases on an embedded local Convex backend",
+  "main": "out/main/index.js",
+  "author": "bronty13",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "icons": "python3 build/make_icon.py",
+    "codegen": "convex codegen",
+    "deploy-functions": "./scripts/deploy-functions.sh",
+    "dist": "electron-vite build && electron-builder",
+    "dist:mac": "electron-vite build && electron-builder --mac --universal"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "electron-store": "^8.2.0",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@blocknote/code-block": "^0.51.4",
+    "@blocknote/core": "^0.51.4",
+    "@blocknote/mantine": "^0.51.4",
+    "@blocknote/react": "^0.51.4",
+    "@fontsource/jetbrains-mono": "^5.2.0",
+    "@fontsource/newsreader": "^5.2.0",
+    "@fontsource/schibsted-grotesk": "^5.2.0",
+    "@mantine/core": "^9.3.1",
+    "@mantine/hooks": "^9.3.1",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^20.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "convex": "^1.41.0",
+    "electron": "^31.0.1",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.2.0",
+    "emoji-picker-react": "^4.19.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.34.2",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "prettier": "^3.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.3.1",
+    "vitest": "^1.6.0"
+  },
+  "build": {
+    "appId": "com.bronty13.purplespace",
+    "productName": "Purple Space",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false
+    },
+    "afterPack": "scripts/strip-xattrs.cjs",
+    "afterSign": "scripts/notarize.cjs",
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "publisherName": "Robert Olen"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "bronty13",
+        "repo": "PhantomLives",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "esbuild@0.27.0": true,
+    "electron@31.7.7": true
+  }
+}

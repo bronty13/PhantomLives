@@ -1,0 +1,98 @@
+/* ---------------------------------------------------------------------------
+   Purple Space design tokens — "quiet editorial".
+   Warm paper light theme / deep ink-violet dark theme; serif display type
+   (Newsreader) over a refined grotesk (Schibsted) with an iris accent.
+--------------------------------------------------------------------------- */
+
+:root {
+  --font-ui:
+    'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --sidebar-width: 248px;
+  --titlebar-height: 52px;
+  --content-max: 760px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root,
+[data-theme='light'] {
+  --paper: #faf8f3;
+  --paper-elev: #ffffff;
+  --paper-dim: #f4f0e8;
+  --sidebar-bg: #f2ede3;
+  --ink: #2b2620;
+  --ink-2: #6f675b;
+  --ink-3: #a59c8d;
+  --line: rgba(43, 38, 32, 0.09);
+  --line-strong: rgba(43, 38, 32, 0.16);
+  --accent: #6c56c9;
+  --accent-strong: #5742ad;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(108, 86, 201, 0.1);
+  --accent-softer: rgba(108, 86, 201, 0.055);
+  --hover: rgba(43, 38, 32, 0.05);
+  --active: rgba(43, 38, 32, 0.085);
+  --selection: rgba(108, 86, 201, 0.16);
+  --danger: #b4452f;
+  --danger-soft: rgba(180, 69, 47, 0.1);
+  --shadow-pop:
+    0 0 0 1px rgba(43, 38, 32, 0.07), 0 10px 36px -6px rgba(43, 38, 32, 0.22),
+    0 3px 10px -2px rgba(43, 38, 32, 0.12);
+  --cover-overlay: linear-gradient(rgba(250, 248, 243, 0), rgba(250, 248, 243, 0.06));
+  --scrollbar: rgba(43, 38, 32, 0.18);
+}
+
+[data-theme='dark'] {
+  --paper: #191621;
+  --paper-elev: #221e2e;
+  --paper-dim: #15121d;
+  --sidebar-bg: #131019;
+  --ink: #e9e4f0;
+  --ink-2: #a299b3;
+  --ink-3: #6e6580;
+  --line: rgba(233, 228, 240, 0.08);
+  --line-strong: rgba(233, 228, 240, 0.16);
+  --accent: #a18fe8;
+  --accent-strong: #b6a7f0;
+  --accent-ink: #1c1726;
+  --accent-soft: rgba(161, 143, 232, 0.14);
+  --accent-softer: rgba(161, 143, 232, 0.07);
+  --hover: rgba(233, 228, 240, 0.055);
+  --active: rgba(233, 228, 240, 0.09);
+  --selection: rgba(161, 143, 232, 0.22);
+  --danger: #e07a62;
+  --danger-soft: rgba(224, 122, 98, 0.13);
+  --shadow-pop:
+    0 0 0 1px rgba(233, 228, 240, 0.08), 0 10px 36px -6px rgba(0, 0, 0, 0.6),
+    0 3px 10px -2px rgba(0, 0, 0, 0.4);
+  --cover-overlay: linear-gradient(rgba(25, 22, 33, 0), rgba(25, 22, 33, 0.25));
+  --scrollbar: rgba(233, 228, 240, 0.16);
+}
+
+/* Map BlockNote's theme variables onto ours (v0.48+: .bn-root). */
+.bn-root[data-color-scheme] {
+  --bn-font-family: var(--font-ui);
+  --bn-border-radius: var(--radius-md);
+  --bn-colors-editor-text: var(--ink);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-text: var(--ink);
+  --bn-colors-menu-background: var(--paper-elev);
+  --bn-colors-tooltip-text: var(--ink-2);
+  --bn-colors-tooltip-background: var(--paper-elev);
+  --bn-colors-hovered-text: var(--ink);
+  --bn-colors-hovered-background: var(--hover);
+  --bn-colors-selected-text: var(--accent-ink);
+  --bn-colors-selected-background: var(--accent);
+  --bn-colors-disabled-text: var(--ink-3);
+  --bn-colors-disabled-background: transparent;
+  --bn-colors-shadow: rgba(0, 0, 0, 0.14);
+  --bn-colors-border: var(--line-strong);
+  --bn-colors-side-menu: var(--ink-3);
+}
