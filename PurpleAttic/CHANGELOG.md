@@ -3,6 +3,24 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.11.0] — 2026-06-11
+
+Fix the purge preview crashing on osxphotos' non-standard JSON.
+
+### Fixed
+- **Purge preview failed with "Couldn't parse osxphotos JSON: …isn't in the correct
+  format"** on a real library. Root cause: `osxphotos query --json` emits **non-standard
+  JSON literals** — `Infinity` / `-Infinity` / `NaN` (in a video's audio-waveform
+  `energyValues`, and unset scores). Python tolerates them; Swift's JSON parser rejects
+  them outright, so the entire preview (and thus any purge) was impossible. `PhotoMetadataQuery`
+  now runs a single-pass, **string-aware** sanitizer over the osxphotos output that rewrites
+  those bare literals to `null` **only in value position** — a keyword / album / caption that
+  literally contains "Infinity" or "NaN" is left byte-for-byte intact (backslash-escaped quotes
+  handled). Validated end-to-end: a 727 MB / 68,151-record real query that previously failed
+  now decodes cleanly. None of the rewritten fields are ones the retention logic reads.
+- Tests: 98 total (+5 — value-position rewrite, negative-number/normal-value safety, literals
+  inside strings preserved, escaped-quote string tracking, full-record decode round-trip).
+
 ## [0.10.0] — 2026-06-11
 
 Stop chasing ghosts — exclude "Shared with You" + shared-album items.

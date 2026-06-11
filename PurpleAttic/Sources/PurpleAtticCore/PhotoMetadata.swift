@@ -70,9 +70,61 @@ public enum PhotoMetadataQuery {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         do {
-            return try decoder.decode([OsxphotosRecord].self, from: result.stdout)
+            return try decoder.decode([OsxphotosRecord].self,
+                                      from: sanitizeNonFiniteLiterals(result.stdout))
         } catch {
             throw QueryError.decodeFailed(error.localizedDescription)
         }
+    }
+
+    /// osxphotos `--json` emits **non-standard** `Infinity` / `-Infinity` / `NaN` float literals
+    /// (e.g. in a video's audio-waveform `energyValues`, or unset aesthetic scores). Python's
+    /// `json` tolerates them, but Swift's JSON parser rejects them outright ("not valid JSON"),
+    /// failing the whole purge preview. Replace those literals — **only in value position, never
+    /// inside a string** — with `null`. A single-pass, string-aware byte scan: it tracks whether
+    /// it's inside a JSON string (honoring backslash escapes) and only rewrites the bare literals
+    /// outside strings, so a keyword/album/caption that literally contains "Infinity" or "NaN" is
+    /// left untouched. None of the affected fields are ones `OsxphotosRecord` decodes.
+    static func sanitizeNonFiniteLiterals(_ data: Data) -> Data {
+        let inf = Array("Infinity".utf8)
+        let nan = Array("NaN".utf8)
+        let null = Array("null".utf8)
+        let quote: UInt8 = 0x22, backslash: UInt8 = 0x5C, minus: UInt8 = 0x2D
+        var out = [UInt8]()
+        out.reserveCapacity(data.count)
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            let b = raw.bindMemory(to: UInt8.self)
+            let n = b.count
+            func matches(_ lit: [UInt8], _ at: Int) -> Bool {
+                guard at + lit.count <= n else { return false }
+                for k in 0..<lit.count where b[at + k] != lit[k] { return false }
+                return true
+            }
+            var i = 0
+            var inString = false
+            while i < n {
+                let c = b[i]
+                if inString {
+                    out.append(c)
+                    if c == backslash {           // copy the escaped char verbatim
+                        i += 1
+                        if i < n { out.append(b[i]) }
+                    } else if c == quote {
+                        inString = false
+                    }
+                    i += 1
+                    continue
+                }
+                if c == quote { inString = true; out.append(c); i += 1; continue }
+                // Bare non-finite literals only ever start a JSON value here (a leading '-' that
+                // isn't '-Infinity' is just a normal negative number → copied as-is).
+                if c == minus, matches(inf, i + 1) { out.append(contentsOf: null); i += 1 + inf.count; continue }
+                if c == inf[0], matches(inf, i)    { out.append(contentsOf: null); i += inf.count; continue }
+                if c == nan[0], matches(nan, i)    { out.append(contentsOf: null); i += nan.count; continue }
+                out.append(c)
+                i += 1
+            }
+        }
+        return Data(out)
     }
 }

@@ -154,6 +154,13 @@ Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
   "discrepancy" count was a cascade from the empty mirror, not corruption.)
 - **`AppSettings` decodes each key with `decodeIfPresent`** so adding a field
   doesn't reset older `settings.json`.
+- **osxphotos `query --json` emits NON-STANDARD JSON** — bare `Infinity`/`-Infinity`/`NaN`
+  literals (video audio `energyValues`, unset scores). Python parses them; **Swift's JSON
+  parser rejects them** ("not valid JSON"), which silently broke the entire purge preview.
+  `PhotoMetadataQuery.sanitizeNonFiniteLiterals` rewrites them to `null` in value position
+  (string-aware) before decoding. Don't remove it. Also note the query payload is **large**
+  (~727 MB / 68k records on a full library) because `--json` dumps every field; only ~9 are
+  used. (Incident 2026-06-11: first real purge preview.)
 - **osxphotos uuid → PHAsset.localIdentifier** is `"<uuid>/L0/001"`.
 - **Don't purge on MBP14** — its archive is only the local subset; treat purge as
   preview-only until Vortex holds the complete, verified archive.
