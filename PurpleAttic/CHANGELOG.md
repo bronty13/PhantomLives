@@ -3,6 +3,22 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.16.0] — 2026-06-11
+
+Retention pin-matching hardened to be case- and whitespace-insensitive on both sides.
+
+### Changed
+- **Keep-album / keep-keyword matching now normalizes both sides** (lowercased + trimmed) via
+  `RetentionPolicy.normalizeTag`, so every spelling — `Save`, `save`, `SAVE`, `SaVe` — and any
+  stray leading/trailing spaces (e.g. a hand-edited `profile.json`) match. The match was already
+  case-insensitive; this also closes the whitespace gap and locks the behavior with a test
+  enumerating the exact casings. Pin protection is the highest-stakes guard before a purge, so it
+  must never miss on capitalization or spacing.
+
+### Tests
+- `testPinMatchingIsCaseAndWhitespaceInsensitive` asserts a space-padded, odd-cased keep-list entry
+  pins an asset whose own keyword/album is in a different casing, across `Save/save/SAVE/SaVe/sAvE`.
+
 ## [0.15.0] — 2026-06-11
 
 Auto-pause-and-resume on a busy library — the purge rides out iCloud sync instead of failing.

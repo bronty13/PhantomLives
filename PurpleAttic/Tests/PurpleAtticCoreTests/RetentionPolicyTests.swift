@@ -36,6 +36,22 @@ final class RetentionPolicyTests: XCTestCase {
         XCTAssertFalse(policy.isPurgeEligible(asset, asOf: now))
     }
 
+    /// Pin matching must be case- AND whitespace-insensitive on BOTH sides — every spelling of
+    /// "Save" (and a space-padded keep-list entry) must protect an old photo from purge.
+    func testPinMatchingIsCaseAndWhitespaceInsensitive() {
+        for variant in ["Save", "save", "SAVE", "SaVe", "sAvE"] {
+            // keep-list entry padded + odd-cased; asset's own tag in yet another casing.
+            let kwPolicy = RetentionPolicy(keepWindowDays: 365, keepKeywords: ["  \(variant) "])
+            let kwAsset = PhotoAsset(uuid: "kw-\(variant)", created: daysAgo(800), keywords: ["sAVe"])
+            XCTAssertFalse(kwPolicy.isPurgeEligible(kwAsset, asOf: now), "keyword variant \(variant) should pin")
+            XCTAssertEqual(kwPolicy.keepReason(kwAsset, asOf: now), "has keep keyword \"sAVe\"")
+
+            let albPolicy = RetentionPolicy(keepWindowDays: 365, keepAlbumNames: [" \(variant)"])
+            let albAsset = PhotoAsset(uuid: "alb-\(variant)", created: daysAgo(800), albums: ["SAVE"])
+            XCTAssertFalse(albPolicy.isPurgeEligible(albAsset, asOf: now), "album variant \(variant) should pin")
+        }
+    }
+
     func testFavoriteOnlyKeptWhenEnabled() {
         let asset = PhotoAsset(uuid: "e", created: daysAgo(800), isFavorite: true)
 

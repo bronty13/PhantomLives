@@ -40,9 +40,9 @@ public struct PhotoAsset: Sendable, Equatable {
 public struct RetentionPolicy: Codable, Sendable, Equatable {
     /// Photos created within this many days of "now" are always kept, regardless of tags.
     public var keepWindowDays: Int
-    /// Album names whose membership pins a photo (case-insensitive match).
+    /// Album names whose membership pins a photo (case- and whitespace-insensitive match).
     public var keepAlbumNames: [String]
-    /// Keywords that pin a photo (case-insensitive match).
+    /// Keywords that pin a photo (case- and whitespace-insensitive match).
     public var keepKeywords: [String]
     /// When true, a Favorite is also pinned. Off by default so "Favorite" isn't overloaded
     /// with "never archive-and-delete" unless the user opts in.
@@ -60,15 +60,23 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
         self.keepFavorites = keepFavorites
     }
 
+    /// Normalize a tag for matching so it is **case- and whitespace-insensitive**: "Save",
+    /// "save", "SAVE", " SaVe " all compare equal. Applied to BOTH the keep-list and the asset's
+    /// own album/keyword names, so a match never hinges on how either side was capitalized or on
+    /// stray spaces (e.g. a hand-edited `profile.json` or a keyword typed with a leading space).
+    static func normalizeTag(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     /// True when the asset is pinned by a Save album, Save keyword, or (if enabled) Favorite.
     public func isPinned(_ asset: PhotoAsset) -> Bool {
         if keepFavorites && asset.isFavorite { return true }
-        let albumSet = Set(keepAlbumNames.map { $0.lowercased() })
-        if !albumSet.isEmpty && asset.albums.contains(where: { albumSet.contains($0.lowercased()) }) {
+        let albumSet = Set(keepAlbumNames.map(Self.normalizeTag))
+        if !albumSet.isEmpty && asset.albums.contains(where: { albumSet.contains(Self.normalizeTag($0)) }) {
             return true
         }
-        let keywordSet = Set(keepKeywords.map { $0.lowercased() })
-        if !keywordSet.isEmpty && asset.keywords.contains(where: { keywordSet.contains($0.lowercased()) }) {
+        let keywordSet = Set(keepKeywords.map(Self.normalizeTag))
+        if !keywordSet.isEmpty && asset.keywords.contains(where: { keywordSet.contains(Self.normalizeTag($0)) }) {
             return true
         }
         return false
@@ -98,12 +106,12 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
             return "within \(keepWindowDays)-day keep window"
         }
         if keepFavorites && asset.isFavorite { return "favorite" }
-        let albumSet = Set(keepAlbumNames.map { $0.lowercased() })
-        if let hit = asset.albums.first(where: { albumSet.contains($0.lowercased()) }) {
+        let albumSet = Set(keepAlbumNames.map(Self.normalizeTag))
+        if let hit = asset.albums.first(where: { albumSet.contains(Self.normalizeTag($0)) }) {
             return "in keep album \"\(hit)\""
         }
-        let keywordSet = Set(keepKeywords.map { $0.lowercased() })
-        if let hit = asset.keywords.first(where: { keywordSet.contains($0.lowercased()) }) {
+        let keywordSet = Set(keepKeywords.map(Self.normalizeTag))
+        if let hit = asset.keywords.first(where: { keywordSet.contains(Self.normalizeTag($0)) }) {
             return "has keep keyword \"\(hit)\""
         }
         return nil
