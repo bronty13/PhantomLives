@@ -179,59 +179,72 @@ enum PhotoKitPurger {
             guard !assets.isEmpty else { completion(.failure(PurgeError.noAssetsResolved)); return }
             let resolved = assets.count
 
-            findOrCreateAlbum(named: albumName) { albumResult in
-                switch albumResult {
-                case .failure(let e):
-                    completion(.failure(e))
-                case .success(let album):
-                    let step = max(1, batchSize)
-                    let batches: [[PHAsset]] = stride(from: 0, to: resolved, by: step).map {
-                        Array(assets[$0 ..< min($0 + step, resolved)])
-                    }
-                    var added = 0
-                    func run(_ i: Int) {
-                        if i >= batches.count {
+            ensureAlbumIdentifier(named: albumName) { albumID, createError in
+                guard let albumID else {
+                    completion(.failure(PurgeError.changeFailed(createError ?? "Couldn't create the album."))); return
+                }
+                let step = max(1, batchSize)
+                let batches: [[PHAsset]] = stride(from: 0, to: resolved, by: step).map {
+                    Array(assets[$0 ..< min($0 + step, resolved)])
+                }
+                var batchError: String?
+                func run(_ i: Int) {
+                    if i >= batches.count {
+                        // Trust nothing: report the album's ACTUAL membership, not a summed guess.
+                        let added = albumAssetCount(albumID: albumID)
+                        if added == 0, let e = batchError {
+                            completion(.failure(PurgeError.changeFailed(e)))
+                        } else {
                             completion(.success(StageOutcome(requested: uuids.count, resolved: resolved,
                                                              added: added, albumName: albumName)))
-                            return
                         }
-                        let batch = batches[i]
-                        PHPhotoLibrary.shared().performChanges {
-                            let req = PHAssetCollectionChangeRequest(for: album)
-                            req?.addAssets(batch as NSArray)
-                        } completionHandler: { success, _ in
-                            if success { added += batch.count }   // add failures are non-fatal: just continue
-                            status?("Staging to “\(albumName)”…")
-                            progress?(min((i + 1) * step, resolved), resolved)
-                            run(i + 1)
-                        }
+                        return
                     }
-                    run(0)
+                    let batch = batches[i]
+                    PHPhotoLibrary.shared().performChanges {
+                        // Re-fetch the album FRESH inside the change block — a reference captured
+                        // outside can be stale and silently no-op the add (the bug that left the
+                        // album empty). Guard the change request so a nil never looks like success.
+                        guard let album = PHAssetCollection
+                                .fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject,
+                              let req = PHAssetCollectionChangeRequest(for: album) else { return }
+                        req.addAssets(batch as NSArray)
+                    } completionHandler: { success, error in
+                        if !success, let error, batchError == nil { batchError = error.localizedDescription }
+                        status?("Staging to “\(albumName)”…")
+                        progress?(min((i + 1) * step, resolved), resolved)
+                        run(i + 1)
+                    }
                 }
+                run(0)
             }
         }
     }
 
-    /// Fetch the regular album named `name`, creating it if absent. Album create/modify is
-    /// non-destructive, so neither step prompts.
-    private static func findOrCreateAlbum(named name: String,
-                                          completion: @escaping (Result<PHAssetCollection, Error>) -> Void) {
+    /// Local-identifier of the regular album named `name`, creating it if absent. Returns
+    /// `(nil, error)` if creation fails. Album create/modify is non-destructive → no prompt.
+    private static func ensureAlbumIdentifier(named name: String,
+                                              completion: @escaping (_ albumID: String?, _ error: String?) -> Void) {
         let opts = PHFetchOptions()
         opts.predicate = NSPredicate(format: "title = %@", name)
-        let existing = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: opts)
-        if let album = existing.firstObject { completion(.success(album)); return }
-
-        var placeholder: PHObjectPlaceholder?
+        if let existing = PHAssetCollection
+            .fetchAssetCollections(with: .album, subtype: .albumRegular, options: opts).firstObject {
+            completion(existing.localIdentifier, nil); return
+        }
+        var placeholderID: String?
         PHPhotoLibrary.shared().performChanges {
             let req = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
-            placeholder = req.placeholderForCreatedAssetCollection
+            placeholderID = req.placeholderForCreatedAssetCollection.localIdentifier
         } completionHandler: { success, error in
-            if success, let id = placeholder?.localIdentifier,
-               let album = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [id], options: nil).firstObject {
-                completion(.success(album))
-            } else {
-                completion(.failure(PurgeError.changeFailed(error?.localizedDescription ?? "Couldn't create the album.")))
-            }
+            completion(success ? placeholderID : nil, error?.localizedDescription)
         }
+    }
+
+    /// The true number of assets currently in the album — used to VERIFY staging worked rather
+    /// than trusting `performChanges` success (which is `true` even when an add no-ops).
+    private static func albumAssetCount(albumID: String) -> Int {
+        guard let album = PHAssetCollection
+            .fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil).firstObject else { return 0 }
+        return PHAsset.fetchAssets(in: album, options: nil).count
     }
 }
