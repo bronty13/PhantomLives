@@ -1,0 +1,25 @@
+# mail-cleaner — Gmail FINANCIAL list (bank / card / credit notices)
+# One sender address per line. Lines starting with # are ignored.
+# NOTE: on Gmail, "archive" = apply a label + drop the INBOX label; the message
+# stays forever in All Mail and is always searchable, so archiving is less
+# necessary than on iCloud. Recommended: LEAVE these (don't trash them) so the
+# records persist. Only run an action on this list if you specifically want to
+# label/relocate them — do NOT --action trash this list unless you mean to lose
+# the records in 30 days.
+#
+# ---- credit cards ----
+americanexpress@welcome.aexp.com
+americanexpress@welcome.americanexpress.com
+americanexpress@member.americanexpress.com
+capitalone@notification.capitalone.com
+#
+# ---- banks ----
+alerts@notify.wellsfargo.com
+onlinebanking@ealerts.bankofamerica.com
+no.reply.alerts@chase.com
+alerts@mtbalerts.com
+#
+# ---- credit monitoring / payments ----
+support@e.usa.experian.com
+support@s.usa.experian.com
+service@paypal.com

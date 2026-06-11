@@ -1,0 +1,67 @@
+# mail-cleaner — Gmail DELETE list (machine noise + retail promos)
+# One sender address per line. Lines starting with # are ignored.
+# Starter list = the reviewed iCloud delete list (same senders, since the
+# iCloud mail was forwarded from Gmail). Refine after `analyze` shows Gmail's
+# actual top senders. On Gmail these are TRASHED (moved to [Gmail]/Trash,
+# Google-purged after 30 days) from [Gmail]/All Mail — recoverable 30 days.
+# Remove any line you want to KEEP before running --apply.
+#
+# ---- machine noise / automated notifications ----
+notifications@nest.com
+googlealerts-noreply@google.com
+friendupdates@facebookmail.com
+notification@facebookmail.com
+close_friend_updates@facebookmail.com
+info@twitter.com
+info_at_twitter_com_fmnkr9jrc8_9286b5fe@privaterelay.appleid.com
+noreply@redditmail.com
+noreply@youtube.com
+notifications-noreply@linkedin.com
+invitations@linkedin.com
+newsdigest@insideapple.apple.com
+uspsinformeddelivery@email.informeddelivery.usps.com
+#
+# ---- local news (promotional digests) ----
+email@email.buffnews.com
+digital@buffnews.com
+nm_buffalonews@newsmemory.com
+#
+# ---- retail / marketing promos ----
+bingo@patreon.com
+ebay@ebay.com
+store-news@amazon.com
+reply@email.thecpapshop.com
+cpap@hello.cpap.com
+bestbuy@email.bestbuy.com
+bestbuyinfo@emailinfo.bestbuy.com
+email@e.fender.com
+hello@info.reverb.com
+yourfriends@e.sweetwater.com
+promo@promo.newegg.com
+no-reply@emails.monoprice.com
+email@email.etsy.com
+nintendo-noreply@nintendo.net
+info@bc.adorama.com
+microcenter@microcenterinsider.com
+costco@digital.costco.com
+sigsauer@sigsauer.com
+specials@reader.macsales.com
+support-newsletter@flightaware.com
+questions@bladehq.com
+newsletter@email.buydig.com
+bathandbodyworks@e2.bathandbodyworks.com
+info@hsastore.com
+noreply@e.buffalobills.com
+hulu@hulumail.com
+email@e.gear.blizzard.com
+newsletter@billoreilly.com
+support@zygorguides.com
+donotreply@mcd.nikon.com
+davidstea@email.davidstea.com
+news@stewmac.com
+info@emailsrv.swell.com
+teamww@email.ww.com
+#
+# ---- professional membership newsletters ----
+info@connect.isc2.org
+connect@isc2.org

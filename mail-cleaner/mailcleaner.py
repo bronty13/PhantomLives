@@ -322,7 +322,10 @@ def cmd_analyze(args: argparse.Namespace) -> None:
         # skip Trash/Junk by default unless asked
         mailboxes = [b for b in mailboxes if b.lower() not in SKIP_MAILBOXES]
     else:
-        mailboxes = args.mailbox or ["INBOX"]
+        # Gmail stores every message in "[Gmail]/All Mail"; scanning each
+        # label instead would double-count messages that carry several labels.
+        default_box = "[Gmail]/All Mail" if args.account == "gmail" else "INBOX"
+        mailboxes = args.mailbox or [default_box]
 
     print(f"scanning {len(mailboxes)} mailbox(es): {', '.join(mailboxes)}")
 
@@ -464,6 +467,19 @@ def cmd_act(args: argparse.Namespace) -> None:
     if not senders:
         sys.exit(f"error: no senders in {args.senders}")
 
+    # Gmail-aware defaults: act on All Mail (where every message lives) and
+    # "delete" by moving to [Gmail]/Trash (Google purges it after 30 days).
+    is_gmail = args.account == "gmail"
+    if args.mailbox is None:
+        args.mailbox = "[Gmail]/All Mail" if is_gmail else "INBOX"
+    if args.trash_folder is None:
+        args.trash_folder = "[Gmail]/Trash" if is_gmail else "Deleted Items"
+    if is_gmail and args.action == "delete":
+        sys.exit("error: on Gmail, IMAP 'delete' only strips a label (the "
+                 "message survives in All Mail). Use --action trash "
+                 "(--trash-folder defaults to [Gmail]/Trash, 30-day "
+                 "recoverable) to actually remove messages.")
+
     password = get_password(args.user, args.keychain_service)
     M = connect(host, port, args.user, password)
     caps = " ".join(c.decode() if isinstance(c, bytes) else c
@@ -595,12 +611,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="text file: one sender address per line (# = comment)")
     c.add_argument("--action", required=True,
                    choices=["delete", "trash", "archive"])
-    c.add_argument("--mailbox", default="INBOX",
-                   help="mailbox to act within (default INBOX)")
+    c.add_argument("--mailbox", default=None,
+                   help="mailbox to act within "
+                        "(default INBOX; Gmail: [Gmail]/All Mail)")
     c.add_argument("--to", default="Financial",
                    help="destination folder for --action archive")
-    c.add_argument("--trash-folder", default="Deleted Items",
-                   help="Trash folder name for --action trash")
+    c.add_argument("--trash-folder", default=None,
+                   help="Trash folder name for --action trash "
+                        "(default 'Deleted Items'; Gmail: [Gmail]/Trash)")
     c.add_argument("--older-than",
                    help="only messages BEFORE this date (YYYY-MM-DD)")
     c.add_argument("--apply", action="store_true",
