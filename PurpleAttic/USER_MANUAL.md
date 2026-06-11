@@ -74,6 +74,12 @@ new grant sometimes needs the app relaunched to register.)
    - Leave **"Download missing originals from iCloud"** OFF on this Mac (you
      already have the originals). Click **Save**.
 
+   - Leave **"Skip 'Shared with You' & shared-album items"** ON (the default).
+     Photos other people shared with you (via Messages or a shared album) aren't
+     your originals and have no full-resolution master to archive — with this off
+     they show up forever as bogus *"missing"* photos you can never download. Your
+     own iCloud **Shared Library** photos are unaffected.
+
 3. **Settings → Formats.** Keep both **HEIC originals** (full fidelity) and
    **JPEG derivatives** (universally openable) ticked.
 

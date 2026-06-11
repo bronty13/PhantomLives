@@ -3,6 +3,29 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.10.0] — 2026-06-11
+
+Stop chasing ghosts — exclude "Shared with You" + shared-album items.
+
+### Added
+- **`excludeSharedAndSyndicated` (on by default).** The export now passes osxphotos
+  **`--not-syndicated --not-shared`**, skipping **"Shared with You"** (Messages /
+  syndication) items and **shared-album** items. These aren't your originals and have
+  **no downloadable master**, so they otherwise linger forever as bogus "missing"
+  originals — exactly the false gap that sent a multi-hour download chase after photos
+  that could never come down. New Settings toggle (Source card); `ExportPlan` emits the
+  flags only when enabled. Old profiles decode with it **on**. Your own iCloud **Shared
+  Library** photos are unaffected (that's `--shared-library`, which you do own).
+- Tests: 93 total (+4 — flags present-by-default / disabled, migration defaults).
+
+### Why
+The first production download-missing run left "3 missing" that no tool — osxphotos
+(AppleScript or PhotoKit) or Photos' own Export Unmodified Original — could fetch.
+Diagnosis: all three were **shared/syndicated** content (a texted pasta photo
+`syndicated=True`, a shared video `shared=True`), not owned originals. osxphotos counts
+them as "missing" because they have no master. Excluding them makes the missing count
+reflect only photos you actually own. Incident: 2026-06-11, Vortex.
+
 ## [0.9.0] — 2026-06-10
 
 PhotoKit download path — make `--download-missing` reliable (stop killing Photos).

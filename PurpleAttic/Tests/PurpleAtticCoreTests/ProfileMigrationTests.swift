@@ -71,6 +71,17 @@ final class ProfileMigrationTests: XCTestCase {
         XCTAssertFalse(p.usePhotoKitForDownload)
     }
 
+    func testExcludeSharedAndSyndicatedDefaultsOnForOldProfiles() throws {
+        // A profile predating the toggle must default to skipping shared/syndicated ghosts.
+        let p = try decode(#"{"primaryDestination":"/Volumes/X"}"#)
+        XCTAssertTrue(p.excludeSharedAndSyndicated)
+    }
+
+    func testExcludeSharedAndSyndicatedOverridePreserved() throws {
+        let p = try decode(#"{"excludeSharedAndSyndicated":false}"#)
+        XCTAssertFalse(p.excludeSharedAndSyndicated)
+    }
+
     func testExplicitSubfolderPreserved() throws {
         let p = try decode(#"{"primaryDestination":"/Volumes/X","archiveSubfolder":"Backups/Photos"}"#)
         XCTAssertEqual(p.archiveSubfolder, "Backups/Photos")

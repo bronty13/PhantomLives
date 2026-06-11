@@ -28,6 +28,8 @@ public enum ExportPlan {
     ///  - `--download-missing` (opt-in) pull originals from iCloud on an Optimize-Storage host.
     ///  - `--use-photokit`  (with download-missing) fetch via PhotoKit, not the AppleScript
     ///                      path that times out and kills Photos on indeterminate iCloud assets.
+    ///  - `--not-syndicated --not-shared` (default) skip "Shared with You" + shared-album items —
+    ///                      not your originals, no master to fetch, else perma-"missing" ghosts.
     ///  - `--dry-run`       (opt-in) plan only; touch nothing.
     public static func arguments(
         profile: ArchiveProfile,
@@ -57,6 +59,12 @@ public enum ExportPlan {
             if profile.usePhotoKitForDownload {
                 args += ["--use-photokit"]
             }
+        }
+        if profile.excludeSharedAndSyndicated {
+            // "Shared with You" (syndicated) + shared-album items aren't your originals and have
+            // no downloadable master — without this they linger forever as bogus "missing"
+            // originals. (Does not touch your own iCloud Shared Library; that's --shared-library.)
+            args += ["--not-syndicated", "--not-shared"]
         }
         if pass == .jpeg {
             args += ["--convert-to-jpeg"]

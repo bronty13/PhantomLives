@@ -113,6 +113,23 @@ final class ExportPlanTests: XCTestCase {
         XCTAssertFalse(args.contains("--download-missing"))
     }
 
+    func testSharedAndSyndicatedExcludedByDefault() {
+        // excludeSharedAndSyndicated defaults to true.
+        let args = ExportPlan.arguments(profile: profile(), pass: .originals, dryRun: false)
+        XCTAssertTrue(args.contains("--not-syndicated"),
+                      "Shared-with-You items must be skipped so they don't show as missing")
+        XCTAssertTrue(args.contains("--not-shared"),
+                      "shared-album items must be skipped (not your originals)")
+    }
+
+    func testSharedExclusionCanBeDisabled() {
+        var p = profile()
+        p.excludeSharedAndSyndicated = false
+        let args = ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
+        XCTAssertFalse(args.contains("--not-syndicated"))
+        XCTAssertFalse(args.contains("--not-shared"))
+    }
+
     func testEnabledPassesRespectFormatToggles() {
         XCTAssertEqual(profile(jpeg: true).enabledPasses, [.originals, .jpeg])
         XCTAssertEqual(profile(jpeg: false).enabledPasses, [.originals])

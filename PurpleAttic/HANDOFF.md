@@ -129,6 +129,13 @@ Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
   `<!-- -->` and codesign fails ("AMFIUnserializeXML: syntax error").
 - **osxphotos / pattic need Full Disk Access** to read the library, including the
   scheduled background run (grant FDA to the bundled `pattic`).
+- **Shared/syndicated items are excluded from the export by default** (`excludeSharedAndSyndicated`
+  → osxphotos `--not-syndicated --not-shared`). "Shared with You" (Messages) and shared-album
+  items aren't your originals and have **no downloadable master**, so without this they show
+  up forever as bogus "missing" originals (incident 2026-06-11: the 3 un-fetchable "stragglers"
+  were a texted pasta photo + a shared video — not owned content). Does NOT exclude your own
+  iCloud **Shared Library** (`--shared-library`). NOTE for manual missing-checks: use
+  `osxphotos query --missing --not-syndicated --not-shared --count` to match the archive's view.
 - **`--download-missing` defaults to the PhotoKit path now** (`usePhotoKitForDownload`,
   → osxphotos `--use-photokit`). The legacy AppleScript path drives Photos and, on a
   slow/**indeterminate (`incloud=None`)** iCloud asset, **times out and `killall`s
@@ -166,7 +173,9 @@ path (`usePhotoKitForDownload`, on by default) after the AppleScript path was
 found to time out and kill Photos on indeterminate iCloud stragglers. The full
 3-copy pipeline (export → mirror → verify → cloud) is validated end-to-end —
 including on **production drives** (ROG_WHITE primary + LACIE mirror + vault),
-Verify 350,522 files match, 0 discrepancies. 89 tests passing.
+Verify 350,522 files match, 0 discrepancies. **0.10** excludes shared/syndicated
+("Shared with You") items from the export so non-owned content stops showing as
+bogus "missing" originals. 93 tests passing.
 
 Not yet done / possible next:
 - First real **complete** archive on Vortex (gated on its iCloud download).

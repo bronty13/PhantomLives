@@ -10,7 +10,7 @@ CONFIG="${CONFIG:-release}"
 
 COMMIT_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-SHORT_VERSION="${SHORT_VERSION:-0.9.${COMMIT_COUNT}}"
+SHORT_VERSION="${SHORT_VERSION:-0.10.${COMMIT_COUNT}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${COMMIT_COUNT}.${SHORT_SHA}}"
 
 echo "Building PurpleAttic (configuration=$CONFIG, version=$SHORT_VERSION build $BUILD_NUMBER)..."

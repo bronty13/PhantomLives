@@ -57,6 +57,15 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// on 44 `incloud=None` stragglers, repeatedly terminating Photos; PhotoKit is the fix.)
     public var usePhotoKitForDownload: Bool
 
+    /// Exclude **"Shared with You" (syndicated)** and **shared-album** items from the export
+    /// (osxphotos `--not-syndicated --not-shared`). These are not your own originals — they're
+    /// references to content others shared (via Messages or a shared album), so they have **no
+    /// downloadable master** and otherwise show up forever as bogus "missing" originals, sending
+    /// you chasing a ghost. On by default. Does NOT exclude your own iCloud **Shared Library**
+    /// photos (those are `--shared-library`, which you do own). (Incident 2026-06-11: the last
+    /// 3 "missing stragglers" were all shared/syndicated — a texted pasta photo, a shared video.)
+    public var excludeSharedAndSyndicated: Bool
+
     /// The keep/purge rule.
     public var retention: RetentionPolicy
 
@@ -85,6 +94,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         directoryTemplate: String = "{created.year}/{created.year}-{created.mm}",
         downloadMissingFromICloud: Bool = false,
         usePhotoKitForDownload: Bool = true,
+        excludeSharedAndSyndicated: Bool = true,
         retention: RetentionPolicy = RetentionPolicy(),
         purgeEnabled: Bool = false,
         archiveSubfolder: String = "Photos Archive",
@@ -102,6 +112,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.directoryTemplate = directoryTemplate
         self.downloadMissingFromICloud = downloadMissingFromICloud
         self.usePhotoKitForDownload = usePhotoKitForDownload
+        self.excludeSharedAndSyndicated = excludeSharedAndSyndicated
         self.retention = retention
         self.purgeEnabled = purgeEnabled
         self.archiveSubfolder = archiveSubfolder
@@ -127,6 +138,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
             ?? "{created.year}/{created.year}-{created.mm}"
         downloadMissingFromICloud = try c.decodeIfPresent(Bool.self, forKey: .downloadMissingFromICloud) ?? false
         usePhotoKitForDownload = try c.decodeIfPresent(Bool.self, forKey: .usePhotoKitForDownload) ?? true
+        excludeSharedAndSyndicated = try c.decodeIfPresent(Bool.self, forKey: .excludeSharedAndSyndicated) ?? true
         retention = try c.decodeIfPresent(RetentionPolicy.self, forKey: .retention) ?? RetentionPolicy()
         purgeEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeEnabled) ?? false
         archiveSubfolder = try c.decodeIfPresent(String.self, forKey: .archiveSubfolder) ?? "Photos Archive"

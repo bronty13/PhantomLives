@@ -47,6 +47,11 @@ struct ProfileSettingsView: View {
                 Text("PhotoKit requests originals from iCloud directly. The alternative (AppleScript) drives Photos and can time out and repeatedly **kill Photos** on slow/indeterminate iCloud items. Leave ON unless you have a reason not to.")
                     .font(.caption).foregroundStyle(.secondary).padding(.leading, 18)
             }
+            Divider()
+            Toggle("Skip “Shared with You” & shared-album items",
+                   isOn: $store.profile.excludeSharedAndSyndicated)
+            Text("Photos that others shared with you (via Messages or a shared album) aren’t your originals and have no master to download — without this they linger forever as bogus “missing” items. Leave ON. (Your own iCloud Shared Library photos are unaffected.)")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 

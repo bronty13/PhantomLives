@@ -10,12 +10,14 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.9.0 — `--download-missing` now uses the reliable PhotoKit path
-> (`usePhotoKitForDownload`, on by default) instead of the AppleScript one that
-> times out and kills Photos on indeterminate iCloud stragglers; plus "NEW PHOTOS
-> TO REVIEW" staging of each incremental run's new items (on by default); full
-> pipeline validated end-to-end, with a live progress dashboard, graceful error
-> handling, and a mount guard:** engine + `pattic` CLI
+> **Status: 0.10.0 — excludes "Shared with You" + shared-album items from the
+> export (`excludeSharedAndSyndicated`, on by default) so non-owned content with
+> no master stops showing as bogus "missing" originals; `--download-missing` uses
+> the reliable PhotoKit path (`usePhotoKitForDownload`, on by default) instead of
+> the AppleScript one that times out and kills Photos; plus "NEW PHOTOS TO REVIEW"
+> staging of each incremental run's new items (on by default); full pipeline
+> validated end-to-end, with a live progress dashboard, graceful error handling,
+> and a mount guard:** engine + `pattic` CLI
 > + `PurpleAttic.app` GUI, with the permissions preflight, "Photos Archive"
 > subfolder, free-space check, previews-only guard, Cryptomator vault status,
 > guarded purge, and launchd scheduler. The Archive pane shows a phase stepper
