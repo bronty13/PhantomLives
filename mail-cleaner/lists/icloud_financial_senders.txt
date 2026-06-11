@@ -1,0 +1,21 @@
+# mail-cleaner — iCloud FINANCIAL list (archive to a "Financial" folder)
+# One sender address per line. Lines starting with # are ignored.
+# These are bank / card / credit account notices — moved out of INBOX,
+# kept (NOT deleted) in the "Financial" folder.
+#
+# ---- credit cards ----
+americanexpress@welcome.aexp.com
+americanexpress@welcome.americanexpress.com
+americanexpress@member.americanexpress.com
+capitalone@notification.capitalone.com
+#
+# ---- banks ----
+alerts@notify.wellsfargo.com
+onlinebanking@ealerts.bankofamerica.com
+no.reply.alerts@chase.com
+alerts@mtbalerts.com
+#
+# ---- credit monitoring / payments ----
+support@e.usa.experian.com
+support@s.usa.experian.com
+service@paypal.com
