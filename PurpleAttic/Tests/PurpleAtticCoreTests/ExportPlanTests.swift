@@ -84,6 +84,35 @@ final class ExportPlanTests: XCTestCase {
         XCTAssertTrue(args.contains("--download-missing"))
     }
 
+    func testDownloadMissingUsesPhotoKitByDefault() {
+        var p = profile()
+        p.downloadMissingFromICloud = true
+        // usePhotoKitForDownload defaults to true.
+        let args = ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
+        XCTAssertTrue(args.contains("--download-missing"))
+        XCTAssertTrue(args.contains("--use-photokit"),
+                      "PhotoKit is the reliable download path and is the default")
+    }
+
+    func testPhotoKitCanBeDisabledForAppleScriptPath() {
+        var p = profile()
+        p.downloadMissingFromICloud = true
+        p.usePhotoKitForDownload = false
+        let args = ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
+        XCTAssertTrue(args.contains("--download-missing"))
+        XCTAssertFalse(args.contains("--use-photokit"))
+    }
+
+    func testPhotoKitFlagAbsentWithoutDownloadMissing() {
+        var p = profile()
+        p.downloadMissingFromICloud = false
+        p.usePhotoKitForDownload = true   // meaningless without download-missing
+        let args = ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
+        XCTAssertFalse(args.contains("--use-photokit"),
+                       "--use-photokit must not appear unless --download-missing is active")
+        XCTAssertFalse(args.contains("--download-missing"))
+    }
+
     func testEnabledPassesRespectFormatToggles() {
         XCTAssertEqual(profile(jpeg: true).enabledPasses, [.originals, .jpeg])
         XCTAssertEqual(profile(jpeg: false).enabledPasses, [.originals])

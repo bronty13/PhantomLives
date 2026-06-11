@@ -3,6 +3,28 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.9.0] — 2026-06-10
+
+PhotoKit download path — make `--download-missing` reliable (stop killing Photos).
+
+### Added
+- **`usePhotoKitForDownload` (on by default).** When download-missing is enabled,
+  PurpleAttic now passes osxphotos `--use-photokit`, fetching missing originals from
+  iCloud via **PhotoKit** instead of the default AppleScript path. A new Settings
+  toggle (shown only when download-missing is on) exposes it; `ExportPlan` emits
+  `--use-photokit` only alongside `--download-missing`. Old profiles decode with it
+  **on**.
+- Tests: 89 total (+5 — PhotoKit flag present-by-default / disabled / absent-without-
+  download-missing, and migration defaults).
+
+### Why
+The default osxphotos download path drives Photos over **AppleScript**; on a slow or
+**indeterminate (`incloud=None`)** iCloud asset that request **times out**, and
+osxphotos' retry loop **terminates Photos** (`killall`) and re-tries — which on a real
+run wedged both Photos and the export with **0 of 44 stragglers downloaded** (and was
+the cause of a separate "Photos not responding" hang). `--use-photokit` requests the
+original directly and needs no Photos-Automation grant. Incident: 2026-06-10, Vortex.
+
 ## [0.8.0] — 2026-06-10
 
 "NEW PHOTOS TO REVIEW" — stage each incremental run's new items for review.

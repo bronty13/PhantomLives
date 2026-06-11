@@ -199,7 +199,7 @@ only on the Mac with the complete archive.
 | **"Optimize Storage likely … INCOMPLETE"** warning | This Mac doesn't have all originals. Run on the Mac set to "Download Originals," or (last resort) enable "Download missing originals" in Settings. |
 | **"Primary destination isn't available (is the drive mounted?)"** | The external drive isn't connected/mounted. Plug it in. |
 | Run buttons **disabled** with a red **Permissions** panel | One or more of Full Disk Access / Photos Automation / Photos Library isn't granted — use the panel's **Grant…** / **Settings…** buttons (§1). All three are required. |
-| Log floods with **"AppleScript export failed … restarting Photos app"** | **Photos Automation** isn't granted. Grant it from the Permissions panel and re-run. (The preflight now blocks this before it can start.) |
+| Log floods with **"AppleScript export failed … restarting Photos app"** or **"AppleScript timed out: retrying killall"**, and Photos keeps getting killed | You're on the **AppleScript** download path. Leave **"Use PhotoKit to download"** ON (Settings → Source, the default) — PhotoKit fetches missing originals without driving or killing Photos. The AppleScript path is unreliable on slow/indeterminate iCloud items. |
 | Orange **"Possible low free space"** warning | Estimate says a destination drive may be tight (or isn't mounted). Advisory only — verify the drive; the archive may still fit. |
 | **osxphotos** shows red in the footer | `brew install pipx && pipx install osxphotos`, then reopen the app. |
 | Cloud step says **"vault not mounted"** | Unlock the Cryptomator vault; the cloud copy catches up next run. Archiving never blocks on it. |

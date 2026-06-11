@@ -58,6 +58,19 @@ final class ProfileMigrationTests: XCTestCase {
         XCTAssertEqual(p.effectiveReviewRoot, "/Volumes/Handoff/Review")
     }
 
+    func testUsePhotoKitDefaultsOnForOldProfiles() throws {
+        // A profile predating the PhotoKit toggle must default to the reliable path (ON),
+        // so an existing download-missing host doesn't silently fall back to the AppleScript
+        // path that kills Photos.
+        let p = try decode(#"{"primaryDestination":"/Volumes/X","downloadMissingFromICloud":true}"#)
+        XCTAssertTrue(p.usePhotoKitForDownload)
+    }
+
+    func testUsePhotoKitOverridePreserved() throws {
+        let p = try decode(#"{"downloadMissingFromICloud":true,"usePhotoKitForDownload":false}"#)
+        XCTAssertFalse(p.usePhotoKitForDownload)
+    }
+
     func testExplicitSubfolderPreserved() throws {
         let p = try decode(#"{"primaryDestination":"/Volumes/X","archiveSubfolder":"Backups/Photos"}"#)
         XCTAssertEqual(p.archiveSubfolder, "Backups/Photos")

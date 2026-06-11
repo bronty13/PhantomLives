@@ -26,6 +26,8 @@ public enum ExportPlan {
     ///  - `--edited-suffix` keep BOTH the original and any edited rendering.
     ///  - `--convert-to-jpeg` (jpeg pass only) emit a universally-openable JPEG set.
     ///  - `--download-missing` (opt-in) pull originals from iCloud on an Optimize-Storage host.
+    ///  - `--use-photokit`  (with download-missing) fetch via PhotoKit, not the AppleScript
+    ///                      path that times out and kills Photos on indeterminate iCloud assets.
     ///  - `--dry-run`       (opt-in) plan only; touch nothing.
     public static func arguments(
         profile: ArchiveProfile,
@@ -49,6 +51,12 @@ public enum ExportPlan {
 
         if profile.downloadMissingFromICloud {
             args += ["--download-missing"]
+            // PhotoKit is the reliable fetch path; the default AppleScript one times out and
+            // kills Photos on slow/indeterminate iCloud assets. Only meaningful alongside
+            // --download-missing.
+            if profile.usePhotoKitForDownload {
+                args += ["--use-photokit"]
+            }
         }
         if pass == .jpeg {
             args += ["--convert-to-jpeg"]

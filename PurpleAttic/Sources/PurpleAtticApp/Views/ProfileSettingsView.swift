@@ -40,6 +40,13 @@ struct ProfileSettingsView: View {
                    isOn: $store.profile.downloadMissingFromICloud)
             Text("Leave OFF on a Mac set to “Download Originals” (everything is already local). Turn ON only on an Optimize-Storage host.")
                 .font(.caption).foregroundStyle(.secondary)
+            if store.profile.downloadMissingFromICloud {
+                Toggle("Use PhotoKit to download (recommended)",
+                       isOn: $store.profile.usePhotoKitForDownload)
+                    .padding(.leading, 18)
+                Text("PhotoKit requests originals from iCloud directly. The alternative (AppleScript) drives Photos and can time out and repeatedly **kill Photos** on slow/indeterminate iCloud items. Leave ON unless you have a reason not to.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.leading, 18)
+            }
         }
     }
 

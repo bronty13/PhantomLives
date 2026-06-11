@@ -129,8 +129,13 @@ Empty subfolder = pre-0.6 behavior. `ArchiveProfile` now decodes every key with
   `<!-- -->` and codesign fails ("AMFIUnserializeXML: syntax error").
 - **osxphotos / pattic need Full Disk Access** to read the library, including the
   scheduled background run (grant FDA to the bundled `pattic`).
-- **`--download-missing` drives Photos via AppleScript** → it needs the **Photos
-  Automation** grant or it thrashes. The preflight blocks a run until it's granted.
+- **`--download-missing` defaults to the PhotoKit path now** (`usePhotoKitForDownload`,
+  → osxphotos `--use-photokit`). The legacy AppleScript path drives Photos and, on a
+  slow/**indeterminate (`incloud=None`)** iCloud asset, **times out and `killall`s
+  Photos** in a retry loop that wedges both Photos and the export (incident 2026-06-10:
+  0/44 stragglers downloaded, Photos hung). PhotoKit requests the original directly and
+  needs **no** Photos-Automation grant. Only turn the toggle off (AppleScript path) with
+  a specific reason — and then the Automation grant is required again.
 - **`AEDeterminePermissionToAutomateTarget` can hang** if Photos isn't frontmost —
   `PermissionsService.requestPhotosAutomation` launches/activates Photos first and
   calls the prompting form off the main thread.
@@ -156,9 +161,12 @@ fixed the openrsync↔Cryptomator cloud-copy issues (progress2 / `.DS_Store` /
 chown / temp-file — see Gotchas). **0.7** added the live progress dashboard,
 graceful embed-error handling, and the mirror mount guard. **0.8** added
 "NEW PHOTOS TO REVIEW" staging of each incremental run's new items (on by
-default; baseline-safe). The full 3-copy
-pipeline (export → mirror → verify → cloud) is validated end-to-end on test
-drives (vault = 350,525 files, 0 errors). 84 tests passing.
+default; baseline-safe). **0.9** switched `--download-missing` to the PhotoKit
+path (`usePhotoKitForDownload`, on by default) after the AppleScript path was
+found to time out and kill Photos on indeterminate iCloud stragglers. The full
+3-copy pipeline (export → mirror → verify → cloud) is validated end-to-end —
+including on **production drives** (ROG_WHITE primary + LACIE mirror + vault),
+Verify 350,522 files match, 0 discrepancies. 89 tests passing.
 
 Not yet done / possible next:
 - First real **complete** archive on Vortex (gated on its iCloud download).

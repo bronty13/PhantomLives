@@ -40,7 +40,8 @@ struct Doctor: ParsableCommand {
             print("    \(CommandLine.arguments.first ?? "pattic")")
         }
         print("  • Photos Automation (Apple Events): checked by the app's preflight; needed only")
-        print("    when downloadMissingFromICloud is on. The GUI prompts for it.")
+        print("    when downloadMissingFromICloud is on AND usePhotoKitForDownload is off")
+        print("    (the AppleScript download path). With PhotoKit (the default) it isn't required.")
 
         if !r.allPresent || !fda {
             print("\nTo fix:")

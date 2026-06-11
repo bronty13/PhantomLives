@@ -48,6 +48,15 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// set true only on an Optimize-Storage host.
     public var downloadMissingFromICloud: Bool
 
+    /// When pulling missing originals (`downloadMissingFromICloud`), use osxphotos'
+    /// **PhotoKit** download path (`--use-photokit`) instead of the default AppleScript one.
+    /// PhotoKit requests originals from iCloud directly; the AppleScript path drives Photos
+    /// and, on a slow/indeterminate iCloud asset, **times out and kills Photos** in a retry
+    /// loop that can wedge both Photos and the export. On by default — only meaningful when
+    /// `downloadMissingFromICloud` is true. (Incident 2026-06-10: the AppleScript path hung
+    /// on 44 `incloud=None` stragglers, repeatedly terminating Photos; PhotoKit is the fix.)
+    public var usePhotoKitForDownload: Bool
+
     /// The keep/purge rule.
     public var retention: RetentionPolicy
 
@@ -75,6 +84,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         keepJPEG: Bool = true,
         directoryTemplate: String = "{created.year}/{created.year}-{created.mm}",
         downloadMissingFromICloud: Bool = false,
+        usePhotoKitForDownload: Bool = true,
         retention: RetentionPolicy = RetentionPolicy(),
         purgeEnabled: Bool = false,
         archiveSubfolder: String = "Photos Archive",
@@ -91,6 +101,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.keepJPEG = keepJPEG
         self.directoryTemplate = directoryTemplate
         self.downloadMissingFromICloud = downloadMissingFromICloud
+        self.usePhotoKitForDownload = usePhotoKitForDownload
         self.retention = retention
         self.purgeEnabled = purgeEnabled
         self.archiveSubfolder = archiveSubfolder
@@ -115,6 +126,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         directoryTemplate = try c.decodeIfPresent(String.self, forKey: .directoryTemplate)
             ?? "{created.year}/{created.year}-{created.mm}"
         downloadMissingFromICloud = try c.decodeIfPresent(Bool.self, forKey: .downloadMissingFromICloud) ?? false
+        usePhotoKitForDownload = try c.decodeIfPresent(Bool.self, forKey: .usePhotoKitForDownload) ?? true
         retention = try c.decodeIfPresent(RetentionPolicy.self, forKey: .retention) ?? RetentionPolicy()
         purgeEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeEnabled) ?? false
         archiveSubfolder = try c.decodeIfPresent(String.self, forKey: .archiveSubfolder) ?? "Photos Archive"
