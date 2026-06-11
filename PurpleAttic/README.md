@@ -10,7 +10,9 @@ bundles that become unopenable years later: the archive is **ordinary files in
 dated folders, with metadata embedded and in XMP sidecars**, openable by any
 image viewer forever.
 
-> **Status: 0.12.0 — fixes the purge ≥2-copy verification that rejected ~all photos
+> **Status: 0.13.0 — deletes the verified set in resilient batches (fixes
+> `PHPhotosErrorDomain 3300` from one atomic 65k-asset delete; a failed chunk is skipped
+> + retried on re-run); fixes the purge ≥2-copy verification that rejected ~all photos
 > (it matched the pre-export Photos size, but `--exiftool` enlarges archived files; now
 > verifies by filename + primary↔mirror byte-consistency); fixes the purge preview crashing
 > on osxphotos' non-standard JSON (`Infinity`/`NaN` literals); excludes "Shared with You" + shared-album items from the

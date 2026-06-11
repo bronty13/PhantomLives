@@ -251,19 +251,29 @@ final class AppState: ObservableObject {
         guard let plan = purgePlan, !plan.verified.isEmpty, !isPurging else { return }
         let uuids = plan.verified.map { $0.uuid }
         isPurging = true
-        purgeMessage = nil
-        PhotoKitPurger.deleteAssets(uuids: uuids) { [weak self] result in
+        purgeMessage = "Deleting in batches… (macOS will confirm each batch)"
+        PhotoKitPurger.deleteAssets(
+            uuids: uuids,
+            progress: { [weak self] done, total in
+                DispatchQueue.main.async { self?.purgeMessage = "Deleting… \(done) / \(total)" }
+            }
+        ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isPurging = false
                 switch result {
                 case .success(let outcome):
                     var msg = "Deleted \(outcome.deleted) photo(s) — now in Photos → Recently Deleted for 30 days."
+                    if outcome.failed > 0 {
+                        msg += " \(outcome.failed) couldn't be deleted this pass and were skipped — re-run the purge to retry them."
+                        if let e = outcome.batchError { msg += " (First error: \(e))" }
+                    }
                     if outcome.resolved < outcome.requested {
                         msg += " (\(outcome.requested - outcome.resolved) couldn't be matched in Photos and were left untouched.)"
                     }
+                    if outcome.cancelled { msg += " Stopped early — you dismissed a confirmation." }
                     self.purgeMessage = msg
-                    self.purgePlan = nil
+                    self.purgePlan = nil   // force a fresh preview before any further deletion
                 case .failure(let error):
                     self.purgeMessage = error.localizedDescription
                 }

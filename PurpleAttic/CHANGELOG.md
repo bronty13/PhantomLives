@@ -3,6 +3,28 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.13.0] — 2026-06-11
+
+Delete in resilient batches — fix `PHPhotosErrorDomain 3300` on a large purge.
+
+### Fixed
+- **Deleting the verified set failed wholesale** with *"Photos refused the deletion …
+  (PHPhotosErrorDomain error 3300)"*. Cause: `PhotoKitPurger` deleted **all 65,627 assets in a
+  single atomic `performChanges`** — PhotoKit rejects a delete that large, and (being atomic)
+  one un-deletable asset would also fail the entire request, so **nothing** was deleted.
+- **`deleteAssets` now deletes in chunks** (`defaultBatchSize` 1000), each its own
+  `performChanges`. A chunk that fails is **skipped and counted** (the run continues instead of
+  aborting), the user dismissing a macOS confirmation **stops cleanly** and reports what was
+  already deleted, and re-running the purge retries anything not yet removed. `Outcome` gained
+  `failed` / `batchError` / `cancelled`; the Purge pane shows per-batch progress and a precise
+  summary (deleted / skipped-retry-next-run / unmatched).
+
+### Note
+PhotoKit deletion requires the app's Photos grant + the macOS GUI, so it can't be validated by a
+headless harness the way the preview was; the batched design makes the first run **self-reporting**
+(it either deletes a chunk and continues, or names the exact error on a small chunk) rather than an
+opaque all-or-nothing failure. macOS shows one delete confirmation per chunk.
+
 ## [0.12.0] — 2026-06-11
 
 Fix purge verification rejecting ~all photos (the `--exiftool` size delta).

@@ -3,10 +3,22 @@ import Photos
 
 /// The ONLY code in PurpleAttic that deletes from the Photos library. Lives in the app
 /// target (never Core/CLI) so deletion can't leak into a headless path. Uses PhotoKit's
-/// sanctioned `deleteAssets`, which **always shows the macOS delete confirmation** — a free,
+/// sanctioned `deleteAssets`, which shows the macOS delete confirmation — a free,
 /// un-suppressible human-in-the-loop on the irreversible step. Deletions land in Photos'
 /// Recently Deleted for 30 days.
+///
+/// **Batched deletion (required at scale).** A single `performChanges` deleting tens of
+/// thousands of assets is rejected by PhotoKit (`PHPhotosErrorDomain 3300`) — the whole atomic
+/// request fails, and one un-deletable asset takes the entire batch down with it. So we delete
+/// in chunks: each chunk is its own `performChanges`, a failed chunk is **skipped and counted**
+/// (the run continues), and re-running the purge naturally retries anything not yet deleted.
+/// macOS shows one confirmation per chunk. (Incident 2026-06-11: 65,627-asset atomic delete →
+/// error 3300.)
 enum PhotoKitPurger {
+
+    /// Per-chunk asset count. Small enough to stay well under PhotoKit's atomic-delete ceiling
+    /// and to isolate any single un-deletable asset to its own chunk.
+    static let defaultBatchSize = 1000
 
     enum PurgeError: LocalizedError {
         case notAuthorized
@@ -25,9 +37,12 @@ enum PhotoKitPurger {
     }
 
     struct Outcome {
-        let requested: Int
-        let resolved: Int
-        let deleted: Int
+        let requested: Int       // uuids handed in
+        let resolved: Int        // PHAssets actually matched in Photos
+        let deleted: Int         // confirmed deleted
+        let failed: Int          // resolved assets in chunks that failed (retry on next run)
+        let batchError: String?  // first non-cancel chunk error, if any
+        let cancelled: Bool      // user dismissed a macOS confirmation partway
     }
 
     static func authorize(_ completion: @escaping (Bool) -> Void) {
@@ -43,9 +58,13 @@ enum PhotoKitPurger {
         }
     }
 
-    /// Resolve osxphotos UUIDs to `PHAsset`s and request their deletion. macOS shows its own
-    /// confirmation dialog; cancelling it surfaces as `.cancelled`.
-    static func deleteAssets(uuids: [String], completion: @escaping (Result<Outcome, Error>) -> Void) {
+    /// Resolve osxphotos UUIDs to `PHAsset`s and delete them in chunks. `progress(done,total)`
+    /// fires after each chunk. macOS shows its confirmation per chunk; dismissing one stops the
+    /// run and reports what was already deleted.
+    static func deleteAssets(uuids: [String],
+                             batchSize: Int = defaultBatchSize,
+                             progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
+                             completion: @escaping (Result<Outcome, Error>) -> Void) {
         authorize { ok in
             guard ok else { completion(.failure(PurgeError.notAuthorized)); return }
 
@@ -60,17 +79,48 @@ enum PhotoKitPurger {
             }
 
             let resolved = assets.count
-            PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.deleteAssets(assets as NSArray)
-            } completionHandler: { success, error in
-                if success {
-                    completion(.success(Outcome(requested: uuids.count, resolved: resolved, deleted: resolved)))
-                } else if let error {
-                    completion(.failure(PurgeError.changeFailed(error.localizedDescription)))
-                } else {
-                    completion(.failure(PurgeError.cancelled))
+            let step = max(1, batchSize)
+            let batches: [[PHAsset]] = stride(from: 0, to: resolved, by: step).map {
+                Array(assets[$0 ..< min($0 + step, resolved)])
+            }
+
+            var deleted = 0
+            var failed = 0
+            var firstError: String?
+            var cancelled = false
+
+            func finish() {
+                if deleted == 0 {
+                    if cancelled { completion(.failure(PurgeError.cancelled)); return }
+                    if let e = firstError { completion(.failure(PurgeError.changeFailed(e))); return }
+                }
+                completion(.success(Outcome(requested: uuids.count, resolved: resolved,
+                                            deleted: deleted, failed: failed,
+                                            batchError: firstError, cancelled: cancelled)))
+            }
+
+            func run(_ i: Int) {
+                if i >= batches.count { finish(); return }
+                let batch = batches[i]
+                PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.deleteAssets(batch as NSArray)
+                } completionHandler: { success, error in
+                    if success {
+                        deleted += batch.count
+                    } else if let error {
+                        failed += batch.count
+                        if firstError == nil { firstError = error.localizedDescription }
+                    } else {
+                        // nil error = user dismissed the macOS confirmation → stop here.
+                        cancelled = true
+                        finish()
+                        return
+                    }
+                    progress?(min(deleted + failed, resolved), resolved)
+                    run(i + 1)
                 }
             }
+            run(0)
         }
     }
 }
