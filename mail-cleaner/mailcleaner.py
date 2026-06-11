@@ -31,7 +31,7 @@ Output: ~/Downloads/mail-cleaner/<account>_<timestamp>/
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 import argparse
 import csv
@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from email.header import decode_header, make_header
@@ -384,6 +385,47 @@ def chunked(seq, n):
         yield seq[i:i + n]
 
 
+def mailbox_count(M: imaplib.IMAP4_SSL, mailbox: str) -> int:
+    typ, d = M.status(f'"{mailbox}"', "(MESSAGES)")
+    if typ != "OK" or not d or not d[0]:
+        return -1
+    m = re.search(rb"MESSAGES (\d+)", d[0])
+    return int(m.group(1)) if m else -1
+
+
+def expunge_until_drained(M: imaplib.IMAP4_SSL, mailbox: str, target: int,
+                          label: str, time_cap: int = 5400) -> int:
+    """Issue EXPUNGE and poll MESSAGES until it reaches ~target.
+
+    iCloud has quirks worth handling explicitly: EXPUNGE is serialized (a
+    second concurrent one returns 'NO') and processed lazily over many
+    minutes, and SEARCH DELETED returns a stale count. So we never trust a
+    single EXPUNGE return or the DELETED count — we re-issue EXPUNGE and drive
+    off the authoritative MESSAGES count until it stops dropping or hits the
+    target."""
+    deadline = time.time() + time_cap
+    last = None
+    stalled = 0
+    while time.time() < deadline:
+        try:
+            M.expunge()
+        except imaplib.IMAP4.error:
+            pass  # 'NO' — another expunge in progress; wait and re-poll
+        cnt = mailbox_count(M, mailbox)
+        sys.stdout.write(
+            f"\r  {label} expunge: INBOX {cnt:,} (target ~{target:,})    ")
+        sys.stdout.flush()
+        if cnt <= target:
+            break
+        stalled = stalled + 1 if cnt == last else 0
+        if stalled >= 12:  # ~2 min of no movement -> stop waiting
+            break
+        last = cnt
+        time.sleep(10)
+    print()
+    return mailbox_count(M, mailbox)
+
+
 def verify_from(M: imaplib.IMAP4_SSL, uids: list[bytes],
                 want: str) -> list[bytes]:
     """Re-fetch the From header for each uid and keep only those whose parsed
@@ -502,13 +544,21 @@ def cmd_act(args: argparse.Namespace) -> None:
         done += len(batch)
         sys.stdout.write(f"\r  {args.action}: {done:,}/{len(all_uids):,}")
         sys.stdout.flush()
-    # final expunge to clear any \Deleted flags (copy-fallback or non-UIDPLUS)
-    if args.action in ("delete", "trash", "archive"):
-        try:
-            M.expunge()
-        except Exception:
-            pass
-    print(f"\nDone. {done:,} messages processed ({verb}).")
+    print()
+    # Drain the \Deleted flags. UID MOVE removes immediately (nothing to do);
+    # the COPY/STORE fallback and non-UIDPLUS delete need a real expunge that
+    # we poll to completion (iCloud drains lazily — see helper).
+    needs_drain = not have_move or args.action == "delete"
+    if needs_drain:
+        pre = mailbox_count(M, args.mailbox)
+        target = max(0, pre - done)
+        print(f"flagged {done:,}; expunging "
+              f"(iCloud drains lazily, this can take a while)...")
+        final = expunge_until_drained(M, args.mailbox, target, args.action)
+        print(f"Done. {done:,} {verb}; INBOX now {final:,} "
+              f"(expected ~{target:,}).")
+    else:
+        print(f"Done. {done:,} messages processed ({verb}).")
     try:
         M.logout()
     except Exception:
