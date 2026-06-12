@@ -73,7 +73,15 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 xcrun stapler validate "$APP"
 spctl --assess --type execute --verbose=2 "$APP"
 
-echo "==> Stapling the DMG"
+echo "==> Notarizing + stapling the DMG"
+# The afterSign hook notarized the .app; the DMG container needs its own
+# ticket before it can be stapled (stapler error 65 otherwise).
+if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARIZE_PROFILE" --wait
+else
+  xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" \
+    --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+fi
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 

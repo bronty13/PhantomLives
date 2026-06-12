@@ -28,7 +28,7 @@ release. End state: a published GitHub release with both platforms attached.
 | Build | `npm run dist:mac` → universal2 (arm64 + x64) `.app`, Developer-ID-signed with hardened runtime |
 | Notarize | `scripts/notarize.cjs` (electron-builder `afterSign`): submits via `notarytool` using the `NOTARIZE_PROFILE` keychain profile, then staples the `.app` |
 | Verify | `codesign --verify --deep --strict`, `stapler validate`, `spctl --assess` — a build that fails Gatekeeper never ships |
-| DMG | staples + validates the DMG itself |
+| DMG | submits the DMG itself to `notarytool` (the container needs its own ticket — stapling an un-notarized DMG fails with error 65), then staples + validates it |
 | Tag | annotated `purplechef-v<version>` pushed to origin → triggers CI |
 | Upload | creates/reuses the draft release, uploads DMG + ZIP (+ blockmap/latest-mac.yml for a future auto-updater) |
 
