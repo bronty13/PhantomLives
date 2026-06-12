@@ -15,30 +15,42 @@
   <script src="vendor/katex/auto-render.min.js"></script>
   <script>
   (function () {
+    // Running inside PurpleMark (custom scheme) vs. a standalone export/Quick
+    // Look document (file:/about:). In-app, content arrives in chunks pulled
+    // from pm-app://app/…; standalone uses the one-shot render() path.
+    var inApp = location.protocol === 'pm-app:';
+    var APP = 'pm-app://app/';
+    var DOC = 'pm-app://doc/';
+
     // markdown-it with GitHub-flavored options. Mermaid fenced blocks are
     // emitted as <div class="mermaid"> so mermaid.run() can process them.
-    const md = window.markdownit({
-      html: true,
-      linkify: true,
-      typographer: true,
-      breaks: false,
-    });
-
-    const defaultFence = md.renderer.rules.fence ||
-      function (tokens, idx, options, env, self) {
-        return self.renderToken(tokens, idx, options);
+    function makeMd(opts) {
+      var m = window.markdownit({
+        html: true,
+        linkify: opts.linkify !== false,
+        typographer: opts.typographer !== false,
+        breaks: false,
+      });
+      var defaultFence = m.renderer.rules.fence ||
+        function (tokens, idx, options, env, self) {
+          return self.renderToken(tokens, idx, options);
+        };
+      m.renderer.rules.fence = function (tokens, idx, options, env, self) {
+        var token = tokens[idx];
+        var info = (token.info || '').trim().split(/\s+/g)[0];
+        if (info === 'mermaid') {
+          return '<div class="mermaid">' +
+            token.content.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>';
+        }
+        return defaultFence(tokens, idx, options, env, self);
       };
-    md.renderer.rules.fence = function (tokens, idx, options, env, self) {
-      const token = tokens[idx];
-      const info = (token.info || '').trim().split(/\s+/g)[0];
-      if (info === 'mermaid') {
-        return '<div class="mermaid">' +
-          token.content.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>';
-      }
-      return defaultFence(tokens, idx, options, env, self);
-    };
+      return m;
+    }
 
-    let mermaidReady = false;
+    var currentOptsKey = 'l1t1';
+    var md = makeMd({ linkify: true, typographer: true });
+
+    var mermaidReady = false;
     window.__PM_MERMAID_THEME__ = 'dark';
     function initMermaid() {
       if (mermaidReady || !window.mermaid) return;
@@ -51,28 +63,26 @@
       mermaidReady = true;
     }
 
-    const KATEX_DELIMS = [
+    var KATEX_DELIMS = [
       { left: '$$', right: '$$', display: true },
       { left: '\\[', right: '\\]', display: true },
       { left: '\\(', right: '\\)', display: false },
       { left: '$', right: '$', display: false },
     ];
 
-    const contentEl = document.getElementById('content');
+    var contentEl = document.getElementById('content');
 
-    async function render(markdown) {
-      contentEl.innerHTML = md.render(markdown || '');
-      // KaTeX math.
+    // KaTeX math + Mermaid diagrams inside one element.
+    async function mathAndMermaid(el) {
       if (window.renderMathInElement) {
         try {
-          window.renderMathInElement(contentEl, {
+          window.renderMathInElement(el, {
             delimiters: KATEX_DELIMS,
             throwOnError: false,
           });
         } catch (e) { /* ignore math errors */ }
       }
-      // Mermaid diagrams.
-      const blocks = contentEl.querySelectorAll('.mermaid');
+      var blocks = el.querySelectorAll('.mermaid');
       if (blocks.length && window.mermaid) {
         initMermaid();
         try {
@@ -81,11 +91,143 @@
       }
     }
 
+    // In-app, relative image/link targets resolve against the open document's
+    // folder, served (and confined) by the pm-app://doc/ route.
+    function rewriteRelativeURLs(el) {
+      if (!inApp) return;
+      function fix(node, attr) {
+        var v = node.getAttribute(attr);
+        if (!v || v.charAt(0) === '#' || v.charAt(0) === '/' ||
+            /^[a-zA-Z][a-zA-Z0-9+.\-]*:/.test(v)) return;
+        node.setAttribute(attr, DOC + v);
+      }
+      el.querySelectorAll('img[src]').forEach(function (n) { fix(n, 'src'); });
+      el.querySelectorAll('a[href]').forEach(function (n) { fix(n, 'href'); });
+    }
+
+    // Math/diagrams render lazily, per chunk, as chunks approach the viewport.
+    var observer = null;
+    function ensureObserver() {
+      if (observer) return observer;
+      observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            observer.unobserve(e.target);
+            mathAndMermaid(e.target);
+          }
+        });
+      }, { rootMargin: '1200px' });
+      return observer;
+    }
+
+    function updateBanner(manifest) {
+      var banner = document.getElementById('pm-truncation');
+      if (!manifest.truncated) {
+        if (banner) banner.remove();
+        return;
+      }
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'pm-truncation';
+        var label = document.createElement('span');
+        var btn = document.createElement('button');
+        btn.textContent = 'Render anyway';
+        btn.onclick = function () {
+          if (window.webkit && window.webkit.messageHandlers.pmAction) {
+            window.webkit.messageHandlers.pmAction.postMessage('renderAll');
+          }
+        };
+        banner.appendChild(label);
+        banner.appendChild(btn);
+      }
+      banner.firstChild.textContent = 'Preview truncated — this document is ' +
+        (manifest.totalBytes / 1000000).toFixed(0) + ' MB. Showing the beginning. ';
+      document.body.appendChild(banner);
+    }
+
+    // Chunked pipeline: diff the manifest against rendered chunks, re-render
+    // only what changed, viewport-first, yielding between batches.
+    var renderGeneration = 0;
+    async function refresh(version) {
+      var gen = ++renderGeneration;
+      var manifest;
+      try {
+        manifest = await (await fetch(APP + 'manifest.json?v=' + version)).json();
+      } catch (e) { return; }
+      if (gen !== renderGeneration) return;
+
+      var optsKey = 'l' + (manifest.linkify ? 1 : 0) + 't' + (manifest.typographer ? 1 : 0);
+      if (optsKey !== currentOptsKey) {
+        currentOptsKey = optsKey;
+        md = makeMd(manifest);
+        contentEl.querySelectorAll('.pm-chunk').forEach(function (el) {
+          el.dataset.hash = '';
+        });
+      }
+
+      var existing = new Map();
+      contentEl.querySelectorAll('.pm-chunk').forEach(function (el) {
+        existing.set(el.dataset.id, el);
+      });
+      var keep = new Set();
+      var queue = [];
+      manifest.chunks.forEach(function (c) {
+        var key = String(c.id);
+        keep.add(key);
+        var el = existing.get(key);
+        if (!el) {
+          el = document.createElement('div');
+          el.className = 'pm-chunk';
+          el.dataset.id = key;
+        }
+        contentEl.appendChild(el);   // (re)append — establishes manifest order
+        if (el.dataset.hash !== c.hash) queue.push({ el: el, c: c });
+      });
+      existing.forEach(function (el, key) {
+        if (!keep.has(key)) el.remove();
+      });
+      updateBanner(manifest);
+
+      // Chunks near the viewport render first; the rest fill in behind.
+      queue.sort(function (a, b) {
+        var ra = a.el.getBoundingClientRect(), rb = b.el.getBoundingClientRect();
+        var va = ra.top < innerHeight * 2 && ra.bottom > -innerHeight;
+        var vb = rb.top < innerHeight * 2 && rb.bottom > -innerHeight;
+        return (vb ? 1 : 0) - (va ? 1 : 0);
+      });
+
+      for (var i = 0; i < queue.length; i++) {
+        if (gen !== renderGeneration) return;
+        var el = queue[i].el, c = queue[i].c;
+        try {
+          var text = await (await fetch(APP + 'chunk/' + c.id + '?h=' + c.hash)).text();
+          if (gen !== renderGeneration) return;
+          el.innerHTML = md.render(text);
+          el.dataset.hash = c.hash;
+          rewriteRelativeURLs(el);
+          ensureObserver().observe(el);
+        } catch (e) { /* keep whatever the chunk showed before */ }
+        if (i % 4 === 3) {
+          await new Promise(function (r) { setTimeout(r, 0); });
+        }
+      }
+    }
+
+    // One-shot whole-document render — standalone exports and Quick Look.
+    // Math/diagrams render eagerly: PDF export snapshots the full page, where
+    // lazy observers would never fire for offscreen content.
+    async function render(markdown) {
+      contentEl.innerHTML = md.render(markdown || '');
+      rewriteRelativeURLs(contentEl);
+      await mathAndMermaid(contentEl);
+    }
+
     window.PM = {
       ready: true,
       render: render,
+      refresh: refresh,
       setTheme: function (name) {
-        const valid = ['default', 'nord', 'solarized', 'one-dark'];
+        var valid = ['default', 'nord', 'solarized', 'one-dark'];
         document.body.classList.forEach(function (c) {
           if (c.indexOf('theme-') === 0) document.body.classList.remove(c);
         });
@@ -94,7 +236,7 @@
         }
       },
       setWidth: function (name) {
-        const valid = ['narrow', 'default', 'wide', 'full'];
+        var valid = ['narrow', 'default', 'wide', 'full'];
         document.body.classList.forEach(function (c) {
           if (c.indexOf('width-') === 0) document.body.classList.remove(c);
         });
@@ -106,15 +248,15 @@
         document.body.classList.forEach(function (c) {
           if (c.indexOf('theme-') === 0) document.body.classList.remove(c);
         });
-        const b = document.body.style;
+        var b = document.body.style;
         if (v.background) b.background = v.background;
         if (v.color) b.color = v.color;
-        const map = {
+        var map = {
           muted: '--pm-muted', link: '--pm-link', rule: '--pm-rule',
           ruleStrong: '--pm-rule-strong', codeBg: '--pm-code-bg',
           preBg: '--pm-pre-bg', stripe: '--pm-stripe',
         };
-        for (const k in map) { if (v[k]) b.setProperty(map[k], v[k]); }
+        for (var k in map) { if (v[k]) b.setProperty(map[k], v[k]); }
         if (v.mermaid) window.__PM_MERMAID_THEME__ = v.mermaid;
       },
     };

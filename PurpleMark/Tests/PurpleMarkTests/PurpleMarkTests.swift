@@ -597,6 +597,73 @@ final class DocumentVersionTests: XCTestCase {
     }
 }
 
+final class MarkdownChunkerTests: XCTestCase {
+    func testChunksRoundTripToOriginal() {
+        let blocks = (1...200).map { "## Block \($0)\n\nparagraph text for block \($0)\n" }
+        let md = blocks.joined(separator: "\n")
+        let result = MarkdownChunker.split(md, targetBytes: 500)
+        XCTAssertGreaterThan(result.chunks.count, 1)
+        XCTAssertEqual(result.chunks.map { String($0.text) }.joined(), md,
+                       "concatenated chunks must reproduce the document exactly")
+        XCTAssertFalse(result.truncated)
+        XCTAssertEqual(result.totalBytes, md.utf8.count)
+    }
+
+    func testNeverSplitsInsideFences() {
+        let fenced = "```\n" + (1...100).map { "code line \($0)\n\n" }.joined() + "```\n"
+        let md = "intro\n\n" + fenced + "\nafter\n"
+        let result = MarkdownChunker.split(md, targetBytes: 64)
+        // Every chunk must contain an even number of fence delimiters.
+        for chunk in result.chunks {
+            let fences = chunk.text.components(separatedBy: "\n")
+                .filter { $0.hasPrefix("```") }.count
+            XCTAssertEqual(fences % 2, 0, "a chunk must not cut a fence open")
+        }
+        XCTAssertEqual(result.chunks.map { String($0.text) }.joined(), md)
+    }
+
+    func testStableHashes() {
+        let md = "# A\n\ntext\n\n# B\n\nmore\n"
+        let a = MarkdownChunker.split(md, targetBytes: 8)
+        let b = MarkdownChunker.split(md, targetBytes: 8)
+        XCTAssertEqual(a.chunks.map(\.hash), b.chunks.map(\.hash))
+        XCTAssertEqual(a.chunks.map(\.id), Array(0..<a.chunks.count))
+    }
+
+    func testLocalEditChangesOneChunkHash() {
+        let blocks = (1...40).map { "## Block \($0)\n\n" + String(repeating: "word ", count: 60) + "\n" }
+        let md = blocks.joined(separator: "\n")
+        let edited = md.replacingOccurrences(of: "Block 20", with: "Block twenty")
+        let a = MarkdownChunker.split(md, targetBytes: 400)
+        let b = MarkdownChunker.split(edited, targetBytes: 400)
+        XCTAssertEqual(a.chunks.count, b.chunks.count)
+        let changed = zip(a.chunks, b.chunks).filter { $0.hash != $1.hash }
+        XCTAssertEqual(changed.count, 1, "an in-place edit re-renders exactly one chunk")
+    }
+
+    func testHoistsReferenceDefinitions() {
+        let md = "See [the spec][spec].\n\n" + String(repeating: "filler text\n\n", count: 100)
+            + "[spec]: https://example.com\n"
+        let result = MarkdownChunker.split(md, targetBytes: 200)
+        XCTAssertTrue(result.refDefsSuffix.contains("[spec]: https://example.com"))
+    }
+
+    func testCapTruncates() {
+        let md = (1...100).map { "paragraph \($0)\n" }.joined(separator: "\n")
+        let result = MarkdownChunker.split(md, targetBytes: 64, maxTotalBytes: 200)
+        XCTAssertTrue(result.truncated)
+        let rendered = result.chunks.map { String($0.text) }.joined()
+        XCTAssertTrue(md.hasPrefix(rendered))
+        XCTAssertLessThan(rendered.utf8.count, md.utf8.count)
+        XCTAssertEqual(result.totalBytes, md.utf8.count, "totalBytes reports the full size")
+    }
+
+    func testFNV1aKnownVector() {
+        // FNV-1a 64-bit of "a" is 0xaf63dc4c8601ec8c.
+        XCTAssertEqual(MarkdownChunker.fnv1a(Substring("a")), 0xaf63dc4c8601ec8c)
+    }
+}
+
 final class FindCapTests: XCTestCase {
     @MainActor
     func testMatchesAreCapped() {

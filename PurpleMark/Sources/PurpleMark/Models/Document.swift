@@ -35,6 +35,8 @@ final class Document: ObservableObject, Identifiable {
     @Published var loadState: LoadState = .ready
     /// Last scroll fraction (0…1), carried across the Document⇄Markdown toggle.
     @Published var scrollFraction: Double = 0
+    /// User override of the large-file preview cap ("Render anyway").
+    @Published var renderFullPreview = false
 
     /// Whole-document scan results, refreshed in a debounced background task.
     @Published private(set) var outline: [OutlineItem] = []

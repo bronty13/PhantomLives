@@ -30,14 +30,19 @@ struct SidebarView: View {
 private struct OutlineList: View {
     @ObservedObject var doc: Document
 
+    /// Hard bound on rendered rows. A 100MB document can carry 50k+ headings —
+    /// enough eagerly-built SwiftUI rows to abort in AttributeGraph. LazyVStack
+    /// defers row creation; the cap bounds the bookkeeping too.
+    private static let maxRows = 4_000
+
     var body: some View {
         let items = doc.outline
         if items.isEmpty {
             placeholder("No headings yet.\nAdd a # heading to build the outline.")
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(items) { item in
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(items.prefix(Self.maxRows)) { item in
                         Button { jump(to: item) } label: {
                             HStack(spacing: 8) {
                                 Text("H\(item.level)")
@@ -56,6 +61,12 @@ private struct OutlineList: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                    }
+                    if items.count > Self.maxRows {
+                        Text("Outline truncated — \(items.count) headings total")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(10)
                     }
                 }
                 .padding(.vertical, 4)
@@ -104,7 +115,7 @@ private struct FileList: View {
                 placeholderView("Open a folder to browse its Markdown files.")
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(state.folderFiles, id: \.self) { url in
                             Button { state.open(url) } label: {
                                 HStack(spacing: 8) {

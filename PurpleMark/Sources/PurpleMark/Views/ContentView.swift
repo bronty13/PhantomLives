@@ -178,12 +178,19 @@ private struct EditorPane: View {
             case .ready:
                 switch doc.viewMode {
                 case .document:
+                    let policy = LargeFilePolicy.features(forByteSize: doc.byteSize)
                     MarkdownWebView(
                         markdown: doc.text,
                         contentID: doc.id,
                         contentVersion: doc.textVersion,
                         colors: themes.colors(forID: settings.themeRaw),
                         width: settings.readingWidth,
+                        docFolder: doc.fileURL?.deletingLastPathComponent(),
+                        options: .init(linkify: policy.typographyAllowed,
+                                       typographer: policy.typographyAllowed),
+                        capBytes: (policy.previewCapped && !doc.renderFullPreview)
+                            ? LargeFilePolicy.previewCapBytes : nil,
+                        onRenderAnyway: { doc.renderFullPreview = true },
                         onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
                         scrollTo: doc.scrollFraction,
                         onOpenFile: { url in state.openDroppedFiles([url]) })
