@@ -13,7 +13,11 @@ previewer for `.md` files.
   **AA** menu sets text size, theme, and reading width; then bulleted/numbered
   list, blockquote, code block (`{}`), and link (⌘K).
 - **Share** menu — Export to PDF / HTML, Open File, Open Folder.
-- **Status bar** — word / character / line counts and reading time.
+- **Status bar** — word / character / line counts and reading time; while text
+  is selected it shows the selection's counts instead. A **Large file** badge
+  appears for documents over 10 MB (hover it for what that means).
+- **Title bar** — drag the little document icon to copy/move the file;
+  ⌘-click the title for the folder path.
 
 ## Tabs
 
@@ -27,15 +31,43 @@ tab — the window shows a colored border while the file hovers over it. Drop
 several at once to open them all. (Double-clicking a `.md` file in Finder, or
 dropping it on the app icon, works too.)
 
+Your tabs come back: PurpleMark **restores your open tabs** (and which one was
+active) the next time you launch it. And quitting with unsaved changes is
+safe — PurpleMark asks **Save / Discard / Cancel** for each edited tab.
+
+If another app changes a file you have open (a `git pull`, another editor),
+PurpleMark notices: if you have no unsaved edits it quietly reloads; if you do,
+it asks whether to keep your changes or reload from disk.
+
 ## Editing
 
 Type in **Markdown** view; flip to **Document** view to see it rendered, with:
 
 - GitHub-flavored markdown (tables, task lists, fenced code…)
+- **Local images** — `![](images/photo.png)` renders, resolved next to your
+  document; relative links to other `.md` files open in a new tab on click
 - **Mermaid** diagrams — fence a block with ` ```mermaid `
 - **LaTeX** math — inline `$…$` or display `$$…$$` / `\[ … \]`
 
-Everything renders offline — no internet needed.
+Everything renders offline — no internet needed. Links to websites open in
+your browser, never inside the preview. Zoom the Document view with **⌘=** /
+**⌘−** (and **⌘0** for actual size).
+
+**A note on safety:** markdown can embed raw HTML. PurpleMark renders the
+harmless kind (images, tables, `<details>`…) but strips scripts and event
+handlers, so opening a markdown file from anywhere is safe. If you author
+documents that genuinely need scripts, there's an opt-in under Settings →
+Editor.
+
+## Large files
+
+PurpleMark stays smooth even with huge documents (think 100 MB log digests or
+book manuscripts). Big files open in the background with a progress spinner.
+Past **10 MB** a "Large file" badge appears in the status bar and a few
+luxuries pause to keep typing instant: spellcheck, smart typography, and
+Focus/Typewriter modes. Past **48 MB** the Document view shows the beginning
+of the file with a **Render anyway** button (the Markdown view always shows
+everything).
 
 ## Find & Replace
 
@@ -48,7 +80,8 @@ to close. (Opening find automatically switches to the Markdown view.)
 ## Sidebar: Outline & Files
 
 - **Outline** — a live table of contents of your document's headings (H1 blue,
-  H2 magenta…). Click a heading to jump to it.
+  H2 magenta…). Click a heading to jump straight to it — in Markdown view the
+  caret lands on that line; in Document view the heading scrolls into view.
 - **Files** — open a folder (the folder button, or File ▸ Open Folder…) to
   browse and switch between its `.md` files.
 
@@ -68,6 +101,9 @@ files get a **content-aware thumbnail icon** (a little page preview) in Finder.
 to `~/Downloads/PurpleMark/` by default (change it in Settings ▸ Export). Mermaid
 diagrams and math are preserved in both formats; the HTML is fully self-contained.
 
+**Print** with **⌘P** — the rendered document (diagrams and math included) goes
+to the standard macOS print panel.
+
 ## Settings
 
 - **General** — Zen mode, word wrap, auto-save.
@@ -79,7 +115,8 @@ diagrams and math are preserved in both formats; the HTML is fully self-containe
   view and to PDF/HTML exports.
 - **Editor** — font size, editor font (including accessibility fonts), line
   numbers, sync scroll, auto-close brackets & continue lists, spell check, tab
-  width.
+  width, and "Allow raw HTML scripts in preview" (off by default — see the
+  safety note under *Editing*).
 - **Writing** — Focus mode (dim other paragraphs), Typewriter mode (center the
   caret line), Zen mode.
 - **Backup** — on-launch backup of your PurpleMark settings & recent-files list

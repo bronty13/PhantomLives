@@ -7,9 +7,10 @@ Document⇄Markdown toggle, bundled-offline Mermaid/LaTeX, tabs, find/replace,
 custom themes, and Sparkle auto-update.
 
 - **Stack:** Swift / SwiftUI, macOS 14+, **XcodeGen** (`project.yml`).
-- **Current version:** git-derived `1.0.<commit-count>` (stamped into the built
+- **Current version:** git-derived `1.1.<commit-count>` (stamped into the built
   bundle by `build-app.sh`; tracked plists carry `0.0.0` placeholders).
-- **Status:** v1 complete. Only the **iOS reader** remains on the roadmap.
+- **Status:** v1.1 — large-file (100MB) overhaul + sanitized rendering complete
+  (see CHANGELOG 1.1.0). Only the **iOS reader** remains on the roadmap.
 
 ## Targets (`project.yml` → 5)
 
@@ -19,7 +20,7 @@ custom themes, and Sparkle auto-update.
 | `PurpleMarkRenderCore` | framework | Markdown→HTML pipeline + bundled JS/CSS/fonts + the `ThemeColors` model + the Finder thumbnail renderer. Shared by the app **and** both extensions so rendering is byte-identical. |
 | `PurpleMarkQuickLook` | app-extension | `QLPreviewProvider` — Finder spacebar preview. |
 | `PurpleMarkThumbnail` | app-extension | `QLThumbnailProvider` — content-aware `.md` Finder icon. |
-| `PurpleMarkTests` | unit-test | XCTest (~33 tests). |
+| `PurpleMarkTests` | unit-test | XCTest (66 tests, incl. a WKWebView sanitization integration test). |
 
 Sparkle 2 is a SwiftPM package dep of the app; Xcode embeds `Sparkle.framework`
 and `build-app.sh` re-signs its nested XPCServices/Updater/Autoupdate inside-out.
@@ -28,18 +29,58 @@ and `build-app.sh` re-signs its nested XPCServices/Updater/Autoupdate inside-out
 
 Hybrid native-shell + bundled-JS (like OpenMark/MarkEdit). `RenderCore/Web/`
 holds `index.html` + `styles.css` + vendored **offline** `markdown-it`,
-`mermaid`, and `katex` (woff2 fonts base64-inlined for export/QL). The page
-exposes `window.PM = { render, setWidth, setThemeVars, setTheme }`.
+`dompurify`, `mermaid`, and `katex` (woff2 fonts base64-inlined for export/QL).
+The page exposes `window.PM = { render, refresh, scrollToHeading, setWidth,
+setThemeVars, setTheme }`.
 
 - **Live in-app Document view** (`MarkdownWebView`, NSViewRepresentable): loads
-  `index.html` once via `loadFileURL`, then pushes markdown/theme/width changes
-  through `evaluateJavaScript` (libraries parse once; re-renders are cheap).
+  the page over a custom **`pm-app://` scheme** (`PreviewSchemeHandler`), which
+  serves bundled assets, a chunk **manifest** (`{version, hashes}`), individual
+  ~64KB markdown **chunks** (`MarkdownChunker` — blank-line boundaries, never
+  inside fences, FNV-1a hashes, ref-def hoisting), and **`pm-app://doc/<path>`**
+  for resources next to the open document (local images; path-confined). A
+  render push is one tiny `PM.refresh(version)`; the page diffs hashes and
+  re-renders only changed chunks (viewport-first, `content-visibility:auto`,
+  KaTeX/Mermaid via IntersectionObserver). Past the 48MB cap the preview
+  truncates with a "Render anyway" banner. Web-process termination reloads
+  + replays state.
+- **Sanitization:** every render path routes through DOMPurify unless
+  `Options.allowRawHTML` (Settings opt-in); Mermaid `strict` by default;
+  external links open in the browser via the navigation policy.
 - **Export + Quick Look** (`RenderCore.standaloneHTML`): builds one
   self-contained HTML string (everything inlined) — used for HTML export, PDF
-  export (offscreen `WKWebView.createPDF`), and the QL preview extension.
+  export (offscreen `WKWebView.createPDF`), Print (`printOperation`), and the
+  QL preview extension (2MB cap, always sanitized). It textually extracts the
+  page's single IIFE (`appScript()`) — **the index.html JS must stay one
+  `(function () { … })();` block.**
 - **Theming** is unified through `ThemeColors` (9 colors + `isDark`) applied as
   inline CSS variables via `PM.setThemeVars`. Built-in themes
   (`ThemeColors.builtin(_:)`) and custom themes share this one path.
+
+## Large-file architecture (the 1.1.0 overhaul)
+
+A 100MB file must never hang the main thread. The invariants:
+
+- **`Document` owns an `NSTextStorage`**; `SourceTextView` attaches its layout
+  manager to it (`replaceTextStorage`, non-contiguous layout). A keystroke
+  edits in place and calls `doc.noteEdited()` — never copy `text` per edit.
+  `Document.text` materializes lazily (save, preview push, find, index).
+- **Change tracking is `textVersion`** (Int). Never compare document strings;
+  dirty = `textVersion != savedVersion` (so undo-to-saved still shows Edited).
+- **`DocumentIndex`** (one debounced background pass) provides outline, stats,
+  `lineStartOffsets`, and fence ranges. Consumers: sidebar, status bar,
+  `LineNumberRuler` (binary search, not count-from-zero), the viewport
+  highlighter's fence coloring, and outline line-jumps.
+- **Highlighting is viewport-only** past 300k UTF-16 units (`highlightRange`),
+  re-run on an 80ms scroll debounce; the multiline fence regex is **gone** —
+  don't reintroduce whole-document regex passes.
+- **`LargeFilePolicy`** (pure) maps byteSize → feature flags: >10MB pauses
+  spellcheck/typography/focus modes and stretches debounces; >48MB caps the
+  preview. Status bar shows the "Large file" capsule.
+- SwiftUI hazard: never `ForEach` an unbounded document-derived list eagerly —
+  the outline sidebar is a `LazyVStack` capped at 4,000 rows because 50k+ rows
+  abort in AttributeGraph (found with the 100MB fixture).
+- Fixture: `./Scripts/make-bigfile.sh 100`.
 
 ## File map
 
@@ -50,19 +91,26 @@ Sources/PurpleMark/
               Commands.swift (EditorAction bus + ExportCommands), Info.plist
               (CFBundleDocumentTypes/LSHandlerRank, UTImportedTypeDeclarations,
               Sparkle SUFeedURL/SUPublicEDKey), PurpleMark.entitlements
-  Models/     Document.swift (per-tab state), AppState.swift (tab list + active
-              + sidebar/find/folder), AppSettings.swift (@Stored UserDefaults
-              wrapper), ThemeStore.swift (built-in+custom themes, persisted),
-              FindController.swift (matching + command bus)
-  Views/      ContentView.swift (TabBar + DocumentWindow + toolbar + EditorPane),
-              TabBar, SourceTextView (NSTextView: highlight, ruler, format,
-              find, focus/typewriter), LineNumberRuler, SidebarView
-              (Outline|Files), StatusBar, FindReplaceBar, SettingsView,
+  Models/     Document.swift (per-tab state: NSTextStorage, versions, async
+              load, file watch, per-doc UndoManager), AppState.swift (tab list
+              + active + sidebar/find/folder + session persist/restore),
+              AppSettings.swift (@Stored UserDefaults wrapper),
+              LargeFilePolicy.swift (size→feature flags), ThemeStore.swift
+              (built-in+custom themes, persisted), FindController.swift
+              (matching + debounced recompute + command bus)
+  Views/      ContentView.swift (TabBar + DocumentWindow + toolbar + EditorPane
+              + loading/failed panes), TabBar, SourceTextView (NSTextView:
+              viewport highlight, ruler, format, find, focus/typewriter,
+              selection stats), LineNumberRuler, SidebarView (Outline|Files,
+              LazyVStack + row cap), StatusBar, FindReplaceBar, SettingsView,
               ThemeEditor (color pickers + live preview + Color⇄hex)
-  Services/   FileService, ExportService, BackupService, DefaultHandlerService,
-              OutlineParser, UpdaterController (Sparkle)
-Sources/PurpleMarkRenderCore/  RenderCore, MarkdownWebView, ThemeColors,
-              MarkdownThumbnail, Web/{index.html, styles.css, vendor/…}
+  Services/   FileService, FileLoader (async read + encoding detection),
+              DocumentIndex (one-pass scan), ExportService (HTML/PDF/Print),
+              BackupService, DefaultHandlerService, OutlineParser (wrapper),
+              UpdaterController (Sparkle)
+Sources/PurpleMarkRenderCore/  RenderCore, MarkdownWebView, MarkdownChunker,
+              PreviewSchemeHandler, ThemeColors, MarkdownThumbnail,
+              Web/{index.html, styles.css, vendor/…}
 Sources/PurpleMarkQuickLook/   PreviewProvider + Info.plist + entitlements
 Sources/PurpleMarkThumbnail/   ThumbnailProvider + Info.plist + entitlements
 Scripts/release.sh, Scripts/generate-icon.swift
