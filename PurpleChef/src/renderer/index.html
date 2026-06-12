@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    />
+    <title>Purple Chef</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <!-- ===== Title ===== -->
+    <section id="screen-title" class="screen active">
+      <div class="title-wrap">
+        <canvas id="logo-canvas" width="360" height="280"></canvas>
+        <h1 class="game-title">Purple <span>Chef</span></h1>
+        <p class="tagline">A deliciously chaotic cook-off — you vs. the machine!</p>
+        <div class="menu-buttons">
+          <button class="btn big primary" data-nav="setup">▶&nbsp; Play</button>
+          <button class="btn" data-nav="help">How to Play</button>
+          <button class="btn" data-nav="scores">Scoreboard</button>
+          <button class="btn" data-nav="trophies">Trophy Shelf</button>
+          <button class="btn" data-nav="settings">Settings</button>
+        </div>
+        <p class="version-line">v<span id="app-version">?</span> · a PhantomLives kitchen</p>
+      </div>
+    </section>
+
+    <!-- ===== Match setup ===== -->
+    <section id="screen-setup" class="screen">
+      <h2 class="screen-title">Pick your battlefield</h2>
+      <div id="level-cards" class="level-cards"></div>
+      <h2 class="screen-title">How spicy?</h2>
+      <div id="difficulty-cards" class="difficulty-cards"></div>
+      <div class="row-center">
+        <button class="btn" data-nav="title">← Back</button>
+        <button id="btn-start" class="btn big primary">Start Cooking! 🔥</button>
+      </div>
+    </section>
+
+    <!-- ===== Game ===== -->
+    <section id="screen-game" class="screen game-screen">
+      <div class="hud-top">
+        <div class="score-pill you">
+          <span class="who" id="hud-name-you">You</span>
+          <span class="pts" id="hud-score-you">0</span>
+          <span class="combo" id="hud-combo-you"></span>
+        </div>
+        <div class="timer-pill" id="hud-timer">3:00</div>
+        <div class="score-pill rival">
+          <span class="who">Chef Byte 🤖</span>
+          <span class="pts" id="hud-score-ai">0</span>
+          <span class="combo" id="hud-combo-ai"></span>
+        </div>
+      </div>
+      <div class="panels">
+        <div class="panel">
+          <div class="orders" id="orders-you"></div>
+          <div class="canvas-holder"><canvas id="cv-you"></canvas></div>
+        </div>
+        <div class="panel rival-panel">
+          <div class="orders" id="orders-ai"></div>
+          <div class="canvas-holder"><canvas id="cv-ai"></canvas></div>
+        </div>
+      </div>
+      <div class="hint-bar" id="hint-bar">
+        Move: WASD / arrows · Act: Space or E · Click a station to walk there and use it · Esc: pause
+      </div>
+      <div id="pause-overlay" class="overlay hidden">
+        <div class="overlay-card">
+          <h2>Paused 🧘</h2>
+          <button id="btn-resume" class="btn big primary">Resume</button>
+          <button id="btn-quit" class="btn">Quit to Menu</button>
+        </div>
+      </div>
+      <div id="countdown-overlay" class="overlay hidden">
+        <div class="countdown" id="countdown-num">3</div>
+      </div>
+    </section>
+
+    <!-- ===== Results ===== -->
+    <section id="screen-results" class="screen">
+      <div id="confetti-box"></div>
+      <div class="results-card">
+        <h2 id="results-banner">You Win! 🎉</h2>
+        <div class="stars" id="results-stars"></div>
+        <div class="results-scores">
+          <div class="rs you">
+            <div class="rs-name" id="results-name-you">You</div>
+            <div class="rs-score" id="results-score-you">0</div>
+            <div class="rs-sub" id="results-sub-you"></div>
+          </div>
+          <div class="rs vs">vs</div>
+          <div class="rs rival">
+            <div class="rs-name">Chef Byte 🤖</div>
+            <div class="rs-score" id="results-score-ai">0</div>
+            <div class="rs-sub" id="results-sub-ai"></div>
+          </div>
+        </div>
+        <div id="results-trophies" class="results-trophies"></div>
+        <div class="row-center">
+          <button id="btn-rematch" class="btn big primary">Rematch 🍳</button>
+          <button class="btn" data-nav="setup">Change Kitchen</button>
+          <button class="btn" data-nav="title">Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Scoreboard ===== -->
+    <section id="screen-scores" class="screen">
+      <h2 class="screen-title">Scoreboard 📋</h2>
+      <div id="scores-summary" class="scores-summary"></div>
+      <div class="table-wrap">
+        <table id="scores-table">
+          <thead>
+            <tr>
+              <th>When</th><th>Kitchen</th><th>Difficulty</th><th>You</th><th>Chef Byte</th>
+              <th>Result</th><th>Stars</th><th>Served</th><th>Missed</th><th>Best Combo</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row-center"><button class="btn" data-nav="title">← Back</button></div>
+    </section>
+
+    <!-- ===== Trophies ===== -->
+    <section id="screen-trophies" class="screen">
+      <h2 class="screen-title">Trophy Shelf 🏆</h2>
+      <div id="trophy-grid" class="trophy-grid"></div>
+      <div class="row-center"><button class="btn" data-nav="title">← Back</button></div>
+    </section>
+
+    <!-- ===== Settings ===== -->
+    <section id="screen-settings" class="screen">
+      <h2 class="screen-title">Settings ⚙️</h2>
+      <div class="settings-card">
+        <h3>Chef</h3>
+        <label class="setting-row">
+          <span>Your chef name</span>
+          <input id="set-name" type="text" maxlength="20" />
+        </label>
+        <label class="setting-row">
+          <span>Sound effects</span>
+          <input id="set-sound" type="checkbox" />
+        </label>
+        <label class="setting-row">
+          <span>Music</span>
+          <input id="set-music" type="checkbox" />
+        </label>
+      </div>
+      <div class="settings-card">
+        <h3>Backup</h3>
+        <label class="setting-row">
+          <span>Auto-backup on launch</span>
+          <input id="bk-enabled" type="checkbox" />
+        </label>
+        <div class="setting-row">
+          <span>Backup folder</span>
+          <span class="grow"></span>
+          <button id="bk-choose" class="btn small">Choose…</button>
+          <button id="bk-default" class="btn small">Default</button>
+          <button id="bk-reveal" class="btn small">Reveal in Finder</button>
+        </div>
+        <div class="path-caption" id="bk-path"></div>
+        <label class="setting-row">
+          <span>Keep backups for (days, 0 = forever)</span>
+          <input id="bk-retention" type="number" min="0" max="365" step="1" />
+        </label>
+        <div class="setting-row">
+          <button id="bk-run" class="btn small primary">Run Backup Now</button>
+          <span id="bk-status" class="bk-status"></span>
+        </div>
+        <div class="setting-row"><span>Last backup: <b id="bk-last">never</b></span></div>
+        <h4>Recent backups</h4>
+        <div id="bk-list" class="bk-list"></div>
+      </div>
+      <div class="row-center"><button class="btn" data-nav="title">← Back</button></div>
+    </section>
+
+    <!-- ===== Help ===== -->
+    <section id="screen-help" class="screen">
+      <h2 class="screen-title">How to Play 🍳</h2>
+      <div class="help-grid">
+        <div class="help-card">
+          <h3>🎯 The goal</h3>
+          <p>Orders arrive as little tickets. Cook the dish, plate it, and pop it through the
+          serving window before the customer's patience bar runs out. Whoever banks more points
+          before the clock hits zero — you or <b>Chef Byte</b> — wins the round.</p>
+        </div>
+        <div class="help-card">
+          <h3>🕹️ Controls</h3>
+          <p><b>WASD / arrow keys</b> move. <b>Space</b> or <b>E</b> picks up, puts down, pours and
+          serves — it always does the sensible thing for whatever you're facing. Prefer the mouse?
+          <b>Click any station</b> and your chef walks over and uses it. Click the floor to stroll.</p>
+        </div>
+        <div class="help-card">
+          <h3>🔪 Prep</h3>
+          <p>Grab ingredients from crates. Pop choppables on a <b>cutting board</b> and stand at it —
+          your chef chops away automatically. Chopped tomatoes, onions and patties go in a
+          <b>stove pot</b>. Soup needs <b>three</b> of the same veg!</p>
+        </div>
+        <div class="help-card">
+          <h3>🍽️ Plate &amp; serve</h3>
+          <p>Take a plate from the stack, hold it against prepared food to scoop it on (a done pot
+          pours straight onto your plate), then bring it to the <b>serving window</b>. Buns hop onto
+          a held plate right from their crate.</p>
+        </div>
+        <div class="help-card">
+          <h3>🔥 Don't burn it</h3>
+          <p>A finished pot keeps sizzling — leave it too long and it <b>burns</b>. Scrape a burnt
+          pot with empty hands, take a deep breath, start again. The bin forgives all mistakes.</p>
+        </div>
+        <div class="help-card">
+          <h3>💰 Scoring</h3>
+          <p>Each dish pays its <b>base price + a tip</b> that shrinks as the customer waits. Serve
+          tickets <b>in order</b> to build a tip multiplier up to <b>4×</b> — miss an order and the
+          combo (and a few points) evaporate. Score enough for ⭐, ⭐⭐ or ⭐⭐⭐, and win matches to
+          fill your Trophy Shelf!</p>
+        </div>
+      </div>
+      <div class="row-center"><button class="btn" data-nav="title">← Back</button></div>
+    </section>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
