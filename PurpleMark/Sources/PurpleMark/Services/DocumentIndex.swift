@@ -48,12 +48,24 @@ struct DocumentIndex: Sendable {
     /// Fenced-code blocks as UTF-16 character ranges (delimiters included),
     /// for the syntax highlighter. `totalLength` is the document's UTF-16 length.
     func fenceCharacterRanges(totalLength: Int) -> [NSRange] {
-        fenceLineRanges.map { r in
-            let start = lineStartOffsets[r.lowerBound]
-            let end = r.upperBound < lineStartOffsets.count
-                ? lineStartOffsets[r.upperBound] : totalLength
-            return NSRange(location: start, length: max(0, end - start))
-        }
+        fenceLineRanges.map { characterRange(forLines: $0, totalLength: totalLength) }
+    }
+
+    /// Only the fences that intersect `target` — a viewport-sized answer even
+    /// when the document holds tens of thousands of code blocks.
+    func fenceCharacterRanges(intersecting target: NSRange, totalLength: Int) -> [NSRange] {
+        guard !fenceLineRanges.isEmpty else { return [] }
+        let firstLine = lineIndex(forUTF16Offset: target.location)
+        let lastLine = lineIndex(forUTF16Offset: max(target.location, NSMaxRange(target) - 1))
+        return fenceLineRanges
+            .filter { $0.lowerBound <= lastLine && $0.upperBound > firstLine }
+            .map { characterRange(forLines: $0, totalLength: totalLength) }
+    }
+
+    private func characterRange(forLines r: Range<Int>, totalLength: Int) -> NSRange {
+        let start = r.lowerBound < lineStartOffsets.count ? lineStartOffsets[r.lowerBound] : totalLength
+        let end = r.upperBound < lineStartOffsets.count ? lineStartOffsets[r.upperBound] : totalLength
+        return NSRange(location: start, length: max(0, end - start))
     }
 
     /// Single linear pass over the text. ~O(n) with no intermediate line array.

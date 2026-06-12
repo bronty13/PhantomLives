@@ -480,6 +480,72 @@ final class DocumentIndexTests: XCTestCase {
     }
 }
 
+final class ViewportHighlighterTests: XCTestCase {
+    @MainActor
+    func testSubRangeHighlightLeavesOutsideUntouched() {
+        let md = "# Outside\n\n# Inside\n\nplain"
+        let storage = NSTextStorage(string: md)
+        let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        MarkdownHighlighter.applyBase(to: storage, baseFont: font)
+
+        // Highlight only the second heading's paragraph.
+        let inside = (md as NSString).range(of: "# Inside")
+        MarkdownHighlighter.apply(to: storage, baseFont: font, range: inside)
+
+        let insideColor = storage.attribute(.foregroundColor, at: inside.location,
+                                            effectiveRange: nil) as? NSColor
+        XCTAssertEqual(insideColor, SourcePalette.heading)
+        let outsideColor = storage.attribute(.foregroundColor, at: 0,
+                                             effectiveRange: nil) as? NSColor
+        XCTAssertEqual(outsideColor, SourcePalette.text,
+                       "text outside the range keeps base attributes")
+    }
+
+    @MainActor
+    func testHeadingAnchorsMatchAtSubRangeStart() {
+        // ^ must match at the range start when it's a true line start.
+        let md = "intro\n# Head\ntail"
+        let storage = NSTextStorage(string: md)
+        let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let head = (md as NSString).range(of: "# Head")
+        MarkdownHighlighter.apply(to: storage, baseFont: font, range: head)
+        let color = storage.attribute(.foregroundColor, at: head.location,
+                                      effectiveRange: nil) as? NSColor
+        XCTAssertEqual(color, SourcePalette.heading)
+    }
+
+    @MainActor
+    func testFenceRangesColorCode() {
+        let md = "a\n```\ncode here\n```\nb"
+        let storage = NSTextStorage(string: md)
+        let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let idx = DocumentIndex.build(from: md)
+        let fences = idx.fenceCharacterRanges(totalLength: (md as NSString).length)
+        MarkdownHighlighter.apply(to: storage, baseFont: font, fenceRanges: fences)
+        let codeLoc = (md as NSString).range(of: "code here").location
+        let color = storage.attribute(.foregroundColor, at: codeLoc,
+                                      effectiveRange: nil) as? NSColor
+        XCTAssertEqual(color, SourcePalette.code)
+    }
+}
+
+final class FenceIntersectionTests: XCTestCase {
+    func testIntersectingFencesOnly() {
+        let md = "```\na\n```\nplain\nplain\n```\nb\n```\ntail"
+        let ns = md as NSString
+        let idx = DocumentIndex.build(from: md)
+        XCTAssertEqual(idx.fenceLineRanges.count, 2)
+
+        let plain = ns.range(of: "plain\nplain")
+        let around = idx.fenceCharacterRanges(intersecting: plain, totalLength: ns.length)
+        XCTAssertTrue(around.isEmpty, "no fence overlaps the plain lines")
+
+        let secondFence = ns.range(of: "b")
+        let hits = idx.fenceCharacterRanges(intersecting: secondFence, totalLength: ns.length)
+        XCTAssertEqual(hits.count, 1)
+    }
+}
+
 final class LargeFilePolicyTests: XCTestCase {
     func testSmallFileKeepsEverything() {
         let p = LargeFilePolicy.features(forByteSize: 1_000_000)

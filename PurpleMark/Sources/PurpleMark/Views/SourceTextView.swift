@@ -119,6 +119,9 @@ struct SourceTextView: NSViewRepresentable {
             lastKnownVersion = doc.textVersion
             focusDimApplied = false
             textView.setSelectedRange(NSRange(location: 0, length: 0))
+            // Base attributes over everything (one cheap uniform run), syntax
+            // colors over the viewport.
+            MarkdownHighlighter.applyBase(to: doc.storage, baseFont: parent.settings.editorFont())
             highlight()
         }
 
@@ -183,6 +186,14 @@ struct SourceTextView: NSViewRepresentable {
             if settings.showLineNumbers {
                 if scrollView?.verticalRulerView == nil {
                     let ruler = LineNumberRuler(textView: textView)
+                    // Indexed line lookup for large docs; small docs count
+                    // directly so numbers are exact even mid-debounce.
+                    ruler.lineIndexProvider = { [weak self] offset in
+                        guard let doc = self?.parent.doc,
+                              doc.storage.length > MarkdownHighlighter.viewportThreshold
+                        else { return nil }
+                        return doc.index.lineIndex(forUTF16Offset: offset)
+                    }
                     scrollView?.verticalRulerView = ruler
                 }
                 scrollView?.hasVerticalRuler = true
@@ -313,7 +324,22 @@ struct SourceTextView: NSViewRepresentable {
                 let fraction = max(0, min(1, sv.contentView.bounds.origin.y / docHeight))
                 self.lastReported = fraction
                 self.parent.onScroll?(fraction)
+                // Large docs are highlighted viewport-only — restyle the newly
+                // revealed region shortly after the scroll settles.
+                if let storage = tv.textStorage,
+                   storage.length > MarkdownHighlighter.viewportThreshold {
+                    self.scheduleScrollHighlight()
+                }
             }
+        }
+
+        private var scrollHighlightWorkItem: DispatchWorkItem?
+
+        private func scheduleScrollHighlight() {
+            scrollHighlightWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.highlight() }
+            scrollHighlightWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
         }
 
         func scroll(toFraction fraction: Double) {
@@ -489,10 +515,28 @@ struct SourceTextView: NSViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
         }
 
+        /// The character range worth highlighting: everything for normal files,
+        /// the visible rect ± one screenful (expanded to paragraph boundaries)
+        /// for large ones.
+        private func highlightRange(in storage: NSTextStorage) -> NSRange? {
+            guard storage.length > MarkdownHighlighter.viewportThreshold,
+                  let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer
+            else { return nil }
+            let visible = tv.visibleRect.insetBy(dx: 0, dy: -tv.visibleRect.height)
+            let glyphs = lm.glyphRange(forBoundingRect: visible, in: tc)
+            let chars = lm.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+            return (tv.string as NSString).paragraphRange(for: chars)
+        }
+
         func highlight() {
             guard let textView,
                   let storage = textView.textStorage else { return }
-            MarkdownHighlighter.apply(to: storage, baseFont: parent.settings.editorFont())
+            let range = highlightRange(in: storage)
+            let fences = parent.doc.index.fenceCharacterRanges(
+                intersecting: range ?? NSRange(location: 0, length: storage.length),
+                totalLength: storage.length)
+            MarkdownHighlighter.apply(to: storage, baseFont: parent.settings.editorFont(),
+                                      range: range, fenceRanges: fences)
             updateFocusMode()
         }
     }
@@ -551,8 +595,15 @@ enum SourcePalette {
     static let muted      = NSColor(calibratedRed: 0.55, green: 0.58, blue: 0.62, alpha: 1)
 }
 
-/// Applies markdown syntax colors to an `NSTextStorage` in a single pass.
+/// Applies markdown syntax colors to an `NSTextStorage`. Above
+/// `viewportThreshold` characters, callers pass only the visible range —
+/// highlighting a 100MB document is a viewport-sized job, never a full-text
+/// regex sweep. Fenced code blocks come pre-computed from `DocumentIndex`
+/// (the old multiline `^```[\s\S]*?^``` ` regex was catastrophic at scale).
 enum MarkdownHighlighter {
+    /// UTF-16 length above which the editor highlights the viewport only.
+    static let viewportThreshold = 300_000
+
     private static func regex(_ pattern: String) -> NSRegularExpression {
         // Patterns are compile-time constants — force-try is safe.
         // swiftlint:disable:next force_try
@@ -564,21 +615,37 @@ enum MarkdownHighlighter {
     private static let italicRE     = regex(#"(?<![\*_])([\*_])(?=\S)(.+?)(?<=\S)\1(?![\*_])"#)
     private static let strikeRE     = regex(#"~~(?=\S)(.+?)(?<=\S)~~"#)
     private static let inlineCodeRE = regex(#"`[^`\n]+`"#)
-    private static let fenceRE      = regex(#"^```[\s\S]*?^```"#)
     private static let linkRE       = regex(#"\[[^\]]*\]\([^\)]*\)"#)
     private static let listRE       = regex(#"^\s*([-*+]|\d+\.)\s"#)
     private static let quoteRE      = regex(#"^\s*>.*$"#)
 
-    static func apply(to storage: NSTextStorage, baseFont: NSFont) {
+    /// One uniform attribute run over the whole document — cheap (run-coalesced)
+    /// and required once per attach/font change so never-scrolled-to regions
+    /// don't render with default attributes.
+    static func applyBase(to storage: NSTextStorage, baseFont: NSFont) {
         let full = NSRange(location: 0, length: storage.length)
-
         storage.beginEditing()
         storage.setAttributes([.font: baseFont, .foregroundColor: SourcePalette.text], range: full)
+        storage.endEditing()
+    }
+
+    /// Syntax colors over `range` only. `fenceRanges` are absolute character
+    /// ranges of fenced code blocks (from `DocumentIndex`); they're applied
+    /// last, exactly as the old whole-document pass did.
+    static func apply(to storage: NSTextStorage, baseFont: NSFont,
+                      range: NSRange? = nil, fenceRanges: [NSRange] = []) {
+        let full = NSRange(location: 0, length: storage.length)
+        let target = (range.map { NSIntersectionRange($0, full) }) ?? full
+        guard target.length > 0 || full.length == 0 else { return }
+
+        storage.beginEditing()
+        storage.setAttributes([.font: baseFont, .foregroundColor: SourcePalette.text], range: target)
 
         let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
 
         func color(_ re: NSRegularExpression, _ c: NSColor, font: NSFont? = nil, bg: NSColor? = nil) {
-            re.enumerateMatches(in: storage.string, options: [], range: full) { match, _, _ in
+            re.enumerateMatches(in: storage.string, options: [.withoutAnchoringBounds],
+                                range: target) { match, _, _ in
                 guard let r = match?.range else { return }
                 var attrs: [NSAttributedString.Key: Any] = [.foregroundColor: c]
                 if let font { attrs[.font] = font }
@@ -594,7 +661,11 @@ enum MarkdownHighlighter {
         color(boldRE, SourcePalette.emphasis, font: boldFont)
         color(strikeRE, SourcePalette.emphasis)
         color(inlineCodeRE, SourcePalette.code, bg: SourcePalette.codeBG)
-        color(fenceRE, SourcePalette.code)
+        for fence in fenceRanges {
+            let overlap = NSIntersectionRange(fence, target)
+            guard overlap.length > 0 else { continue }
+            storage.addAttributes([.foregroundColor: SourcePalette.code], range: overlap)
+        }
         storage.endEditing()
     }
 }

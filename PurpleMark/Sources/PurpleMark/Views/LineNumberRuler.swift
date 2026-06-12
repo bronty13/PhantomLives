@@ -5,6 +5,12 @@ import AppKit
 final class LineNumberRuler: NSRulerView {
     private weak var textView: NSTextView?
 
+    /// Fast path for large documents: returns the 0-based line index for a
+    /// UTF-16 offset (a `DocumentIndex` binary search), or nil to fall back to
+    /// counting. Counting from offset 0 is O(n) per scroll frame — the single
+    /// hottest path when scrolling a 100MB file.
+    var lineIndexProvider: ((Int) -> Int?)?
+
     init(textView: NSTextView) {
         self.textView = textView
         super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
@@ -42,12 +48,17 @@ final class LineNumberRuler: NSRulerView {
             .foregroundColor: SourcePalette.muted,
         ]
 
-        // Count lines up to the first visible character.
+        // Line number of the first visible character: indexed lookup when
+        // available, else count (fine for normal-sized files).
         var lineNumber = 1
         if charRange.location > 0 {
-            text.enumerateSubstrings(in: NSRange(location: 0, length: charRange.location),
-                                     options: [.byLines, .substringNotRequired]) { _, _, _, _ in
-                lineNumber += 1
+            if let indexed = lineIndexProvider?(charRange.location) {
+                lineNumber = indexed + 1
+            } else {
+                text.enumerateSubstrings(in: NSRange(location: 0, length: charRange.location),
+                                         options: [.byLines, .substringNotRequired]) { _, _, _, _ in
+                    lineNumber += 1
+                }
             }
         }
 
