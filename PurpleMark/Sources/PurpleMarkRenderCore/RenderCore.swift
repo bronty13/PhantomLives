@@ -66,10 +66,12 @@ public enum RenderCore {
     /// Quick Look preview. Renders entirely offline.
     public static func standaloneHTML(markdown: String,
                                       colors: ThemeColors = .builtin(.default),
-                                      width: ReadingWidth = .default) -> String {
+                                      width: ReadingWidth = .default,
+                                      allowRawHTML: Bool = false) -> String {
         let styles = readWeb("styles.css")
         let katexCSS = inlinedKatexCSS()
         let markdownIt = readWeb("vendor/markdown-it.min.js")
+        let purify = readWeb("vendor/purify.min.js")
         let mermaid = readWeb("vendor/mermaid.min.js")
         let katexJS = readWeb("vendor/katex/katex.min.js")
         let autoRender = readWeb("vendor/katex/auto-render.min.js")
@@ -88,7 +90,9 @@ public enum RenderCore {
         <body class="width-\(width.rawValue)" style="\(colors.inlineBodyStyle())">
         <div id="content"></div>
         <script>window.__PM_MERMAID_THEME__ = "\(colors.isDark ? "dark" : "default")";</script>
+        <script>window.__PM_ALLOW_RAW_HTML__ = \(allowRawHTML);</script>
         <script>\(markdownIt)</script>
+        <script>\(purify)</script>
         <script>\(mermaid)</script>
         <script>\(katexJS)</script>
         <script>\(autoRender)</script>

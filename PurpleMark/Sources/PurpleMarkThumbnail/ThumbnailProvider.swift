@@ -8,10 +8,17 @@ class ThumbnailProvider: QLThumbnailProvider {
     override func provideThumbnail(for request: QLFileThumbnailRequest,
                                   _ handler: @escaping (QLThumbnailReply?, Error?) -> Void) {
         // Read a bounded prefix — thumbnails only need the first lines.
+        // Mapped so a 100MB file isn't pulled into memory, and cut at a line
+        // boundary so the prefix can't split a UTF-8 sequence (which would
+        // nil the strict decode and blank the thumbnail).
         let markdown: String
-        if let data = try? Data(contentsOf: request.fileURL),
-           let s = String(data: data.prefix(8 * 1024), encoding: .utf8) {
-            markdown = s
+        if let data = try? Data(contentsOf: request.fileURL, options: .mappedIfSafe) {
+            var prefix = data.prefix(8 * 1024)
+            if prefix.count < data.count, let lastNewline = prefix.lastIndex(of: 0x0A) {
+                prefix = prefix.prefix(upTo: lastNewline)
+            }
+            markdown = String(data: prefix, encoding: .utf8)
+                ?? String(decoding: prefix, as: UTF8.self)
         } else {
             markdown = ""
         }

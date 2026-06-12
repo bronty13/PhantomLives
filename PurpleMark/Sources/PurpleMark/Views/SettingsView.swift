@@ -122,6 +122,10 @@ struct SettingsView: View {
                 get: { settings.autoCloseBrackets }, set: { settings.autoCloseBrackets = $0 }))
             Toggle("Check spelling while typing", isOn: Binding(
                 get: { settings.checkSpelling }, set: { settings.checkSpelling = $0 }))
+            Toggle("Allow raw HTML scripts in preview", isOn: Binding(
+                get: { settings.allowRawHTML }, set: { settings.allowRawHTML = $0 }))
+            Text("Off (recommended): embedded HTML renders but scripts and event handlers are stripped. Turn on only for files you trust — a markdown file can otherwise run arbitrary code in the preview.")
+                .font(.caption).foregroundStyle(.secondary)
             Picker("Tab width", selection: Binding(
                 get: { settings.tabWidth }, set: { settings.tabWidth = $0 })) {
                 Text("2").tag(2); Text("4").tag(4); Text("8").tag(8)

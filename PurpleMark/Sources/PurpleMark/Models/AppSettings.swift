@@ -68,6 +68,12 @@ final class AppSettings: ObservableObject {
     @Stored(key: "writing.focusMode", defaultValue: false) var focusMode: Bool
     @Stored(key: "writing.typewriterMode", defaultValue: false) var typewriterMode: Bool
 
+    // Security
+    /// Render raw HTML in markdown without DOMPurify sanitization. Off by
+    /// default: a .md file is untrusted input and PurpleMark is the default
+    /// handler for them.
+    @Stored(key: "security.allowRawHTML", defaultValue: false) var allowRawHTML: Bool
+
     // Export
     @Stored(key: "export.directoryPath", defaultValue: "") var exportDirectoryPath: String
 

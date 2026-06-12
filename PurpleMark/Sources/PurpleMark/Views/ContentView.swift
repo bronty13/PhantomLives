@@ -187,7 +187,8 @@ private struct EditorPane: View {
                         width: settings.readingWidth,
                         docFolder: doc.fileURL?.deletingLastPathComponent(),
                         options: .init(linkify: policy.typographyAllowed,
-                                       typographer: policy.typographyAllowed),
+                                       typographer: policy.typographyAllowed,
+                                       allowRawHTML: settings.allowRawHTML),
                         capBytes: (policy.previewCapped && !doc.renderFullPreview)
                             ? LargeFilePolicy.previewCapBytes : nil,
                         onRenderAnyway: { doc.renderFullPreview = true },

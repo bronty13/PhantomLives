@@ -20,9 +20,16 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         view = container
     }
 
+    /// Quick Look renders at most this much markdown — inlining a 100MB file
+    /// into the preview HTML would hang Finder's preview panel.
+    private static let maxPreviewBytes = 2_000_000
+
     func preparePreviewOfFile(at url: URL) async throws {
-        let markdown = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        let html = RenderCore.standaloneHTML(markdown: markdown, colors: .builtin(.default), width: .default)
+        let markdown = Self.previewMarkdown(at: url)
+        // Always sanitized: Quick Look renders whatever file the user taps
+        // spacebar on — untrusted by definition.
+        let html = RenderCore.standaloneHTML(markdown: markdown, colors: .builtin(.default),
+                                             width: .default, allowRawHTML: false)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let delegate = LoadDelegate {
@@ -35,6 +42,30 @@ class PreviewViewController: NSViewController, QLPreviewingController {
             self.webView.navigationDelegate = delegate
             self.webView.loadHTMLString(html, baseURL: nil)
         }
+    }
+}
+
+extension PreviewViewController {
+    /// Reads the file with a UTF-8 → Latin-1 fallback, capped to
+    /// `maxPreviewBytes` (cut at a line boundary, with a truncation note).
+    static func previewMarkdown(at url: URL) -> String {
+        guard var data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return "" }
+        var truncated = false
+        if data.count > maxPreviewBytes {
+            data = data.prefix(maxPreviewBytes)
+            // Cut at the last newline so we don't split a UTF-8 sequence.
+            if let lastNewline = data.lastIndex(of: 0x0A) {
+                data = data.prefix(upTo: lastNewline)
+            }
+            truncated = true
+        }
+        var text = String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .isoLatin1)
+            ?? ""
+        if truncated {
+            text += "\n\n---\n\n*Preview truncated — open in PurpleMark to see the full document.*\n"
+        }
+        return text
     }
 }
 

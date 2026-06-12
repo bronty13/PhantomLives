@@ -10,6 +10,7 @@
   <div id="content"></div>
 
   <script src="vendor/markdown-it.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
   <script src="vendor/mermaid.min.js"></script>
   <script src="vendor/katex/katex.min.js"></script>
   <script src="vendor/katex/auto-render.min.js"></script>
@@ -50,6 +51,15 @@
     var currentOptsKey = 'l1t1';
     var md = makeMd({ linkify: true, typographer: true });
 
+    // Raw HTML in markdown is sanitized through DOMPurify unless the user
+    // explicitly opted in (Settings → "Allow raw HTML scripts"): a markdown
+    // file is untrusted input, and PurpleMark is the default .md handler.
+    var allowRaw = window.__PM_ALLOW_RAW_HTML__ === true;
+    function sanitizeHTML(html) {
+      if (allowRaw || !window.DOMPurify) return html;
+      return window.DOMPurify.sanitize(html);
+    }
+
     var mermaidReady = false;
     window.__PM_MERMAID_THEME__ = 'dark';
     function initMermaid() {
@@ -57,7 +67,7 @@
       window.mermaid.initialize({
         startOnLoad: false,
         theme: window.__PM_MERMAID_THEME__ || 'dark',
-        securityLevel: 'loose',
+        securityLevel: allowRaw ? 'loose' : 'strict',
         fontFamily: getComputedStyle(document.body).fontFamily,
       });
       mermaidReady = true;
@@ -156,9 +166,11 @@
       } catch (e) { return; }
       if (gen !== renderGeneration) return;
 
-      var optsKey = 'l' + (manifest.linkify ? 1 : 0) + 't' + (manifest.typographer ? 1 : 0);
+      var optsKey = 'l' + (manifest.linkify ? 1 : 0) + 't' + (manifest.typographer ? 1 : 0) +
+        'r' + (manifest.allowRawHTML ? 1 : 0);
       if (optsKey !== currentOptsKey) {
         currentOptsKey = optsKey;
+        allowRaw = !!manifest.allowRawHTML;
         md = makeMd(manifest);
         contentEl.querySelectorAll('.pm-chunk').forEach(function (el) {
           el.dataset.hash = '';
@@ -202,7 +214,7 @@
         try {
           var text = await (await fetch(APP + 'chunk/' + c.id + '?h=' + c.hash)).text();
           if (gen !== renderGeneration) return;
-          el.innerHTML = md.render(text);
+          el.innerHTML = sanitizeHTML(md.render(text));
           el.dataset.hash = c.hash;
           rewriteRelativeURLs(el);
           ensureObserver().observe(el);
@@ -217,7 +229,7 @@
     // Math/diagrams render eagerly: PDF export snapshots the full page, where
     // lazy observers would never fire for offscreen content.
     async function render(markdown) {
-      contentEl.innerHTML = md.render(markdown || '');
+      contentEl.innerHTML = sanitizeHTML(md.render(markdown || ''));
       rewriteRelativeURLs(contentEl);
       await mathAndMermaid(contentEl);
     }

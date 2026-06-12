@@ -24,9 +24,13 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
     public struct Options: Equatable, Sendable {
         public var linkify: Bool
         public var typographer: Bool
-        public init(linkify: Bool = true, typographer: Bool = true) {
+        /// Skip DOMPurify sanitization of raw HTML in markdown. Off by default
+        /// — a .md file is untrusted input.
+        public var allowRawHTML: Bool
+        public init(linkify: Bool = true, typographer: Bool = true, allowRawHTML: Bool = false) {
             self.linkify = linkify
             self.typographer = typographer
+            self.allowRawHTML = allowRawHTML
         }
     }
 
@@ -128,6 +132,7 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
             let totalBytes: Int
             let linkify: Bool
             let typographer: Bool
+            let allowRawHTML: Bool
             let chunks: [ManifestChunk]
         }
         let manifest = Manifest(
@@ -136,6 +141,7 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
             totalBytes: totalBytes,
             linkify: options.linkify,
             typographer: options.typographer,
+            allowRawHTML: options.allowRawHTML,
             chunks: chunks.map { ManifestChunk(id: $0.id, hash: String($0.hash, radix: 16)) })
         return (try? JSONEncoder().encode(manifest)) ?? Data("{}".utf8)
     }

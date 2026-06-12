@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import PurpleMark
 import PurpleMarkRenderCore
 
@@ -62,6 +63,24 @@ final class RenderCoreTests: XCTestCase {
         XCTAssertTrue(html.lowercased().contains("katex"), "KaTeX should be inlined")
     }
 
+    func testStandaloneHTMLBundlesSanitizer() {
+        let html = RenderCore.standaloneHTML(markdown: "x", colors: .builtin(.default), width: .default)
+        XCTAssertTrue(html.contains("DOMPurify"), "DOMPurify must be inlined")
+        XCTAssertTrue(html.contains("window.__PM_ALLOW_RAW_HTML__ = false"),
+                      "sanitization is on by default")
+        let raw = RenderCore.standaloneHTML(markdown: "x", colors: .builtin(.default),
+                                            width: .default, allowRawHTML: true)
+        XCTAssertTrue(raw.contains("window.__PM_ALLOW_RAW_HTML__ = true"))
+    }
+
+    func testAppScriptExtractionStillFindsIIFE() {
+        // The chunked-render rewrite must keep the page JS as one IIFE — the
+        // export path extracts it textually.
+        let html = RenderCore.standaloneHTML(markdown: "x", colors: .builtin(.default), width: .default)
+        XCTAssertTrue(html.contains("__PM_PENDING__"), "app script must be extracted into the export")
+        XCTAssertTrue(html.contains("sanitizeHTML"), "export shares the sanitizing render path")
+    }
+
     func testStandaloneHTMLInlinesFonts() {
         let html = RenderCore.standaloneHTML(markdown: "x", colors: .builtin(.default), width: .default)
         XCTAssertTrue(html.contains("data:font/woff2;base64,"),
@@ -78,6 +97,49 @@ final class RenderCoreTests: XCTestCase {
     func testWebResourcesPresent() {
         XCTAssertTrue(FileManager.default.fileExists(atPath: RenderCore.indexURL.path),
                       "index.html should ship in the framework bundle")
+    }
+}
+
+/// End-to-end sanitization proof: render hostile markdown through the real
+/// pipeline in a real WKWebView and verify the script never ran while benign
+/// inline HTML survived.
+@MainActor
+final class SanitizationIntegrationTests: XCTestCase {
+    func testScriptsStrippedBenignHTMLKept() async throws {
+        let md = """
+        <script>window.__pwned__ = 1;</script>
+
+        <img src="x" onerror="window.__pwned2__ = 1">
+
+        <details><summary>benign</summary>kept</details>
+
+        plain *text*
+        """
+        let html = RenderCore.standaloneHTML(markdown: md)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        webView.loadHTMLString(html, baseURL: nil)
+
+        // Wait for the async render to land.
+        var rendered = false
+        for _ in 0..<100 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            if let count = try? await webView.evaluateJavaScript(
+                "document.querySelectorAll('#content details').length") as? Int, count > 0 {
+                rendered = true
+                break
+            }
+        }
+        XCTAssertTrue(rendered, "the page should render the markdown")
+
+        let pwned = try await webView.evaluateJavaScript(
+            "(window.__pwned__ === 1) || (window.__pwned2__ === 1)") as? Bool
+        XCTAssertEqual(pwned, false, "embedded scripts/handlers must never execute")
+        let handlerGone = try await webView.evaluateJavaScript(
+            "document.querySelector('#content img[onerror]') == null") as? Bool
+        XCTAssertEqual(handlerGone, true, "event handler attributes are stripped")
+        let detailsKept = try await webView.evaluateJavaScript(
+            "document.querySelector('#content details') != null") as? Bool
+        XCTAssertEqual(detailsKept, true, "benign inline HTML still renders")
     }
 }
 

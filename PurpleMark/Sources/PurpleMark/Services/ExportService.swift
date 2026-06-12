@@ -29,9 +29,10 @@ final class ExportService {
     @discardableResult
     func exportHTML(markdown: String, baseName: String,
                     colors: ThemeColors, width: ReadingWidth,
-                    to directory: URL) throws -> URL {
+                    to directory: URL, allowRawHTML: Bool = false) throws -> URL {
         try ensureDirectory(directory)
-        let html = RenderCore.standaloneHTML(markdown: markdown, colors: colors, width: width)
+        let html = RenderCore.standaloneHTML(markdown: markdown, colors: colors, width: width,
+                                             allowRawHTML: allowRawHTML)
         let url = outputURL(baseName: baseName, ext: "html", in: directory)
         do {
             try html.write(to: url, atomically: true, encoding: .utf8)
@@ -45,12 +46,13 @@ final class ExportService {
     /// completion handler runs on the main actor.
     func exportPDF(markdown: String, baseName: String,
                    colors: ThemeColors, width: ReadingWidth,
-                   to directory: URL,
+                   to directory: URL, allowRawHTML: Bool = false,
                    completion: @escaping (Result<URL, Error>) -> Void) {
         do { try ensureDirectory(directory) }
         catch { completion(.failure(ExportError.write(error))); return }
 
-        let html = RenderCore.standaloneHTML(markdown: markdown, colors: colors, width: width)
+        let html = RenderCore.standaloneHTML(markdown: markdown, colors: colors, width: width,
+                                             allowRawHTML: allowRawHTML)
         let url = outputURL(baseName: baseName, ext: "pdf", in: directory)
 
         // An offscreen window gives the web view a real size so layout (and

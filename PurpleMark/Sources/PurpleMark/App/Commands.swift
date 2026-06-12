@@ -23,7 +23,8 @@ enum ExportCommands {
                 markdown: doc.text, baseName: doc.title,
                 colors: ThemeStore.shared.colors(forID: settings.themeRaw),
                 width: settings.readingWidth,
-                to: settings.exportDirectory)
+                to: settings.exportDirectory,
+                allowRawHTML: settings.allowRawHTML)
             reveal(url)
         } catch {
             present(error)
@@ -35,7 +36,8 @@ enum ExportCommands {
             markdown: doc.text, baseName: doc.title,
             colors: ThemeStore.shared.colors(forID: settings.themeRaw),
             width: settings.readingWidth,
-            to: settings.exportDirectory) { result in
+            to: settings.exportDirectory,
+            allowRawHTML: settings.allowRawHTML) { result in
             switch result {
             case .success(let url): reveal(url)
             case .failure(let error): present(error)
