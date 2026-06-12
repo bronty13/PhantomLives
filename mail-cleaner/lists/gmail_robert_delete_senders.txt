@@ -1,0 +1,88 @@
+# mail-cleaner — Gmail robert.olen@gmail.com DELETE list
+# Curated from the 2026-06-11 analyze (405,845 msgs / 28.9GB).
+# On Gmail these move to [Gmail]/Trash from [Gmail]/All Mail — 30-day recoverable.
+# KEPT (excluded on purpose): personal people (katecarr42, paul.james.decker,
+#   moof20101, banana900, gonefshn1972, cmq724, amlaverne, grammiejan3,
+#   lizlenp, playfuldesiremfc, robert.olen@*), apneaboard@gmail.com,
+#   Nikonians photography forum, directhomemedical (CPAP supplier),
+#   FINANCIAL (M&T/WellsFargo/CapitalOne/BofA/PayPal — you chose KEEP),
+#   Amazon order/shipment receipts (auto-confirm/shipment-tracking/order-update
+#   — you chose KEEP). Logos/FaithLife ARE trashed (you chose trash).
+#
+# ---- machine noise / automated notifications ----
+notifications@nest.com
+googlealerts-noreply@google.com
+mailer-daemon@googlemail.com
+friendupdates@facebookmail.com
+notification@facebookmail.com
+close_friend_updates@facebookmail.com
+notification+oiiogiee@facebookmail.com
+info@twitter.com
+notify@twitter.com
+noreply@redditmail.com
+noreply@youtube.com
+notifications-noreply@linkedin.com
+invitations@linkedin.com
+newsdigest@insideapple.apple.com
+uspsinformeddelivery@email.informeddelivery.usps.com
+mcinfo@ups.com
+no-reply@familybase.vzw.com
+verizon-services@verizon.com
+# ---- news ----
+email@email.buffnews.com
+digital@buffnews.com
+nm_buffalonews@newsmemory.com
+# ---- sports ----
+feedback@mail.mlblists.com
+# ---- retail / marketing promos ----
+store-news@amazon.com
+noreply@ebanned.net
+bestbuyinfo@emailinfo.bestbuy.com
+bestbuy@email.bestbuy.com
+bingo@patreon.com
+reply@email.thecpapshop.com
+cpap@hello.cpap.com
+hello@info.reverb.com
+email@e.fender.com
+walgreens@e.walgreens.com
+walgreens@eml.walgreens.com
+newsletter@email.buydig.com
+monoprice@news.monoprice.com
+no-reply@emails.monoprice.com
+no-reply@email.monoprice.com
+ebay@reply.ebay.com
+newsletters@audible.com
+microcenter@microcenterinsider.com
+info@bc.adorama.com
+yourfriends@e.sweetwater.com
+yourfriends@sweetwater.com
+specials@reader.macsales.com
+specials@macsales.com
+davidstea@email.davidstea.com
+news@stewmac.com
+info@emailsrv.swell.com
+emails@e.etsy.com
+sigsauer@sigsauer.com
+newsletter@indiegogo.com
+questions@bladehq.com
+donotreply@mcd.nikon.com
+noreply@e.buffalobills.com
+info@hsastore.com
+microsoftstore@microsoftstoreemail.com
+barnesandnoble@m.bn.com
+classmatesemail@email.classmates.com
+starbucks@e.starbucks.com
+info@mailer.netflix.com
+nintendo-noreply@nintendo.net
+bathandbodyworks@e2.bathandbodyworks.com
+homedepotcustomercare@email.homedepot.com
+costco@digital.costco.com
+support-newsletter@flightaware.com
+# ---- professional membership ----
+info@connect.isc2.org
+connect@isc2.org
+# ---- Logos / FaithLife religious newsletters (you chose: TRASH) ----
+communications@faithlifemail.com
+communications@mail.logos.com
+communications@faithlife.net
+promotions@logosmail.com
