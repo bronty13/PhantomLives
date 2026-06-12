@@ -1,0 +1,13 @@
+# mail-cleaner — iCloud second-pass FINANCIAL list (archive to "Financial")
+# Bank/card senders that escaped the first financial sweep. Moved into the
+# existing "Financial" folder (kept, not deleted).
+#
+# ---- M&T Bank ----
+mandtalertsdonotreply@mtb.com
+m&talerts_donotreply@mtbalerts.com
+mandtmobilebanking_donotreply@mtb.com
+# ---- cards ----
+alerts@citibank.com
+capitalone@email.capitalone.com
+info@emails.barclaysus.com
+discover@card-e.em.discover.com

@@ -1,0 +1,72 @@
+# mail-cleaner — iCloud second-pass DELETE list (PERMANENT)
+# Religious newsletters (you chose delete) + clear commercial promos that the
+# first pass didn't target. From the 2026-06-12 re-analyze of the 110,143 left.
+# DELIBERATELY KEPT (not here): personal (marge.phillips, katecarr42), WITS/
+# Williamsville schools, districtgov.org, SleepHQ (circle.so), Nikonians,
+# Amazon order/shipment receipts, Google account security, Verizon account,
+# Taylor Nation, political mail, and all financial (-> Financial folder).
+#
+# ---- religious newsletters ----
+communications@faithlifemail.com
+communications@mail.logos.com
+noreply+feedproxy@google.com
+communications@faithlife.net
+promotions@logosmail.com
+faithlife@faithlife.com
+sales@accordancebible.com
+# ---- social / notifications ----
+notification@service.tiktok.com
+messages-noreply@linkedin.com
+updates-noreply@linkedin.com
+jobalerts-noreply@linkedin.com
+jobs-listings@linkedin.com
+reminders@facebookmail.com
+friendsuggestion@facebookmail.com
+notify@twitter.com
+no-reply@twitch.tv
+# ---- streaming / music / software ----
+info@members.netflix.com
+info@mailer.netflix.com
+disneyplus@mail.disneyplus.com
+no-reply@spotify.com
+noreply@blizzard.com
+no.reply@connect.razer.com
+email@techsmith.messages4.com
+mail@mail.adobe.com
+photos@onedrive.com
+# ---- retail ----
+newsletters@audible.com
+yourfriends@sweetwater.com
+ebay@reply.ebay.com
+walgreens@eml.walgreens.com
+chilisemailsupport@email.chilis.com
+microsoftstore@microsoftstoreemail.com
+support@stringjoy.com
+davidstea@e.davidstea.com
+starbucks@e.starbucks.com
+team@glockstore.com
+gurus@kurufootwear.com
+promotions@line6.com
+nflshop.com@eml.nflshop.com
+newsletter@news.anker.com
+hello@pm-email.gibson.com
+sigsauer@e.sigsauer.com
+hello@us.braun.com
+promos@zagg.com
+email@mail.bose.com
+yeti@mail.yeti.com
+samsung@innovations.samsungusa.com
+appletv@insideapple.apple.com
+news@insideapple.apple.com
+lisa@bardotbrush.com
+# ---- MLM / wellness ----
+news@younglivingcomms.com
+service@email.doterra.com
+# ---- travel / hotel rewards (marketing) ----
+honors@h1.hilton.com
+ihgonerewards@mc.ihg.com
+# ---- shipping notifications ----
+mcinfo@ups.com
+auto-reply@usps.com
+# ---- carrier marketing ----
+vzwmail@ecrmemail.verizonwireless.com
