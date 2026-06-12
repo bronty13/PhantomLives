@@ -6,6 +6,12 @@ import WebKit
 /// (markdown-it, mermaid, KaTeX) parse a single time and re-renders are cheap.
 public struct MarkdownWebView: NSViewRepresentable {
     public var markdown: String
+    /// Identifies the content (document) and its edit generation. The
+    /// coordinator re-renders only when one of these changes — never by
+    /// comparing the markdown itself, which would be O(n) per SwiftUI render
+    /// (and would retain a duplicate copy of a possibly-huge document).
+    public var contentID: UUID
+    public var contentVersion: Int
     public var colors: ThemeColors
     public var width: ReadingWidth
     /// Reports the vertical scroll fraction (0…1) as the user scrolls the
@@ -19,12 +25,16 @@ public struct MarkdownWebView: NSViewRepresentable {
     public var onOpenFile: ((URL) -> Void)?
 
     public init(markdown: String,
+                contentID: UUID,
+                contentVersion: Int,
                 colors: ThemeColors,
                 width: ReadingWidth,
                 onScroll: ((Double) -> Void)? = nil,
                 scrollTo: Double? = nil,
                 onOpenFile: ((URL) -> Void)? = nil) {
         self.markdown = markdown
+        self.contentID = contentID
+        self.contentVersion = contentVersion
         self.colors = colors
         self.width = width
         self.onScroll = onScroll
@@ -50,7 +60,7 @@ public struct MarkdownWebView: NSViewRepresentable {
 
     public func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
-        context.coordinator.apply(markdown: markdown, colors: colors, width: width)
+        context.coordinator.applyIfNeeded()
         if let scrollTo { context.coordinator.applyScroll(to: scrollTo) }
     }
 
@@ -58,22 +68,25 @@ public struct MarkdownWebView: NSViewRepresentable {
         var parent: MarkdownWebView
         weak var webView: WKWebView?
         private var isLoaded = false
-        private var pending: (markdown: String, colors: ThemeColors, width: ReadingWidth)?
-        private var lastApplied: (markdown: String, colors: ThemeColors, width: ReadingWidth)?
+        private var hasPending = false
+        /// What the page currently shows — versions and styling only, never a
+        /// retained copy of the markdown.
+        private var lastApplied: (id: UUID, version: Int, colors: ThemeColors, width: ReadingWidth)?
 
         init(_ parent: MarkdownWebView) { self.parent = parent }
 
-        func apply(markdown: String, colors: ThemeColors, width: ReadingWidth) {
+        func applyIfNeeded() {
             if let last = lastApplied,
-               last.markdown == markdown, last.colors == colors, last.width == width {
+               last.id == parent.contentID, last.version == parent.contentVersion,
+               last.colors == parent.colors, last.width == parent.width {
                 return
             }
-            lastApplied = (markdown, colors, width)
+            lastApplied = (parent.contentID, parent.contentVersion, parent.colors, parent.width)
             guard isLoaded, let webView else {
-                pending = (markdown, colors, width)
+                hasPending = true
                 return
             }
-            run(markdown: markdown, colors: colors, width: width, on: webView)
+            run(markdown: parent.markdown, colors: parent.colors, width: parent.width, on: webView)
         }
 
         private var lastReported: Double = 0
@@ -128,9 +141,10 @@ public struct MarkdownWebView: NSViewRepresentable {
             }, { passive: true });
             """
             webView.evaluateJavaScript(scrollJS)
-            let p = pending ?? lastApplied
-            if let p { run(markdown: p.markdown, colors: p.colors, width: p.width, on: webView) }
-            pending = nil
+            if hasPending || lastApplied != nil {
+                run(markdown: parent.markdown, colors: parent.colors, width: parent.width, on: webView)
+            }
+            hasPending = false
         }
 
         public func userContentController(_ controller: WKUserContentController,

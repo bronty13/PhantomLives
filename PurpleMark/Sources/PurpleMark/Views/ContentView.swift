@@ -170,22 +170,64 @@ private struct EditorPane: View {
 
     var body: some View {
         Group {
-            switch doc.viewMode {
-            case .document:
-                MarkdownWebView(
-                    markdown: doc.text,
-                    colors: themes.colors(forID: settings.themeRaw),
-                    width: settings.readingWidth,
-                    onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
-                    scrollTo: doc.scrollFraction,
-                    onOpenFile: { url in state.openDroppedFiles([url]) })
-            case .markdown:
-                SourceTextView(
-                    text: $doc.text,
-                    settings: settings,
-                    onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
-                    scrollTo: doc.scrollFraction)
+            switch doc.loadState {
+            case .loading:
+                loadingView
+            case .failed(let message):
+                failedView(message)
+            case .ready:
+                switch doc.viewMode {
+                case .document:
+                    MarkdownWebView(
+                        markdown: doc.text,
+                        contentID: doc.id,
+                        contentVersion: doc.textVersion,
+                        colors: themes.colors(forID: settings.themeRaw),
+                        width: settings.readingWidth,
+                        onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
+                        scrollTo: doc.scrollFraction,
+                        onOpenFile: { url in state.openDroppedFiles([url]) })
+                case .markdown:
+                    SourceTextView(
+                        doc: doc,
+                        settings: settings,
+                        onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
+                        scrollTo: doc.scrollFraction)
+                }
             }
         }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text("Opening “\(doc.title)”\(sizeSuffix)…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var sizeSuffix: String {
+        guard doc.byteSize > 0 else { return "" }
+        let pretty = ByteCountFormatter.string(fromByteCount: Int64(doc.byteSize), countStyle: .file)
+        return " (\(pretty))"
+    }
+
+    private func failedView(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text("Couldn't open “\(doc.title)”")
+                .font(.headline)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Button("Close Tab") { state.closeDocument(doc) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

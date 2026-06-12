@@ -34,17 +34,55 @@ final class FindController: ObservableObject {
 
     @Published private(set) var matches: [NSRange] = []
     @Published var currentIndex = 0
+    /// True when more matches exist than `maxMatches` — the label shows "N+".
+    @Published private(set) var matchesCapped = false
 
     /// Set when search inputs change; `recompute(in:)` clears it.
     private var dirty = true
 
+    /// The document version the current `matches` were computed against;
+    /// callers compare with `Document.textVersion` to detect staleness.
+    private(set) var matchesVersion = -1
+    private var recomputeTask: Task<Void, Never>?
+
+    /// Bounds the match array (and replace-all work) on giant documents.
+    static let maxMatches = 50_000
+
     var matchCount: Int { matches.count }
     var hasMatches: Bool { !matches.isEmpty }
 
-    /// Recompute matches against the current document text.
-    func recompute(in text: String) {
-        matches = FindController.findMatches(query: query, in: text,
-                                             regex: useRegex, caseSensitive: caseSensitive)
+    /// Recompute matches against the current document text, synchronously.
+    func recompute(in text: String, version: Int = -1) {
+        recomputeTask?.cancel()
+        applyMatches(FindController.findMatches(query: query, in: text,
+                                                regex: useRegex, caseSensitive: caseSensitive),
+                     version: version)
+    }
+
+    /// Debounced background recompute — text is materialized lazily by the
+    /// caller-supplied closure only when the debounce actually fires, so a
+    /// keystroke never copies a huge document.
+    func scheduleRecompute(debounce: Duration, version: Int,
+                           text: @escaping @MainActor () -> String) {
+        recomputeTask?.cancel()
+        let (query, regex, caseSensitive) = (query, useRegex, self.caseSensitive)
+        recomputeTask = Task { [weak self] in
+            try? await Task.sleep(for: debounce)
+            guard !Task.isCancelled else { return }
+            let snapshot = text()
+            let found = await Task.detached(priority: .userInitiated) {
+                FindController.findMatches(query: query, in: snapshot,
+                                           regex: regex, caseSensitive: caseSensitive)
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            self.applyMatches(found, version: version)
+        }
+    }
+
+    private func applyMatches(_ found: [NSRange], version: Int) {
+        matchesCapped = found.count > FindController.maxMatches
+        matches = matchesCapped ? Array(found.prefix(FindController.maxMatches)) : found
+        matchesVersion = version
         dirty = false
         if matches.isEmpty {
             currentIndex = 0
@@ -86,8 +124,8 @@ final class FindController: ObservableObject {
 
     // MARK: - Pure matching (unit-tested)
 
-    static func findMatches(query: String, in text: String,
-                            regex: Bool, caseSensitive: Bool) -> [NSRange] {
+    nonisolated static func findMatches(query: String, in text: String,
+                                        regex: Bool, caseSensitive: Bool) -> [NSRange] {
         guard !query.isEmpty else { return [] }
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)

@@ -5,8 +5,12 @@ import AppKit
 /// highlighting, an optional line-number ruler, and the toolbar/Format-menu
 /// commands (bold/italic/link/…). Honors the editor preferences (font, word
 /// wrap, line numbers, tab width, spellcheck, auto-close brackets).
+///
+/// Large-file design: the view attaches its layout manager directly to the
+/// document's `NSTextStorage` — a keystroke edits the storage in place and
+/// reports `noteEdited()`; the full text is never copied through a binding.
 struct SourceTextView: NSViewRepresentable {
-    @Binding var text: String
+    @ObservedObject var doc: Document
     @ObservedObject var settings: AppSettings
     var onScroll: ((Double) -> Void)?
     var scrollTo: Double?
@@ -34,6 +38,8 @@ struct SourceTextView: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: scroll.contentSize.width,
                                                        height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = true
+        // Lay out only what's visible — essential for very large documents.
+        textView.layoutManager?.allowsNonContiguousLayout = true
         scroll.documentView = textView
 
         // A dropped markdown file opens as a document instead of inserting its
@@ -54,15 +60,14 @@ struct SourceTextView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 8, height: 12)
         textView.backgroundColor = SourcePalette.background
         textView.insertionPointColor = SourcePalette.caret
-        textView.string = text
 
         scroll.drawsBackground = true
         scroll.backgroundColor = SourcePalette.background
 
         context.coordinator.textView = textView
         context.coordinator.scrollView = scroll
+        context.coordinator.attach(doc)
         context.coordinator.configure(with: settings)
-        context.coordinator.highlight()
         context.coordinator.observeScroll()
         context.coordinator.observeActions()
         context.coordinator.observeFind()
@@ -71,12 +76,13 @@ struct SourceTextView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
-        guard let textView = context.coordinator.textView else { return }
-        if textView.string != text {
-            let selected = textView.selectedRange()
-            textView.string = text
-            textView.setSelectedRange(selected.clamped(to: textView.string.count))
-            context.coordinator.highlight()
+        if context.coordinator.attachedDocID != doc.id {
+            context.coordinator.attach(doc)
+        } else if context.coordinator.lastKnownVersion != doc.textVersion {
+            // The storage changed underneath us (programmatic replace, e.g.
+            // reload-from-disk) — refresh the highlighting.
+            context.coordinator.lastKnownVersion = doc.textVersion
+            context.coordinator.scheduleHighlight()
         }
         context.coordinator.configure(with: settings)
         if let scrollTo { context.coordinator.scroll(toFraction: scrollTo) }
@@ -84,15 +90,19 @@ struct SourceTextView: NSViewRepresentable {
 
     // MARK: - Coordinator
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: SourceTextView
         weak var textView: NSTextView?
         weak var scrollView: NSScrollView?
+        private(set) var attachedDocID: Document.ID?
+        var lastKnownVersion = -1
         private var actionObserver: NSObjectProtocol?
         private var findObserver: NSObjectProtocol?
         private var highlightWorkItem: DispatchWorkItem?
         private var lastReported: Double = 0
         private var lastApplied: Double?
+        private var focusDimApplied = false
 
         init(_ parent: SourceTextView) { self.parent = parent }
 
@@ -101,10 +111,41 @@ struct SourceTextView: NSViewRepresentable {
             if let findObserver { NotificationCenter.default.removeObserver(findObserver) }
         }
 
+        /// Points the text view's layout manager at the document's own storage.
+        func attach(_ doc: Document) {
+            guard let textView else { return }
+            textView.layoutManager?.replaceTextStorage(doc.storage)
+            attachedDocID = doc.id
+            lastKnownVersion = doc.textVersion
+            focusDimApplied = false
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+            highlight()
+        }
+
+        /// Per-document undo, so switching tabs never lets an undo land in the
+        /// wrong document's text.
+        func undoManager(for view: NSTextView) -> UndoManager? {
+            parent.doc.undoManager
+        }
+
         // MARK: Configuration
+
+        private var lastConfigSignature: String?
 
         func configure(with settings: AppSettings) {
             guard let textView else { return }
+            // updateNSView calls this on every SwiftUI render (including scroll
+            // ticks); only re-apply — and re-highlight — when something the
+            // configuration depends on actually changed.
+            let signature = [
+                "\(settings.fontSize)", settings.editorFontName, "\(settings.tabWidth)",
+                "\(settings.checkSpelling)", "\(settings.editorContrast)",
+                "\(settings.wordWrap)", "\(settings.showLineNumbers)",
+                "\(settings.focusMode)", "\(settings.typewriterMode)",
+                "\(parent.doc.byteSize > LargeFilePolicy.thresholdBytes)",
+            ].joined(separator: "|")
+            guard signature != lastConfigSignature else { return }
+            lastConfigSignature = signature
             let font = settings.editorFont()
             textView.font = font
 
@@ -115,7 +156,8 @@ struct SourceTextView: NSViewRepresentable {
             style.tabStops = []
             textView.defaultParagraphStyle = style
 
-            textView.isContinuousSpellCheckingEnabled = settings.checkSpelling
+            let policy = LargeFilePolicy.features(forByteSize: parent.doc.byteSize)
+            textView.isContinuousSpellCheckingEnabled = settings.checkSpelling && policy.spellcheckAllowed
             textView.isGrammarCheckingEnabled = false
 
             // Editor contrast — a distinct (darker) editor background vs a softer one.
@@ -149,14 +191,14 @@ struct SourceTextView: NSViewRepresentable {
                 scrollView?.rulersVisible = false
                 scrollView?.hasVerticalRuler = false
             }
-            highlight()
+            scheduleHighlight()
         }
 
         // MARK: Delegate
 
         func textDidChange(_ notification: Notification) {
-            guard let textView else { return }
-            parent.text = textView.string
+            parent.doc.noteEdited()
+            lastKnownVersion = parent.doc.textVersion
             scheduleHighlight()
             centerCaretIfNeeded()
             (scrollView?.verticalRulerView as? LineNumberRuler)?.needsDisplay = true
@@ -172,6 +214,7 @@ struct SourceTextView: NSViewRepresentable {
         /// Typewriter mode — keep the caret's line vertically centered.
         func centerCaretIfNeeded() {
             guard parent.settings.typewriterMode,
+                  LargeFilePolicy.features(forByteSize: parent.doc.byteSize).focusModesAllowed,
                   let tv = textView, let sv = scrollView,
                   let lm = tv.layoutManager, let tc = tv.textContainer else { return }
             let glyphRange = lm.glyphRange(forCharacterRange: tv.selectedRange(), actualCharacterRange: nil)
@@ -185,13 +228,19 @@ struct SourceTextView: NSViewRepresentable {
 
         /// Focus mode — dim everything outside the current paragraph using
         /// display-only temporary attributes (so syntax colors are preserved
-        /// when focus mode is turned off).
+        /// when focus mode is turned off). Early-exits when off: the previous
+        /// implementation did a full-document attribute pass on every caret
+        /// move even with focus mode disabled.
         func updateFocusMode() {
+            let focusOn = parent.settings.focusMode
+                && LargeFilePolicy.features(forByteSize: parent.doc.byteSize).focusModesAllowed
+            guard focusOn || focusDimApplied else { return }
             guard let tv = textView, let lm = tv.layoutManager else { return }
             let ns = tv.string as NSString
             let full = NSRange(location: 0, length: ns.length)
             lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: full)
-            guard parent.settings.focusMode else { return }
+            focusDimApplied = false
+            guard focusOn else { return }
             let para = ns.paragraphRange(for: tv.selectedRange())
             let dim = SourcePalette.muted.withAlphaComponent(0.45)
             if para.location > 0 {
@@ -203,6 +252,7 @@ struct SourceTextView: NSViewRepresentable {
                 lm.addTemporaryAttribute(.foregroundColor, value: dim,
                                          forCharacterRange: NSRange(location: after, length: full.length - after))
             }
+            focusDimApplied = true
         }
 
         func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
@@ -303,8 +353,6 @@ struct SourceTextView: NSViewRepresentable {
             case .quote:         prefixLines(tv, with: "> ")
             case .codeBlock:     fence(tv)
             }
-            parent.text = tv.string
-            highlight()
         }
 
         private func wrap(_ tv: NSTextView, with marker: String) {
@@ -341,11 +389,11 @@ struct SourceTextView: NSViewRepresentable {
             let ns = tv.string as NSString
             let lineRange = ns.lineRange(for: tv.selectedRange())
             let block = ns.substring(with: lineRange)
-            let newBlock = block
-                .components(separatedBy: "\n")
+            let lines = block.components(separatedBy: "\n")
+            let newBlock = lines
                 .enumerated()
                 .map { (i, line) -> String in
-                    (i == block.components(separatedBy: "\n").count - 1 && line.isEmpty) ? line : prefix + line
+                    (i == lines.count - 1 && line.isEmpty) ? line : prefix + line
                 }
                 .joined(separator: "\n")
             if tv.shouldChangeText(in: lineRange, replacementString: newBlock) {
@@ -412,14 +460,15 @@ struct SourceTextView: NSViewRepresentable {
                   tv.shouldChangeText(in: range, replacementString: replacement) else { return }
             tv.replaceCharacters(in: range, with: replacement)
             tv.didChangeText()
-            parent.text = tv.string
-            highlight()
         }
 
         private func findReplaceAll(_ ranges: [NSRange], with replacement: String, in tv: NSTextView) {
             guard !ranges.isEmpty else { return }
             let full = NSRange(location: 0, length: (tv.string as NSString).length)
             guard tv.shouldChangeText(in: full, replacementString: nil) else { return }
+            // A replace-all over a huge document would register an enormous
+            // undo group — drop undo instead of exhausting memory.
+            let policy = LargeFilePolicy.features(forByteSize: parent.doc.byteSize)
             tv.textStorage?.beginEditing()
             // Replace from the end backwards so earlier ranges stay valid.
             for range in ranges.sorted(by: { $0.location > $1.location }) {
@@ -428,8 +477,7 @@ struct SourceTextView: NSViewRepresentable {
             }
             tv.textStorage?.endEditing()
             tv.didChangeText()
-            parent.text = tv.string
-            highlight()
+            if policy.isLarge { parent.doc.undoManager.removeAllActions() }
         }
 
         // MARK: Highlighting
@@ -523,7 +571,6 @@ enum MarkdownHighlighter {
 
     static func apply(to storage: NSTextStorage, baseFont: NSFont) {
         let full = NSRange(location: 0, length: storage.length)
-        let text = storage.string as NSString
 
         storage.beginEditing()
         storage.setAttributes([.font: baseFont, .foregroundColor: SourcePalette.text], range: full)
@@ -548,15 +595,6 @@ enum MarkdownHighlighter {
         color(strikeRE, SourcePalette.emphasis)
         color(inlineCodeRE, SourcePalette.code, bg: SourcePalette.codeBG)
         color(fenceRE, SourcePalette.code)
-        _ = text
         storage.endEditing()
-    }
-}
-
-private extension NSRange {
-    func clamped(to length: Int) -> NSRange {
-        let loc = Swift.min(location, length)
-        let len = Swift.min(self.length, length - loc)
-        return NSRange(location: Swift.max(0, loc), length: Swift.max(0, len))
     }
 }

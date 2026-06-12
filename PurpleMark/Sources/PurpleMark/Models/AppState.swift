@@ -67,10 +67,20 @@ final class AppState: ObservableObject {
             activeID = existing.id
             return
         }
-        guard let doc = Document(contentsOf: url) else { NSSound.beep(); return }
+        let doc = Document.opening(url)
+        // A synchronous (small-file) load failure gets an alert and no tab;
+        // async failures surface in the tab's failed-state pane.
+        if case .failed(let message) = doc.loadState {
+            let alert = NSAlert()
+            alert.messageText = "Couldn't open “\(url.lastPathComponent)”"
+            alert.informativeText = message
+            alert.alertStyle = .warning
+            alert.runModal()
+            return
+        }
         // Replace a single pristine untitled tab instead of stacking a blank one.
         if documents.count == 1, documents[0].fileURL == nil, !documents[0].isDirty,
-           documents[0].text.isEmpty {
+           documents[0].storage.length == 0 {
             documents[0] = doc
         } else {
             documents.append(doc)

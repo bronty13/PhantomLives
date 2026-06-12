@@ -382,6 +382,168 @@ final class FileServiceTests: XCTestCase {
     }
 }
 
+final class FileLoaderTests: XCTestCase {
+    func testDecodesPlainUTF8() {
+        let loaded = FileLoader.decode(Data("# héllo ✨".utf8))
+        XCTAssertEqual(loaded.text, "# héllo ✨")
+        XCTAssertEqual(loaded.encoding, .utf8)
+        XCTAssertEqual(loaded.byteSize, Data("# héllo ✨".utf8).count)
+    }
+
+    func testStripsUTF8BOM() {
+        var data = Data([0xEF, 0xBB, 0xBF])
+        data.append(Data("hello".utf8))
+        let loaded = FileLoader.decode(data)
+        XCTAssertEqual(loaded.text, "hello", "BOM must not land in the editor")
+    }
+
+    func testDecodesUTF16WithBOM() {
+        let data = "héllo".data(using: .utf16)!   // includes a BOM
+        let loaded = FileLoader.decode(data)
+        XCTAssertEqual(loaded.text, "héllo")
+    }
+
+    func testFallsBackForLatin1Bytes() {
+        // 0xE9 is 'é' in Latin-1 and invalid as standalone UTF-8.
+        let data = Data([0x63, 0x61, 0x66, 0xE9]) // "café"
+        let loaded = FileLoader.decode(data)
+        XCTAssertEqual(loaded.text, "café")
+    }
+
+    func testEmptyData() {
+        let loaded = FileLoader.decode(Data())
+        XCTAssertEqual(loaded.text, "")
+        XCTAssertEqual(loaded.byteSize, 0)
+    }
+}
+
+final class DocumentIndexTests: XCTestCase {
+    func testLineStartOffsets() {
+        let idx = DocumentIndex.build(from: "ab\ncd\n\nx")
+        XCTAssertEqual(idx.lineStartOffsets, [0, 3, 6, 7])
+        XCTAssertEqual(idx.stats.lines, 4)
+        XCTAssertEqual(idx.lineIndex(forUTF16Offset: 0), 0)
+        XCTAssertEqual(idx.lineIndex(forUTF16Offset: 2), 0)
+        XCTAssertEqual(idx.lineIndex(forUTF16Offset: 3), 1)
+        XCTAssertEqual(idx.lineIndex(forUTF16Offset: 7), 3)
+    }
+
+    func testFenceRangesAndMembership() {
+        let md = """
+        # Title
+        ```
+        code
+        # not a heading
+        ```
+        after
+        ~~~
+        more
+        """
+        let idx = DocumentIndex.build(from: md)
+        XCTAssertEqual(idx.fenceLineRanges.first, 1..<5)
+        XCTAssertEqual(idx.fenceLineRanges.last, 6..<8, "unclosed fence runs to the end")
+        XCTAssertTrue(idx.isLineInFence(2))
+        XCTAssertFalse(idx.isLineInFence(0))
+        XCTAssertFalse(idx.isLineInFence(5))
+        XCTAssertEqual(idx.outline.map(\.title), ["Title"])
+    }
+
+    func testFenceCharacterRanges() {
+        let md = "a\n```\nb\n```\nc"
+        let idx = DocumentIndex.build(from: md)
+        let ranges = idx.fenceCharacterRanges(totalLength: (md as NSString).length)
+        XCTAssertEqual(ranges, [NSRange(location: 2, length: 10)]) // "```\nb\n```\n"
+    }
+
+    func testMatchesOutlineParserOnMixedDocument() {
+        let md = """
+        # One
+        text **bold**
+        ```swift
+        # comment
+        ```
+        ## Two
+        - item
+        """
+        let idx = DocumentIndex.build(from: md)
+        XCTAssertEqual(idx.outline, OutlineParser.outline(from: md))
+        XCTAssertEqual(idx.stats, OutlineParser.stats(from: md))
+        XCTAssertEqual(idx.stats.words, OutlineParser.stats(from: md).words)
+    }
+
+    func testEmptyDocument() {
+        let idx = DocumentIndex.build(from: "")
+        XCTAssertEqual(idx.lineStartOffsets, [0])
+        XCTAssertEqual(idx.stats.lines, 0)
+        XCTAssertTrue(idx.outline.isEmpty)
+        XCTAssertTrue(idx.fenceLineRanges.isEmpty)
+    }
+}
+
+final class LargeFilePolicyTests: XCTestCase {
+    func testSmallFileKeepsEverything() {
+        let p = LargeFilePolicy.features(forByteSize: 1_000_000)
+        XCTAssertFalse(p.isLarge)
+        XCTAssertTrue(p.spellcheckAllowed)
+        XCTAssertTrue(p.typographyAllowed)
+        XCTAssertTrue(p.focusModesAllowed)
+        XCTAssertFalse(p.previewCapped)
+    }
+
+    func testLargeFileDegrades() {
+        let p = LargeFilePolicy.features(forByteSize: 20_000_000)
+        XCTAssertTrue(p.isLarge)
+        XCTAssertFalse(p.spellcheckAllowed)
+        XCTAssertFalse(p.focusModesAllowed)
+        XCTAssertFalse(p.previewCapped, "20MB renders fully")
+    }
+
+    func testHugeFileCapsPreview() {
+        XCTAssertTrue(LargeFilePolicy.features(forByteSize: 100_000_000).previewCapped)
+    }
+}
+
+final class DocumentVersionTests: XCTestCase {
+    @MainActor
+    func testNoteEditedBumpsVersionAndDirty() {
+        let doc = Document(text: "hello", fileURL: nil)
+        XCTAssertFalse(doc.isDirty)
+        let v = doc.textVersion
+        doc.storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "x")
+        doc.noteEdited()
+        XCTAssertEqual(doc.textVersion, v + 1)
+        XCTAssertTrue(doc.isDirty)
+    }
+
+    @MainActor
+    func testProgrammaticReplaceIsNotDirty() {
+        let doc = Document(text: "a", fileURL: nil)
+        doc.text = "completely new"
+        XCTAssertFalse(doc.isDirty)
+        XCTAssertEqual(doc.text, "completely new")
+    }
+
+    @MainActor
+    func testInitBuildsIndexSynchronously() {
+        let doc = Document(text: "# Head\n\nbody words here", fileURL: nil)
+        XCTAssertEqual(doc.outline.map(\.title), ["Head"])
+        XCTAssertEqual(doc.stats.words, 5)   // "#" counts as a word, as before
+    }
+}
+
+final class FindCapTests: XCTestCase {
+    @MainActor
+    func testMatchesAreCapped() {
+        let text = String(repeating: "a ", count: FindController.maxMatches + 5_000)
+        let find = FindController()
+        find.query = "a"
+        find.recompute(in: text, version: 1)
+        XCTAssertEqual(find.matchCount, FindController.maxMatches)
+        XCTAssertTrue(find.matchesCapped)
+        XCTAssertEqual(find.matchesVersion, 1)
+    }
+}
+
 final class DropToOpenTests: XCTestCase {
     @MainActor
     func testOpensMarkdownFilesAndIgnoresOthers() throws {

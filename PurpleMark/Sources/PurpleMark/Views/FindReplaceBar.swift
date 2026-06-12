@@ -28,7 +28,13 @@ struct FindReplaceBar: View {
         .onChange(of: find.query) { _, _ in recompute(); if find.hasMatches { find.selectCurrent() } }
         .onChange(of: find.useRegex) { _, _ in recompute() }
         .onChange(of: find.caseSensitive) { _, _ in recompute() }
-        .onChange(of: doc.text) { _, _ in recompute() }
+        // Debounced + background so typing in a huge document stays smooth;
+        // comparing the version is O(1) where comparing the text was O(n).
+        .onChange(of: doc.textVersion) { _, version in
+            find.scheduleRecompute(
+                debounce: LargeFilePolicy.features(forByteSize: doc.byteSize).findDebounce,
+                version: version) { [weak doc] in doc?.text ?? "" }
+        }
     }
 
     private var findRow: some View {
@@ -74,9 +80,9 @@ struct FindReplaceBar: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($focusedField, equals: .replace)
                 .frame(minWidth: 160)
-            Button("Replace") { find.replaceCurrent() }
+            Button("Replace") { recomputeIfStale(); find.replaceCurrent() }
                 .disabled(!find.hasMatches)
-            Button("Replace All") { find.replaceAll() }
+            Button("Replace All") { recomputeIfStale(); find.replaceAll() }
                 .disabled(!find.hasMatches)
             Spacer(minLength: 0)
         }
@@ -97,8 +103,15 @@ struct FindReplaceBar: View {
     private var matchLabel: String {
         guard !find.query.isEmpty else { return "" }
         guard find.hasMatches else { return "Not found" }
-        return "\(find.currentIndex + 1) of \(find.matchCount)"
+        let total = find.matchesCapped ? "\(find.matchCount)+" : "\(find.matchCount)"
+        return "\(find.currentIndex + 1) of \(total)"
     }
 
-    private func recompute() { find.recompute(in: doc.text) }
+    private func recompute() { find.recompute(in: doc.text, version: doc.textVersion) }
+
+    /// A replacement must never run against ranges computed for older text —
+    /// the debounce window makes that possible, so resync first.
+    private func recomputeIfStale() {
+        if find.matchesVersion != doc.textVersion { recompute() }
+    }
 }
