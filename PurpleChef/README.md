@@ -41,8 +41,9 @@ npm run typecheck     # tsc, node + web configs
 then `install.sh` force-quits any running copy, installs to
 `/Applications/Purple Chef.app`, relaunches, and proves process freshness.
 
-Release artifacts: `npm run dist:mac` (universal2 DMG; needs Developer ID env)
-and `npm run dist:win` (NSIS installer for Windows x64).
+Releases (both platforms): `scripts/release.sh` — notarized universal2 DMG
+built locally, `purplechef-v*` tag triggers CI to build + attach the Windows
+NSIS installer and publish the GitHub release. Full flow in `RELEASING.md`.
 
 ## Data & backup
 

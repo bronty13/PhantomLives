@@ -2,6 +2,20 @@
 
 All notable changes to Purple Chef.
 
+## 1.0.1 — 2026-06-11
+
+- Release process for both platforms (see `RELEASING.md`):
+  - `scripts/release.sh` — one-command macOS release: pre-flight checks
+    (version/CHANGELOG consistency, clean pushed main, tests + typecheck,
+    signing/notary credentials), universal2 Developer-ID build, notarization
+    via the `NOTARIZE_PROFILE` keychain profile (`scripts/notarize.cjs`
+    afterSign hook), stapling + Gatekeeper verification, `purplechef-v*` tag,
+    and mac artifact upload to the GitHub release.
+  - `.github/workflows/release-purplechef.yml` — on the tag, CI builds the
+    Windows NSIS installer (with typecheck + tests on windows-latest),
+    attaches it, and publishes the release.
+- No gameplay changes.
+
 ## 1.0.0 — 2026-06-11
 
 Initial release. 🎉
