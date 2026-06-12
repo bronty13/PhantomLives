@@ -80,6 +80,7 @@ struct DocumentWindow: View {
         .toolbar(settings.zenMode ? .hidden : .visible, for: .windowToolbar)
         .toolbar { toolbarContent }
         .navigationTitle(doc.title)
+        .modifier(DocumentProxyIcon(url: doc.fileURL))
     }
 
     @ToolbarContentBuilder
@@ -160,6 +161,20 @@ struct DocumentWindow: View {
     }
 }
 
+/// Title-bar proxy icon + drag support for saved documents (the standard
+/// macOS affordance: ⌘-click the title for the path, drag the icon).
+private struct DocumentProxyIcon: ViewModifier {
+    let url: URL?
+
+    func body(content: Content) -> some View {
+        if let url {
+            content.navigationDocument(url)
+        } else {
+            content
+        }
+    }
+}
+
 /// The single editor pane for a document — Document (rendered) or Markdown
 /// (source). Scroll position carries across the toggle.
 private struct EditorPane: View {
@@ -191,9 +206,11 @@ private struct EditorPane: View {
                                        allowRawHTML: settings.allowRawHTML),
                         capBytes: (policy.previewCapped && !doc.renderFullPreview)
                             ? LargeFilePolicy.previewCapBytes : nil,
+                        pageZoom: settings.previewZoom,
                         onRenderAnyway: { doc.renderFullPreview = true },
                         onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
                         scrollTo: doc.scrollFraction,
+                        headingJump: doc.outlineJump.map { ($0.headingIndex, $0.token) },
                         onOpenFile: { url in state.openDroppedFiles([url]) })
                 case .markdown:
                     SourceTextView(

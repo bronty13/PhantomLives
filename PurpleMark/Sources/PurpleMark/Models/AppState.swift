@@ -39,9 +39,13 @@ final class AppState: ObservableObject {
         let doc = Document()
         documents.append(doc)
         activeID = doc.id
+        persistSession()
     }
 
-    func activate(_ doc: Document) { activeID = doc.id }
+    func activate(_ doc: Document) {
+        activeID = doc.id
+        persistSession()
+    }
 
     /// Open files dropped onto the window from Finder. Accepts regular files
     /// whose extension we recognize as markdown/text (directories and unknown
@@ -88,6 +92,7 @@ final class AppState: ObservableObject {
         activeID = doc.id
         if folder == nil { setFolder(url.deletingLastPathComponent()) }
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        persistSession()
     }
 
     func closeDocument(_ doc: Document) {
@@ -99,6 +104,7 @@ final class AppState: ObservableObject {
         } else if doc.id == activeID {
             activeID = documents[min(index, documents.count - 1)].id
         }
+        persistSession()
     }
 
     func closeActiveDocument() { closeDocument(active) }
@@ -148,5 +154,43 @@ final class AppState: ObservableObject {
     func reloadFolderFiles() {
         guard let folder else { folderFiles = []; return }
         folderFiles = FileService.markdownFiles(in: folder)
+    }
+
+    // MARK: - Session persistence
+
+    private static let sessionFilesKey = "session.openFiles"
+    private static let sessionActiveKey = "session.activeIndex"
+    private var isRestoringSession = false
+
+    /// Remembers which files are open (and which is active) across launches.
+    /// Called on every tab change so a crash doesn't lose the session.
+    func persistSession() {
+        // Only the real shared instance persists — test-constructed AppStates
+        // must not overwrite the user's session.
+        guard !isRestoringSession, self === AppState.shared else { return }
+        let paths = documents.compactMap { $0.fileURL?.path }
+        UserDefaults.standard.set(paths, forKey: Self.sessionFilesKey)
+        let activePath = active.fileURL?.path
+        UserDefaults.standard.set(paths.firstIndex(where: { $0 == activePath }) ?? 0,
+                                  forKey: Self.sessionActiveKey)
+    }
+
+    func restoreSession() {
+        guard let paths = UserDefaults.standard.stringArray(forKey: Self.sessionFilesKey),
+              !paths.isEmpty else { return }
+        isRestoringSession = true
+        let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }
+        for path in existing {
+            open(URL(fileURLWithPath: path))
+        }
+        let activeIndex = UserDefaults.standard.integer(forKey: Self.sessionActiveKey)
+        if existing.indices.contains(activeIndex) {
+            let url = URL(fileURLWithPath: existing[activeIndex]).standardizedFileURL
+            if let doc = documents.first(where: { $0.fileURL?.standardizedFileURL == url }) {
+                activeID = doc.id
+            }
+        }
+        isRestoringSession = false
+        persistSession()
     }
 }

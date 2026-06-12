@@ -86,6 +86,7 @@ struct SourceTextView: NSViewRepresentable {
         }
         context.coordinator.configure(with: settings)
         if let scrollTo { context.coordinator.scroll(toFraction: scrollTo) }
+        if let jump = doc.outlineJump { context.coordinator.jump(toLine: jump.line, token: jump.token) }
     }
 
     // MARK: - Coordinator
@@ -218,6 +219,28 @@ struct SourceTextView: NSViewRepresentable {
         func textViewDidChangeSelection(_ notification: Notification) {
             updateFocusMode()
             centerCaretIfNeeded()
+            updateSelectionStats()
+        }
+
+        /// Status-bar selection counts. Bounded: a multi-megabyte selection
+        /// shows characters only rather than scanning for words on the main
+        /// thread.
+        private func updateSelectionStats() {
+            guard let tv = textView else { return }
+            let range = tv.selectedRange()
+            guard range.length > 0 else {
+                if parent.doc.selectionStats != nil { parent.doc.selectionStats = nil }
+                return
+            }
+            var stats = DocStats()
+            stats.characters = range.length
+            if range.length <= 1_000_000 {
+                let selected = (tv.string as NSString).substring(with: range)
+                stats.words = selected
+                    .split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" })
+                    .count
+            }
+            parent.doc.selectionStats = stats
         }
 
         // MARK: Writing modes
@@ -340,6 +363,21 @@ struct SourceTextView: NSViewRepresentable {
             let work = DispatchWorkItem { [weak self] in self?.highlight() }
             scrollHighlightWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        }
+
+        private var lastJumpToken: UUID?
+
+        /// Exact outline jump: scroll the heading's line to the top and park
+        /// the caret there.
+        func jump(toLine line: Int, token: UUID) {
+            guard token != lastJumpToken, let tv = textView else { return }
+            lastJumpToken = token
+            let offsets = parent.doc.index.lineStartOffsets
+            guard line < offsets.count else { return }
+            let offset = min(offsets[line], (tv.string as NSString).length)
+            let range = NSRange(location: offset, length: 0)
+            tv.setSelectedRange(range)
+            tv.scrollRangeToVisible(range)
         }
 
         func scroll(toFraction fraction: Double) {

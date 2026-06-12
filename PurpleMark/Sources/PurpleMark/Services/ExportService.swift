@@ -92,7 +92,56 @@ final class ExportService {
         webView.loadHTMLString(html, baseURL: nil)
     }
 
+    /// Retains the offscreen web view + window while a print render is in flight.
+    private var printWebView: WKWebView?
+    private var printWindow: NSWindow?
+
+    /// Renders the document offscreen and runs the standard print panel —
+    /// Mermaid and KaTeX included, same pipeline as PDF export.
+    func printDocument(markdown: String, colors: ThemeColors, width: ReadingWidth,
+                       allowRawHTML: Bool = false) {
+        let html = RenderCore.standaloneHTML(markdown: markdown, colors: colors, width: width,
+                                             allowRawHTML: allowRawHTML)
+        let frame = NSRect(x: 0, y: 0, width: 820, height: 1060)
+        let webView = WKWebView(frame: frame)
+        let window = NSWindow(contentRect: frame, styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.contentView = webView
+        window.alphaValue = 0
+        printWebView = webView
+        printWindow = window
+
+        let delegate = PDFLoadDelegate { [weak self] in
+            // Give Mermaid/KaTeX async rendering a moment to settle.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                let info = NSPrintInfo.shared
+                info.horizontalPagination = .fit
+                info.verticalPagination = .automatic
+                let op = webView.printOperation(with: info)
+                // WKWebView's print operation needs an explicit view frame or
+                // it produces blank pages.
+                op.view?.frame = NSRect(origin: .zero, size: info.paperSize)
+                op.showsPrintPanel = true
+                op.showsProgressPanel = true
+                if let host = NSApp.mainWindow {
+                    op.runModal(for: host, delegate: nil, didRun: nil, contextInfo: nil)
+                } else {
+                    op.run()
+                }
+                // Release after the panel had a chance to spool.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self?.printWebView = nil
+                    self?.printWindow = nil
+                }
+            }
+        }
+        webView.navigationDelegate = delegate
+        objc_setAssociatedObject(webView, &Self.printDelegateKey, delegate, .OBJC_ASSOCIATION_RETAIN)
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
     private static var delegateKey: UInt8 = 0
+    private static var printDelegateKey: UInt8 = 0
 }
 
 /// Minimal navigation delegate that fires once the page finishes loading.

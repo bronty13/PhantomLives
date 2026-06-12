@@ -24,6 +24,8 @@ public struct MarkdownWebView: NSViewRepresentable {
     /// When set, the preview renders only the leading `capBytes` and shows a
     /// "Render anyway" banner; nil renders everything.
     public var capBytes: Int?
+    /// Preview zoom factor (1.0 = 100%).
+    public var pageZoom: Double = 1.0
     /// The user clicked "Render anyway" on the truncation banner.
     public var onRenderAnyway: (() -> Void)?
     /// Reports the vertical scroll fraction (0…1) as the user scrolls the
@@ -31,6 +33,9 @@ public struct MarkdownWebView: NSViewRepresentable {
     public var onScroll: ((Double) -> Void)?
     /// When set, scrolls the rendered view to this fraction (0…1).
     public var scrollTo: Double?
+    /// One-shot exact jump to the nth heading element (outline click); the
+    /// token distinguishes repeated requests.
+    public var headingJump: (index: Int, token: UUID)?
     /// Called when a local file should open as a document: a file dropped onto
     /// the rendered view, or a clicked link to a relative markdown file.
     public var onOpenFile: ((URL) -> Void)?
@@ -43,9 +48,11 @@ public struct MarkdownWebView: NSViewRepresentable {
                 docFolder: URL? = nil,
                 options: PreviewSchemeHandler.Options = .init(),
                 capBytes: Int? = nil,
+                pageZoom: Double = 1.0,
                 onRenderAnyway: (() -> Void)? = nil,
                 onScroll: ((Double) -> Void)? = nil,
                 scrollTo: Double? = nil,
+                headingJump: (index: Int, token: UUID)? = nil,
                 onOpenFile: ((URL) -> Void)? = nil) {
         self.markdown = markdown
         self.contentID = contentID
@@ -55,9 +62,11 @@ public struct MarkdownWebView: NSViewRepresentable {
         self.docFolder = docFolder
         self.options = options
         self.capBytes = capBytes
+        self.pageZoom = pageZoom
         self.onRenderAnyway = onRenderAnyway
         self.onScroll = onScroll
         self.scrollTo = scrollTo
+        self.headingJump = headingJump
         self.onOpenFile = onOpenFile
     }
 
@@ -82,8 +91,10 @@ public struct MarkdownWebView: NSViewRepresentable {
 
     public func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
+        if webView.pageZoom != pageZoom { webView.pageZoom = pageZoom }
         context.coordinator.applyIfNeeded()
         if let scrollTo { context.coordinator.applyScroll(to: scrollTo) }
+        if let headingJump { context.coordinator.applyHeadingJump(headingJump) }
     }
 
     @MainActor
@@ -129,6 +140,16 @@ public struct MarkdownWebView: NSViewRepresentable {
 
         private var lastReported: Double = 0
         private var lastScrollApplied: Double?
+        private var lastHeadingJumpToken: UUID?
+
+        /// Exact scroll to the nth rendered heading; the coarse fraction
+        /// scroll (already applied) covers headings in not-yet-rendered chunks.
+        func applyHeadingJump(_ jump: (index: Int, token: UUID)) {
+            guard isLoaded, let webView, jump.token != lastHeadingJumpToken else { return }
+            lastHeadingJumpToken = jump.token
+            let js = "if (window.PM) window.PM.scrollToHeading(\(jump.index));"
+            webView.evaluateJavaScript(js)
+        }
 
         func applyScroll(to fraction: Double) {
             guard isLoaded, let webView else { return }

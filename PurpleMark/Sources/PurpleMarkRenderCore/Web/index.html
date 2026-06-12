@@ -238,6 +238,15 @@
       ready: true,
       render: render,
       refresh: refresh,
+      // Exact outline jump: scroll the nth heading element into view.
+      // Returns false when that heading's chunk hasn't rendered yet (the
+      // host's coarse fraction scroll remains in effect).
+      scrollToHeading: function (i) {
+        var hs = contentEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        if (!hs[i]) return false;
+        hs[i].scrollIntoView({ block: 'start' });
+        return true;
+      },
       setTheme: function (name) {
         var valid = ['default', 'nord', 'solarized', 'one-dark'];
         document.body.classList.forEach(function (c) {

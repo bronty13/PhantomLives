@@ -54,6 +54,7 @@ final class AppSettings: ObservableObject {
     @Stored(key: "appearance.defaultView", defaultValue: ViewMode.document.rawValue) var defaultViewRaw: String
     @Stored(key: "appearance.readingWidth", defaultValue: ReadingWidth.default.rawValue) var readingWidthRaw: String
     @Stored(key: "appearance.editorContrast", defaultValue: true) var editorContrast: Bool
+    @Stored(key: "appearance.previewZoom", defaultValue: 1.0) var previewZoom: Double
 
     // Editor
     @Stored(key: "editor.fontSize", defaultValue: 14.0) var fontSize: Double

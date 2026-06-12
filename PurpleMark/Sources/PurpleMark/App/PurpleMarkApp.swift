@@ -52,6 +52,12 @@ struct PurpleMarkApp: App {
                 ForEach(NSDocumentController.shared.recentDocumentURLs, id: \.self) { url in
                     Button(url.lastPathComponent) { state.open(url) }
                 }
+                if !NSDocumentController.shared.recentDocumentURLs.isEmpty {
+                    Divider()
+                    Button("Clear Menu") {
+                        NSDocumentController.shared.clearRecentDocuments(nil)
+                    }
+                }
             }
             Divider()
             Button("Close Tab") { state.closeActiveDocument() }
@@ -66,6 +72,16 @@ struct PurpleMarkApp: App {
             Button("Export to PDF…") { ExportCommands.exportPDF(doc: state.active, settings: settings) }
             Button("Export to HTML…") { ExportCommands.exportHTML(doc: state.active, settings: settings) }
         }
+        CommandGroup(replacing: .printItem) {
+            Button("Print…") {
+                ExportService.shared.printDocument(
+                    markdown: state.active.text,
+                    colors: ThemeStore.shared.colors(forID: settings.themeRaw),
+                    width: settings.readingWidth,
+                    allowRawHTML: settings.allowRawHTML)
+            }
+            .keyboardShortcut("p")
+        }
         // View
         CommandGroup(after: .toolbar) {
             Button("Show Document") { state.active.viewMode = .document }
@@ -76,6 +92,17 @@ struct PurpleMarkApp: App {
                 state.sidebarVisible.toggle()
             }
             .keyboardShortcut("s", modifiers: [.control, .command])
+            Divider()
+            Button("Zoom Preview In") {
+                settings.previewZoom = min(3.0, settings.previewZoom + 0.1)
+            }
+            .keyboardShortcut("=", modifiers: .command)
+            Button("Zoom Preview Out") {
+                settings.previewZoom = max(0.5, settings.previewZoom - 0.1)
+            }
+            .keyboardShortcut("-", modifiers: .command)
+            Button("Actual Size") { settings.previewZoom = 1.0 }
+                .keyboardShortcut("0", modifiers: .command)
         }
         // Find
         CommandGroup(after: .textEditing) {

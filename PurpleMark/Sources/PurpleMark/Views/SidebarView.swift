@@ -75,8 +75,12 @@ private struct OutlineList: View {
     }
 
     private func jump(to item: OutlineItem) {
+        // Fraction as the coarse fallback (e.g. preview chunk not rendered
+        // yet); the exact jump follows for whichever view is showing.
         let totalLines = max(1, doc.stats.lines - 1)
         doc.scrollFraction = max(0, min(1, Double(item.line) / Double(totalLines)))
+        let headingIndex = doc.outline.firstIndex(where: { $0 == item }) ?? 0
+        doc.requestOutlineJump(line: item.line, headingIndex: headingIndex)
     }
 
     private func badgeColor(_ level: Int) -> Color {
