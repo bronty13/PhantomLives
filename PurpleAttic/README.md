@@ -116,6 +116,30 @@ roots** (e.g. `/Volumes/PRO-G40`); the archive is nested under the
 — its copy is written at the vault root. Set `archiveSubfolder` to `""` to write
 at the drive root instead.
 
+## Sender mode — archive a second Mac (`pattic agent`)
+
+To preserve photos from a **second Mac** (e.g. a different iCloud account, or a small-disk
+laptop), run **sender mode** on that Mac. It's one-way and **export-only — it never purges**:
+it exports that Mac's Photos to an **external SSD** (so the internal drive stays untouched) and
+`rsync`s the archive **over SSH** to this receiver. Reuses the same export engine, so the result
+is the same metadata-rich archive as the core flow.
+
+```bash
+# On the SOURCE Mac:
+./install-sender.sh                 # builds pattic, scaffolds config + SSH key
+$EDITOR ~/Library/Application\ Support/PurpleAttic/sender.json   # set stagingRoot + remote.*
+pattic agent plan                   # preview
+pattic agent run --dry-run          # plan the export, ship nothing
+pattic agent run                    # first run = full backup; later = new items only
+./install-sender.sh --install-agent 3600   # schedule hourly via launchd
+```
+
+Recommended for a perpetually-full small drive: **move the Photos library onto the SSD and set
+"Download Originals to this Mac"** — that frees the internal disk *and* means every original is
+local (no iCloud-download step). Config lives in `sender.json` (separate from `profile.json`); the
+source Mac needs Full Disk Access on the `pattic` binary, and its SSH key authorized on the
+receiver.
+
 ### Permissions (required before any run)
 
 The app **blocks Dry Run and Archive until three macOS grants are in place**, with

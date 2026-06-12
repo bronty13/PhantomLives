@@ -3,6 +3,35 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.17.0] — 2026-06-12
+
+Sender mode — capture a *second* Mac's Photos to an SSD and ship them to a PurpleAttic receiver.
+
+### Added
+- **`pattic agent` (sender mode).** A one-way, export-only agent for a *source* Mac (e.g. a small-
+  disk second Mac on a different iCloud account): it exports that Mac's Photos to an **external SSD**
+  (keeping the internal drive untouched) and `rsync`s the archive **over SSH** to a remote receiver.
+  - **Export-only, never purges.** New `SenderConfig` maps to an *export-only* `ArchiveProfile`
+    (empty mirrors, no vault, `purgeEnabled` forced off, `reviewNewItems` off), so the sender reuses
+    the exact, tested `ExportEngine` export path with **zero changes to the core archive / mirror /
+    verify / cloud / purge code**. Same metadata as the core archive (`--exiftool` + XMP sidecars).
+  - **Incremental.** First run = full backup; every run after (hourly via launchd) catches only new
+    photos/videos (`osxphotos --update`).
+  - **Small-disk friendly.** Staging on the SSD means ~zero internal-drive footprint;
+    `downloadMissingFromICloud` handles an Optimize-Storage source (recommended: move the library to
+    the SSD + "Download Originals" so no iCloud fetch is needed at all).
+  - Subcommands: `pattic agent init | plan | run` (`run --dry-run` to preview); config at
+    `~/Library/Application Support/PurpleAttic/sender.json`, separate from `profile.json`.
+- **`install-sender.sh`** — source-Mac installer: ensures osxphotos/exiftool, builds + installs the
+  `pattic` CLI, scaffolds the config, generates an SSH key, and (optionally, `--install-agent
+  [seconds]`) loads an hourly launchd agent. Separate from the core `build-app.sh`/`install.sh`.
+
+### Tests
+- 9 new sender tests (110 total, all green): export-only/never-purge invariants, download-flag
+  pass-through, staging-root nesting, validation, the rsync-over-SSH argv shape (port, identity,
+  `BatchMode`, trailing-slash source, single-quoted remote path), and Codable round-trip + tolerant
+  decode. Core suite unchanged — no regressions.
+
 ## [0.16.0] — 2026-06-11
 
 Retention pin-matching hardened to be case- and whitespace-insensitive on both sides.
