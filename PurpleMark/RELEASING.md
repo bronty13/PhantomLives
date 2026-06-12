@@ -16,7 +16,7 @@ git pull --rebase
 ./Scripts/release.sh      # build → notarize → DMG → release → appcast
 ```
 
-The version is git-derived (`1.0.<commit-count>`); the tag is
+The version is git-derived (`1.1.<commit-count>`); the tag is
 `purplemark-v<version>`. The moment the appcast commit lands on `main`, running
 copies are offered the update.
 

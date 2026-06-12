@@ -54,7 +54,7 @@ fi
 # ---------------------------------------------------------------- version
 COMMIT_COUNT="$(git rev-list --count HEAD)"
 SHORT_SHA="$(git rev-parse --short HEAD)"
-SHORT_VERSION="${SHORT_VERSION:-1.0.${COMMIT_COUNT}}"
+SHORT_VERSION="${SHORT_VERSION:-1.1.${COMMIT_COUNT}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${COMMIT_COUNT}.${SHORT_SHA}}"
 RELEASE_TAG="purplemark-v${SHORT_VERSION}"
 say "Releasing $APP $SHORT_VERSION ($BUILD_NUMBER) → tag $RELEASE_TAG"
