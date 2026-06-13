@@ -90,9 +90,19 @@ PLIST_EOF
   echo "  plist: $PLIST"
   echo "  log:   $LOG"
   echo
-  echo "IMPORTANT: grant Full Disk Access so the background agent can write to"
-  echo "the iCloud-synced vault. System Settings ▸ Privacy & Security ▸ Full"
-  echo "Disk Access ▸ + ▸ ⇧⌘G ▸ /bin ▸ select 'bash' ▸ enable it."
+  case "$VAULT" in
+    "$HOME/Documents/"*|"$HOME/Desktop/"*|"$HOME/Downloads/"*|"$HOME/Library/Mobile Documents/"*)
+      echo "NOTE: this vault is in a TCC-protected / iCloud location. The background"
+      echo "agent (runs as /bin/bash) needs Full Disk Access: System Settings ▸ Privacy"
+      echo "& Security ▸ Full Disk Access ▸ + ▸ ⇧⌘G ▸ /bin ▸ select 'bash' ▸ enable it."
+      echo "BETTER: move the vault to a non-iCloud path (e.g. ~/ObsidianVault) and use"
+      echo "Obsidian Sync — see docs/obsidian-setup.md. Never run two sync engines on one vault."
+      ;;
+    *)
+      echo "Vault is at a non-iCloud path → no Full Disk Access needed. Obsidian Sync"
+      echo "(desktop app running + connected) propagates the mirror to your other devices."
+      ;;
+  esac
 }
 
 uninstall_agent() {
