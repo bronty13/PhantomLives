@@ -157,8 +157,11 @@ LSREGISTER='/System/Library/Frameworks/CoreServices.framework/Versions/A/Framewo
 
 echo "Built $FINAL_APP_DIR"
 
-# --- Optional notarization (gated on NOTARIZE_PROFILE; release.sh opts in) ---
-if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+# --- Optional notarization (gated on NOTARIZE=1; release.sh opts in) ---
+# Plain `./build-app.sh` dev builds SKIP notarization even if NOTARIZE_PROFILE
+# is set in the ambient shell env — notarization (a ~1-min network round-trip) is
+# reserved for tagged releases via Scripts/release.sh, which sets NOTARIZE=1.
+if [ "${NOTARIZE:-0}" = "1" ] && [ -n "${NOTARIZE_PROFILE:-}" ]; then
     if [ "$CODESIGN_ID" = "-" ]; then
         echo "WARNING: NOTARIZE_PROFILE set but bundle is ad-hoc-signed — notary will reject. Skipping."
     else

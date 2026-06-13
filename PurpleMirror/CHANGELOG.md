@@ -15,6 +15,9 @@ All notable changes to PurpleMirror are documented here.
   fails (non-zero exit), once per failed run, in addition to turning the menu-bar
   glyph red. Requests notification permission on first launch.
 - Menu now shows the running version.
+- Build hygiene: plain `./build-app.sh` dev builds skip notarization (gated on
+  `NOTARIZE=1`, which only `Scripts/release.sh` sets) — local builds stay fast
+  and Developer-ID-signed; notarization is reserved for tagged releases.
 
 ## 1.0.0 — 2026-06-13
 
