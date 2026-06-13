@@ -4,6 +4,39 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] — 2026-06-13
+
+### Fixed — Video quality loss in processing & auto-assembly
+
+Processed and auto-assembled videos came out noticeably softer and lower-detail
+than the originals. Root cause was the H.264 quality target: every encoder used
+`-crf 23` (the streaming default), which on already-compressed phone footage
+roughly **halved** the bitrate — a measured clip went 720×1280 @ 3.5 Mbps →
+1.8 Mbps at the same pixel count — discarding the fine detail (skin, hair,
+fabric) that reads as "fuzzy."
+
+- **All encoders now target `-crf 18`** (near-lossless to the source): the
+  per-bundle process op (`video.rs`), and the auto-assembly title card,
+  normalize, and master-cut passes (`auto_assemble.rs`, the master was `21`).
+  Files are larger; quality is the priority for posting-grade output.
+- **Auto-assembly scaling now uses `flags=lanczos`** instead of ffmpeg's
+  default (bilinear). When a sub-canvas clip is enlarged (e.g. a 720p source in
+  a 1080p master) Lanczos keeps the upscaled frame as crisp as interpolation
+  allows. *(Note: the auto-assembly still scales clips to the configured
+  canvas; if a source is smaller than the canvas it is still upscaled — a
+  source-resolution-tracking master is a separate, larger change.)*
+
+### Fixed — "Reveal" opened the master cut in Parallels instead of Finder
+
+Clicking **Reveal** on a ready master cut launched the `.mp4` in Parallels
+Desktop (which had registered itself as the Windows-side handler for video
+files) instead of showing it in Finder. `reveal_in_file_browser` ran a bare
+`open <file>`, which launches the file's default app rather than revealing it.
+Files are now *revealed/selected* in their folder (`open -R` on macOS,
+`explorer /select,` on Windows) while directories still open directly. This
+fixes Reveal for the master cut and every other "reveal a file" button
+(processed clips, transcripts, summary PDFs, job outputs, backup archives).
+
 ## [0.27.1] — 2026-06-02
 
 ### Added — Assembled-file details on the summary

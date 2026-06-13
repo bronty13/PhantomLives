@@ -1,6 +1,6 @@
 # SideMolly — Architecture Handoff
 
-> **Status: shipping (v0.27.1).** All 13 planned phases (0–13 in
+> **Status: shipping (v0.27.2).** All 13 planned phases (0–13 in
 > [`PLAN.md`](PLAN.md) §11) plus several post-plan additions are live. This doc
 > is the current architecture snapshot; `PLAN.md` remains the design rationale
 > and decision log. `CHANGELOG.md` is the per-release record.
@@ -129,7 +129,7 @@ Sheer excluded), one site at a time. Key pieces:
 
 ## Tests + build
 
-- `./run-tests.sh` — `cargo test --lib` (203 Rust tests as of v0.27.1) then
+- `./run-tests.sh` — `cargo test --lib` (204 Rust tests as of v0.27.2) then
   `pnpm test` (vitest). `pnpm typecheck` for `tsc -b --noEmit`.
 - `./build-app.sh` — builds the `.app`, installs to `/Applications/` via
   `install.sh`, and relaunches. The launch-time auto-backup writing a fresh

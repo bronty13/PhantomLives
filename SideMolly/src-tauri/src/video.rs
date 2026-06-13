@@ -11,7 +11,7 @@
 //     -i <src>
 //     -map_metadata -1                    (strip global metadata)
 //     [-vf drawtext=...]                  (when watermark is on)
-//     -c:v libx264 -crf 23 -preset medium (H.264 transcode)
+//     -c:v libx264 -crf 18 -preset medium (H.264 transcode, near-lossless)
 //     -c:a aac -b:a 128k                  (AAC audio)
 //     -movflags +faststart                (metadata at start for streaming)
 //     -y <dst.mp4>
@@ -36,8 +36,9 @@ use crate::jobs::JobRow;
 use crate::thumbnails::ffmpeg_bin;
 
 /// Max wall-clock for one video. Real ffmpeg transcodes on Apple Silicon
-/// hit ~5x realtime for H.264 CRF 23 medium preset, so a 5-minute clip
-/// finishes in ~1 min. 30 min cap covers a 2-hour clip with margin and
+/// run several times realtime for H.264 CRF 18 medium preset (encode speed
+/// is dominated by the preset, not the CRF), so a 5-minute clip finishes in
+/// a couple of minutes. 30 min cap covers a 2-hour clip with margin and
 /// gives us a hard ceiling against hung jobs.
 const FFMPEG_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
@@ -150,7 +151,13 @@ pub fn process_video(params: &ProcessVideoParams) -> Result<(), BundleError> {
     // Encoders + container flags.
     argv.extend([
         "-c:v".into(), "libx264".into(),
-        "-crf".into(), "23".into(),
+        // CRF 18 — visually-lossless to the source. The bundle videos are
+        // already-compressed phone footage (~3.5 Mbps 720p); a re-encode
+        // stacks a second generation of loss, so we keep the quality target
+        // high. CRF 23 (the old value) roughly halved the source bitrate and
+        // softened fine detail (skin/hair/fabric). Larger files are an
+        // accepted trade for posting-grade quality. (v0.27.2)
+        "-crf".into(), "18".into(),
         "-preset".into(), "medium".into(),
         "-pix_fmt".into(), "yuv420p".into(),
         "-c:a".into(), "aac".into(),

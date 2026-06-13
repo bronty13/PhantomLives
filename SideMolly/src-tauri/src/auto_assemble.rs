@@ -656,7 +656,10 @@ pub fn dispatch_render_title<R: Runtime>(
         "-c:v".into(), "libx264".into(),
         "-pix_fmt".into(), "yuv420p".into(),
         "-preset".into(), "medium".into(),
-        "-crf".into(), "23".into(),
+        // CRF 18 to match the normalize/master encoders — the title card
+        // is a flat PNG so this costs little, and keeping every pipeline
+        // stage at the same quality floor avoids a soft intro. (v0.27.2)
+        "-crf".into(), "18".into(),
         "-c:a".into(), "aac".into(),
         "-b:a".into(), "192k".into(),
         "-ar".into(), "48000".into(),
@@ -758,8 +761,12 @@ pub fn dispatch_normalize_video<R: Runtime>(
         vchain.push("transpose=1,transpose=1".into());
     }
     // scale-to-fit + letterbox pad to exact target dims.
+    // `flags=lanczos` — sharper resampling than ffmpeg's default (bilinear),
+    // which matters most when a sub-target clip is enlarged to the canvas
+    // (e.g. 720p source → 1080p master). Lanczos can't invent detail, but it
+    // keeps the upscaled frame as crisp as interpolation allows. (v0.27.2)
     vchain.push(format!(
-        "scale={w}:{h}:force_original_aspect_ratio=decrease:eval=frame",
+        "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos:eval=frame",
         w = params.width, h = params.height,
     ));
     vchain.push(format!(
@@ -816,7 +823,11 @@ pub fn dispatch_normalize_video<R: Runtime>(
 
     argv.extend([
         "-c:v".into(), "libx264".into(),
-        "-crf".into(), "23".into(),
+        // CRF 18 — this normalize pass is the quality FLOOR for the whole
+        // auto-assembly: the later master xfade re-encodes it a second time
+        // and can't recover detail dropped here. Keeping it near-lossless
+        // (was 23) preserves fine detail through the double encode. (v0.27.2)
+        "-crf".into(), "18".into(),
         "-preset".into(), "medium".into(),
         "-pix_fmt".into(), "yuv420p".into(),
         "-c:a".into(), "aac".into(),
@@ -914,7 +925,11 @@ pub fn dispatch_assemble_master<R: Runtime>(
     argv.extend(["-map".into(), "[aout]".into()]);
     argv.extend([
         "-c:v".into(), "libx264".into(),
-        "-crf".into(), "21".into(),
+        // CRF 18 — the second (and final) encode of the auto pipeline.
+        // Was 21; matched to the normalize floor so the master doesn't add
+        // a visible third notch of softening over the already-encoded
+        // clips. (v0.27.2)
+        "-crf".into(), "18".into(),
         "-preset".into(), "medium".into(),
         "-pix_fmt".into(), "yuv420p".into(),
         "-c:a".into(), "aac".into(),
