@@ -603,21 +603,10 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
             row.push().map_err(|e| pdf_err("tx index row", e))?;
             doc.push(table);
         }
-        doc.push(elements::Break::new(0.75));
-
-        // Full transcript, per video, each under its filename label.
-        doc.push(heading("Full transcript", 12));
-        for v in &video_summaries {
-            if v.text.trim().is_empty() {
-                continue;
-            }
-            doc.push(
-                elements::Paragraph::new(v.name.clone())
-                    .styled(style::Style::new().bold().with_font_size(10)),
-            );
-            doc.push(elements::Paragraph::new(v.text.clone()));
-            doc.push(elements::Break::new(0.5));
-        }
+        // The per-video index above is the transcript view. A full per-video
+        // transcript dump used to follow here but was removed in v0.27.5 — it
+        // duplicated the index at length. Full transcripts remain available
+        // per video via Edit → Transcripts → Reveal.
     }
     doc.push(elements::Break::new(1.0));
 

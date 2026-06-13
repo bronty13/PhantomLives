@@ -4,6 +4,15 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.5] — 2026-06-13
+
+### Changed — Summary drops the full per-video transcript dump
+
+The Summary's transcript section is now just the **per-video index** (one
+frame + the first sentence per video). The full per-video transcript block
+added in 0.27.4 is removed — it duplicated the index at length. Full
+transcripts remain available per video via Edit → Transcripts → Reveal.
+
 ## [0.27.4] — 2026-06-13
 
 ### Fixed — Uploaded preview copies to Dropbox; Copy button appears
