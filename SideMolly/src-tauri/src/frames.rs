@@ -31,8 +31,41 @@ pub fn distribute(total: usize, n: usize) -> Vec<usize> {
 }
 
 struct VideoRef {
+    in_zip_path: String,
     working_path: String,
     rotation_degrees: i64,
+}
+
+/// One representative, rotation-corrected frame per video, in bundle order.
+/// `frame` is None when the video's working file is missing or ffmpeg fails.
+/// Used by the Summary's per-video transcript preview (frame + first line).
+pub struct VideoPreviewFrame {
+    pub in_zip_path: String,
+    pub frame: Option<PathBuf>,
+}
+
+/// Sample exactly one frame from each of the bundle's videos. Separate from
+/// `sample_bundle_frames` (which distributes a total across videos) because
+/// the per-video transcript preview needs a stable 1:1 video→frame mapping.
+pub fn sample_per_video_frames(
+    conn: &Connection,
+    uid: &str,
+    out_dir: &Path,
+) -> Result<Vec<VideoPreviewFrame>, BundleError> {
+    let videos = load_videos(conn, uid)?;
+    let _ = fs::remove_dir_all(out_dir);
+    fs::create_dir_all(out_dir)?;
+    let mut out = Vec::with_capacity(videos.len());
+    for (vi, v) in videos.iter().enumerate() {
+        let src = Path::new(&v.working_path);
+        let frame = if src.exists() {
+            sample_one_video(src, v.rotation_degrees, 1, out_dir, vi).into_iter().next()
+        } else {
+            None
+        };
+        out.push(VideoPreviewFrame { in_zip_path: v.in_zip_path.clone(), frame });
+    }
+    Ok(out)
 }
 
 /// Sample a total of `total` frames across all of the bundle's videos. Writes
@@ -73,7 +106,7 @@ pub fn sample_bundle_frames(
 
 fn load_videos(conn: &Connection, uid: &str) -> Result<Vec<VideoRef>, BundleError> {
     let mut stmt = conn.prepare(
-        "SELECT working_path, rotation_degrees FROM bundle_files
+        "SELECT in_zip_path, working_path, rotation_degrees FROM bundle_files
           WHERE bundle_uid = ?1 AND kind = 'video'
                 AND working_path IS NOT NULL AND working_path <> ''
           ORDER BY CASE WHEN fansite_day_of_month IS NULL THEN 0 ELSE fansite_day_of_month END,
@@ -81,8 +114,9 @@ fn load_videos(conn: &Connection, uid: &str) -> Result<Vec<VideoRef>, BundleErro
     )?;
     let rows = stmt.query_map(params![uid], |r| {
         Ok(VideoRef {
-            working_path: r.get(0)?,
-            rotation_degrees: r.get(1)?,
+            in_zip_path: r.get(0)?,
+            working_path: r.get(1)?,
+            rotation_degrees: r.get(2)?,
         })
     })?;
     let mut v = Vec::new();

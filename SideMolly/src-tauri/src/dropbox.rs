@@ -292,27 +292,22 @@ fn enumerate_artifacts<R: Runtime>(
     // 2026-06-13 request). Its in-zip path comes from the manifest; the file was
     // extracted into the workspace at ingest. Renamed to the master-cut basename
     // so it sorts next to the master in the flat Dropbox folder.
-    if let Some(manifest_json) = conn
+    let manifest_rel: Option<String> = conn
         .query_row(
             "SELECT manifest_json FROM bundles WHERE uid = ?1",
             params![uid],
             |r| r.get::<_, String>(0),
         )
         .optional()?
-    {
-        let manifest: crate::manifest::BundleManifest =
-            serde_json::from_str(&manifest_json).unwrap_or_default();
-        if let Some(rel) = manifest.preview_thumbnail_path.as_deref() {
-            let src = workspace.join(rel);
-            if src.exists() {
-                let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-                let name = format!(
-                    "{} — Thumbnail.{ext}",
-                    crate::bundles::master_cut_basename(&title)
-                );
-                out.push((src, name, "preview".into()));
-            }
-        }
+        .and_then(|json| {
+            serde_json::from_str::<crate::manifest::BundleManifest>(&json)
+                .ok()
+                .and_then(|m| m.preview_thumbnail_path)
+        });
+    if let Some(src) = crate::fsutil::resolve_preview_image(&workspace, manifest_rel.as_deref()) {
+        let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+        let name = format!("{} — Thumbnail.{ext}", crate::bundles::master_cut_basename(&title));
+        out.push((src, name, "preview".into()));
     }
 
     Ok(out)

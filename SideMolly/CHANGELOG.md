@@ -4,6 +4,36 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.4] — 2026-06-13
+
+### Fixed — Uploaded preview copies to Dropbox; Copy button appears
+
+- The bundle's **uploaded preview/cover** (the image Molly puts in the bundle's
+  `Preview/` folder — distinct from the 30 generated grid frames) is now
+  resolved **from that folder directly**, falling back to it whenever the
+  manifest's `previewThumbnailPath` is absent. So it works for bundles ingested
+  before v0.27.3 **without a re-ingest**. It's shown in the Summary ("Uploaded
+  preview / cover") and **copied to Dropbox** alongside the master + Summary
+  (renamed to the master-cut basename).
+- Because the preview is now always a copyable artifact, the **Copy to Dropbox**
+  button lights up for any bundle that has a preview, even before a master cut
+  is assembled (previously the artifact list could be empty → button stuck
+  disabled).
+
+### Fixed — SideMolly Summary thumbnails no longer cut off
+
+The thumbnail grid was a single `TableLayout`, which genpdf doesn't break
+across pages — only ~18 of 30 frames rendered. Each row is now its own table
+pushed separately, so the grid **paginates** and all frames appear.
+
+### Changed — Summary transcript laid out like the Edit UI
+
+The transcript section now opens with a **per-video index** — one
+representative rotation-corrected frame + the **first sentence** of that
+video's transcript, per video, in order — followed by the **full transcript**
+broken out per video under its filename (readable sentence-spaced paragraphs
+instead of one undifferentiated blob).
+
 ## [0.27.3] — 2026-06-13
 
 ### Added — YouTube bundle fields surfaced in Summary, Dropbox & Distribute

@@ -326,34 +326,49 @@ fn resolve_description(conn: &Connection, m: &BundleManifest) -> String {
     }
 }
 
-/// Concatenate every video's `.txt` transcript (in bundle order), cleaned.
-fn concat_video_transcripts(conn: &Connection, uid: &str, workspace: &Path) -> String {
+/// One entry per video, in bundle order: a representative rotation-corrected
+/// frame and the cleaned transcript. Powers the Summary's per-video transcript
+/// section (frame + first line, then the full per-video transcript).
+struct VideoSummary {
+    /// The video's file name (e.g. `00001_1.mov`) used as the row label.
+    name: String,
+    frame: Option<PathBuf>,
+    /// Cleaned transcript text ("" when the video hasn't been transcribed).
+    text: String,
+}
+
+fn gather_video_summaries(conn: &Connection, uid: &str, workspace: &Path) -> Vec<VideoSummary> {
+    let frames = crate::frames::sample_per_video_frames(conn, uid, &workspace.join(".frames_pv"))
+        .unwrap_or_default();
     let tx_dir = workspace.join("transcripts");
-    let mut raw = String::new();
-    let mut stmt = match conn.prepare(
-        "SELECT in_zip_path FROM bundle_files
-          WHERE bundle_uid = ?1 AND kind = 'video'
-          ORDER BY CASE WHEN fansite_day_of_month IS NULL THEN 0 ELSE fansite_day_of_month END,
-                   position, in_zip_path",
-    ) {
-        Ok(s) => s,
-        Err(_) => return String::new(),
-    };
-    let rows = stmt.query_map(params![uid], |r| r.get::<_, String>(0));
-    if let Ok(rows) = rows {
-        for in_zip in rows.flatten() {
-            let stem = Path::new(&in_zip)
-                .file_stem()
+    frames
+        .into_iter()
+        .map(|vf| {
+            let p = Path::new(&vf.in_zip_path);
+            let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let name = p
+                .file_name()
                 .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| vf.in_zip_path.clone());
+            let text = fs::read_to_string(tx_dir.join(format!("{stem}.txt")))
+                .ok()
+                .map(|c| clean_transcript(&c))
                 .unwrap_or_default();
-            let txt = tx_dir.join(format!("{stem}.txt"));
-            if let Ok(content) = fs::read_to_string(&txt) {
-                raw.push_str(&content);
-                raw.push('\n');
-            }
+            VideoSummary { name, frame: vf.frame, text }
+        })
+        .collect()
+}
+
+/// First sentence of a cleaned transcript — text through the first `.`, `!` or
+/// `?`. With no terminator, a capped prefix so the index line stays one-liner.
+pub(crate) fn first_sentence(s: &str) -> String {
+    let s = s.trim();
+    for (i, ch) in s.char_indices() {
+        if matches!(ch, '.' | '!' | '?') {
+            return s[..=i].trim().to_string();
         }
     }
-    clean_transcript(&raw)
+    s.chars().take(160).collect::<String>().trim().to_string()
 }
 
 /// Full processing log, oldest-first: (timestamp, level, kind, message).
@@ -473,7 +488,7 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
     let description = resolve_description(&conn, &manifest);
     let assembled = gather_assembled(&workspace, &effective_title);
     let fields = summary_fields(&manifest, &title_override, &description, processed_at.as_deref(), assembled.as_ref());
-    let transcript = concat_video_transcripts(&conn, uid, &workspace);
+    let video_summaries = gather_video_summaries(&conn, uid, &workspace);
     let log = read_full_log(&conn, uid);
 
     // ---- Build the document ----
@@ -507,15 +522,16 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
     }
     doc.push(elements::Break::new(1.0));
 
-    // Selected preview / cover frame (Content + YouTube bundles). Molly
-    // records the chosen thumbnail's in-zip path in the manifest; it's
-    // extracted into the workspace alongside the videos. Bounded to ~half
-    // page width by dropping it in a 2-column table cell (genpdf scales an
-    // Image to its cell), matching the thumbnail-grid technique.
-    if let Some(rel) = manifest.preview_thumbnail_path.as_deref() {
-        let preview_path = workspace.join(rel);
+    // The bundle's *uploaded* preview/cover image — the one Molly placed in
+    // the `Preview/` folder (NOT one of the 30 generated grid frames below).
+    // Resolved from the folder so it shows even for bundles ingested before
+    // the manifest carried `previewThumbnailPath`. Bounded to ~half page width
+    // via a 2-column table cell (genpdf scales an Image to its cell).
+    if let Some(preview_path) =
+        crate::fsutil::resolve_preview_image(&workspace, manifest.preview_thumbnail_path.as_deref())
+    {
         if let Ok(img) = elements::Image::from_path(&preview_path) {
-            doc.push(heading("Preview / cover frame", 14));
+            doc.push(heading("Uploaded preview / cover", 14));
             let mut table = elements::TableLayout::new(vec![1, 1]);
             let mut row = table.row();
             row.push_element(img.padded(genpdf::Margins::all(2)));
@@ -528,13 +544,16 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
 
     // Image grid: N rotation-corrected frames sampled across the bundle's
     // videos (falls back to per-file image thumbnails when there are none).
-    // Laid out in fixed-width rows, padding the trailing row to GRID_COLS.
+    // Each row is its OWN single-row table pushed separately so genpdf
+    // paginates between rows. A single big TableLayout does not break across
+    // pages — it silently truncated the grid (only ~18 of 30 frames showed
+    // on one page). (v0.27.4)
     let images = build_grid_images(&conn, uid, &workspace, count);
     if !images.is_empty() {
         doc.push(heading(&format!("Thumbnails ({})", images.len()), 14));
-        let mut table = elements::TableLayout::new(vec![1; GRID_COLS]);
         let mut iter = images.into_iter().peekable();
         while iter.peek().is_some() {
+            let mut table = elements::TableLayout::new(vec![1; GRID_COLS]);
             let mut row = table.row();
             for _ in 0..GRID_COLS {
                 match iter.next() {
@@ -543,20 +562,62 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
                 }
             }
             row.push().map_err(|e| pdf_err("table row", e))?;
+            doc.push(table);
         }
-        doc.push(table);
         doc.push(elements::Break::new(1.0));
     }
 
-    // Transcript.
+    // Transcript — mirrors the Edit UI. First a per-video index (one
+    // representative frame + the first sentence of that video's transcript),
+    // then each video's FULL transcript under its own label, as readable
+    // sentence-spaced paragraphs rather than one undifferentiated blob.
     doc.push(heading("Transcript", 14));
-    if transcript.is_empty() {
+    let has_any_tx = video_summaries.iter().any(|v| !v.text.trim().is_empty());
+    if !has_any_tx {
         doc.push(
             elements::Paragraph::new("(No video transcripts yet — run Transcribe on the Edit tab.)")
                 .styled(style::Style::new().italic()),
         );
     } else {
-        doc.push(elements::Paragraph::new(transcript));
+        // Per-video index: [thumbnail | name + first sentence], one row each,
+        // pushed individually so the list paginates.
+        for v in &video_summaries {
+            let mut table = elements::TableLayout::new(vec![1, 3]);
+            let mut row = table.row();
+            match v.frame.as_ref().and_then(|p| elements::Image::from_path(p).ok()) {
+                Some(img) => row.push_element(img.padded(genpdf::Margins::all(2))),
+                None => row.push_element(elements::Paragraph::new("")),
+            }
+            let mut cell = elements::LinearLayout::vertical();
+            cell.push(
+                elements::Paragraph::new(v.name.clone())
+                    .styled(style::Style::new().bold().with_font_size(9)),
+            );
+            let first = first_sentence(&v.text);
+            cell.push(elements::Paragraph::new(if first.is_empty() {
+                "(no transcript)".to_string()
+            } else {
+                first
+            }));
+            row.push_element(cell.padded(genpdf::Margins::all(2)));
+            row.push().map_err(|e| pdf_err("tx index row", e))?;
+            doc.push(table);
+        }
+        doc.push(elements::Break::new(0.75));
+
+        // Full transcript, per video, each under its filename label.
+        doc.push(heading("Full transcript", 12));
+        for v in &video_summaries {
+            if v.text.trim().is_empty() {
+                continue;
+            }
+            doc.push(
+                elements::Paragraph::new(v.name.clone())
+                    .styled(style::Style::new().bold().with_font_size(10)),
+            );
+            doc.push(elements::Paragraph::new(v.text.clone()));
+            doc.push(elements::Break::new(0.5));
+        }
     }
     doc.push(elements::Break::new(1.0));
 
@@ -813,5 +874,33 @@ mod tests {
         let m = content_manifest();
         let f = summary_fields(&m, "", "", None, None);
         assert!(!f.iter().any(|(k, _)| k == "Assembled file"));
+    }
+
+    #[test]
+    fn summary_fields_youtube_shows_sfw_and_private() {
+        let mut m = content_manifest();
+        m.bundle_type = "youtube".into();
+        m.youtube_also_post_sfw_manyvids = Some(true);
+        m.youtube_make_private = Some(false);
+        let f = summary_fields(&m, "", "", None, None);
+        assert_eq!(
+            f.iter().find(|(k, _)| k == "Also post SFW to ManyVids").map(|(_, v)| v.as_str()),
+            Some("Yes")
+        );
+        assert_eq!(
+            f.iter().find(|(k, _)| k == "Upload as private").map(|(_, v)| v.as_str()),
+            Some("No")
+        );
+    }
+
+    #[test]
+    fn first_sentence_stops_at_terminator() {
+        assert_eq!(first_sentence("Hello there. More text here."), "Hello there.");
+        assert_eq!(first_sentence("Wow!! big"), "Wow!");
+        assert_eq!(first_sentence("  trimmed? yes"), "trimmed?");
+        assert_eq!(first_sentence(""), "");
+        // No terminator → capped prefix (≤160 chars), no panic.
+        let long = "word ".repeat(60);
+        assert!(first_sentence(&long).len() <= 160);
     }
 }

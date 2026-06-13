@@ -8,6 +8,42 @@ pub fn downloads_subdir(sub: &str) -> PathBuf {
     base.join(sub)
 }
 
+/// Resolve the bundle's *uploaded* preview/cover image — the file Molly put
+/// in the bundle's `Preview/` folder, as distinct from the 30 frames SideMolly
+/// generates for the thumbnail grid.
+///
+/// Prefers the manifest's recorded in-zip path (`manifest_rel`, e.g.
+/// `Preview/thumbnail_2.jpg`) when it resolves to a real file. Falls back to
+/// scanning `<workspace>/Preview/` for the first image — so bundles ingested
+/// before the manifest carried `previewThumbnailPath` still work without a
+/// re-ingest (the file was always extracted; only the manifest pointer was
+/// missing). Returns None when the bundle has no preview image.
+pub fn resolve_preview_image(workspace: &Path, manifest_rel: Option<&str>) -> Option<PathBuf> {
+    if let Some(rel) = manifest_rel {
+        let p = workspace.join(rel);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    let preview_dir = workspace.join("Preview");
+    let mut images: Vec<PathBuf> = std::fs::read_dir(&preview_dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && is_image_ext(p))
+        .collect();
+    // Stable choice: alphabetical, so re-runs pick the same file.
+    images.sort();
+    images.into_iter().next()
+}
+
+fn is_image_ext(p: &Path) -> bool {
+    matches!(
+        p.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref(),
+        Some("jpg" | "jpeg" | "png" | "webp" | "gif" | "heic" | "tiff" | "bmp")
+    )
+}
+
 /// Show a path in the OS file browser (Finder on Mac, Explorer on Windows).
 ///
 /// A **directory** is opened directly (the user lands inside the folder). A
@@ -70,6 +106,34 @@ mod tests {
         let (prog_d, args_d) = reveal_command(Path::new("/tmp/a"), true);
         assert_eq!(prog_d, "open");
         assert_eq!(args_d, vec!["/tmp/a".to_string()]); // no -R: open the folder
+    }
+
+    #[test]
+    fn resolve_preview_prefers_manifest_then_falls_back_to_folder() {
+        use std::fs;
+        let base = std::env::temp_dir().join(format!("sm-preview-{}", std::process::id()));
+        let preview = base.join("Preview");
+        fs::create_dir_all(&preview).unwrap();
+        // Manifest points at a real file → used verbatim.
+        fs::write(preview.join("thumbnail_2.jpg"), b"x").unwrap();
+        let got = resolve_preview_image(&base, Some("Preview/thumbnail_2.jpg")).unwrap();
+        assert!(got.ends_with("Preview/thumbnail_2.jpg"));
+
+        // Manifest path missing/stale → fall back to the single folder image,
+        // even one with an odd name like Molly's "(1).jpg".
+        fs::remove_file(preview.join("thumbnail_2.jpg")).unwrap();
+        fs::write(preview.join("(1).jpg"), b"x").unwrap();
+        let fallback = resolve_preview_image(&base, Some("Preview/gone.jpg")).unwrap();
+        assert!(fallback.ends_with("(1).jpg"));
+        // No manifest hint at all still finds it.
+        let none_hint = resolve_preview_image(&base, None).unwrap();
+        assert!(none_hint.ends_with("(1).jpg"));
+
+        // Non-image files are ignored.
+        fs::remove_file(preview.join("(1).jpg")).unwrap();
+        fs::write(preview.join("notes.txt"), b"x").unwrap();
+        assert!(resolve_preview_image(&base, None).is_none());
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
