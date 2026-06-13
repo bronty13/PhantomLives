@@ -66,6 +66,8 @@ This was built for someone who:
 
 Plus **[reference/](reference/)**: glossary · acronyms · keyboard-shortcut master sheet · modifier-symbol legend · CLI cheat-sheet · Windows→macOS translation table · recommended-software stack · further reading.
 
+And three **derived study aids** (auto-built by combing every lesson): a module-by-module **[Study Guide](reference/study-guide.md)** with self-test questions, a **[Command Index](reference/command-index.md)** (every tool used, deduped + cross-linked), and a **[Forensic Artifacts Index](reference/forensic-artifacts-index.md)** (every on-disk artifact mentioned, with where it's covered).
+
 ---
 
 ## This folder syncs to Obsidian automatically

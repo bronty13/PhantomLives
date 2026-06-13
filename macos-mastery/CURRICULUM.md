@@ -170,3 +170,13 @@ live in [reference/](reference/).
 | [Windows → macOS translation](reference/windows-to-macos.md) | "The X of macOS" lookup table |
 | [Recommended software](reference/recommended-software.md) | The curated power-user stack |
 | [Further reading](reference/further-reading.md) | Books, sites, docs, communities |
+
+### Derived study aids
+
+Auto-built by combing the whole lesson corpus; regenerate when lessons change (see [HANDOFF.md](HANDOFF.md)).
+
+| Reference | Purpose |
+|---|---|
+| [Study Guide](reference/study-guide.md) | Module-by-module "what to remember" + self-test questions — review after each Part |
+| [Command Index](reference/command-index.md) | Every command/tool used across the course (283 tools, 19 categories), deduped, with lesson cross-links |
+| [Forensic Artifacts Index](reference/forensic-artifacts-index.md) | Every macOS forensic/on-disk artifact mentioned (201 artifacts, 18 categories), with lesson cross-links |
