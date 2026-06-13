@@ -44,6 +44,32 @@ whole monorepo rather than inside one subproject:
   rationale, why git-tracked precision over an rsync `*.md` filter, cross-Mac
   setup, operational commands) is in **`docs/obsidian-sync.md`**.
 
+## Obsidian vault sync (DATA-LOSS-SENSITIVE — read `docs/obsidian-setup.md` first)
+
+The maintainer wants **one** Obsidian vault synced across four devices: **Vortex**
+(Mac), **MB14** (Mac), **iPad**, **iPhone**. They have both iCloud and a paid
+**Obsidian Sync** plan. This has repeatedly caused confusion and on **2026-06-13
+caused real note loss**, so treat any Obsidian/sync request as data-loss-sensitive
+and **read `docs/obsidian-setup.md` before acting**. Non-negotiable rules:
+
+- **Obsidian Sync is the ONE sync engine for the vault — never iCloud, never both.**
+  Two engines on one vault = corruption (that's what wiped the vault on 2026-06-13:
+  the vault was in the `iCloud~md~obsidian` container *and* under Obsidian Sync).
+- **The vault must live at a non-iCloud local path** (recommended `~/ObsidianVault`).
+  **NEVER** under `~/Documents`, `~/Desktop`, or `~/Library/Mobile Documents/`
+  (all iCloud-reachable). On iOS, the **"Store in iCloud Drive" toggle must be OFF**.
+- **You cannot set up or connect Obsidian Sync from the CLI** — logging in and
+  connecting a vault to the remote is a GUI/account step the maintainer must do.
+  Guide them; never pretend dropping files in a folder will reach other devices.
+- **Confirm a vault is actually Sync-connected** (`<vault>/.obsidian/sync.json`
+  exists) before assuming files propagate. If you find a vault under iCloud, that
+  is the bug — surface it, don't write into it.
+- The `sync-md-to-obsidian.sh` mirror, if used, runs on **one Mac only**, targets
+  the **local Sync'd vault** (`OBSIDIAN_VAULT=~/ObsidianVault`), and only ever
+  writes inside its `PhantomLives/` subfolder (it cannot delete notes elsewhere).
+  Git (GitHub `bronty13/PhantomLives`) is the source of truth; Obsidian is a read
+  convenience, never authoritative.
+
 ## Release-hygiene rules (from `.github/copilot-instructions.md`)
 
 These apply to **every** code, config, script, test, or doc change. Do not skip them — most subprojects already follow them rigorously:
