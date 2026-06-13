@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>PurpleMirror</title>
+        <description>PurpleMirror release feed. Each &lt;item&gt; describes one shipped build; Sparkle compares &lt;sparkle:shortVersionString&gt; against the running app and offers the newest one.</description>
+        <link>https://github.com/bronty13/PhantomLives/tree/main/PurpleMirror</link>
+        <language>en</language>
+        <!--
+          Publish a release with ./Scripts/release.sh (see RELEASING.md): it
+          builds + notarizes + zips the app, EdDSA-signs the zip, creates a
+          tagged GitHub release, and prepends a new <item> here, then pushes.
+          The moment the push lands, existing installs see the update.
+
+          Sparkle reads this via raw.githubusercontent.com — no GitHub Pages.
+
+          DO NOT hand-edit a shipped <item>: its version + EdDSA signature pair
+          is part of the trust chain. Add new items above older ones.
+
+          (No <item> yet — the first Sparkle-enabled build is the baseline.)
+        -->
+    </channel>
+</rss>

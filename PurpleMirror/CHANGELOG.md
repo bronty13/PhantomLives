@@ -2,6 +2,20 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.1.0 — 2026-06-13
+
+- **Sparkle 2 auto-update.** The app now self-updates: a "Check for Updates…"
+  item in the menu, automatic daily background checks, and a notarized/EdDSA-signed
+  release feed (`appcast.xml` via raw.githubusercontent). Cut releases with
+  `./Scripts/release.sh` (see `RELEASING.md`). Reuses the shared PhantomLives
+  Developer-ID cert, `PurpleDedup-Notary` profile, and Sparkle key.
+- **Live log tail.** The log window now auto-refreshes and follows the end of the
+  log every 1.5s (toggle "Live tail"); still has manual Refresh + Last-200-lines.
+- **Failure alerts.** PurpleMirror posts a macOS notification when a sync run
+  fails (non-zero exit), once per failed run, in addition to turning the menu-bar
+  glyph red. Requests notification permission on first launch.
+- Menu now shows the running version.
+
 ## 1.0.0 — 2026-06-13
 
 Initial release.

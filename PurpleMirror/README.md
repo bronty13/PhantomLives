@@ -23,8 +23,14 @@ single source of truth; PurpleMirror just drives and reports it.
 - **Settings** — toggle automatic background sync (installs/uninstalls the
   launchd agent), change the interval (15 min / 30 min / 1 hr / 2 hr / 6 hr or a
   custom number of minutes), and view/choose the script path + target vault.
-- **View Log** — tails `~/Library/Logs/phantomlives-obsidian-sync.log` with
-  refresh, reveal-in-Finder, and open-in-Console.
+- **View Log** — tails `~/Library/Logs/phantomlives-obsidian-sync.log` with a
+  **Live tail** toggle (auto-follows new lines every 1.5s), manual refresh,
+  reveal-in-Finder, and open-in-Console.
+- **Failure alerts** — posts a macOS notification when a sync run fails
+  (non-zero exit), once per failed run, alongside the red menu-bar glyph.
+- **Auto-update** via **Sparkle 2** — a "Check for Updates…" item + automatic
+  daily background checks. Releases are notarized + EdDSA-signed and announced in
+  `appcast.xml`; cut one with `./Scripts/release.sh` (see `RELEASING.md`).
 
 ## Build / run
 

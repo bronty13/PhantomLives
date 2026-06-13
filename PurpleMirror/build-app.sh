@@ -1,6 +1,7 @@
 #!/bin/bash
-# Builds PurpleMirror.app from the Swift Package, generates the icon from code,
-# signs, and (by default) installs to /Applications + relaunches via install.sh.
+# Builds PurpleMirror.app from the Swift Package: embeds + signs Sparkle for
+# in-app auto-updates, generates the icon from code, signs, and (by default)
+# installs to /Applications + relaunches via install.sh.
 # Opt out with --no-install / --no-open, or BUILD_ONLY=1.
 #
 # PurpleMirror is a menu-bar (LSUIElement) companion for sync-md-to-obsidian.sh.
@@ -12,10 +13,9 @@ CONFIG="${CONFIG:-release}"
 
 COMMIT_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-SHORT_VERSION="${SHORT_VERSION:-1.0.${COMMIT_COUNT}}"
+SHORT_VERSION="${SHORT_VERSION:-1.1.${COMMIT_COUNT}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${COMMIT_COUNT}.${SHORT_SHA}}"
 
-# Pre-build cleanup of " N.app" siblings iCloud File Provider may spawn.
 shopt -s nullglob 2>/dev/null || true
 for dup in PurpleMirror\ [0-9]*.app; do
     [ -d "$dup" ] && { echo "Pre-build cleanup: removing $dup"; rm -rf "$dup"; }
@@ -36,19 +36,38 @@ mkdir -p "$MACOS" "$RESOURCES"
 
 cp "$BIN_PATH/PurpleMirror" "$MACOS/PurpleMirror"
 
+# --- Embed Sparkle.framework (in-app auto-updater) ---
+# SwiftPM ships Sparkle as an xcframework binary target; copy the macOS slice
+# into Contents/Frameworks/ so the loader + Sparkle's nested XPC services +
+# Updater.app are found at the locations Sparkle hard-codes.
+SPARKLE_SRC="$(find .build/artifacts/sparkle/Sparkle/Sparkle.xcframework -name 'Sparkle.framework' -type d -path '*macos-arm64_x86_64*' 2>/dev/null | head -1)"
+if [ -z "$SPARKLE_SRC" ]; then
+    echo "FATAL: Sparkle.framework not found under .build/artifacts. Run 'swift package resolve' first." >&2
+    exit 1
+fi
+mkdir -p "$CONTENTS/Frameworks"
+ditto --noextattr "$SPARKLE_SRC" "$CONTENTS/Frameworks/Sparkle.framework"
+# SwiftPM executables only get @loader_path; Sparkle's install name is
+# @rpath/Sparkle.framework/… but it lives in Contents/Frameworks/. Add the rpath.
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS/PurpleMirror" 2>/dev/null || true
+
 # --- Icon: generate deterministically from code (no binary source of truth) ---
 ICONSET="$WORK_DIR/AppIcon.iconset"
 if swift Scripts/generate-icon.swift "$ICONSET" >/dev/null 2>&1 && [ -d "$ICONSET" ]; then
-    if iconutil -c icns -o "$RESOURCES/AppIcon.icns" "$ICONSET" 2>/dev/null; then
-        echo "Generated AppIcon.icns from Scripts/generate-icon.swift"
-    else
-        echo "warning: iconutil failed — bundle will use the generic icon" >&2
-    fi
+    iconutil -c icns -o "$RESOURCES/AppIcon.icns" "$ICONSET" 2>/dev/null \
+        && echo "Generated AppIcon.icns" \
+        || echo "warning: iconutil failed — generic icon" >&2
 else
-    echo "warning: icon generation failed — bundle will use the generic icon" >&2
+    echo "warning: icon generation failed — generic icon" >&2
 fi
 
-# --- Info.plist (LSUIElement = menu-bar-only, no Dock icon) ---
+# --- Sparkle config (feed served via raw.githubusercontent — no Pages needed) ---
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/bronty13/PhantomLives/main/PurpleMirror/appcast.xml}"
+# The matching PRIVATE key signs releases (sign_update). Without SPARKLE_PUBLIC_KEY
+# set, the placeholder ships and Sparkle refuses untrusted updates — the safe
+# default for personal builds. The release script sets it from the shared key.
+SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-PLACEHOLDER_RUN_generate_keys_AND_SET_SPARKLE_PUBLIC_KEY}"
+
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -67,25 +86,63 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>SUFeedURL</key><string>${SPARKLE_FEED_URL}</string>
+    <key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_KEY}</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
 </dict>
 </plist>
 PLIST
 
-xattr -cr "$APP_DIR" 2>/dev/null || true
+# --- Codesign (Sparkle nested executables inside-out, then the app) ---
+detect_codesign_identity() {
+    if [ -n "${CODESIGN_IDENTITY:-}" ]; then echo "$CODESIGN_IDENTITY"; return; fi
+    local devid
+    devid=$(security find-identity -v -p codesigning 2>/dev/null \
+        | grep -E '"Developer ID Application:' | head -1 \
+        | sed -E 's/.*"(Developer ID Application:[^"]+)".*/\1/')
+    [ -n "$devid" ] && echo "$devid" || echo "-"
+}
+CODESIGN_ID="$(detect_codesign_identity)"
 
-DEVELOPER_ID="${DEVELOPER_ID:-Developer ID Application: Robert Olen (SRKV8T38CD)}"
-if [ "$DEVELOPER_ID" != "-" ] && \
-   security find-identity -p codesigning -v 2>/dev/null | grep -q "$DEVELOPER_ID"; then
-    echo "Signing with Developer ID: $DEVELOPER_ID"
-    codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$APP_DIR"
-    if codesign --verify --strict --verbose=2 "$APP_DIR" >/dev/null 2>&1; then
+sign_one() {
+    local target="$1"
+    if [ "$CODESIGN_ID" = "-" ]; then
+        codesign --force --sign - --options runtime "$target" 2>/dev/null || true
+    else
+        codesign --force --sign "$CODESIGN_ID" --options runtime --timestamp "$target"
+    fi
+}
+sign_sparkle() {
+    local fw="$CONTENTS/Frameworks/Sparkle.framework"
+    [ -d "$fw" ] || return 0
+    find "$fw/Versions/B/XPCServices" -name '*.xpc' -mindepth 1 -maxdepth 1 2>/dev/null | while read -r xpc; do
+        echo "  Signing XPC: $(basename "$xpc")"; sign_one "$xpc"
+    done
+    [ -d "$fw/Versions/B/Updater.app" ] && { echo "  Signing Updater.app"; sign_one "$fw/Versions/B/Updater.app"; }
+    [ -f "$fw/Versions/B/Autoupdate" ] && { echo "  Signing Autoupdate"; sign_one "$fw/Versions/B/Autoupdate"; }
+    echo "  Signing Sparkle.framework"; sign_one "$fw"
+}
+
+# Strip detritus codesign refuses (quarantine / FinderInfo / fileprovider).
+xattr -cr "$APP_DIR" 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d com.apple.FinderInfo {} \; 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d 'com.apple.fileprovider.fpfs#P' {} \; 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d com.apple.quarantine {} \; 2>/dev/null || true
+
+if [ "$CODESIGN_ID" = "-" ]; then
+    echo "Signing ad-hoc (no Developer ID Application cert found)..."
+    sign_sparkle
+    codesign --force --sign - "$APP_DIR" 2>/dev/null || true
+else
+    echo "Signing with: $CODESIGN_ID"
+    sign_sparkle
+    codesign --force --sign "$CODESIGN_ID" --options runtime --timestamp "$APP_DIR"
+    if codesign --verify --deep --strict --verbose=2 "$APP_DIR" >/dev/null 2>&1; then
         echo "✓ Signature verified"
     else
-        echo "⚠️  codesign --verify reported issues — see output above"
+        echo "⚠️  codesign --verify reported issues"
     fi
-else
-    echo "Developer ID '$DEVELOPER_ID' not in keychain — ad-hoc signing"
-    codesign --force --sign - "$APP_DIR" 2>/dev/null || true
 fi
 
 FINAL_APP_DIR="PurpleMirror.app"
@@ -99,6 +156,35 @@ LSREGISTER='/System/Library/Frameworks/CoreServices.framework/Versions/A/Framewo
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$FINAL_APP_DIR" >/dev/null 2>&1 || true
 
 echo "Built $FINAL_APP_DIR"
+
+# --- Optional notarization (gated on NOTARIZE_PROFILE; release.sh opts in) ---
+if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+    if [ "$CODESIGN_ID" = "-" ]; then
+        echo "WARNING: NOTARIZE_PROFILE set but bundle is ad-hoc-signed — notary will reject. Skipping."
+    else
+        echo "Notarizing with profile: $NOTARIZE_PROFILE"
+        NOTARIZE_ZIP="$(mktemp -t purplemirror-notarize).zip"
+        ditto -c -k --keepParent "$FINAL_APP_DIR" "$NOTARIZE_ZIP"
+        xcrun notarytool submit "$NOTARIZE_ZIP" \
+            --keychain-profile "$NOTARIZE_PROFILE" --wait \
+            --output-format plist > /tmp/pm-notarize.plist 2>&1 || true
+        rm -f "$NOTARIZE_ZIP"
+        if /usr/libexec/PlistBuddy -c 'Print :status' /tmp/pm-notarize.plist >/tmp/pm-notarize.status 2>/dev/null; then
+            NOTARIZE_STATUS="$(cat /tmp/pm-notarize.status)"
+            NOTARIZE_ID="$(/usr/libexec/PlistBuddy -c 'Print :id' /tmp/pm-notarize.plist 2>/dev/null || echo '')"
+        else
+            NOTARIZE_STATUS="SubmitFailed"; NOTARIZE_ID=""
+        fi
+        rm -f /tmp/pm-notarize.status
+        if [ "$NOTARIZE_STATUS" = "Accepted" ]; then
+            echo "Notarization accepted (id $NOTARIZE_ID). Stapling…"
+            xcrun stapler staple "$FINAL_APP_DIR" || echo "WARNING: stapler failed — notarized but ticket not embedded."
+        else
+            echo "WARNING: notarization did not succeed (status: $NOTARIZE_STATUS)."
+            [ -z "$NOTARIZE_ID" ] && sed 's/^/           /' /tmp/pm-notarize.plist 2>/dev/null | head -4
+        fi
+    fi
+fi
 
 if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then
     INSTALL_FLAGS=""

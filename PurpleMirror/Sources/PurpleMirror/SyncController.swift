@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import UserNotifications
 
 /// Observable state + actions for the Obsidian Markdown sync. A thin GUI over
 /// `sync-md-to-obsidian.sh` and its launchd agent — the script remains the
@@ -22,6 +23,9 @@ final class SyncController: ObservableObject {
     @AppStorage("vaultPathOverride") private var vaultPathOverride: String = ""
 
     private var timer: AnyCancellable?
+    /// The `runs` count of the most recent failed run we've already alerted on,
+    /// so a single failure produces a single notification (not one per refresh).
+    private var notifiedForRun: Int?
 
     static var defaultScriptPath: String {
         (NSHomeDirectory() as NSString).appendingPathComponent("dev/PhantomLives/sync-md-to-obsidian.sh")
@@ -35,6 +39,7 @@ final class SyncController: ObservableObject {
     private var domainTarget: String { "gui/\(getuid())/\(SyncStatusParser.agentLabel)" }
 
     init() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         Task { await refresh() }
         // Light periodic refresh so the menu-bar glyph stays current.
         timer = Timer.publish(every: 10, on: .main, in: .common)
@@ -76,6 +81,22 @@ final class SyncController: ObservableObject {
         lastExitCode = agent.lastExitCode
         intervalSeconds = interval
         lastLog = entry
+
+        // Alert once per distinct failed run.
+        if let code = agent.lastExitCode, code != 0, agent.runs != notifiedForRun {
+            notifiedForRun = agent.runs
+            postFailureNotification(exitCode: code)
+        }
+    }
+
+    private func postFailureNotification(exitCode: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Obsidian sync failed"
+        content.body = "The Markdown mirror reported an error (exit \(exitCode)). Open PurpleMirror ▸ View Log for details."
+        content.sound = .default
+        let req = UNNotificationRequest(identifier: "purplemirror-sync-failure-\(runs ?? 0)",
+                                        content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(req)
     }
 
     // MARK: Actions

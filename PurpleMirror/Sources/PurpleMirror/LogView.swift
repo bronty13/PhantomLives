@@ -4,6 +4,10 @@ struct LogView: View {
     @ObservedObject var controller: SyncController
     @State private var text: String = ""
     @State private var tailOnly = true
+    @State private var liveTail = true
+
+    // Ticks while the window is open; we reload on each tick when live-tail is on.
+    private let ticker = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,17 +23,23 @@ struct LogView: View {
                         .id("end")
                 }
                 .onAppear { proxy.scrollTo("end", anchor: .bottom) }
-                .onChange(of: text) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+                .onChange(of: text) { _, _ in
+                    if liveTail { proxy.scrollTo("end", anchor: .bottom) }
+                }
             }
         }
         .frame(minWidth: 560, minHeight: 320)
         .onAppear(perform: reload)
+        .onReceive(ticker) { _ in if liveTail { reload() } }
     }
 
     private var toolbar: some View {
         HStack(spacing: 10) {
             Button { reload() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-            Toggle("Tail (last 200 lines)", isOn: $tailOnly)
+            Toggle("Live tail", isOn: $liveTail)
+                .toggleStyle(.switch)
+                .help("Auto-refresh and follow the end of the log every 1.5s")
+            Toggle("Last 200 lines", isOn: $tailOnly)
                 .toggleStyle(.checkbox)
             Spacer()
             Button { controller.revealLogInFinder() } label: {
@@ -50,6 +60,7 @@ struct LogView: View {
     }
 
     private func reload() {
-        text = controller.readLog()
+        let fresh = controller.readLog()
+        if fresh != text { text = fresh }   // avoid needless view churn when unchanged
     }
 }

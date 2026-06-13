@@ -3,6 +3,7 @@ import SwiftUI
 /// The popover panel shown when the menu-bar icon is clicked.
 struct MenuView: View {
     @ObservedObject var controller: SyncController
+    @ObservedObject var updater: UpdaterViewModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -88,13 +89,23 @@ struct MenuView: View {
                 })
             }
 
-            Button(role: .destructive) {
-                NSApplication.shared.terminate(nil)
+            Button {
+                updater.checkForUpdates()
             } label: {
-                Text("Quit PurpleMirror").frame(maxWidth: .infinity)
+                Label("Check for Updates…", systemImage: "arrow.down.circle").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderless)
-            .font(.caption)
+            .disabled(!updater.canCheckForUpdates)
+
+            HStack {
+                Text("v\(updater.appVersion)")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+                Button(role: .destructive) {
+                    NSApplication.shared.terminate(nil)
+                } label: { Text("Quit") }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
             .padding(.top, 2)
         }
     }
