@@ -42,6 +42,12 @@ description: Module-by-module summary of the most important concepts, with self-
 > 3. What is the Darwin version number for macOS 26, and why does it appear in crash logs?
 > 4. Why does the Rosetta 2 `/var/db/oah/` cache matter even after an app is deleted?
 
+> [!success]- Answers
+> 1. Running (visible), Hidden (`⌘H` — process fully alive, no windows), and Minimized (`⌘M` — window in Dock, process alive but window demoted). Windows has no native equivalent to Hide.
+> 2. Preferences live in `~/Library/Preferences/<bundle-id>.plist` (and `ByHost/` for machine-scoped prefs). Direct file edits are ignored because `cfprefsd` caches values in memory and overwrites the file asynchronously — use `defaults write` or `killall cfprefsd` to flush.
+> 3. Darwin 25 (macOS marketing major minus 1). It appears in crash logs and `uname -r` output, giving investigators a reliable way to identify the OS version even when `sw_vers` isn't available.
+> 4. The `.aot` file's creation timestamp approximates the first execution time of the x86-64 binary. Even after the source app is deleted, this cache entry remains at `/var/db/oah/<uid>/`, providing a high-value malware timeline artifact.
+
 ---
 
 ## Part 01 — System Architecture & Internals
@@ -142,6 +148,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 4. What does `<private>` in a Unified Log entry mean for a forensic investigator?
 > 5. What is the forensic significance of the `QuarantineEventsV2` SQLite database surviving file deletion?
 
+> [!success]- Answers
+> 1. 16 KB on Apple Silicon (vs. 4 KB on Intel). `vm_stat` reports counts in pages, so you must multiply by 16,384 — not 4,096 — to get byte values; using the wrong page size produces numbers that are 4× too low.
+> 2. In priority order: `/System/Library/LaunchDaemons` → `/System/Library/LaunchAgents` → `/Library/LaunchDaemons` → `/Library/LaunchAgents` → `~/Library/LaunchAgents`.
+> 3. `cfprefsd` caches preference domains in memory and flushes writes asynchronously; a direct file edit is silently overwritten by the daemon. Use `defaults write <domain> <key> <value>`, or stop the relevant app/daemon so `cfprefsd` releases the domain first.
+> 4. The value was **never stored on disk** — the redaction is enforced at write time in the kernel path. There is no recovery mechanism, even with root access. Investigators must resort to live capture (`log stream`) before the event fires, or accept the redaction as a permanent gap.
+> 5. The database records the source URL, referrer, download timestamp, and app used to download — all keyed to the quarantine UUID — and persists for 90+ days after the file is deleted, the xattr is stripped, or Safari history is cleared. It can establish when and from where a file arrived even when the file itself is long gone.
+
 ---
 
 ## Part 02 — GUI Power User
@@ -233,6 +246,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 3. What Quick Look generator format does macOS 15+ require, and what happens to the old format?
 > 4. How do you detect a missing TCC screen-capture grant when `screencapture` returns exit code 0?
 > 5. What does AirDrop "Contacts Only" leak in BLE advertisements and why is it significant?
+
+> [!success]- Answers
+> 1. `.DS_Store` files contain records of filenames that were present in the directory — including files since deleted — proving which files Finder rendered in that folder. They also leak directory contents to web servers when present in web roots and are parseable with the `dsstore` Python library.
+> 2. Hidden apps (`⌘H`) remain fully alive and are reachable via `⌘Tab`; minimized windows (`⌘M`) drop into the Dock's window section and are not restored by `⌘Tab`, making them second-class citizens in a keyboard-driven workflow.
+> 3. macOS 15+ requires `.appex` bundle-based Quick Look generators. The legacy `.qlgenerator` format is silently ignored — it produces no error but generates no thumbnail or preview.
+> 4. The result is a solid black image — `screencapture` exits 0 with no error message when the `kTCCServiceScreenCapture` TCC grant is missing. You must inspect the output image itself to detect the failure.
+> 5. "Contacts Only" leaks truncated SHA-256 hashes of your Apple ID email address and phone number in BLE advertisements. These hashes can be reversed using precomputed rainbow tables (the PrivateDrop vulnerability), allowing a nearby attacker to identify you as an AirDrop target even with the privacy setting enabled.
 
 ---
 
@@ -343,6 +363,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 4. What must you do before `kill -9`ing a KeepAlive launchd service, and why?
 > 5. What forensic artifact does `~/.ssh/authorized_keys` modification timestamp reveal?
 
+> [!success]- Answers
+> 1. Use `sed -i ''` (empty string as the backup suffix argument). BSD `sed` requires the backup suffix as a separate argument; GNU `sed` treats `-i` as an option that can be attached directly with no argument. On macOS, `sed -i` (GNU form, no argument) is a syntax error.
+> 2. `EPERM` ("Operation not permitted") means a BSD flag (`chflags uchg`), SIP, or TCC is blocking the operation — layers above POSIX. `EACCES` ("Permission denied") means an ACL or POSIX mode bit denied access — the standard Unix permission layer.
+> 3. DNS on macOS is served by `mDNSResponder` using SCDynamicStore, which supports per-domain resolvers, split DNS, and VPN overrides. `/etc/resolv.conf` is written for legacy compatibility but is not the actual resolver configuration. Use `scutil --dns` or `dscacheutil -q host` for OS ground truth.
+> 4. Run `launchctl bootout gui/<uid>/<service-label>` (or `launchctl unload`) first to remove the job from launchd's job table. If you `kill -9` while the job is still registered as KeepAlive, launchd will immediately respawn it — the kill has no lasting effect.
+> 5. The modification timestamp of `~/.ssh/authorized_keys` indicates when SSH-based persistence was established on the machine — i.e., when an attacker (or administrator) added a public key to enable password-less SSH access.
+
 ---
 
 ## Part 04 — Maintenance, Backup & Recovery
@@ -425,6 +452,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 4. What forensic artifact in `/Library/SystemMigration/` proves a machine's history?
 > 5. Why may `sw_vers` not accurately reflect the current security posture on macOS 26 Tahoe?
 
+> [!success]- Answers
+> 1. Local snapshots are ephemeral APFS CoW snapshots on the source volume itself (hourly, ~24h retention, purgeable under disk pressure). Destination backups are durable copies on a separate drive — either APFS clones (direct-attach) or `.sparsebundle` band files (network). Local snapshots appear as purgeable space in `df`; destination backups persist independently of the source volume's health.
+> 2. EACS destroys the AES volume encryption key in the SEP's effaceable storage in under 2 minutes — all NAND blocks become permanently inaccessible without overwriting a single byte. Disk Utility erase + reinstall does not destroy the SEP-held key hierarchy with the same cryptographic guarantees and takes far longer.
+> 3. Beachball → `spindump` or `sample` (identifies the stuck thread's call stack). Thermal throttle → `powermetrics --samplers cpu_power,thermal` or `powermetrics --samplers smc` (shows die temperature and frequency). Disk I/O hang → `fs_usage` (DTrace-backed syscall trace) combined with `iostat`.
+> 4. `/Library/SystemMigration/History/Migration-<UUID>/MigrationAttempt.plist` records `SourceComputerName`, `SourceSystemVersion`, `MigrationStart`, and `MigrationEnd` — the definitive forensic record of which Mac this data came from and when it was migrated.
+> 5. Background Security Improvements (Tahoe 26.1+) install automatically via Cryptex replacement without a full OS reboot and without incrementing the version string shown by `sw_vers`. Check `stat /System/Cryptexes/App.dmg` timestamps — not just `sw_vers` — to determine the actual security content applied.
+
 ---
 
 ## Part 05 — Security, Privacy & Forensics
@@ -502,6 +536,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 4. How do you detect an infostealer that leaves no persistence mechanism?
 > 5. Why is encrypting a Time Machine backup not equivalent to using the SEP for key protection?
 
+> [!success]- Answers
+> 1. `auth_reason=6` means the TCC grant was made silently via MDM PPPC (Privacy Preferences Policy Control) profile, bypassing the user consent dialog. On a personally-owned consumer Mac with no MDM enrollment, this is highly suspicious and may indicate a rogue MDM profile installed as part of a compromise.
+> 2. XProtect fires only at quarantine-check time (when a quarantined file is first launched via Gatekeeper). Removing the `com.apple.quarantine` xattr causes the OS to treat the file as if it was never downloaded — no quarantine check occurs, and XProtect never gets the opportunity to scan it.
+> 3. The `tombstones` table retains metadata of deleted Keychain items — service name, account, creation/modification timestamps, and ACL — after the item itself is removed. This creates a credential-activity timeline showing VPN configs, mail accounts, and browser logins that were present and then deleted, which investigators frequently overlook.
+> 4. Hunt for network connections (outbound C2 contact) and Keychain access timestamps in the Unified Log (`com.apple.securityd` predicate) rather than for persistent files. The dominant 2024–2026 infostealer pattern (AMOS/Banshee/Poseidon) executes, exfiltrates, and exits in under 60 seconds leaving no LaunchAgent or other persistence artifact.
+> 5. Time Machine backup encryption uses a passphrase-derived key stored on the destination disk — it is transferable, brute-forceable offline if the passphrase is weak, and not backed by hardware. The SEP holds keys in an ARM co-processor with its own Boot ROM and UID fused at manufacturing; keys never leave the SEP and cannot be extracted even with physical chip-off access.
+
 ---
 
 ## Part 06 — Automation & Productivity
@@ -564,6 +605,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 3. Where does Raycast store its clipboard history, and why does this matter forensically?
 > 4. Which TCC permission does Keyboard Maestro Engine require, and what symptom appears silently when it is lost?
 > 5. When should you choose JXA over AppleScript for automation?
+
+> [!success]- Answers
+> 1. Automator shell scripts run with a stripped PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) that does not include `/opt/homebrew/bin`. Fix by prepending `/opt/homebrew/bin` to the PATH at the top of the script, or by using absolute paths (e.g. `/opt/homebrew/bin/jq`) for any Homebrew-installed tools.
+> 2. `StartCalendarInterval` fires at a wall-clock time and catches up missed ticks after the machine wakes from sleep. `StartInterval` fires every N seconds of system uptime and silently skips ticks that occurred while the machine was asleep — making it unreliable for time-sensitive jobs on laptops.
+> 3. Raycast stores clipboard history at `~/Library/Application Support/com.raycast.macos/databases/` in an unencrypted SQLite database. This is forensically significant because it may contain passwords, API tokens, credentials, and document fragments the user never intended to persist — and is frequently overlooked in macOS forensic checklists.
+> 4. Keyboard Maestro Engine requires `kTCCServiceAccessibility` (Accessibility permission). When this grant is lost, all hotkey triggers and macro injections silently stop working — KM produces no alert or error; triggers simply do nothing.
+> 5. Choose JXA when you need real JavaScript data structures, need to use Foundation/Cocoa APIs via `ObjC.import('Foundation')`, need `NSTask` for subprocess control, or want to pipe JSON between automation steps. AppleScript is better for deep dictionary-heavy GUI scripting of scriptable apps via their `sdef` dictionaries.
 
 ---
 
@@ -650,6 +698,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 4. Why is GPU/Metal passthrough unavailable in Linux VMs on Mac, and what is the correct workaround for ML workloads?
 > 5. What does a second UUID for the same binary name in `/var/db/oah/` indicate?
 
+> [!success]- Answers
+> 1. `xcrun --kill-cache` clears the xcrun resolution cache, which can become stale after switching active developer directories (e.g., between CLT and Xcode, or between two Xcode versions). Reach for it when `xcrun` resolves to the wrong toolchain binary after `sudo xcode-select -s` or an Xcode version switch.
+> 2. A code signature seals the CodeResources plist, which records hashes of nested helpers and frameworks. If you sign outer bundles first, the nested items' hashes haven't been computed yet — signing them after changes those hashes and breaks the outer seal. `codesign --deep` signs depth-first but does not correctly handle entitlements or per-slice flags on nested binaries; production builds must sign each target explicitly in dependency order.
+> 3. `auth_reason` in TCC.db reveals *how* a TCC grant was made (e.g., 6 = MDM/PPPC silent grant, 7 = user consent). `sysctl.proc_translated` only tells you whether the *current* process is running under Rosetta — it has no bearing on TCC authorization history. The two answer entirely different questions.
+> 4. Linux VMs on Mac run in a hypervisor that has no access to Apple's proprietary Metal GPU API — Metal is unavailable outside the macOS host. The correct workaround is to run ML workloads (PyTorch with MPS backend, MLX) directly on the macOS host, where they have full access to the Apple Neural Engine and GPU via Metal.
+> 5. Two UUIDs for the same binary name in `/var/db/oah/` means the x86-64 binary was swapped — a new binary replaced the original one. The first UUID's `.aot` creation timestamp marks the first execution of the original binary; the second marks the first execution of the replacement. This is a high-value indicator that a binary was updated or substituted.
+
 ---
 
 ## Part 08 — Networking & Connectivity
@@ -698,6 +753,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 4. What happens to a System Extension when its parent app is deleted?
 > 5. How do you verify that encrypted DNS is actually working, not bypassed?
 
+> [!success]- Answers
+> 1. `dig` and `nslookup` use their own resolver stacks and bypass `mDNSResponder`, ignoring per-domain resolver routing, VPN split-DNS, and Search Domain settings configured in SCDynamicStore. For OS ground truth use `scutil --dns` (shows all resolver configs) or `dscacheutil -q host -a name <hostname>` (queries through the actual OS resolver).
+> 2. Internet Sharing creates a `bridge100` virtual interface and launches a DHCP server assigning `192.168.3.x/24` addresses to clients. On a production network this introduces a rogue DHCP server that can redirect other devices' default gateway and DNS, causing network disruption or interception.
+> 3. The Bluetooth pairing keys in `/Library/Preferences/com.apple.Bluetooth.plist` record paired device identifiers and names. Their presence proves that a specific device was within Bluetooth range and paired with this Mac — establishing physical proximity and association timelines between the Mac and those devices.
+> 4. The System Extension enters zombie `[activated enabled]` state — it remains loaded and running in the kernel/userspace but has no parent app to manage it. It does not self-uninstall. You must explicitly remove it with `systemextensionsctl uninstall <TEAMID> <bundle-id>`.
+> 5. Capture traffic with `tcpdump -i any port 53` while browsing. If encrypted DNS is working, there should be zero port-53 UDP/TCP packets — all DNS goes over DoH/DoT on ports 443/853. Any port-53 traffic means DNS is leaking in plaintext and the encrypted DNS config is not being honored.
+
 ---
 
 ## Part 09 — Apps & Ecosystem
@@ -740,6 +802,13 @@ description: Module-by-module summary of the most important concepts, with self-
 > 4. Why must you examine `Photos.sqlite` while the Photos app is closed (or on a dead image)?
 > 5. What distinguishes the quarantine provenance of a Homebrew Cask-installed app from one directly downloaded?
 
+> [!success]- Answers
+> 1. Nothing meaningful. The OS-level identity is `CFBundleIdentifier` in `Contents/Info.plist` — used by the sandbox container, Launch Services, Keychain, and code-signing. Renaming the `.app` directory changes only the Finder display name; the bundle ID, Team ID, and container path are unaffected.
+> 2. The Mac App Store sandbox prohibits clipboard monitoring, system extensions, and arbitrary filesystem access — exactly the capabilities that security tools (outbound firewalls, EDR, forensic utilities) and sysadmin tools require. These apps must be distributed as Developer ID + notarized outside the MAS.
+> 3. Orphaned entries in `~/Library/Containers/<bundle-id>/` (where the corresponding `.app` is gone) are strong indicators that software was previously installed and then removed (or dragged to Trash, which does not purge containers). The container may still hold user data, preferences, cached credentials, and SQLite databases from that app.
+> 4. SQLite uses Write-Ahead Logging (WAL); when Photos is open, uncommitted changes sit in the `-wal` sidecar file and have not been merged into the main database. Querying the main database while Photos runs returns a stale view. On a live system the WAL must be checkpointed first; on a forensic dead image, mount read-only and merge the WAL manually before querying.
+> 5. Homebrew Cask strips `com.apple.quarantine` after SHA-256 verification of the downloaded archive — installed apps carry no quarantine xattr and no QuarantineEventsV2 record. A directly downloaded app retains the quarantine xattr (with source URL and download timestamp) until first launch, and its provenance persists in `QuarantineEventsV2` for 90+ days — a clear forensic distinction.
+
 ---
 
 ## Part 10 — Hardware
@@ -774,3 +843,10 @@ description: Module-by-module summary of the most important concepts, with self-
 > 3. Why is `caffeinate -s` unreliable during a long acquisition run on battery?
 > 4. What does `sysctl hw.model` return and why is it valuable for vulnerability database lookups?
 > 5. What non-standard evidence does `nvram -p` preserve that survives an OS reinstall?
+
+> [!success]- Answers
+> 1. The external display count ceiling is set by the number of hardware display pipelines in the SoC die — a fixed silicon constant. A Thunderbolt dock multiplies port availability but cannot add new display pipelines; connecting more monitors than the chip supports simply doesn't work (or requires CPU-based DisplayLink at a performance cost).
+> 2. Use `powermetrics --samplers cpu_power,thermal` (which shows thermal pressure levels and per-cluster data) on Apple Silicon. The `smc` sampler is Intel-only — it reads SMC sensor registers that do not exist on M-series chips and produces no output on Apple Silicon.
+> 3. `caffeinate -s` (system sleep prevention) is silently ignored on battery power — it only takes effect when plugged into AC. During a battery-powered acquisition, the system can still sleep, pausing or corrupting the acquisition. Use `caffeinate -i` (idle sleep prevention) instead, which works on both AC and battery.
+> 4. `sysctl hw.model` returns the canonical Model Identifier (e.g., `Mac17,6`). This identifier maps to a specific SoC generation and hardware configuration in Apple's security advisories and third-party vulnerability databases (CVE lookups, SEP generation identification), making it the forensic key for assessing applicable vulnerabilities.
+> 5. NVRAM persists boot arguments and flags set by tools like `nvram boot-args` — values that survive OS reinstalls and even Erase All Content and Settings (which does not clear NVRAM). `nvram -p` can reveal non-standard boot flags (e.g., `-v`, `kext-dev-mode=1`, SIP-related flags) set by a prior user or attacker, indicating the machine's security posture and any deliberate policy overrides.
