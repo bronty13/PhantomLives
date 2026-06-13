@@ -31,8 +31,28 @@ mirror on a schedule.
 | launchd agent plist | `~/Library/LaunchAgents/com.phantomlives.obsidian-sync.plist` |
 | Run log | `~/Library/Logs/phantomlives-obsidian-sync.log` |
 
-Default vault is `~/Documents/Obsidian Vault`; override with the
-`OBSIDIAN_VAULT` env var (path to the vault root).
+The script's built-in default vault is `~/Documents/Obsidian Vault`; override
+with the `OBSIDIAN_VAULT` env var (path to the vault root). **The vault in
+effect at `--install-agent` time is baked into the agent's plist
+`EnvironmentVariables`**, so the scheduled run targets it regardless of the
+default — re-run `--install-agent` to repoint an existing agent.
+
+To mirror into a vault that's synced by **Obsidian Sync** (the paid service) or
+that lives in Obsidian's iCloud container — which is what actually reaches your
+iPhone/iPad — install the agent against that vault's real path, e.g.:
+
+```bash
+OBSIDIAN_VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/<Your Vault>" \
+  ./sync-md-to-obsidian.sh --install-agent
+```
+
+Note: writing files into the vault folder is necessary but not sufficient for
+Obsidian Sync — the desktop Obsidian app must be running and connected to your
+Sync remote for it to push the mirrored files up; placing them in an
+`iCloud~md~obsidian` vault also propagates them via iCloud. The repo's
+`~/Documents/Obsidian Vault` is a *different* folder from any vault registered
+in Obsidian — confirm the target matches the vault you actually open on your
+devices (`~/Library/Application Support/obsidian/obsidian.json` lists them).
 
 ## Why a real folder + Full Disk Access (not a symlink)
 

@@ -21,11 +21,18 @@
 #   ./sync-md-to-obsidian.sh                 Run the sync once.
 #   ./sync-md-to-obsidian.sh --install-agent [interval_seconds]
 #                                            Install + load a launchd agent
-#                                            (default 3600s = hourly).
+#                                            (default 3600s = hourly). The vault
+#                                            in effect at install time (default
+#                                            or $OBSIDIAN_VAULT) is BAKED into
+#                                            the agent's plist EnvironmentVariables,
+#                                            so the scheduled run targets it.
 #   ./sync-md-to-obsidian.sh --uninstall-agent
 #                                            Unload + remove the launchd agent.
 #
 # Override the vault location with $OBSIDIAN_VAULT (path to the vault root).
+# To target an Obsidian-Sync / iCloud-container vault, install with e.g.:
+#   OBSIDIAN_VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/<Vault>" \
+#     ./sync-md-to-obsidian.sh --install-agent
 #
 set -euo pipefail
 
@@ -59,6 +66,11 @@ install_agent() {
         <string>/bin/bash</string>
         <string>$SCRIPT</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>OBSIDIAN_VAULT</key>
+        <string>$VAULT</string>
+    </dict>
     <key>StartInterval</key>
     <integer>$interval</integer>
     <key>RunAtLoad</key>
@@ -74,6 +86,7 @@ PLIST_EOF
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$PLIST"
   echo "Installed launchd agent: $LABEL (every ${interval}s)"
+  echo "  vault: $VAULT"
   echo "  plist: $PLIST"
   echo "  log:   $LOG"
   echo
