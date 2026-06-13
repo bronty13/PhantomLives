@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LogView: View {
-    @ObservedObject var controller: SyncController
+    @ObservedObject var model: JobsModel
     @State private var text: String = ""
     @State private var tailOnly = true
     @State private var liveTail = true
@@ -23,29 +23,36 @@ struct LogView: View {
                         .id("end")
                 }
                 .onAppear { proxy.scrollTo("end", anchor: .bottom) }
-                .onChange(of: text) { _, _ in
-                    if liveTail { proxy.scrollTo("end", anchor: .bottom) }
-                }
+                .onChange(of: text) { _, _ in if liveTail { proxy.scrollTo("end", anchor: .bottom) } }
             }
         }
         .frame(minWidth: 560, minHeight: 320)
         .onAppear(perform: reload)
+        .onChange(of: model.selectedJobID) { _, _ in reload() }
         .onReceive(ticker) { _ in if liveTail { reload() } }
     }
 
     private var toolbar: some View {
         HStack(spacing: 10) {
+            if !model.jobs.isEmpty {
+                Picker("Job", selection: Binding(
+                    get: { model.selectedJobID ?? model.jobs.first?.id },
+                    set: { model.selectedJobID = $0 }
+                )) {
+                    ForEach(model.jobs) { Text($0.displayName).tag(Optional($0.id)) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 220)
+            }
             Button { reload() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-            Toggle("Live tail", isOn: $liveTail)
-                .toggleStyle(.switch)
+            Toggle("Live tail", isOn: $liveTail).toggleStyle(.switch)
                 .help("Auto-refresh and follow the end of the log every 1.5s")
-            Toggle("Last 200 lines", isOn: $tailOnly)
-                .toggleStyle(.checkbox)
+            Toggle("Last 200 lines", isOn: $tailOnly).toggleStyle(.checkbox)
             Spacer()
-            Button { controller.revealLogInFinder() } label: {
+            Button { model.selectedJob?.revealLogInFinder() } label: {
                 Label("Reveal in Finder", systemImage: "folder")
             }
-            Button { controller.openLogInConsole() } label: {
+            Button { model.selectedJob?.openLogInConsole() } label: {
                 Label("Open in Console", systemImage: "terminal")
             }
         }
@@ -60,7 +67,7 @@ struct LogView: View {
     }
 
     private func reload() {
-        let fresh = controller.readLog()
+        let fresh = model.selectedJob?.readLog() ?? "(no job selected)"
         if fresh != text { text = fresh }   // avoid needless view churn when unchanged
     }
 }

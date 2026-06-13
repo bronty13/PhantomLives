@@ -2,6 +2,32 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.2.0 — 2026-06-13
+
+- **Multi-job background-jobs dashboard.** PurpleMirror is no longer Obsidian-only:
+  it now **auto-discovers every PhantomLives launchd agent** in
+  `~/Library/LaunchAgents` (labels under `com.phantomlives.*` / `com.bronty13.*`)
+  and shows one row per job. Out of the box that surfaces both the **Obsidian
+  Sync** and PurpleAttic's **Rachel Photo Sync**; any agent added later appears
+  automatically (no relaunch).
+- **Full per-job control.** Each job has its own **Run Now**, **enable/disable**,
+  and **interval** controls, plus its **own log** in the log window (pick the job
+  from the toolbar). Known jobs get tailored status parsing — Obsidian shows
+  "Mirrored N files", Rachel shows "Staged N new / No new items / Pull failed
+  (exit N)"; unknown jobs get a generic last-line summary.
+- **Two scheduling backends.** Script-managed jobs (Obsidian) still go through the
+  script's `--install-agent` / `--uninstall-agent`. Plist-managed jobs (Rachel's
+  hand-written agent) are controlled directly: enable/disable via
+  `launchctl bootstrap/bootout`, and an interval change **safely rewrites only the
+  plist's `StartInterval`** (keeping a backup and restoring it if the reload fails)
+  so an operational backup plist can't be left broken.
+- **Menu-bar glyph reflects the worst job's health**; per-job failure
+  notifications (once per failed run) now name the job.
+- Internals: `SyncController` → one `JobController` per agent owned by a new
+  `JobsModel`; new pure, unit-tested `LaunchAgentPlist` (descriptor parse +
+  `StartInterval` edit) and `JobRegistry` (discovery filter + profiles). Tests
+  grew 10 → 28.
+
 ## 1.1.0 — 2026-06-13
 
 - **Sparkle 2 auto-update.** The app now self-updates: a "Check for Updates…"

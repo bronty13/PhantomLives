@@ -1,9 +1,42 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @ObservedObject var controller: SyncController
+    @ObservedObject var model: JobsModel
 
-    // Interval presets (seconds). "Custom" reveals a stepper.
+    var body: some View {
+        VStack(spacing: 0) {
+            if model.jobs.isEmpty {
+                ContentUnavailableView(
+                    "No managed jobs",
+                    systemImage: "gearshape",
+                    description: Text("PurpleMirror manages PhantomLives launchd agents in ~/Library/LaunchAgents.")
+                )
+            } else {
+                Picker("Job", selection: Binding(
+                    get: { model.selectedJobID ?? model.jobs.first?.id },
+                    set: { model.selectedJobID = $0 }
+                )) {
+                    ForEach(model.jobs) { Text($0.displayName).tag(Optional($0.id)) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding([.horizontal, .top])
+
+                if let job = model.selectedJob {
+                    JobSettingsForm(job: job)
+                        .id(job.id)   // fresh @State per job
+                }
+            }
+        }
+        .frame(width: 500, height: 480)
+        .task { await model.refreshAll() }
+    }
+}
+
+/// Schedule + locations for a single job.
+private struct JobSettingsForm: View {
+    @ObservedObject var job: JobController
+
     private let presets: [(String, Int)] = [
         ("15 minutes", 900), ("30 minutes", 1800),
         ("1 hour", 3600), ("2 hours", 7200), ("6 hours", 21600)
@@ -15,85 +48,74 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Schedule") {
-                Toggle("Automatic background sync", isOn: Binding(
-                    get: { controller.agentLoaded },
-                    set: { $0 ? controller.enableAutoSync() : controller.disableAutoSync() }
+                Toggle("Automatic background run", isOn: Binding(
+                    get: { job.agentLoaded },
+                    set: { $0 ? job.enable() : job.disable() }
                 ))
-                .help("Installs a launchd agent that mirrors on a fixed interval and at login.")
+                .help("Loads/unloads the launchd agent that runs this job on a fixed interval.")
 
-                Picker("Sync every", selection: $selection) {
+                Picker("Run every", selection: $selection) {
                     ForEach(presets, id: \.1) { Text($0.0).tag($0.1) }
                     Text("Custom…").tag(-1)
                 }
-                .disabled(!controller.agentLoaded)
+                .disabled(!job.agentLoaded)
                 .onChange(of: selection) { _, new in
                     isCustom = (new == -1)
-                    if new != -1 { controller.setInterval(new) }
+                    if new != -1 { job.setInterval(new) }
                 }
 
                 if isCustom {
                     Stepper(value: $customMinutes, in: 5...1440, step: 5) {
                         Text("Every \(customMinutes) minutes")
                     }
-                    Button("Apply custom interval") {
-                        controller.setInterval(customMinutes * 60)
-                    }
-                    .disabled(!controller.agentLoaded)
+                    Button("Apply custom interval") { job.setInterval(customMinutes * 60) }
+                        .disabled(!job.agentLoaded)
                 }
             }
 
             Section("Run") {
                 Button {
-                    controller.syncNow()
+                    job.runNow()
                 } label: {
-                    Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+                    Label("Run Now", systemImage: "play.circle")
                 }
-                .disabled(controller.isSyncing)
-                if let msg = controller.lastActionMessage {
+                .disabled(job.isRunning)
+                if let msg = job.lastActionMessage {
                     Text(msg).font(.caption).foregroundStyle(.secondary)
                 }
             }
 
             Section("Locations") {
-                LabeledContent("Target vault") {
-                    Text(controller.vaultPath.isEmpty ? "—" : controller.vaultPath)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.secondary)
+                LabeledContent("Log") {
+                    Text(job.logPath.isEmpty ? "—" : job.logPath)
+                        .textSelection(.enabled).foregroundStyle(.secondary)
                         .lineLimit(2).truncationMode(.middle)
                 }
-                LabeledContent("Sync script") {
-                    HStack {
-                        TextField("", text: $controller.scriptPath)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Choose…") { chooseScript() }
+                if let script = job.scriptPath {
+                    LabeledContent("Script") {
+                        Text(script)
+                            .textSelection(.enabled).foregroundStyle(.secondary)
+                            .lineLimit(2).truncationMode(.middle)
                     }
                 }
-                Text("The vault is whatever the agent was installed with (baked into its plist). To change it, set OBSIDIAN_VAULT and reinstall per docs/obsidian-setup.md.")
-                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("launchd label") {
+                    Text(job.label).textSelection(.enabled).foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 420)
-        .task {
-            await controller.refresh()
-            // Sync the picker to the live interval if it matches a preset.
-            if presets.contains(where: { $0.1 == controller.intervalSeconds }) {
-                selection = controller.intervalSeconds
-            } else {
-                selection = -1; isCustom = true
-                customMinutes = max(5, controller.intervalSeconds / 60)
-            }
-        }
+        .task { syncSelection() }
+        .onChange(of: job.intervalSeconds) { _, _ in syncSelection() }
     }
 
-    private func chooseScript() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.message = "Select sync-md-to-obsidian.sh"
-        if panel.runModal() == .OK, let url = panel.url {
-            controller.scriptPath = url.path
+    private func syncSelection() {
+        if presets.contains(where: { $0.1 == job.intervalSeconds }) {
+            selection = job.intervalSeconds
+            isCustom = false
+        } else {
+            selection = -1
+            isCustom = true
+            customMinutes = max(5, job.intervalSeconds / 60)
         }
     }
 }
