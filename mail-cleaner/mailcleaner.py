@@ -31,7 +31,7 @@ Output: ~/Downloads/mail-cleaner/<account>_<timestamp>/
 
 from __future__ import annotations
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 import argparse
 import csv
@@ -39,12 +39,17 @@ import imaplib
 import json
 import os
 import re
+import smtplib
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from email.header import decode_header, make_header
+from email.message import EmailMessage
 from email.utils import parseaddr, parsedate_to_datetime
 from pathlib import Path
 
@@ -54,6 +59,16 @@ PRESETS = {
     "icloud": {"host": "imap.mail.me.com", "port": 993},
     "gmail": {"host": "imap.gmail.com", "port": 993},
 }
+
+# SMTP presets for the mailto unsubscribe path (must send FROM the subscribed
+# address for the unsubscribe to be honored). STARTTLS on 587.
+SMTP_PRESETS = {
+    "icloud": {"host": "smtp.mail.me.com", "port": 587},
+    "gmail": {"host": "smtp.gmail.com", "port": 587},
+}
+
+# A browser-ish UA; some unsubscribe endpoints reject the default urllib one.
+UNSUB_UA = "Mozilla/5.0 (mail-cleaner unsubscribe)"
 
 # Header fields we pull for analysis. Bodies are never fetched.
 HEADER_FIELDS = "FROM DATE SUBJECT LIST-UNSUBSCRIBE LIST-ID"
@@ -583,6 +598,232 @@ def cmd_act(args: argparse.Namespace) -> None:
         pass
 
 
+# --- Unsubscribe -----------------------------------------------------------
+
+def classify_unsub(list_unsub: str, list_unsub_post: str) -> tuple[str, str]:
+    """Pick the best unsubscribe method from the List-Unsubscribe header(s).
+
+    Preference order, most-to-least reliable to automate:
+      1. one-click  — RFC 8058: an https URL *plus* a List-Unsubscribe-Post:
+         'List-Unsubscribe=One-Click' header. A single POST unsubscribes with
+         no confirmation page. This is what the Gmail/Apple "Unsubscribe"
+         button uses.
+      2. mailto     — send a message to the given address (we do it over SMTP).
+      3. http       — an https link with NO one-click marker: almost always a
+         landing page that needs a human click, so we only *report* it.
+      4. none       — no usable header.
+
+    Returns (method, target) where target is the URL or mailto: URI.
+    """
+    https = re.findall(r"<\s*(https?://[^>]+?)\s*>", list_unsub or "")
+    mailtos = re.findall(r"<\s*(mailto:[^>]+?)\s*>", list_unsub or "")
+    one_click = "one-click" in (list_unsub_post or "").lower()
+    if https and one_click:
+        return ("one-click", https[0])
+    if mailtos:
+        return ("mailto", mailtos[0])
+    if https:
+        return ("http", https[0])
+    return ("none", "")
+
+
+def fetch_unsub_method(M: imaplib.IMAP4_SSL, uid: bytes) -> tuple[str, str]:
+    """Read the List-Unsubscribe headers of one message and classify them."""
+    u = uid.decode() if isinstance(uid, bytes) else uid
+    typ, data = M.uid(
+        "fetch", u,
+        "(BODY.PEEK[HEADER.FIELDS (LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST)])")
+    if typ != "OK":
+        return ("none", "")
+    raw = b"".join(p[1] for p in data if isinstance(p, tuple))
+    hdrs = parse_header_blob(raw)
+    return classify_unsub(hdrs.get("list-unsubscribe", ""),
+                          hdrs.get("list-unsubscribe-post", ""))
+
+
+def do_one_click(url: str) -> tuple[bool, str]:
+    """Fire an RFC 8058 one-click unsubscribe POST. Returns (ok, detail)."""
+    body = b"List-Unsubscribe=One-Click"
+    req = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "User-Agent": UNSUB_UA})
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return (r.status < 400, f"HTTP {r.status}")
+    except urllib.error.HTTPError as e:
+        return (e.code < 400, f"HTTP {e.code}")
+    except Exception as e:  # noqa: BLE001 - network errors are varied
+        return (False, f"{type(e).__name__}: {str(e)[:60]}")
+
+
+def parse_mailto(uri: str) -> tuple[str, str, str]:
+    """mailto:addr?subject=..&body=.. -> (to, subject, body)."""
+    p = urllib.parse.urlparse(uri)
+    q = urllib.parse.parse_qs(p.query)
+    to = p.path
+    subject = q.get("subject", ["unsubscribe"])[0]
+    body = q.get("body", ["unsubscribe"])[0]
+    return (to, subject, body)
+
+
+def senders_from_csv(path: str, min_count: int) -> list[str]:
+    """Pull newsletter senders out of a prior `analyze` senders.csv.
+
+    Keeps rows flagged is_newsletter (they had a List-Unsubscribe header) with
+    a message count >= min_count, so the candidate list is the bulk mail worth
+    unsubscribing from — not every one-off sender."""
+    out = []
+    with Path(path).open(newline="") as f:
+        for row in csv.DictReader(f):
+            if row.get("is_newsletter", "").strip().lower() not in ("yes", "true", "1"):
+                continue
+            try:
+                cnt = int(row.get("count", "0") or 0)
+            except ValueError:
+                cnt = 0
+            if cnt >= min_count and row.get("address"):
+                out.append(row["address"].strip().lower())
+    return out
+
+
+def cmd_unsubscribe(args: argparse.Namespace) -> None:
+    preset = PRESETS.get(args.account, {})
+    host = args.host or preset.get("host")
+    port = args.port or preset.get("port", 993)
+    if not host:
+        sys.exit("error: --host required (or use --account icloud|gmail)")
+
+    methods = {m.strip() for m in args.methods.split(",") if m.strip()}
+    bad = methods - {"one-click", "mailto"}
+    if bad:
+        sys.exit(f"error: --methods supports one-click,mailto (got {bad})")
+
+    # Candidate senders: explicit allowlist or harvested from an analyze CSV.
+    if args.senders:
+        senders = load_senders(args.senders)
+    elif args.from_csv:
+        senders = senders_from_csv(args.from_csv, args.min_count)
+    else:
+        sys.exit("error: pass --senders <file> or --from-csv <senders.csv>")
+    if not senders:
+        sys.exit("error: no candidate senders to process")
+
+    password = get_password(args.user, args.keychain_service)
+    M = connect(host, port, args.user, password)
+    print(f"connected to {host} as {args.user}")
+
+    mailbox = args.mailbox or ("[Gmail]/All Mail"
+                               if args.account == "gmail" else "INBOX")
+    M.select(f'"{mailbox}"', readonly=True)
+    print(f"deriving unsubscribe links live from newest message per sender "
+          f"in {mailbox} ({len(senders)} candidate senders)\n")
+
+    # --- derive method per sender from its freshest message ---
+    records = []  # (sender, count_in_mailbox, method, target)
+    for s in senders:
+        uids = search_sender(M, s, None)
+        if not uids:
+            records.append((s, 0, "absent", ""))
+            continue
+        method, target = fetch_unsub_method(M, uids[-1])  # newest
+        records.append((s, len(uids), method, target))
+
+    try:
+        M.logout()
+    except Exception:
+        pass
+
+    by_method = defaultdict(list)
+    for r in records:
+        by_method[r[2]].append(r)
+
+    def show(method, note):
+        rows = sorted(by_method.get(method, []), key=lambda x: -x[1])
+        if not rows:
+            return
+        print(f"{method} ({len(rows)}) — {note}")
+        for s, c, m, t in rows:
+            print(f"  {c:>6,}  {s}")
+
+    show("one-click", "RFC 8058 POST — will auto-unsubscribe")
+    show("mailto", "send unsubscribe email over SMTP")
+    show("http", "needs a browser visit — MANUAL, not fired")
+    show("none", "no List-Unsubscribe header — MANUAL")
+    show("absent", "no matching mail in this mailbox — skipped")
+
+    actionable = [r for r in records if r[2] in methods]
+    print(f"\n==> {len(actionable)} sender(s) would be unsubscribed "
+          f"via {sorted(methods)}.")
+
+    if not args.apply:
+        print("\nDRY RUN — nothing sent. Re-run with --apply to execute.")
+        return
+
+    # --- execute ---
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = (Path(args.out) if args.out else DEFAULT_OUT) / \
+        f"{args.account}_unsub_{stamp}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    log = []
+
+    # one-click POSTs
+    oc = [r for r in actionable if r[2] == "one-click"]
+    if oc:
+        print(f"\nfiring {len(oc)} one-click POST(s)...")
+        for s, c, m, url in oc:
+            ok, detail = do_one_click(url)
+            print(f"  {'ok ' if ok else 'ERR'} {detail:12}  {s}")
+            log.append((s, c, "one-click", "ok" if ok else "fail", detail))
+            time.sleep(0.5)
+
+    # mailto unsubscribes over SMTP
+    mt = [r for r in actionable if r[2] == "mailto"]
+    if mt:
+        sp = SMTP_PRESETS.get(args.account, {})
+        smtp_host = args.smtp_host or sp.get("host")
+        smtp_port = args.smtp_port or sp.get("port", 587)
+        if not smtp_host:
+            print("  ! no SMTP host (use --smtp-host); skipping mailto unsubs")
+        else:
+            print(f"\nsending {len(mt)} mailto unsubscribe(s) via "
+                  f"{smtp_host}...")
+            S = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+            try:
+                S.starttls()
+                S.login(args.user, password)
+                for s, c, m, uri in mt:
+                    to, subj, body = parse_mailto(uri)
+                    em = EmailMessage()
+                    em["From"] = args.user
+                    em["To"] = to
+                    em["Subject"] = subj
+                    em.set_content(body)
+                    try:
+                        S.send_message(em)
+                        print(f"  sent  {s}  -> {to[:45]}")
+                        log.append((s, c, "mailto", "sent", to))
+                    except Exception as e:  # noqa: BLE001
+                        print(f"  FAIL  {s}: {str(e)[:50]}")
+                        log.append((s, c, "mailto", "fail", str(e)[:80]))
+                    time.sleep(0.3)
+            finally:
+                try:
+                    S.quit()
+                except Exception:
+                    pass
+
+    # write the log
+    with (out_dir / "unsubscribe_log.csv").open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["sender", "count_in_mailbox", "method", "result", "detail"])
+        w.writerows(log)
+    ok_n = sum(1 for r in log if r[3] in ("ok", "sent"))
+    print(f"\nDone. {ok_n}/{len(log)} succeeded. Log: "
+          f"{out_dir / 'unsubscribe_log.csv'}")
+    print("Note: senders may take up to 10 business days to stop (CAN-SPAM).")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="bulk IMAP mailbox cleanup")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -631,6 +872,39 @@ def build_parser() -> argparse.ArgumentParser:
                    help="skip client-side exact From: verification (faster, "
                         "but trusts the server's loose SEARCH FROM matching)")
     c.set_defaults(func=cmd_act)
+
+    # unsubscribe: stop bulk senders at the source -----------------------
+    u = sub.add_parser(
+        "unsubscribe",
+        help="unsubscribe from bulk senders via List-Unsubscribe "
+             "(one-click POST + mailto)")
+    u.add_argument("--account", default="icloud")
+    u.add_argument("--user", required=True)
+    u.add_argument("--host")
+    u.add_argument("--port", type=int)
+    u.add_argument("--keychain-service")
+    u.add_argument("--senders",
+                   help="text file: one sender address per line (# = comment)")
+    u.add_argument("--from-csv", dest="from_csv",
+                   help="harvest newsletter senders from a prior analyze "
+                        "senders.csv instead of a hand-written list")
+    u.add_argument("--min-count", dest="min_count", type=int, default=3,
+                   help="with --from-csv: only senders with >= this many "
+                        "messages (default 3)")
+    u.add_argument("--mailbox", default=None,
+                   help="mailbox to read unsubscribe links from "
+                        "(default INBOX; Gmail: [Gmail]/All Mail)")
+    u.add_argument("--methods", default="one-click,mailto",
+                   help="comma list of methods to fire: one-click,mailto "
+                        "(http/none are always report-only)")
+    u.add_argument("--smtp-host", dest="smtp_host",
+                   help="SMTP host for mailto unsubs (overrides preset)")
+    u.add_argument("--smtp-port", dest="smtp_port", type=int,
+                   help="SMTP port (default 587 STARTTLS)")
+    u.add_argument("--apply", action="store_true",
+                   help="actually unsubscribe (default is dry-run)")
+    u.add_argument("--out", help=f"log output dir (default {DEFAULT_OUT})")
+    u.set_defaults(func=cmd_unsubscribe)
     return p
 
 

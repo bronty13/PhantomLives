@@ -1,7 +1,7 @@
 # mail-cleaner — HANDOFF
 
 Canonical state snapshot for picking the mail-cleanup project back up. Last
-updated **2026-06-12**. Tool version **0.2.1**.
+updated **2026-06-13**. Tool version **0.3.0**.
 
 `mail-cleaner/` is a stdlib-only Python IMAP triage/cleanup tool built to dig
 Robert out of an overflowing mailbox. Apple Mail's `robert.olen@icloud.com`
@@ -166,16 +166,41 @@ poller).**
 
 ---
 
+## Unsubscribe (DONE 2026-06-13, now a built-in command)
+
+A first unsubscribe sweep of the iCloud inbox's recurring promo senders was run:
+**16 one-click POSTs (all HTTP 200) + 7 mailto unsubscribes sent**. These were
+Gmail-list subscriptions (`se=robert.olen@gmail.com`) forwarding into iCloud, so
+unsubscribing stops them at the Gmail source. Senders get up to ~10 business days
+(CAN-SPAM) to comply — expect a short tail, then silence.
+
+This was then **productionized into `mailcleaner.py unsubscribe`** (v0.3.0):
+```bash
+# dry-run (groups senders by method, sends nothing)
+python3 mailcleaner.py unsubscribe --account icloud \
+    --user robert.olen@icloud.com --keychain-service mail-cleaner-icloud \
+    --senders lists/icloud_pass2_delete_senders.txt
+# add --apply to fire one-click POSTs + mailto unsubs (logs to ~/Downloads/...)
+```
+It derives each sender's `List-Unsubscribe` link **live** from the newest message
+(tokens rotate), fires one-click (RFC 8058 POST) + mailto (SMTP from the account),
+and *reports-only* http-landing-page and no-header senders. Candidates via
+`--senders` or `--from-csv <analyze senders.csv> --min-count N`. Run it for the
+two Gmail accounts too when ready (`--account gmail`, their keychain services).
+
 ## Optional future passes (none urgent)
 
 1. **Deeper iCloud tail** — the remaining 74,495 still has long-tail senders;
    re-`analyze` and triage another batch if the inbox still feels heavy.
-2. **Unsubscribe pass** — `senders.csv` carries `List-Unsubscribe` headers; could
-   script one-click unsubscribes for the worst offenders to stop future mail at
-   the source.
-3. **Trim Gmail All Mail** — 175k in robert's All Mail is mostly kept archive; a
+2. **Unsubscribe the Gmail accounts** — the `unsubscribe` command now exists; run
+   it against `robert.olen@gmail.com` + `brontysore@gmail.com` to cut their bulk
+   senders at the source too.
+3. **The 4 un-unsubscribable iCloud senders** — `microsoftstore@…` (89 msgs),
+   `bardotbrush`, `sigsauer`, `redditmail` had no usable List-Unsubscribe hook;
+   only levers are delete + a server-side rule.
+4. **Trim Gmail All Mail** — 175k in robert's All Mail is mostly kept archive; a
    further pass could trash more bulk senders if desired.
-4. **Going-forward Gmail filters** — beyond the current auto-delete set, add
+5. **Going-forward Gmail filters** — beyond the current auto-delete set, add
    filters to auto-archive/label new mail so it doesn't re-accumulate.
 
 When resuming: `git pull --rebase` from the repo root first, then re-`analyze`

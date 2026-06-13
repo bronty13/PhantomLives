@@ -4,7 +4,7 @@ Bulk IMAP mailbox triage & cleanup for **iCloud** and **Gmail**. Stdlib-only
 Python 3 — no `pip`, no venv. Built for mailboxes with *hundreds of thousands*
 of messages, where Apple Mail / the web UI fall over.
 
-Two commands:
+Three commands:
 
 - **`analyze`** — fully READ-ONLY. Connects, fetches only headers (never
   bodies), and writes a report of where the bulk lives: total count + size,
@@ -16,6 +16,11 @@ Two commands:
   There is deliberately **no** blanket "delete everything older than X" rule
   that could sweep up personal mail — you only ever act on senders you've
   approved.
+- **`unsubscribe`** — stop bulk senders *at the source* using their
+  `List-Unsubscribe` header: a one-click POST (RFC 8058) where the sender
+  supports it, otherwise an unsubscribe email sent from your account over SMTP.
+  Dry-run by default. Beats re-running `act` forever, because the mail stops
+  being generated instead of being deleted after it arrives.
 
 ## Safety model
 
@@ -58,14 +63,52 @@ python3 mailcleaner.py act ... --action delete --apply --confirm DELETE
 # Archive bank/card mail into a "Financial" folder instead of deleting
 python3 mailcleaner.py act ... --senders lists/icloud_financial_senders.txt \
     --action archive --to Financial --apply
+
+# 4. Dry-run an unsubscribe sweep (groups senders by method, sends nothing)
+python3 mailcleaner.py unsubscribe --account icloud \
+    --user robert.olen@icloud.com --keychain-service mail-cleaner-icloud \
+    --senders lists/icloud_pass2_delete_senders.txt
+
+# Execute it (one-click POSTs + mailto unsubscribes over SMTP)
+python3 mailcleaner.py unsubscribe ... --apply
+
+# Or harvest the candidates straight from a prior analyze run
+python3 mailcleaner.py unsubscribe ... --from-csv \
+    ~/Downloads/mail-cleaner/icloud_<stamp>/senders.csv --min-count 5 --apply
 ```
 
-`--older-than YYYY-MM-DD` restricts any action to messages *before* a date.
+`--older-than YYYY-MM-DD` restricts any `act` action to messages *before* a date.
+
+### unsubscribe details
+
+For each candidate sender, the tool reads the **newest** matching message's
+`List-Unsubscribe` headers *live* (tokens rotate per-send, so a cached link is
+often dead) and classifies it:
+
+| Method | What it does | Fired by `--apply`? |
+|---|---|---|
+| `one-click` | RFC 8058 `List-Unsubscribe=One-Click` POST | ✅ |
+| `mailto` | unsubscribe email sent from your account via SMTP | ✅ |
+| `http` | https landing page needing a human click | ❌ reported only |
+| `none` | no `List-Unsubscribe` header at all | ❌ reported only |
+
+Candidates come from `--senders <file>` (an allowlist) or `--from-csv
+<senders.csv>` (newsletters from a prior `analyze`, filtered by `--min-count`).
+`--methods` restricts which mechanisms fire; `--smtp-host`/`--smtp-port`
+override the SMTP preset. Senders are allowed up to ~10 business days to stop
+(CAN-SPAM), so expect a short tail before the mail dries up.
 
 ## Output
 
 Reports default to `~/Downloads/mail-cleaner/<account>_<timestamp>/`
 (`report.txt`, `senders.csv`, `summary.json`). Override with `--out`.
+`unsubscribe --apply` writes an `unsubscribe_log.csv` under
+`~/Downloads/mail-cleaner/<account>_unsub_<timestamp>/`.
+
+## Tests
+
+`python3 test_mailcleaner.py` — 10 stdlib unit tests over the pure logic
+(unsubscribe-method classification, `mailto:` parsing, CSV harvest).
 
 ## Accounts
 
