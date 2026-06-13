@@ -287,6 +287,34 @@ fn enumerate_artifacts<R: Runtime>(
         out.push((summary, name, "summary".into()));
     }
 
+    // Selected preview / cover thumbnail — shipped alongside the master + summary
+    // so the destination folder carries the YouTube/Content cover frame (Robert's
+    // 2026-06-13 request). Its in-zip path comes from the manifest; the file was
+    // extracted into the workspace at ingest. Renamed to the master-cut basename
+    // so it sorts next to the master in the flat Dropbox folder.
+    if let Some(manifest_json) = conn
+        .query_row(
+            "SELECT manifest_json FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+    {
+        let manifest: crate::manifest::BundleManifest =
+            serde_json::from_str(&manifest_json).unwrap_or_default();
+        if let Some(rel) = manifest.preview_thumbnail_path.as_deref() {
+            let src = workspace.join(rel);
+            if src.exists() {
+                let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+                let name = format!(
+                    "{} — Thumbnail.{ext}",
+                    crate::bundles::master_cut_basename(&title)
+                );
+                out.push((src, name, "preview".into()));
+            }
+        }
+    }
+
     Ok(out)
 }
 

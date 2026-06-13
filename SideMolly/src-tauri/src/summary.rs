@@ -247,6 +247,17 @@ pub(crate) fn summary_fields(
             }
             f.push(("Scheduled Days".into(), m.fan_days.len().to_string()));
         }
+        "youtube" => {
+            // Molly's per-bundle YouTube choices. Rendered as Yes/No; the
+            // Option is None only for pre-v0.27.3 ingests (re-ingest to fill).
+            let yes_no = |b: Option<bool>| match b {
+                Some(true) => "Yes".to_string(),
+                Some(false) => "No".to_string(),
+                None => "—".to_string(),
+            };
+            f.push(("Also post SFW to ManyVids".into(), yes_no(m.youtube_also_post_sfw_manyvids)));
+            f.push(("Upload as private".into(), yes_no(m.youtube_make_private)));
+        }
         _ => {}
     }
 
@@ -495,6 +506,25 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
         doc.push(kv_line(label, value));
     }
     doc.push(elements::Break::new(1.0));
+
+    // Selected preview / cover frame (Content + YouTube bundles). Molly
+    // records the chosen thumbnail's in-zip path in the manifest; it's
+    // extracted into the workspace alongside the videos. Bounded to ~half
+    // page width by dropping it in a 2-column table cell (genpdf scales an
+    // Image to its cell), matching the thumbnail-grid technique.
+    if let Some(rel) = manifest.preview_thumbnail_path.as_deref() {
+        let preview_path = workspace.join(rel);
+        if let Ok(img) = elements::Image::from_path(&preview_path) {
+            doc.push(heading("Preview / cover frame", 14));
+            let mut table = elements::TableLayout::new(vec![1, 1]);
+            let mut row = table.row();
+            row.push_element(img.padded(genpdf::Margins::all(2)));
+            row.push_element(elements::Paragraph::new(""));
+            row.push().map_err(|e| pdf_err("preview row", e))?;
+            doc.push(table);
+            doc.push(elements::Break::new(1.0));
+        }
+    }
 
     // Image grid: N rotation-corrected frames sampled across the bundle's
     // videos (falls back to per-file image thumbnails when there are none).

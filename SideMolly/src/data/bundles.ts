@@ -86,6 +86,12 @@ export interface BundleManifest {
   fansiteMonth: number | null;
   fanDays: FanDay[];
   publishedAt: string | null;
+  /** In-zip path of the selected cover/preview frame (Content + YouTube). */
+  previewThumbnailPath: string | null;
+  previewTeaserGifPath: string | null;
+  /** YouTube-only; null for other bundle types (and pre-v0.27.3 ingests). */
+  youtubeMakePrivate: boolean | null;
+  youtubeAlsoPostSfwManyvids: boolean | null;
 }
 
 export interface BundleFileRow {

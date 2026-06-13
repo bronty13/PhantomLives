@@ -19,16 +19,17 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   copyToDropbox, dryRunDropbox, fmtSize, getDropboxSettings,
   generateBundleSummary, revealBundleSummary, revealDropboxDest,
-  type BundleSummary,
+  type BundleManifest, type BundleSummary,
   type CopyResultSummary, type DropboxSettings, type DryRunSummary,
 } from '../../data/bundles';
 
 interface Props {
   summary: BundleSummary;
+  manifest: BundleManifest;
   refreshSignal: number;
 }
 
-export function DistributeTab({ summary, refreshSignal }: Props) {
+export function DistributeTab({ summary, manifest, refreshSignal }: Props) {
   const [dropboxSettings, setDropboxSettings] = useState<DropboxSettings | null>(null);
   const [preview, setPreview] = useState<DryRunSummary | null>(null);
   const [lastCopy, setLastCopy] = useState<CopyResultSummary | null>(null);
@@ -161,6 +162,9 @@ export function DistributeTab({ summary, refreshSignal }: Props) {
         )}
       </section>
 
+      {/* ─── Description + posting choices ─────────────────────── */}
+      <PostingInfoSection manifest={manifest} />
+
       {/* ─── SideMolly Summary PDF ──────────────────────────────── */}
       <SummarySection uid={summary.uid} onGenerated={refresh} />
 
@@ -192,6 +196,66 @@ export function DistributeTab({ summary, refreshSignal }: Props) {
   );
 }
 
+/** Posting-facing fields the user copies/checks at distribution time:
+ *  the description (copyable for pasting into YouTube/ManyVids) and, for
+ *  YouTube bundles, Molly's SFW-ManyVids and private-upload choices. */
+function PostingInfoSection({ manifest }: { manifest: BundleManifest }) {
+  const [copied, setCopied] = useState(false);
+  const description = manifest.descriptionText?.trim() ?? '';
+  const isAudio = manifest.descriptionMode === 'audio';
+  const isYouTube = manifest.bundleType === 'youtube';
+
+  const copy = () => {
+    navigator.clipboard.writeText(description).then(
+      () => { setCopied(true); setTimeout(() => setCopied(false), 1500); },
+      () => {},
+    );
+  };
+
+  const yesNo = (b: boolean | null): string =>
+    b === null ? '—' : b ? 'Yes' : 'No';
+
+  return (
+    <section className="sm-card">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="font-semibold">📝 Description</div>
+        {description && (
+          <button type="button" className="sm-button secondary text-xs" onClick={copy}>
+            {copied ? '✓ Copied' : '📋 Copy description'}
+          </button>
+        )}
+      </div>
+      {description ? (
+        <pre
+          className="text-xs whitespace-pre-wrap rounded p-2 mt-1"
+          style={{ background: 'rgb(var(--surface-base))', color: 'rgb(var(--surface-fg))', maxHeight: 220, overflow: 'auto' }}
+        >
+          {description}
+        </pre>
+      ) : (
+        <div className="text-xs italic" style={{ color: 'rgb(var(--surface-muted))' }}>
+          {isAudio
+            ? '(audio description — see the Summary PDF for the transcript)'
+            : '(no description provided)'}
+        </div>
+      )}
+
+      {isYouTube && (
+        <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1 text-sm">
+          <div>
+            <span style={{ color: 'rgb(var(--surface-muted))' }}>Also post SFW to ManyVids: </span>
+            <strong>{yesNo(manifest.youtubeAlsoPostSfwManyvids)}</strong>
+          </div>
+          <div>
+            <span style={{ color: 'rgb(var(--surface-muted))' }}>Upload as private: </span>
+            <strong>{yesNo(manifest.youtubeMakePrivate)}</strong>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SummarySection({ uid, onGenerated }: { uid: string; onGenerated: () => void }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -217,10 +281,12 @@ function SummarySection({ uid, onGenerated }: { uid: string; onGenerated: () => 
     <section className="sm-card">
       <div className="font-semibold mb-1">📄 SideMolly Summary</div>
       <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
-        A one-page PDF — metadata, a thumbnail grid, the cleaned-up video
-        transcripts, and the full processing log. It's regenerated and copied to
-        Dropbox automatically alongside the master cut; generate it here to
-        preview. (Thumbnail count is set in <strong>Settings → Summary</strong>.)
+        A one-page PDF — metadata (incl. description, the selected preview
+        frame, and YouTube SFW/private choices), a thumbnail grid, the
+        cleaned-up video transcripts, and the full processing log. It's
+        regenerated and copied to Dropbox automatically alongside the master
+        cut and the preview thumbnail; generate it here to preview. (Thumbnail
+        count is set in <strong>Settings → Summary</strong>.)
       </div>
       <div className="flex items-center gap-2 mt-3">
         <button type="button" className="sm-button" disabled={busy} onClick={generate}>
@@ -290,6 +356,7 @@ function statusPill(s: string): { glyph: string; bg: string; fg: string } {
 
 function kindGlyph(kind: string): string {
   if (kind === 'image' || kind.startsWith('image_')) return '🖼';
+  if (kind === 'preview') return '🖼';
   if (kind === 'master') return '🎬';
   if (kind === 'summary') return '📄';
   if (kind.startsWith('transcript')) return '📝';

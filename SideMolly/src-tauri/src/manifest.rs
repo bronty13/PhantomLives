@@ -59,6 +59,24 @@ pub struct BundleManifest {
 
     /// RFC3339-ish — what Molly stamped at publish time.
     pub published_at: Option<String>,
+
+    // ---- Preview assets (Content + YouTube). Additive in manifest v1;
+    // `#[serde(default)]` so bundles ingested before v0.27.3 (whose stored
+    // manifest_json lacks these keys) still deserialize instead of collapsing
+    // to a wiped Default. ----
+    /// In-zip path of the selected cover/preview frame, or None.
+    #[serde(default)]
+    pub preview_thumbnail_path: Option<String>,
+    #[serde(default)]
+    pub preview_teaser_gif_path: Option<String>,
+
+    // ---- YouTube-only visibility flags. None for non-YouTube bundles (and
+    // for pre-v0.27.3 ingests). ----
+    #[serde(default)]
+    pub youtube_make_private: Option<bool>,
+    /// Molly's "Also Post SFW ManyVids" choice for this YouTube bundle.
+    #[serde(default)]
+    pub youtube_also_post_sfw_manyvids: Option<bool>,
 }
 
 impl Default for BundleManifest {
@@ -85,6 +103,10 @@ impl Default for BundleManifest {
             fansite_month: None,
             fan_days: Vec::new(),
             published_at: None,
+            preview_thumbnail_path: None,
+            preview_teaser_gif_path: None,
+            youtube_make_private: None,
+            youtube_also_post_sfw_manyvids: None,
         }
     }
 }
@@ -124,12 +146,33 @@ struct ManifestJsonV1 {
     #[serde(default)]
     description: ManifestJsonDescription,
     #[serde(default)]
+    preview: ManifestJsonPreview,
+    #[serde(default)]
     categories: Vec<String>,
     #[serde(default)]
     delivery: ManifestJsonDelivery,
     #[serde(default)]
     fan_site: ManifestJsonFanSite,
+    /// YouTube-only block; absent (None) for other bundle types.
+    #[serde(default)]
+    youtube: Option<ManifestJsonYouTube>,
     published_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ManifestJsonPreview {
+    thumbnail_path: Option<String>,
+    teaser_gif_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestJsonYouTube {
+    #[serde(default)]
+    make_private: bool,
+    #[serde(default)]
+    also_post_sfw_manyvids: bool,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -202,6 +245,10 @@ pub fn parse_manifest_json(raw: &str) -> Result<BundleManifest, ManifestError> {
             message: d.message,
         }).collect(),
         published_at: doc.published_at,
+        preview_thumbnail_path: doc.preview.thumbnail_path,
+        preview_teaser_gif_path: doc.preview.teaser_gif_path,
+        youtube_make_private: doc.youtube.as_ref().map(|y| y.make_private),
+        youtube_also_post_sfw_manyvids: doc.youtube.as_ref().map(|y| y.also_post_sfw_manyvids),
     })
 }
 
@@ -634,5 +681,54 @@ Special instructions:
     fn manifest_json_malformed_errors() {
         let err = parse_manifest_json("{ not valid }").unwrap_err();
         assert!(matches!(err, ManifestError::Json(_)));
+    }
+
+    #[test]
+    fn parse_manifest_json_youtube_preview_and_sfw() {
+        let raw = r#"{
+            "manifestVersion": 1, "bundleUid": "yt1", "bundleType": "youtube",
+            "personaCode": "CoC", "title": "Tease", "contentDate": null,
+            "goLiveDate": null, "specialInstructions": "",
+            "description": { "mode": "text", "text": "watch me" },
+            "preview": { "thumbnailPath": "Preview/thumbnail_2.jpg", "teaserGifPath": null },
+            "categories": [], "delivery": {}, "fanSite": {},
+            "youtube": { "makePrivate": true, "alsoPostSfwManyvids": true },
+            "publishedAt": null
+        }"#;
+        let m = parse_manifest_json(raw).expect("parses");
+        assert_eq!(m.preview_thumbnail_path.as_deref(), Some("Preview/thumbnail_2.jpg"));
+        assert_eq!(m.preview_teaser_gif_path, None);
+        assert_eq!(m.youtube_make_private, Some(true));
+        assert_eq!(m.youtube_also_post_sfw_manyvids, Some(true));
+    }
+
+    #[test]
+    fn parse_manifest_json_non_youtube_has_no_youtube_flags() {
+        // A content bundle (no `youtube` block) leaves the flags None, but a
+        // preview thumbnail still parses.
+        let m = parse_manifest_json(MANIFEST_JSON_V1).expect("parses");
+        assert_eq!(m.youtube_make_private, None);
+        assert_eq!(m.youtube_also_post_sfw_manyvids, None);
+    }
+
+    #[test]
+    fn bundle_manifest_deserializes_without_new_fields() {
+        // A pre-v0.27.3 stored manifest_json (flat BundleManifest missing the
+        // preview/youtube keys) must still round-trip via the detail path's
+        // `serde_json::from_str`, not collapse to Default.
+        let stored = r#"{
+            "uid": "old1", "bundleType": "content", "personaCode": "CoC",
+            "title": "Old", "contentDate": null, "goLiveDate": null,
+            "specialInstructions": "", "descriptionMode": "text",
+            "descriptionText": "hi", "descriptionAudioPath": null,
+            "categories": [], "deliveryKind": null, "deliverySiteName": null,
+            "deliveryUrl": null, "deliveryRecipient": "", "priceCents": null,
+            "handledInPlatform": false, "fansiteYear": null, "fansiteMonth": null,
+            "fanDays": [], "publishedAt": null
+        }"#;
+        let m: BundleManifest = serde_json::from_str(stored).expect("old manifest still deserializes");
+        assert_eq!(m.title, "Old");
+        assert_eq!(m.preview_thumbnail_path, None);
+        assert_eq!(m.youtube_also_post_sfw_manyvids, None);
     }
 }

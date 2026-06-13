@@ -4,6 +4,26 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] — 2026-06-13
+
+### Added — YouTube bundle fields surfaced in Summary, Dropbox & Distribute
+
+Molly's YouTube-bundle manifest fields are now parsed and surfaced
+end-to-end. `manifest.rs` reads the `preview` block (`thumbnailPath` /
+`teaserGifPath`) and the `youtube` block (`makePrivate` /
+`alsoPostSfwManyvids`) — additive, `#[serde(default)]` so bundles ingested
+before this version still deserialize (re-ingest to backfill them).
+
+- **SideMolly Summary** now embeds the **selected preview / cover frame** and,
+  for YouTube bundles, the **"Also post SFW to ManyVids"** and **"Upload as
+  private"** choices in the metadata. (The description was already included.)
+- **Dropbox copy** now ships the **preview thumbnail** alongside the master cut
+  and Summary PDF, renamed to the master-cut basename so it sorts together in
+  the flat destination folder.
+- **Distribute tab** gains a **Description** panel with a **Copy description**
+  button (for pasting into YouTube/ManyVids), plus the YouTube **SFW-ManyVids**
+  and **private-upload** choices.
+
 ## [0.27.2] — 2026-06-13
 
 ### Fixed — Video quality loss in processing & auto-assembly

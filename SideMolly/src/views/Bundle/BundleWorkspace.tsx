@@ -162,7 +162,7 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
           />
         )}
         {tab === 'distribute' && (
-          <DistributeTab summary={summary} refreshSignal={jobSignal} />
+          <DistributeTab summary={summary} manifest={manifest} refreshSignal={jobSignal} />
         )}
         {tab === 'post' && (
           <PostTab summary={summary} />
