@@ -223,6 +223,18 @@ pub struct Bundle {
     pub fan_days: Vec<BundleFanDay>,
 }
 
+/// Deserialize `Option<Option<T>>` so an explicit JSON `null` becomes
+/// `Some(None)` (clear the column) while an absent field stays `None` (leave
+/// it). Plain serde collapses `null` to the outer `None`, which silently turns
+/// "clear this" into "don't touch it".
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: serde::Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(de).map(Some)
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BundleFieldPatch {
@@ -235,6 +247,10 @@ pub struct BundleFieldPatch {
     pub delivery_site_id: Option<Option<i64>>,
     pub delivery_url: Option<Option<String>>,
     pub delivery_recipient: Option<String>,
+    // `double_option`: a JSON `null` must clear the price (Some(None)), not be
+    // swallowed as "leave untouched". Plain serde maps `null` -> outer None,
+    // so unchecking Free / emptying the field could never set price_cents NULL.
+    #[serde(default, deserialize_with = "double_option")]
     pub price_cents: Option<Option<i64>>,
     pub handled_in_platform: Option<bool>,
     pub fansite_year: Option<Option<i64>>,
@@ -3105,6 +3121,22 @@ mod tests {
         let mut i4 = Vec::new();
         validate_custom_delivery(&b, &mut i4);
         assert!(!i4.iter().any(|x| x.field_path == "price"));
+    }
+
+    #[test]
+    fn patch_price_cents_distinguishes_null_value_and_absent() {
+        // explicit null → Some(None): clear the price (e.g. unchecking Free)
+        let p: BundleFieldPatch = serde_json::from_str(r#"{"priceCents": null}"#).unwrap();
+        assert_eq!(p.price_cents, Some(None));
+        // a number → Some(Some(n)): set the price
+        let p: BundleFieldPatch = serde_json::from_str(r#"{"priceCents": 1099}"#).unwrap();
+        assert_eq!(p.price_cents, Some(Some(1099)));
+        // 0 → Some(Some(0)): Free
+        let p: BundleFieldPatch = serde_json::from_str(r#"{"priceCents": 0}"#).unwrap();
+        assert_eq!(p.price_cents, Some(Some(0)));
+        // absent → None: leave the column untouched
+        let p: BundleFieldPatch = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(p.price_cents, None);
     }
 
     #[test]

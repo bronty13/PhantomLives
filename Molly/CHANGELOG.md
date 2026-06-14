@@ -25,7 +25,12 @@ about it — and she can always override it or mark the bundle **Free**.
   once with the suggestion (only when no price is set yet, so a price Sallie
   already chose is never overwritten), and she can type any override, tick
   **Free**, or click **Reset to suggested** to recompute from the current
-  total length.
+  total length. Unticking **Free** restores the suggested price (so the box
+  is never left empty/locked), and **Reset** works from any state — both fixed
+  a bug where Free couldn't be unchecked and Reset was disabled while Free.
+  (Root cause: a JSON `null` in the field patch was being read as "leave
+  unchanged" instead of "clear the price"; the patch now uses a double-option
+  decoder so `null` truly clears.)
 - **Configurable in Settings → Bundler:** a new "Content bundle pricing"
   section sets the base, per-minute rate, and floor, with a live preview. The
   `$X.99` snap is fixed.

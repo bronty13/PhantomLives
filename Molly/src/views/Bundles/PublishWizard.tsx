@@ -243,7 +243,10 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                         type="checkbox"
                         className="w-4 h-4"
                         checked={free}
-                        onChange={(e) => applyPrice(e.target.checked ? 0 : null)}
+                        // Checking Free sets $0; unchecking restores a usable
+                        // price (the suggestion) so the box clears and she has
+                        // something to edit — never an empty/locked field.
+                        onChange={(e) => applyPrice(e.target.checked ? 0 : suggestedCents)}
                         disabled={committingPrice}
                       />
                       Free
@@ -251,9 +254,9 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                     <button
                       type="button"
                       className="pretty-button secondary text-xs"
-                      disabled={committingPrice || free}
+                      disabled={committingPrice}
                       onClick={() => applyPrice(suggestedCents)}
-                      title="Recompute from the current total video length"
+                      title="Recompute from the current total video length (also clears Free)"
                     >
                       ↺ Reset to suggested {formatPriceCents(suggestedCents)}
                     </button>
