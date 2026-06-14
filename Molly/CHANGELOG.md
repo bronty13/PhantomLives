@@ -25,6 +25,14 @@ unsigned static binary, or a silent auto-update left it truncated.
   Applies to both the ffmpeg and ffprobe spawn paths.
 - **CI:** the Windows release now validates `ffprobe.exe` runs (previously only
   `ffmpeg.exe` was checked), closing a gap where a bad ffprobe could ship.
+- **One-click "Copy video diagnostics":** a button in the GIF Studio (and frame
+  grabber) gathers a copyable report on the bundled engine — for both
+  `ffmpeg.exe` and `ffprobe.exe`: presence, **size** (a 0-byte/truncated file is
+  the os-error-193 signature), valid PE header, SHA-256, Windows file
+  attributes (cloud/quarantine reparse stubs), Mark-of-the-Web, the real
+  `-version` result, plus the machine's registered security products — so a
+  non-technical user can paste the engine's actual state to Robert without
+  touching any files.
 
 ## [1.31.0] — 2026-06-10
 

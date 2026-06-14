@@ -32,6 +32,15 @@ export async function probeVideo(absolutePath: string): Promise<ProbeResult> {
   return invoke<ProbeResult>('probe_video', { absolutePath });
 }
 
+/** Copyable plain-text diagnostics of the bundled video engine: ffmpeg/ffprobe
+ * presence, size, PE header, SHA-256, Windows sync/security tamper flags,
+ * Mark-of-the-Web, the real run result, and registered AV products. Surfaced
+ * behind a "Copy video diagnostics" button so a non-technical user can paste
+ * the engine's real state to Robert without touching any files. */
+export async function mediaDiagnostics(): Promise<string> {
+  return invoke<string>('media_diagnostics');
+}
+
 /** Build (and cache) a low-res H.264 proxy for scrubbing an undecodable
  * source (e.g. iPhone HEVC on Windows). Returns the proxy's absolute path. */
 export async function makePreviewProxy(absolutePath: string): Promise<string> {

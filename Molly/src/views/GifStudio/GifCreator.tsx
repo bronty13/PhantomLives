@@ -16,6 +16,7 @@ import {
 } from './encodeGif';
 import { probeVideo, generateGif, generateTeaserMp4, type CropPx } from '../../data/gifStudio';
 import { CopyableError } from '../../components/CopyableError';
+import { MediaDiagnosticsButton } from '../../components/MediaDiagnosticsButton';
 import { DECODE_HELP } from './sourceUrl';
 import { useVideoSource } from './useVideoSource';
 import { useVideoStage } from './useVideoStage';
@@ -524,6 +525,9 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
         )}
 
         {(error || srcError) && <CopyableError message={String(error || srcError)} />}
+        <div className="flex justify-end pt-1">
+          <MediaDiagnosticsButton />
+        </div>
       </>
   );
 

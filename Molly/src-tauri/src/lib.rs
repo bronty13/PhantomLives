@@ -355,6 +355,7 @@ pub fn run() {
             media::commands::generate_gif,
             media::commands::generate_teaser_mp4,
             media::commands::grab_frame,
+            media::commands::media_diagnostics,
             bundles::delete_bundle_file,
             bundles::reorder_bundle_files,
             bundles::set_bundle_categories,

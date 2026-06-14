@@ -209,3 +209,13 @@ pub async fn grab_frame<R: Runtime>(
     engine::run_ffmpeg(&bin, &args, 1.0, 30, |_| {}).await?;
     Ok(Response::new(std::fs::read(&out)?))
 }
+
+/// Copyable plain-text diagnostics for the bundled video engine. The GIF Studio
+/// surfaces this behind a "Copy diagnostics" button so Sallie can paste the
+/// engine's real state (presence, size, PE header, hash, sync/security tamper
+/// flags, the actual run result, registered AV) to Robert without touching any
+/// files. Infallible by design — always returns a report.
+#[tauri::command]
+pub async fn media_diagnostics<R: Runtime>(handle: AppHandle<R>) -> String {
+    crate::media::diagnostics::report(&handle).await
+}

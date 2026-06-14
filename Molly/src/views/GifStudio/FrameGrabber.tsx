@@ -4,6 +4,7 @@ import { downloadDir, join } from '@tauri-apps/api/path';
 import { computeOutputSize, renderCaptionPng, type CropBox } from './encodeGif';
 import { probeVideo, grabFrame } from '../../data/gifStudio';
 import { CopyableError } from '../../components/CopyableError';
+import { MediaDiagnosticsButton } from '../../components/MediaDiagnosticsButton';
 import { DECODE_HELP } from './sourceUrl';
 import { useVideoSource } from './useVideoSource';
 import { useVideoStage } from './useVideoStage';
@@ -277,6 +278,9 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
         )}
 
         {(error || srcError) && <CopyableError message={String(error || srcError)} />}
+        <div className="flex justify-end pt-1">
+          <MediaDiagnosticsButton />
+        </div>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@
 //! `settings`/`temp` are the Molly-specific glue.
 
 pub mod commands;
+pub mod diagnostics;
 pub mod engine;
 pub mod ffmpeg_path;
 pub mod filters;
