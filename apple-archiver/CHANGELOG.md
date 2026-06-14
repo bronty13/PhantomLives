@@ -15,6 +15,14 @@ All notable changes to `apple-archiver` are recorded here.
   History User Data Key from keychain — User interaction is not allowed."* So
   **offline/pulled-DB decryption is impossible by design**; only an *in-GUI-session*
   helper can recover numbers.
+- **And even a GUI-session helper needs a manual Full Disk Access grant.** Verified
+  on the source Mac by running the same probe in both contexts: the SSH login has
+  FDA but a locked keychain (`recentCalls: 200`, blank numbers); an Aqua LaunchAgent
+  has the unlocked keychain but **no FDA**, so TCC blocks the call store entirely
+  (`Operation not permitted` reading the DB → `recentCalls: 0`). Decryption needs
+  *both* at once — i.e. FDA granted to `/usr/bin/python3` (or a dedicated helper app)
+  in System Settings, which can't be scripted (SIP-protected TCC.db). Helper is
+  staged on the source Mac but **left unloaded** pending that grant.
 
 ### Added
 - **`calls_decrypt_helper.py`** (opt-in, **not deployed**) — run on the source Mac

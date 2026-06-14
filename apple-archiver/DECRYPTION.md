@@ -68,34 +68,49 @@ interactive (Aqua) session.
    blanked. This is a **keychain-session lock, not an app-ACL denial** — i.e. the
    same call in an unlocked GUI session would populate the handles.
 
+## The catch: the two needed capabilities live in mutually-exclusive contexts
+
+Decryption needs **two** things at once: (1) **Full Disk Access** to read the
+TCC-protected CallHistory DB, and (2) an **unlocked login keychain** to release the
+data key. We verified — by running the *same* probe in both contexts on Rachel's
+Mac — that no single context we can reach has both:
+
+| Context | Full Disk Access (read the DB) | Unlocked login keychain |
+|---|---|---|
+| **Our SSH login** (the pull) | ✅ yes — granted for photo archiving (`READ OK`, `recentCalls: 200`) | ❌ locked — *"User interaction is not allowed"*, handles blank |
+| **Aqua LaunchAgent** (GUI session) | ❌ no — `Operation not permitted` reading the DB → `recentCalls: 0` | ✅ unlocked |
+
+So the SSH path sees every call but no numbers; the GUI-agent path has the keychain
+but is blocked by TCC from even reading the call store. (The earlier "ACL admits a
+non-Apple binary?" unknown is moot — TCC blocks it first.)
+
 ## Conclusion
 
-- **Offline / pulled-DB / over-SSH decryption is impossible by design.** The key
-  is gated behind an interactive session; nothing about the pulled file changes
-  that.
-- **In Rachel's unlocked GUI session, decryption almost certainly works** via
-  `recentCalls()` → `remoteParticipantHandles[].value`. One unknown remains
-  unverified: whether the keychain item's ACL admits a *non-Apple* binary (our
-  Python) even in a GUI session. The only way to know is to run it there once.
+- **Offline / pulled-DB / over-SSH decryption is impossible by design.**
+- **A GUI-session helper CAN decrypt — but only after a one-time Full Disk Access
+  grant** to the binary that runs it (`/usr/bin/python3`, or better a dedicated
+  helper app). That grant is a manual click in **System Settings → Privacy &
+  Security → Full Disk Access** on the source Mac: TCC.db is SIP-protected and
+  cannot be scripted. Once granted, the Aqua LaunchAgent has *both* capabilities
+  and `recentCalls()` returns decrypted numbers.
 
-## The opt-in path (not enabled)
+## The opt-in path (helper staged on the source Mac, not enabled)
 
-A small helper — `calls_decrypt_helper.py` — is included but **not deployed**. It
-must run **inside Rachel's logged-in GUI session** (a Terminal window she's
-logged into, or a per-user LaunchAgent with `LimitLoadToSessionType = Aqua`).
-It calls `recentCalls()`, reads each handle's value + the matching metadata, and
-writes `calls_decrypted.json` for the normal Vortex pull to fold into the
-archive. Trade-offs to weigh before enabling:
+`calls_decrypt_helper.py` is deployed to the source Mac at
+`~/Library/Application Support/PurpleAttic/` but **not loaded**. To enable:
 
-- It puts a *running component* on the source Mac — a departure from the strict
-  "pull only, the source does nothing but `rsync`/`.backup`" guarantee.
-- If the key's ACL rejects non-Apple readers, it returns nothing and we've lost
-  nothing.
-- For anyone Rachel has **texted**, the real number is already in the Messages +
-  Contacts archives — so the only addresses this would newly recover are
-  *call-only* numbers (telemarketers, one-off calls, etc.). The practical payoff
-  is modest; that's why it's opt-in.
+1. On the source Mac, grant **Full Disk Access** to `/usr/bin/python3` (System
+   Settings → Privacy & Security → Full Disk Access → add it). *Trade-off:* this is
+   broad — any Python the user runs then has full-disk access. Tighter alternative:
+   build a small codesigned helper app and grant FDA to only that.
+2. Load the `com.bronty13.calls-decrypt.<id>` Aqua LaunchAgent
+   (`launchctl bootstrap gui/<uid> …`); it writes `calls_decrypted.json`.
+3. The Vortex calls pull fetches that sidecar and runs
+   `callhistory_archiver.py --decrypted calls_decrypted.json` to fold the numbers in
+   (matched on the raw call instant, timezone-proof).
 
-**Recommendation:** keep call history archived **metadata-only** (current
-behavior) unless the maintainer specifically wants call-only numbers, in which
-case enable the GUI-session helper and verify it on one run.
+**Why it's worth weighing, not automatic:** it puts a *running component* + a broad
+FDA grant on the source Mac (vs. the strict "pull only" model), and for anyone the
+user has **texted** the real number is already in the Messages + Contacts archives —
+so the only numbers this newly recovers are *call-only* contacts (telemarketers,
+one-off calls). Modest payoff; deliberate opt-in.

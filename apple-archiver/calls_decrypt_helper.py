@@ -6,9 +6,16 @@
 #   Requires: macOS, PyObjC (`pip3 install --user pyobjc-core pyobjc`)
 #
 #   The ONLY way to recover the phone number / FaceTime address in macOS call
-#   history (it is AES-GCM encrypted at rest; see DECRYPTION.md). This MUST run
-#   INSIDE the source Mac's UNLOCKED, LOGGED-IN GUI session — over SSH the login
-#   keychain is locked and every address comes back blank.
+#   history (it is AES-GCM encrypted at rest; see DECRYPTION.md). It needs TWO
+#   capabilities at once, which is why it must run as a GUI-session agent WITH a
+#   Full Disk Access grant:
+#     1. UNLOCKED login keychain — only in the logged-in (Aqua) GUI session;
+#        over SSH it's locked and every address comes back blank.
+#     2. FULL DISK ACCESS for this binary (/usr/bin/python3) — else macOS TCC
+#        blocks reading the call store and recentCalls() returns 0. Grant it in
+#        System Settings → Privacy & Security → Full Disk Access (one-time, manual;
+#        TCC.db is SIP-protected and can't be scripted).
+#   Miss either and you get 0 calls or blank numbers — the warning below says which.
 #
 #   It is read-only: it reads Apple's already-decrypted in-memory call objects via
 #   the private CallHistory.framework and writes a plain JSON sidecar. It NEVER
@@ -88,6 +95,10 @@ def load_calls():
 
     calls = mgr.recentCalls()
     if not calls:
+        sys.stderr.write(
+            'WARNING: recentCalls() returned 0 — the call store could not be read. '
+            'This binary almost certainly lacks Full Disk Access. Grant it in System '
+            'Settings -> Privacy & Security -> Full Disk Access, then re-run.\n')
         return []
 
     out, blank = [], 0
