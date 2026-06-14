@@ -4,6 +4,27 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.3.5 — 2026-06-14
+
+### Added
+- **Hosted distribution + in-app updates.** CalendarMaker can now be hosted at a
+  permanent GitHub Pages URL so the user keeps one bookmark and updates just by
+  refreshing (saved calendars persist — a stable web origin keeps `localStorage`,
+  unlike `file://`).
+  - **Update banner** — on load the app best-effort fetches `version.json` next to
+    itself; if a newer version is published it shows a large green “A newer version
+    is ready — Update now” bar (silent offline / from a file).
+  - **“What’s New” popup** — a large-print, high-contrast release-notes popup shown
+    once after each update (plain-language notes in `src/data/whatsNew.ts`, separate
+    from this technical changelog). A brand-new install shows nothing.
+  - `npm run deploy` (`scripts/deploy-pages.sh`) builds, writes `version.json`, and
+    pushes `index.html` to the public Pages repo. The page carries `noindex`.
+  - Full guide: `docs/distribution.md`.
+
+### Tests
+- +6 (numeric version comparison; `unseenNotes` first-run/newer-only behavior).
+  64 total.
+
 ## 0.3.4 — 2026-06-14
 
 ### Fixed

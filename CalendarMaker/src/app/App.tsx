@@ -2,14 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AppSettings, CalendarBundle, FillerEntry, Theme } from '../model/types';
 import { APP_VERSION, DEFAULT_APP_SETTINGS } from '../model/types';
 import {
-  deleteBundle, ensureSeeded, getSettings, listBundles, listCustomSayings, listThemes,
-  saveBundle, saveSettings,
+  deleteBundle, ensureSeeded, getLastSeenVersion, getSettings, listBundles, listCustomSayings,
+  listThemes, saveBundle, saveSettings, setLastSeenVersion,
 } from '../storage/db';
 import { sayingPool } from '../data/sayings';
+import { unseenNotes, type ReleaseNote } from '../data/whatsNew';
 import { Home } from './screens/Home';
 import { CalendarEditor } from './screens/CalendarEditor';
 import { NewBundleWizard } from './screens/NewBundleWizard';
 import { SettingsModal } from './screens/Settings';
+import { WhatsNew } from './components/WhatsNew';
+import { UpdateBanner } from './components/UpdateBanner';
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -19,6 +22,7 @@ export function App() {
   const [customSayings, setCustomSayings] = useState<FillerEntry[]>([]);
   const [active, setActive] = useState<CalendarBundle | null>(null);
   const [modal, setModal] = useState<'none' | 'new' | 'settings'>('none');
+  const [whatsNew, setWhatsNew] = useState<ReleaseNote[]>([]);
 
   const reloadBundles = useCallback(async () => setBundles(await listBundles()), []);
   const reloadThemes = useCallback(async () => setThemes(await listThemes()), []);
@@ -32,6 +36,11 @@ export function App() {
         await reloadThemes();
         await reloadBundles();
         await reloadSayings();
+        // Surface release notes once after an update; first run records silently.
+        const lastSeen = getLastSeenVersion();
+        const notes = unseenNotes(lastSeen);
+        if (notes.length > 0) setWhatsNew(notes);
+        if (lastSeen !== APP_VERSION) setLastSeenVersion(APP_VERSION);
       } catch (e) {
         // Never let a storage hiccup hang the UI on the loading screen.
         console.error('CalendarMaker load error:', e);
@@ -75,6 +84,7 @@ export function App() {
 
   return (
     <div className="app">
+      <UpdateBanner />
       <div className="topbar">
         <div className="brand">Calendar<span>Maker</span></div>
         <div className="spacer" />
@@ -133,6 +143,9 @@ export function App() {
           onSave={onSaveSettings}
           onSayingsChanged={reloadSayings}
         />
+      )}
+      {whatsNew.length > 0 && (
+        <WhatsNew notes={whatsNew} onClose={() => setWhatsNew([])} />
       )}
     </div>
   );

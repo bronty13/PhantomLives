@@ -5,3 +5,4 @@ dist/
 *.tsbuildinfo
 coverage/
 .fontvenv/
+.pages-deploy/

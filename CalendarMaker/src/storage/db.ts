@@ -14,6 +14,7 @@ const K = {
   sayings: 'cm.sayings',
   settings: 'cm.settings',
   seeded: 'cm.seeded',
+  lastSeenVersion: 'cm.lastSeenVersion',
 };
 
 // --- low-level store (localStorage, falling back to in-memory) --------------
@@ -154,4 +155,15 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   rawSet(K.settings, JSON.stringify(settings));
+}
+
+// --- "What's New" bookkeeping -----------------------------------------------
+
+/** The app version whose release notes the user last saw (null = never). */
+export function getLastSeenVersion(): string | null {
+  return rawGet(K.lastSeenVersion);
+}
+
+export function setLastSeenVersion(version: string): void {
+  rawSet(K.lastSeenVersion, version);
 }
