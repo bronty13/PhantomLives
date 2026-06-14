@@ -2,6 +2,10 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.10.0 — 2026-06-14
+
+- **Recognize the per-source Landing Page job** (`external-index-sync.<id>` → "External Landing Page Sync — <Id>"), grouped under its source.
+
 ## 1.9.0 — 2026-06-14
 
 - **Recognize Podcasts + Stickies external jobs** (Phase-3 small wins).

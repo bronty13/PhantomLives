@@ -73,6 +73,7 @@ enum JobRegistry {
         ("books",      "Books"),
         ("podcasts",   "Podcasts"),
         ("stickies",   "Stickies"),
+        ("index",      "Landing Page"),
     ]
 
     /// The profile for a discovered agent — a tailored one if we know the label,
