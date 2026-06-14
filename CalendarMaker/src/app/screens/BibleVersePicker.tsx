@@ -28,6 +28,13 @@ function matchBook(bookQuery: string): string | null {
   return BIBLE_BOOKS.find((b) => b.toLowerCase().startsWith(lc)) ?? null;
 }
 
+/** Compact 3-char label so the book grid fits: "Genesis"→"Gen", "1 Samuel"→"1Sa". */
+function abbrevBook(book: string): string {
+  const m = book.match(/^(\d)\s+(.*)$/);
+  if (m) return m[1] + m[2].slice(0, 2); // numbered books: digit + first 2 letters
+  return book.slice(0, 3);
+}
+
 export function BibleVersePicker({ onSelect, initial }: Props) {
   const [query, setQuery] = useState('');
   const [book, setBook] = useState<string | null>(initial?.book ?? null);
@@ -139,8 +146,14 @@ export function BibleVersePicker({ onSelect, initial }: Props) {
                 <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--muted, #999)', margin: '4px 0' }}>{section}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {books.map((b) => (
-                    <button key={b} style={gridBtn(false)} onClick={() => { setQuery(''); setBook(b); setChapter(null); }}>
-                      {b}
+                    <button
+                      key={b}
+                      style={{ ...gridBtn(false), minWidth: 38 }}
+                      title={b}
+                      aria-label={b}
+                      onClick={() => { setQuery(''); setBook(b); setChapter(null); }}
+                    >
+                      {abbrevBook(b)}
                     </button>
                   ))}
                 </div>

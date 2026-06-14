@@ -43,6 +43,14 @@ describe('BibleVersePicker', () => {
     expect(onSelect.mock.calls[0][1]).toBe('John 3:16');
   });
 
+  it('book buttons show a compact abbreviation but keep the full accessible name', () => {
+    render(<BibleVersePicker onSelect={vi.fn()} />);
+    const genesis = screen.getByRole('button', { name: 'Genesis' }); // accessible name via aria-label
+    expect(genesis.textContent).toBe('Gen');                          // visible label is abbreviated
+    const firstSamuel = screen.getByRole('button', { name: '1 Samuel' });
+    expect(firstSamuel.textContent).toBe('1Sa');                      // numbered book abbreviation
+  });
+
   it('handles numbered books (e.g. "1 Jo" → 1 John)', () => {
     const onSelect = vi.fn();
     render(<BibleVersePicker onSelect={onSelect} />);

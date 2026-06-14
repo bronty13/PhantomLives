@@ -44,9 +44,10 @@ your verse:
 - **Type it** — start typing a reference in the box: `John 3:16`, `Phil 4:13`,
   even `1 Jo 5 4`. Press **Enter** to grab it. Typing just a name (e.g. `phil`)
   narrows the book grid (Philippians / Philemon).
-- **Tap it** — tap a **book** (grouped Old / New Testament), then a **chapter**,
-  then a **verse**. The breadcrumb at the top (Book › Chapter › Verse) lets you
-  step back a level anytime.
+- **Tap it** — tap a **book** (grouped Old / New Testament; shown as compact
+  3-letter abbreviations like `Gen`, `1Sa`, `Phi` — hover to see the full name),
+  then a **chapter**, then a **verse**. The breadcrumb at the top (Book › Chapter
+  › Verse) lets you step back a level anytime.
 
 Pick the **Saying** type to get a searchable list of every built-in and custom
 saying (or hit **↻ Random**). Existing verse/saying items show a small reference

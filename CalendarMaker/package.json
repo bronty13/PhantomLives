@@ -1,6 +1,6 @@
 {
   "name": "calendarmaker",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Self-contained, offline SPA for creating visually stunning, print-ready monthly calendars. Build named calendar bundles, then export to PDF (Month / Detail / Both).",
   "type": "module",

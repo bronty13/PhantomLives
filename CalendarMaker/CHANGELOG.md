@@ -4,6 +4,19 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.3.2 — 2026-06-14
+
+### Changed
+- **Book grid now uses compact 3-char abbreviations** (Genesis → `Gen`,
+  1 Samuel → `1Sa`, Philippians → `Phi`) so far more books fit per row — the whole
+  Old Testament fits in ~6 rows. Each button keeps the **full book name as a hover
+  tooltip and accessible (screen-reader) label**, so abbreviations that collide
+  (Phi-lippians/Phi-lemon, Jud-ges/Jud-e) are still disambiguable.
+
+### Tests
+- +1 (book buttons display the abbreviation but expose the full accessible name).
+  52 total.
+
 ## 0.3.1 — 2026-06-14
 
 ### Changed
