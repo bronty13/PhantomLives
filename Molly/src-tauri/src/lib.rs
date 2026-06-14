@@ -263,6 +263,12 @@ pub fn run() {
             sql: include_str!("../migrations/039_youtube_visibility.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 40,
+            description: "bundle-summary-pdf",
+            sql: include_str!("../migrations/040_bundle_summary_pdf.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -505,6 +511,9 @@ pub fn run() {
             return_file::import_return_file,
             return_file::get_bundle_postings,
             return_file::reveal_post_bundles_dir,
+            return_file::get_bundle_summary_pdf_info,
+            return_file::open_bundle_summary_pdf,
+            return_file::download_bundle_summary_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -1161,6 +1170,7 @@ mod camel_case_contract {
     // v1.20.0 — SideMolly return-file import boundary structs.
     use crate::return_file::{
         BundlePostingDto, PostingFileOutcome, ReturnFileCandidate, ReturnFileImportResult,
+        SummaryPdfInfo,
     };
 
     #[test]
@@ -1205,6 +1215,15 @@ mod camel_case_contract {
             reported_bundle_type: None,
         }).unwrap();
         assert_camel(&v, "ReturnFileImportResult");
+    }
+
+    #[test]
+    fn summary_pdf_info_is_camel_case() {
+        let v = serde_json::to_value(SummaryPdfInfo {
+            bundle_uid: String::new(), filename: String::new(),
+            size_bytes: 0, imported_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "SummaryPdfInfo");
     }
 }
 
@@ -1268,6 +1287,7 @@ mod migration_smoke {
             (36, "youtube-bundle",               include_str!("../migrations/036_youtube_bundle.sql")),
             (37, "social-followers",             include_str!("../migrations/037_social_followers.sql")),
             (38, "bundle-preview-assets",        include_str!("../migrations/038_bundle_preview_assets.sql")),
+            (40, "bundle-summary-pdf",           include_str!("../migrations/040_bundle_summary_pdf.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -1302,6 +1322,7 @@ mod migration_smoke {
             "clock_sessions", "reward_milestones",
             "daily_tasks",
             "bundle_postings", "bundle_posting_files", "return_file_imports",
+            "bundle_summary_pdf",
         ];
         for t in expected_tables {
             let count: i64 = conn

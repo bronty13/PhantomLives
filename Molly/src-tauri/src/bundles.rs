@@ -2545,6 +2545,7 @@ mod tests {
             include_str!("../migrations/036_youtube_bundle.sql"),
             include_str!("../migrations/038_bundle_preview_assets.sql"),
             include_str!("../migrations/039_youtube_visibility.sql"),
+            include_str!("../migrations/040_bundle_summary_pdf.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }

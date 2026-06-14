@@ -79,6 +79,10 @@ pub struct Report {
     pub targets: Vec<ReportTarget>,
     #[serde(default)]
     pub bundle_level_notes: Option<String>,
+    /// In-zip path of SideMolly's Summary PDF (e.g. "artifacts/summary.pdf"),
+    /// present from SideMolly v0.28.0 on. None for older return files.
+    #[serde(default)]
+    pub summary_pdf: Option<String>,
 }
 
 /// Row in the candidate list shown in the import wizard's first stage.
@@ -223,15 +227,30 @@ fn read_return_file(path: &Path) -> Result<ParsedReturnFile, BundleError> {
     let report: Report = serde_json::from_slice(&report_bytes)
         .map_err(|e| BundleError::Invalid(format!("parse report.json: {e}")))?;
 
+    // Pull the Summary PDF out of the inner zip if the report points at one
+    // (SideMolly v0.28.0+). The pointer is an inner-relative path like
+    // "artifacts/summary.pdf"; match it as a suffix so a wrapped inner-zip
+    // shape (".../<UID>-post-inner/artifacts/summary.pdf") still resolves.
+    let summary_pdf = match report.summary_pdf.as_deref() {
+        Some(p) if !p.trim().is_empty() => {
+            let suffix = format!("/{}", p.trim_start_matches('/'));
+            read_first_entry_ending_with(&mut inner, &suffix)?
+        }
+        _ => None,
+    };
+
     Ok(ParsedReturnFile {
         source_sha,
         report,
+        summary_pdf,
     })
 }
 
 struct ParsedReturnFile {
     source_sha: String,
     report: Report,
+    /// Raw Summary PDF bytes lifted from the inner zip, if present.
+    summary_pdf: Option<Vec<u8>>,
 }
 
 fn read_inner_zip_bytes(
@@ -370,6 +389,7 @@ pub fn pure_import_return_file(
     source_path: &str,
     source_sha: &str,
     report: &Report,
+    summary_pdf: Option<&[u8]>,
 ) -> Result<ReturnFileImportResult, BundleError> {
     // Idempotency — same source bytes? Surface the prior result without
     // touching the DB.
@@ -512,6 +532,24 @@ pub fn pure_import_return_file(
          VALUES (?1, ?2, ?3, ?4)",
         params![&report.bundle_uid, source_path, source_sha, &now],
     )?;
+
+    // Store the Summary PDF blob (one per bundle; REPLACE so a re-import with
+    // a fresher report wins). The filename is the pointer's basename, kept for
+    // a sensible default when the user downloads a copy.
+    if let Some(pdf) = summary_pdf {
+        let filename = report
+            .summary_pdf
+            .as_deref()
+            .and_then(|p| p.rsplit('/').next())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("summary.pdf");
+        tx.execute(
+            "INSERT OR REPLACE INTO bundle_summary_pdf
+                (bundle_uid, filename, size_bytes, pdf_data, imported_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![&report.bundle_uid, filename, pdf.len() as i64, pdf, &now],
+        )?;
+    }
 
     // Journal entry — a single mollys_log line so the import is visible in
     // the Molly's Log view without any new UI.
@@ -784,7 +822,111 @@ pub fn import_return_file<R: Runtime>(
     let app_data = app_data_dir(&handle)?;
     let mut conn = open_conn(&app_data)?;
     let parsed = read_return_file(Path::new(&path))?;
-    pure_import_return_file(&mut conn, &path, &parsed.source_sha, &parsed.report)
+    pure_import_return_file(
+        &mut conn,
+        &path,
+        &parsed.source_sha,
+        &parsed.report,
+        parsed.summary_pdf.as_deref(),
+    )
+}
+
+/// Metadata about a bundle's stored Summary PDF, for the detail view to
+/// decide whether to show the "Open report / Download" affordance.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryPdfInfo {
+    pub bundle_uid: String,
+    pub filename: String,
+    pub size_bytes: i64,
+    pub imported_at: String,
+}
+
+/// Read a bundle's stored Summary PDF (filename + bytes), if any.
+fn read_summary_pdf(
+    conn: &Connection,
+    bundle_uid: &str,
+) -> Result<Option<(String, Vec<u8>)>, BundleError> {
+    Ok(conn
+        .query_row(
+            "SELECT filename, pdf_data FROM bundle_summary_pdf WHERE bundle_uid = ?1",
+            params![bundle_uid],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)),
+        )
+        .optional()?)
+}
+
+#[tauri::command]
+pub fn get_bundle_summary_pdf_info<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+) -> Result<Option<SummaryPdfInfo>, BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    Ok(conn
+        .query_row(
+            "SELECT filename, size_bytes, imported_at
+               FROM bundle_summary_pdf WHERE bundle_uid = ?1",
+            params![&bundle_uid],
+            |r| Ok(SummaryPdfInfo {
+                bundle_uid: bundle_uid.clone(),
+                filename: r.get(0)?,
+                size_bytes: r.get(1)?,
+                imported_at: r.get(2)?,
+            }),
+        )
+        .optional()?)
+}
+
+/// Write the stored PDF to a cache file and open it in the OS default viewer.
+#[tauri::command]
+pub fn open_bundle_summary_pdf<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+) -> Result<(), BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    let (filename, bytes) = read_summary_pdf(&conn, &bundle_uid)?
+        .ok_or_else(|| BundleError::NotFound(format!("summary PDF for {bundle_uid}")))?;
+
+    let cache = app_data.join("cache");
+    fs::create_dir_all(&cache)?;
+    let safe_uid: String = bundle_uid.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    let safe_name = filename.replace(['/', '\\'], "_");
+    let path = cache.join(format!("{safe_uid}_{safe_name}"));
+    fs::write(&path, &bytes)?;
+    open_path(&path)?;
+    Ok(())
+}
+
+/// Save a copy of the stored PDF to a user-chosen path (frontend picks via a
+/// save dialog). Mirrors `download_log_attachment`.
+#[tauri::command]
+pub fn download_bundle_summary_pdf<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+    target_path: String,
+) -> Result<(), BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    let (_filename, bytes) = read_summary_pdf(&conn, &bundle_uid)?
+        .ok_or_else(|| BundleError::NotFound(format!("summary PDF for {bundle_uid}")))?;
+    fs::write(&target_path, &bytes)?;
+    Ok(())
+}
+
+/// Open a path in the OS default application (mirrors attachments::open_attachment).
+fn open_path(path: &Path) -> Result<(), BundleError> {
+    let status = {
+        #[cfg(target_os = "macos")]
+        { std::process::Command::new("open").arg(path).status() }
+        #[cfg(target_os = "windows")]
+        { std::process::Command::new("cmd").args(["/C", "start", ""]).arg(path).status() }
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        { std::process::Command::new("xdg-open").arg(path).status() }
+    };
+    status.map_err(|e| BundleError::Io(std::io::Error::other(format!("open {}: {e}", path.display()))))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -854,6 +996,9 @@ mod tests {
             include_str!("../migrations/032_drop_content_release_defaults.sql"),
             include_str!("../migrations/033_ui_theme.sql"),
             include_str!("../migrations/034_return_file_import.sql"),
+            // 035–039 aren't needed by these tests; 040 adds bundle_summary_pdf
+            // (depends only on bundles, present since 017/034).
+            include_str!("../migrations/040_bundle_summary_pdf.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -909,6 +1054,7 @@ mod tests {
                 fansite_day: None,
             }],
             bundle_level_notes: None,
+            summary_pdf: None,
         }
     }
 
@@ -947,7 +1093,7 @@ mod tests {
         seed_clip(&conn, "my-clip", "My Clip Title");
 
         let report = fixture_report("2026-05-20-0001", "content");
-        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "deadbeef", &report).unwrap();
+        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "deadbeef", &report, None).unwrap();
 
         assert_eq!(result.bundle_uid, "2026-05-20-0001");
         assert_eq!(result.bundle_type, "content");
@@ -985,7 +1131,7 @@ mod tests {
         // No matching clip seeded.
 
         let report = fixture_report("2026-05-20-0002", "content");
-        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "cafe1234", &report).unwrap();
+        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "cafe1234", &report, None).unwrap();
 
         assert_eq!(result.matched_file_count, 0);
         assert_eq!(result.total_file_count, 1);
@@ -999,8 +1145,8 @@ mod tests {
         seed_clip(&conn, "my-clip", "My Clip Title");
 
         let report = fixture_report("2026-05-20-0003", "content");
-        let _first = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-abc", &report).unwrap();
-        let second = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-abc", &report).unwrap();
+        let _first = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-abc", &report, None).unwrap();
+        let second = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-abc", &report, None).unwrap();
 
         assert!(second.was_duplicate);
         // No duplicate bundle_postings.
@@ -1051,7 +1197,7 @@ mod tests {
         report.targets[0].files_used = vec!["FanSite/12_01_daypic.jpg".into()];
         report.targets[0].fansite_day = Some(12);
 
-        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-fan", &report).unwrap();
+        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-fan", &report, None).unwrap();
         assert_eq!(result.bundle_type, "fansite");
         assert_eq!(result.postings.len(), 1);
         assert_eq!(result.postings[0].fansite_day, Some(12));
@@ -1064,7 +1210,7 @@ mod tests {
     fn import_rejects_unknown_bundle_uid() {
         let mut conn = fresh_db();
         let report = fixture_report("2099-12-31-9999", "content");
-        let err = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "missing", &report).unwrap_err();
+        let err = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "missing", &report, None).unwrap_err();
         match err {
             BundleError::NotFound(_) => {}
             other => panic!("expected NotFound, got {other:?}"),
@@ -1079,7 +1225,7 @@ mod tests {
         // Import should proceed (the report describes what got posted) and
         // surface the divergence in the result.
         let report = fixture_report("2026-05-20-0004", "fansite");
-        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "mismatch", &report).unwrap();
+        let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "mismatch", &report, None).unwrap();
         assert_eq!(result.reported_bundle_type.as_deref(), Some("fansite"));
         assert_eq!(result.bundle_type, "content"); // stored is the canonical answer
         assert_eq!(result.postings.len(), 1);
@@ -1105,8 +1251,66 @@ mod tests {
         let mut report = fixture_report("2026-05-20-0005", "content");
         report.targets[0].files_used = vec!["Video/00001_x.mp4".into()];
 
-        let result = pure_import_return_file(&mut conn, "/tmp/u.zip", "purged", &report).unwrap();
+        let result = pure_import_return_file(&mut conn, "/tmp/u.zip", "purged", &report, None).unwrap();
         assert!(result.bundle_already_purged);
         assert!(result.delete_after.is_none());
+    }
+
+    #[test]
+    fn import_stores_and_reads_summary_pdf_blob() {
+        let mut conn = fresh_db();
+        seed_published_bundle(&conn, "2026-05-20-0010", "content");
+        let mut report = fixture_report("2026-05-20-0010", "content");
+        report.summary_pdf = Some("artifacts/summary.pdf".into());
+
+        let pdf: &[u8] = b"%PDF-1.7\nfake summary bytes\n%%EOF";
+        pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-pdf", &report, Some(pdf)).unwrap();
+
+        let stored = read_summary_pdf(&conn, "2026-05-20-0010").unwrap().unwrap();
+        assert_eq!(stored.0, "summary.pdf"); // filename = basename of the pointer
+        assert_eq!(stored.1, pdf);           // bytes round-trip intact
+
+        // Metadata row reflects the size.
+        let size: i64 = conn
+            .query_row(
+                "SELECT size_bytes FROM bundle_summary_pdf WHERE bundle_uid = ?1",
+                params!["2026-05-20-0010"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(size, pdf.len() as i64);
+    }
+
+    #[test]
+    fn import_without_summary_pdf_stores_nothing() {
+        let mut conn = fresh_db();
+        seed_published_bundle(&conn, "2026-05-20-0011", "content");
+        let report = fixture_report("2026-05-20-0011", "content"); // summary_pdf = None
+        pure_import_return_file(&mut conn, "/tmp/u-post.zip", "sha-nopdf", &report, None).unwrap();
+        assert!(read_summary_pdf(&conn, "2026-05-20-0011").unwrap().is_none());
+    }
+
+    #[test]
+    fn reimport_replaces_summary_pdf_blob() {
+        let mut conn = fresh_db();
+        seed_published_bundle(&conn, "2026-05-20-0012", "content");
+        let mut report = fixture_report("2026-05-20-0012", "content");
+        report.summary_pdf = Some("artifacts/summary.pdf".into());
+
+        pure_import_return_file(&mut conn, "/tmp/a.zip", "sha-v1", &report, Some(b"v1")).unwrap();
+        // A fresh return file (different source sha) with newer PDF bytes wins.
+        pure_import_return_file(&mut conn, "/tmp/b.zip", "sha-v2", &report, Some(b"v2-newer")).unwrap();
+
+        let stored = read_summary_pdf(&conn, "2026-05-20-0012").unwrap().unwrap();
+        assert_eq!(stored.1, b"v2-newer");
+        // Still exactly one row for the bundle.
+        let rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM bundle_summary_pdf WHERE bundle_uid = ?1",
+                params!["2026-05-20-0012"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 1);
     }
 }

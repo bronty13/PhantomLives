@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { BundleSummaryReport } from '../../components/BundleSummaryReport';
 import { db } from '../../data/db';
 import {
   type Bundle,
@@ -151,6 +152,7 @@ export function CustomBundleForm({ uid, onPublishRequested, onClose, onDeleted, 
           <button type="button" onClick={onDeleteDraft} className="pretty-button danger text-xs" disabled={busy}>🗑 Delete draft</button>
         )}
       </div>
+      <BundleSummaryReport bundleUid={uid} />
       <header className="space-y-2">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="display-font text-2xl font-bold persona-accent">Custom Bundle</h2>

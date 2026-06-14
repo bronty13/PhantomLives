@@ -430,6 +430,29 @@ export async function revealPostBundlesDir(): Promise<void> {
   await invoke('reveal_post_bundles_dir');
 }
 
+/** Metadata about a bundle's stored SideMolly Summary PDF, or null if none
+ *  was imported (older return files, or a return file without a summary). */
+export interface SummaryPdfInfo {
+  bundleUid: string;
+  filename: string;
+  sizeBytes: number;
+  importedAt: string;
+}
+
+export async function getBundleSummaryPdfInfo(bundleUid: string): Promise<SummaryPdfInfo | null> {
+  return invoke<SummaryPdfInfo | null>('get_bundle_summary_pdf_info', { bundleUid });
+}
+
+/** Open the stored Summary PDF in the OS default viewer. */
+export async function openBundleSummaryPdf(bundleUid: string): Promise<void> {
+  await invoke('open_bundle_summary_pdf', { bundleUid });
+}
+
+/** Save a copy of the stored Summary PDF to a user-chosen path. */
+export async function downloadBundleSummaryPdf(bundleUid: string, targetPath: string): Promise<void> {
+  await invoke('download_bundle_summary_pdf', { bundleUid, targetPath });
+}
+
 /**
  * Read MasterClipper's category list (best-effort, read-only). Returns
  * empty array if MasterClipper isn't installed / its DB is unreachable.

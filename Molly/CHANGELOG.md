@@ -4,6 +4,27 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] — 2026-06-14
+
+### Added — Import the SideMolly Summary PDF and surface it on the bundle
+
+When a SideMolly return file (post-bundle) is imported, Molly now extracts the
+bundled **Summary PDF** and stores it so it's available straight from the
+bundle detail — no need to keep the source ZIP around.
+
+- **Stored as a blob:** new `bundle_summary_pdf` table (migration 040) holds one
+  PDF per bundle (`bundle_uid` PK, `ON DELETE CASCADE`). A re-import REPLACEs it,
+  so the stored copy always reflects the most recent return file.
+- **Import wiring:** `read_return_file` lifts `artifacts/summary.pdf` out of the
+  inner zip using `report.json`'s new `summaryPdf` pointer (SideMolly v0.28.0+);
+  older return files without the pointer simply store nothing.
+- **Bundle detail:** a self-hiding **📄 Summary report** card at the top of every
+  bundle (Content / YouTube / Custom / FanSite) with **Open report** (opens in
+  the OS default PDF viewer) and **⬇ Download** (saves a copy via a save dialog).
+  The card only appears when a PDF was actually imported.
+- New commands: `get_bundle_summary_pdf_info`, `open_bundle_summary_pdf`,
+  `download_bundle_summary_pdf`.
+
 ## [1.32.0] — 2026-06-14
 
 ### Added — Content bundles now have a price, defaulted from video length

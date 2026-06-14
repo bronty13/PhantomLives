@@ -605,6 +605,17 @@ After import, the bundle row in your Bundles list gets a green **✓ Imported ·
 
 Every import also drops a one-line entry into **Molly's Log** so you have a permanent journal of when each bundle's return file came in.
 
+#### 📄 The summary report comes home too
+
+Newer return files (from SideMolly v0.28.0 on) tuck a little **summary report PDF** inside — Robert's one-page recap of the whole bundle. When you import one, I keep that PDF safe right inside me, so you don't need the original ZIP anymore to read it. 💗
+
+To find it: open the bundle from the **🎁 Bundles** page, and right at the top you'll see a soft **📄 Summary report** card (it only shows up when a report actually came in). Two little buttons:
+
+- **Open report** — pops the PDF open in your usual PDF viewer.
+- **⬇ Download** — saves your own copy wherever you like (I'll suggest a filename for you).
+
+If a bundle doesn't have that card, it just means its return file didn't carry a summary — older imports won't have one, and that's perfectly fine. 🌸
+
 ---
 
 ## 🎞️ GIF Studio — make a teaser GIF, right here 💕
