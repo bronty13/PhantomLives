@@ -15,6 +15,7 @@ import {
   type GifSettings,
 } from './encodeGif';
 import { probeVideo, generateGif, generateTeaserMp4, type CropPx } from '../../data/gifStudio';
+import { CopyableError } from '../../components/CopyableError';
 import { DECODE_HELP } from './sourceUrl';
 import { useVideoSource } from './useVideoSource';
 import { useVideoStage } from './useVideoStage';
@@ -522,7 +523,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
           </div>
         )}
 
-        {(error || srcError) && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error || srcError}</div>}
+        {(error || srcError) && <CopyableError message={String(error || srcError)} />}
       </>
   );
 

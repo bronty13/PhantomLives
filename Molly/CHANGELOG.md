@@ -4,6 +4,28 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.1] — 2026-06-14
+
+### Fixed — GIF Studio errors are now copyable + actionable (Windows os error 193)
+
+Sallie hit two GIF Studio failures on Windows — *"Couldn't make the GIF / grab
+the frame: io: %1 is not a valid Win32 application (os error 193)"*. That OS
+error means the bundled `ffmpeg.exe` was found but wouldn't launch (Windows
+`ERROR_BAD_EXE_FORMAT`) — typically because Windows Defender neutered the
+unsigned static binary, or a silent auto-update left it truncated.
+
+- **Copyable errors:** GIF Studio error banners now have a 📋 **Copy** button
+  (new `CopyableError` component), so Sallie can paste the exact text to Robert
+  instead of sending a screenshot.
+- **Self-explaining engine error:** a spawn failure now reads *"Molly's video
+  engine wouldn't start: `<path>\ffmpeg.exe` isn't runnable on this PC (os error
+  193). Windows or antivirus most likely blocked it, or Molly didn't fully
+  install. Try reinstalling Molly, or add Molly's folder as an antivirus
+  exception."* — naming the binary and the fix, instead of the cryptic raw error.
+  Applies to both the ffmpeg and ffprobe spawn paths.
+- **CI:** the Windows release now validates `ffprobe.exe` runs (previously only
+  `ffmpeg.exe` was checked), closing a gap where a bad ffprobe could ship.
+
 ## [1.31.0] — 2026-06-10
 
 ### Added — YouTube bundles: "Make private" + "Also Post SFW ManyVids"

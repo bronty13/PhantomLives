@@ -30,7 +30,7 @@ pub async fn probe<R: Runtime>(handle: &AppHandle<R>, path: &str) -> Result<Prob
     let out = cmd
         .output()
         .await
-        .map_err(|e| MediaError::Probe(format!("spawn ffprobe: {e}")))?;
+        .map_err(|e| crate::media::spawn_error(&bin, e))?;
     if !out.status.success() {
         return Err(MediaError::Probe(
             String::from_utf8_lossy(&out.stderr).trim().to_string(),

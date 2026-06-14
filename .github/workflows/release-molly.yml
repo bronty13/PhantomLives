@@ -165,6 +165,11 @@ jobs:
           if (-not (& "$dest/ffmpeg.exe" -hide_banner -filters  | Select-String "zscale"))  { Write-Error "bundled ffmpeg lacks zscale (zimg)" }
           if (-not (& "$dest/ffmpeg.exe" -hide_banner -buildconf | Select-String "libx264")) { Write-Error "bundled ffmpeg lacks libx264" }
           & "$dest/ffmpeg.exe" -version | Select-Object -First 1
+          # Validate ffprobe.exe too — both the GIF and frame-grab paths spawn
+          # it, and a bad/half-copied ffprobe.exe was previously unchecked here,
+          # so it could ship and only fail on the user's PC (os error 193).
+          & "$dest/ffprobe.exe" -version | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { Write-Error "bundled ffprobe.exe did not run" }
 
       - name: Build Tauri bundles
         shell: bash

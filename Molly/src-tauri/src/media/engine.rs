@@ -47,10 +47,7 @@ pub async fn run_ffmpeg(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     crate::media::no_window(&mut cmd); // no console-window flash on Windows
-    let mut child = cmd.spawn().map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => MediaError::BinaryMissing,
-        _ => MediaError::Io(e),
-    })?;
+    let mut child = cmd.spawn().map_err(|e| crate::media::spawn_error(bin, e))?;
 
     let stdout = child.stdout.take().ok_or_else(|| MediaError::Probe("no stdout".into()))?;
     let stderr = child.stderr.take().ok_or_else(|| MediaError::Probe("no stderr".into()))?;
