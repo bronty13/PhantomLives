@@ -38,12 +38,20 @@ your web browser, with no internet needed.
 
 ### Bible verses & sayings on a day
 
-When you pick the **Bible Verse** type, a picker appears: choose the **Book**,
-then **Chapter**, then **Verse** — the verse text fills in automatically. Pick
-the **Saying** type to get a searchable list of every built-in and custom saying
-(or hit **↻ Random**). Existing verse/saying items show a small reference tag
-(e.g. *John 3:16*); click **✎ Edit** to reopen the picker. A day can hold both a
-verse and a saying (and as many as you like).
+When you pick the **Bible Verse** type, a fast picker appears. Two ways to find
+your verse:
+
+- **Type it** — start typing a reference in the box: `John 3:16`, `Phil 4:13`,
+  even `1 Jo 5 4`. Press **Enter** to grab it. Typing just a name (e.g. `phil`)
+  narrows the book grid (Philippians / Philemon).
+- **Tap it** — tap a **book** (grouped Old / New Testament), then a **chapter**,
+  then a **verse**. The breadcrumb at the top (Book › Chapter › Verse) lets you
+  step back a level anytime.
+
+Pick the **Saying** type to get a searchable list of every built-in and custom
+saying (or hit **↻ Random**). Existing verse/saying items show a small reference
+tag (e.g. *John 3:16*); click **✎ Edit** to reopen the picker. A day can hold both
+a verse and a saying (and as many as you like).
 
 #### Two ways verses & sayings appear — the "Verse Mode" toggle
 

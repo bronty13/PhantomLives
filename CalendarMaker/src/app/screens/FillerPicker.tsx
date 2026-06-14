@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { CalendarBundle, FillerEntry, FillerSlot } from '../../model/types';
-import { BIBLE_BOOKS, chapterCount, getRandomVerse, getVerse, verseCount, verseToFiller } from '../../data/bible';
+import { getRandomVerse, verseToFiller } from '../../data/bible';
 import { rerollSaying } from '../../data/sayings';
 import { Drawer } from '../components/Modal';
+import { BibleVersePicker } from './BibleVersePicker';
 
 export function FillerPicker({ bundle, sayings, onChange, onClose }: { bundle: CalendarBundle; sayings: FillerEntry[]; onChange: (b: CalendarBundle) => void; onClose: () => void }) {
   const [slot, setSlot] = useState<FillerSlot>('footer');
@@ -11,9 +12,8 @@ export function FillerPicker({ bundle, sayings, onChange, onClose }: { bundle: C
 
   const [saying, setSaying] = useState<FillerEntry>(() => rerollSaying(sayings, undefined));
   const [randVerse, setRandVerse] = useState<FillerEntry>(() => verseToFiller(getRandomVerse()));
-  const [book, setBook] = useState('John');
-  const [chapter, setChapter] = useState(3);
-  const [verse, setVerse] = useState(16);
+  // The verse chosen via the grid/type-ahead picker (pick mode).
+  const [pickedVerse, setPickedVerse] = useState<FillerEntry | null>(null);
 
   const setFiller = (entry: FillerEntry) => {
     const fillers = bundle.fillers.filter((f) => f.slot !== slot);
@@ -22,19 +22,19 @@ export function FillerPicker({ bundle, sayings, onChange, onClose }: { bundle: C
   };
   const removeFiller = (s: FillerSlot) => onChange({ ...bundle, fillers: bundle.fillers.filter((f) => f.slot !== s) });
 
-  const picked = getVerse(book, chapter, verse);
+  const placeDisabled = kind === 'verse' && verseMode === 'pick' && !pickedVerse;
 
   const addCurrent = () => {
     if (kind === 'saying') setFiller(saying);
     else if (verseMode === 'random') setFiller(randVerse);
-    else if (picked) setFiller(verseToFiller({ book, chapter, verse, text: picked.text, reference: picked.reference }));
+    else if (pickedVerse) setFiller(pickedVerse);
   };
 
   return (
     <Drawer
       title="Sayings &amp; Verses"
       onClose={onClose}
-      footer={<button className="primary" onClick={addCurrent}>Place in {slot === 'footer' ? 'footer' : 'grid free space'}</button>}
+      footer={<button className="primary" onClick={addCurrent} disabled={placeDisabled}>Place in {slot === 'footer' ? 'footer' : 'grid free space'}</button>}
     >
       <p className="hint" style={{ marginTop: 0 }}>Fill the calendar’s free space with a saying or Bible verse.</p>
 
@@ -89,20 +89,13 @@ export function FillerPicker({ bundle, sayings, onChange, onClose }: { bundle: C
               </div>
             ) : (
               <>
-                <div className="row" style={{ gap: 8 }}>
-                  <select value={book} onChange={(e) => { const b = e.target.value; setBook(b); setChapter(1); setVerse(1); }}>
-                    {BIBLE_BOOKS.map((b) => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                  <select value={chapter} onChange={(e) => { setChapter(parseInt(e.target.value, 10)); setVerse(1); }} style={{ width: 90 }}>
-                    {Array.from({ length: chapterCount(book) }, (_, i) => i + 1).map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <select value={verse} onChange={(e) => setVerse(parseInt(e.target.value, 10))} style={{ width: 90 }}>
-                    {Array.from({ length: verseCount(book, chapter) }, (_, i) => i + 1).map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                </div>
-                <div className="card" style={{ boxShadow: 'none' }}>
-                  {picked ? <><div>{picked.text}</div><div className="hint" style={{ marginTop: 6 }}>— {picked.reference}</div></> : <span className="hint">No verse there.</span>}
-                </div>
+                <BibleVersePicker onSelect={(text, reference) => setPickedVerse({ id: `verse-${reference}`, kind: 'verse', text, reference })} />
+                {pickedVerse && (
+                  <div className="card" style={{ boxShadow: 'none' }}>
+                    <div>{pickedVerse.text}</div>
+                    <div className="hint" style={{ marginTop: 6 }}>— {pickedVerse.reference}</div>
+                  </div>
+                )}
               </>
             )}
           </>

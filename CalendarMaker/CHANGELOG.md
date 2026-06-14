@@ -4,6 +4,24 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.3.1 — 2026-06-14
+
+### Changed
+- **Much faster Bible verse picker** (both the day-level picker and the
+  whole-month Sayings & Verses picker). The old three cascading dropdowns are
+  replaced by a **Bible-study-style** picker:
+  - **Type-ahead jump box** — type a reference (`John 3:16`, `1 Jo 5 4`,
+    `Phil 4:13`) and press **Enter** to grab it instantly.
+  - **Tap drill-down** — a grid of **books** (grouped Old/New Testament; filtered
+    live as you type a name like `phil` → Philippians / Philemon), then a grid of
+    **chapters**, then a grid of **verses**. A **breadcrumb** (Book › Chapter ›
+    Verse) lets you jump back a level with one click.
+- New shared component `BibleVersePicker` powers both pickers.
+
+### Tests
+- +4 (type-ahead full-reference commit, prefix filtering, tap drill-down, and
+  numbered-book parsing like `1 Jo`). 51 total.
+
 ## 0.3.0 — 2026-06-14
 
 ### Added

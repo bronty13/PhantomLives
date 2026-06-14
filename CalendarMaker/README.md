@@ -24,7 +24,8 @@ single `index.html`. Unzip, double-click, done — no server, no internet.
 - **US holidays** — federal + common observances + Christian liturgical days
   (Easter-derived dates computed for any year). Toggle each one on per calendar.
 - **Bible verses & sayings on any day** — click a day and add a **Bible Verse**
-  (Book → Chapter → Verse picker over the full embedded NASB) or a **Saying**
+  (fast picker over the full embedded NASB: **type a reference** like `John 3:16`
+  / `Phil 4:13`, or **tap** through a book → chapter → verse grid) or a **Saying**
   (searchable list of built-in + your custom sayings). Two display modes, toggled
   per calendar:
   - **Separate Calendar** (default) — verses/sayings stay off the main grid and
@@ -35,7 +36,7 @@ single `index.html`. Unzip, double-click, done — no server, no internet.
     fit (the overflow guarantee holds).
 - **Sayings & verses (whole-month filler)** — fill the calendar's free space
   (footer band or empty grid cells) with a curated saying (random) or a Bible
-  verse (random **or** a book/chapter/verse picker).
+  verse (random **or** the same fast type-ahead / tap-grid picker).
 - **Home screen delight** — a personalized, time-of-day greeting (set your name in
   Settings, default *Jan*), plus a random verse and a random saying, each in its
   own pretty font/color (toggle either off in Settings).
