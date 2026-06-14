@@ -2,6 +2,18 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.5.1 — 2026-06-14 (calendar dual-schema fix)
+
+### Fixed
+- **`calendar_archiver.py` now reads Monterey (macOS ≤12) calendars.** 1.5.0 shipped
+  the legacy-schema *test* (`test_legacy_zcalendaritem`) but not the matching code, so
+  the suite was red against that case. `read_events()` is now version-robust across
+  both schemas (column introspection + `pick()`): modern `Calendar.sqlitedb`
+  (`CalendarItem`/`Calendar`/`Location`) **and** legacy `Calendar Cache` Core Data
+  (`ZCALENDARITEM`/`ZSTRUCTUREDLOCATION`), mirroring the Reminders dual-schema
+  approach. Verified: 1,943 events on a real Monterey source. Bumps
+  `calendar_archiver` to 1.1.0.
+
 ## 1.5.0 — 2026-06-14 (polish)
 
 ### Added

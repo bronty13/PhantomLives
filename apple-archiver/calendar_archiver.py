@@ -25,21 +25,51 @@ from applearchive_common import (  # noqa: E402
     html_page, esc,
 )
 
-__version__ = '1.0.0'
+__version__ = '1.1.0'
 
 
 def read_events(db):
+    """Version-robust across two Calendar schemas:
+      • modern (macOS 13+):  Calendar.sqlitedb — table CalendarItem (summary/
+        start_date/end_date/all_day/calendar_id/location_id) + Calendar + Location.
+      • legacy (macOS ≤12):  'Calendar Cache' — Core Data ZCALENDARITEM (ZTITLE/
+        ZSTARTDATE/ZENDDATE/ZISALLDAY/ZNOTES/ZCALENDAR/ZSTRUCTUREDLOCATION)."""
     conn = open_ro(db)
-    if not has_table(conn, 'CalendarItem'):
+    table = ('CalendarItem' if has_table(conn, 'CalendarItem')
+             else 'ZCALENDARITEM' if has_table(conn, 'ZCALENDARITEM') else None)
+    if not table:
         conn.close(); return []
-    cals = {r[0]: s(r[1]) for r in rows(conn, 'SELECT ROWID, title FROM Calendar')}
+    cols = {r[1] for r in rows(conn, f'PRAGMA table_info({table})')}
+    pick = lambda cands: next((c for c in cands if c in cols), None)
+    c_title = pick(['summary', 'ZTITLE'])
+    c_notes = pick(['description', 'ZNOTES']) or 'NULL'
+    c_start = pick(['start_date', 'ZSTARTDATE'])
+    c_end = pick(['end_date', 'ZENDDATE']) or 'NULL'
+    c_all = pick(['all_day', 'ZISALLDAY']) or '0'
+    c_cal = pick(['calendar_id', 'ZCALENDAR']) or 'NULL'
+    c_loc = pick(['location_id', 'ZSTRUCTUREDLOCATION']) or 'NULL'
+    if not c_title or not c_start:
+        conn.close(); return []
+
+    cals = {}
+    if has_table(conn, 'Calendar'):
+        for rid, t in rows(conn, 'SELECT ROWID, title FROM Calendar'):
+            cals[rid] = s(t)
     locs = {}
-    for rid, title, addr in rows(conn, 'SELECT ROWID, title, address FROM Location'):
-        locs[rid] = s(title) or s(addr)
+    if has_table(conn, 'Location'):
+        for rid, t, a in rows(conn, 'SELECT ROWID, title, address FROM Location'):
+            locs[rid] = s(t) or s(a)
+    elif has_table(conn, 'ZSTRUCTUREDLOCATION'):
+        lc = {r[1] for r in rows(conn, 'PRAGMA table_info(ZSTRUCTUREDLOCATION)')}
+        lt = 'ZTITLE' if 'ZTITLE' in lc else 'NULL'
+        la = 'ZADDRESS' if 'ZADDRESS' in lc else 'NULL'
+        for rid, t, a in rows(conn, f'SELECT Z_PK, {lt}, {la} FROM ZSTRUCTUREDLOCATION'):
+            locs[rid] = s(t) or s(a)
+
     out = []
     for sm, desc, start, end, allday, calid, locid in rows(conn,
-            'SELECT summary, description, start_date, end_date, all_day, '
-            '       calendar_id, location_id FROM CalendarItem WHERE summary IS NOT NULL'):
+            f'SELECT {c_title}, {c_notes}, {c_start}, {c_end}, {c_all}, {c_cal}, {c_loc} '
+            f'FROM {table} WHERE {c_title} IS NOT NULL'):
         cal = cals.get(calid, 'Calendar')
         fmt = '%Y-%m-%d' if allday else '%Y-%m-%d %H:%M'
         out.append({
