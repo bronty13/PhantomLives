@@ -2,6 +2,23 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.2.0 — 2026-06-14
+
+### Added — Tier 1: Safari, Voice Memos, Call history
+- **`safari_archiver.py`** — Safari history (immutable visit events from
+  `History.db`) + bookmarks + reading list (from `Bookmarks.plist`, versioned).
+  Outputs `history.html`/`.csv` (HTML caps to the most-recent 4,000; full set in
+  CSV), `bookmarks.html`/`.csv`, `readinglist.html`.
+- **`voicememos_archiver.py`** — **file-driven** index of Voice Memos: every
+  `.m4a` becomes a memo (date parsed from the filename), enriched by
+  `CloudRecordings.db` title/duration when present (the DB is often empty). Builds
+  `voicememos.html` with inline `<audio>` players + `_index.csv`. The audio files
+  themselves are preserved separately (rsynced into `recordings/`).
+- **`callhistory_archiver.py`** — phone + FaceTime call log from
+  `CallHistory.storedata` (`ZCALLRECORD`), immutable events. `calls.html` (in/out/
+  missed, duration, contact name) + `calls.csv` + per-number `_index.csv`.
+- Tests grew to 13 (synthetic History.db + Bookmarks.plist, ZCALLRECORD, m4a files).
+
 ## 1.1.0 — 2026-06-14
 
 ### Added

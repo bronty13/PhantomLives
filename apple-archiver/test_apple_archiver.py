@@ -10,8 +10,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import plistlib
+
 import notes_archiver as na
 import reminders_archiver as ra
+import callhistory_archiver as ca
+import voicememos_archiver as va
+import safari_archiver as sa
 
 
 def note_proto(text):
@@ -193,6 +198,99 @@ class RemindersTests(unittest.TestCase):
         self.assertIn('[ ] Passport', md)
         self.assertIn('[x] Charger', md)
         self.assertIn('high', md)
+
+
+class CallHistoryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.db = str(self.root / 'CallHistory.storedata')
+        self.archive = str(self.root / 'CallsArchive')
+        conn = sqlite3.connect(self.db)
+        conn.executescript("""
+            CREATE TABLE ZCALLRECORD(Z_PK INTEGER PRIMARY KEY, ZADDRESS TEXT, ZNAME TEXT,
+                ZORIGINATED INTEGER, ZCALLTYPE INTEGER, ZANSWERED INTEGER,
+                ZDURATION REAL, ZDATE REAL, ZSERVICE_PROVIDER TEXT);
+        """)
+        conn.execute("INSERT INTO ZCALLRECORD VALUES(1,'+15551112222','Mom',1,1,1,65.0,700000000.0,'AT&T')")
+        conn.execute("INSERT INTO ZCALLRECORD VALUES(2,'+15553334444',NULL,0,1,0,0,700000100.0,NULL)")
+        conn.commit(); conn.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_calls(self):
+        r = ca.run_archive(self.db, self.archive)
+        self.assertEqual(r['calls'], 2)
+        h = (Path(self.archive) / 'calls.html').read_text()
+        self.assertIn('Mom', h)
+        self.assertIn('missed', h)                  # incoming + unanswered
+        self.assertTrue((Path(self.archive) / 'calls.csv').exists())
+
+    def test_idempotent(self):
+        ca.run_archive(self.db, self.archive)
+        self.assertEqual(ca.run_archive(self.db, self.archive)['new'], 0)
+
+
+class VoiceMemosTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.archive = self.root / 'VMArchive'
+        (self.archive / 'recordings').mkdir(parents=True)
+        for fn in ('20260126 134059-AAAA.m4a', '20250715 235247-BBBB.m4a'):
+            (self.archive / 'recordings' / fn).write_bytes(b'\x00\x00\x00\x20ftypM4A ')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_file_driven(self):
+        r = va.run_archive(None, str(self.archive))     # no DB → files drive it
+        self.assertEqual(r['memos'], 2)
+        h = (Path(self.archive) / 'voicememos.html').read_text()
+        self.assertEqual(h.count('<audio'), 2)
+        self.assertIn('2026-01-26 13:40', h)            # date parsed from filename
+
+
+class SafariTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.sdir = self.root / 'Safari'; self.sdir.mkdir()
+        self.archive = str(self.root / 'SafariArchive')
+        conn = sqlite3.connect(str(self.sdir / 'History.db'))
+        conn.executescript("""
+            CREATE TABLE history_items(id INTEGER PRIMARY KEY, url TEXT);
+            CREATE TABLE history_visits(id INTEGER PRIMARY KEY, history_item INTEGER,
+                title TEXT, visit_time REAL);
+        """)
+        conn.execute("INSERT INTO history_items VALUES(1,'https://example.com')")
+        conn.execute("INSERT INTO history_visits VALUES(1,1,'Example',700000000.0)")
+        conn.commit(); conn.close()
+        # A Bookmarks.plist with one bookmark + one reading-list item.
+        bm = {'WebBookmarkType': 'WebBookmarkTypeLeaf', 'URLString': 'https://bm.com',
+              'URIDictionary': {'title': 'My Bookmark'}}
+        rl = {'WebBookmarkType': 'WebBookmarkTypeLeaf', 'URLString': 'https://read.com',
+              'URIDictionary': {'title': 'Read Later'}, 'ReadingList': {'DateAdded': '2026-01-01'}}
+        root = {'WebBookmarkType': 'WebBookmarkTypeList', 'Title': '', 'Children': [
+            {'WebBookmarkType': 'WebBookmarkTypeList', 'Title': 'Favorites', 'Children': [bm]},
+            {'WebBookmarkType': 'WebBookmarkTypeList', 'Title': 'com.apple.ReadingList', 'Children': [rl]},
+        ]}
+        with open(self.sdir / 'Bookmarks.plist', 'wb') as fh:
+            plistlib.dump(root, fh)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_history_bookmarks_readinglist(self):
+        r = sa.run_archive(str(self.sdir), self.archive)
+        self.assertEqual(r['visits'], 1)
+        self.assertEqual(r['bookmarks'], 1)
+        self.assertEqual(r['readinglist'], 1)
+        self.assertIn('Example', (Path(self.archive) / 'history.html').read_text())
+        self.assertIn('My Bookmark', (Path(self.archive) / 'bookmarks.html').read_text())
+        self.assertIn('Read Later', (Path(self.archive) / 'readinglist.html').read_text())
+
+    def test_idempotent(self):
+        sa.run_archive(str(self.sdir), self.archive)
+        self.assertEqual(sa.run_archive(str(self.sdir), self.archive)['new'], 0)
 
 
 if __name__ == '__main__':
