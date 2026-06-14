@@ -73,6 +73,7 @@ enum JobRegistry {
         ("books",      "Books"),
         ("podcasts",   "Podcasts"),
         ("stickies",   "Stickies"),
+        ("mail",       "Mail"),
         ("index",      "Landing Page"),
     ]
 
