@@ -127,9 +127,11 @@ Settings / Address Book"). What a future session needs to know:
   consults it via `WatchlistService.alertSuppressionResolver`, and
   `ChatModel.playSoundFor` consults it directly for message sounds.
 - **Cross-path alert dedupe.** `WatchlistService.shouldFireAlert(forNick:now:)`
-  is a check-and-stamp gate shared by ALL THREE alert paths (watch-online,
-  own-nick mention, highlight rule) — one alert per sender per 3 s window.
-  Suppressed (quiet-mode) alerts deliberately do NOT stamp the gate.
+  is a check-and-stamp gate shared by the mention + highlight-rule paths —
+  one alert per sender per 3 s window. (The watch-online path no longer
+  uses it; it's gated once-per-session by `alertedOnline` instead — see the
+  "Watchlist online-alert gate" note above.) Suppressed (quiet-mode)
+  alerts deliberately do NOT stamp the gate.
   Mention sounds are owned by `playSoundFor` (per-event "mention" sound);
   `fireHighlightAlert` passes `includeSound: false` to `fireSystemAlert`
   so a mention can't play two sounds. Don't re-add a sound there.
@@ -210,9 +212,21 @@ future-session brief:
   diverge from the right baseline. After exhaustion the connection
   marks `userInitiatedDisconnect = true` and disconnects — so the
   reconnect path doesn't loop on the failure.
-- **Watchlist alert dedupe** uses a 3 s `lastAlertAt[nickKey]` window
-  shared across MONITOR / ISON / PRIVMSG / JOIN paths. Manual test
-  alerts bypass the gate intentionally.
+- **Watchlist online-alert gate** is `alertedOnline: Set<String>` in
+  `WatchlistService`: an "is online" alert fires only on the first
+  aggregate-online sighting and the nick is held acknowledged until a
+  *confirmed* aggregate-offline re-arms it (a drop to `.unknown` — our
+  own client disconnecting — deliberately does NOT re-arm). This is what
+  stops the old per-poll re-alert spam; `fireOnlineAlert` no longer
+  consults the 3 s window. Re-arming depends on ISON declaring offline
+  correctly: `handleISON` now *accumulates* online nicks across a whole
+  poll cycle (`NetworkWatchState.isonOnlineAccum`) and only decides
+  offline at the next `beginISONCycle`, so a nick's absence from one
+  chunk's `303` reply can't flap presence.
+- **Mention/rule alert dedupe** still uses the 3 s `lastAlertAt[nickKey]`
+  window shared across the PRIVMSG / highlight-rule paths (via
+  `shouldFireAlert(forNick:now:)`). Manual test alerts bypass it
+  intentionally.
 - **`lastAwayReplyAt` is bounded.** Once it grows past 1024 entries,
   rows older than the throttle window are pruned. This is the only
   unbounded per-nick dict left in the connection — no other path
@@ -280,7 +294,7 @@ Sources/PurpleIRC/
                           + BotScript.contentHash (SHA-256, verified)
   DCC.swift               + bind to advertised IP (createListener(bindHost:))
                           + tighter sanitizeFilename
-  WatchlistService.swift  + lastAlertAt window dedupe in fireOnlineAlert
+  WatchlistService.swift  + alertedOnline once-per-session online-alert gate
   EncryptedJSON.swift     + safeWrite sets POSIX 0600
   KeyStore.swift          + full SHA-256 Keychain account
                           + persist sets POSIX 0600

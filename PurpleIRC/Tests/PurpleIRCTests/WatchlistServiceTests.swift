@@ -77,6 +77,103 @@ struct WatchlistServiceTests {
         #expect(svc.presence["alice"] == .unknown)
     }
 
+    // MARK: - ISON chunk accumulation (no per-reply flapping)
+
+    @Test func multiChunkIsonReplyDoesNotFlapAbsentNick() {
+        let (svc, _) = makeService()
+        let net = UUID()
+        svc.setWatchedList(["alice", "bob"])
+
+        // A poll over a watchlist spanning two ISON chunks comes back as two
+        // separate 303 replies. The first lists alice, the second bob.
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.presence["alice"] == .online)
+        #expect(svc.recentHits.count == 1)
+
+        // bob's reply must NOT knock alice offline (the old bug marked every
+        // watched nick missing from a single reply as offline, so the next
+        // poll re-fired alice's online alert).
+        svc.handleISON(["bob"], network: net)
+        #expect(svc.presence["alice"] == .online)
+        #expect(svc.presence["bob"] == .online)
+        #expect(svc.recentHits.count == 2)   // alice once, bob once — no re-fire
+    }
+
+    // MARK: - Acknowledge-once / re-arm-on-offline
+
+    @Test func onlineAlertFiresOnceAndStaysAcknowledgedAcrossPolls() {
+        let (svc, _) = makeService()
+        let net = UUID()
+        svc.setWatchedList(["alice"])
+
+        // First sighting alerts.
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.count == 1)
+
+        // Subsequent poll cycles that keep finding alice online must NOT
+        // re-alert — once acknowledged, the alert is gone until she leaves.
+        for _ in 0..<5 {
+            svc.beginISONCycle(network: net)
+            svc.handleISON(["alice"], network: net)
+        }
+        #expect(svc.presence["alice"] == .online)
+        #expect(svc.recentHits.count == 1)
+    }
+
+    @Test func offlineThenOnlineReArmsAndReAlerts() {
+        let (svc, _) = makeService()
+        let net = UUID()
+        svc.setWatchedList(["alice"])
+
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.count == 1)
+
+        // alice drops off: the next poll cycle finalizes with her absent
+        // from everything accumulated, so she's marked offline.
+        svc.beginISONCycle(network: net)          // closes the cycle she was in
+        svc.handleISON([], network: net)          // fresh cycle, alice not seen
+        svc.beginISONCycle(network: net)          // finalize → alice offline
+        #expect(svc.presence["alice"] == .offline)
+        #expect(svc.recentHits.count == 1)        // going offline doesn't alert
+
+        // She comes back — this is a genuine round trip, so it alerts again.
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.presence["alice"] == .online)
+        #expect(svc.recentHits.count == 2)
+    }
+
+    @Test func ownDisconnectDoesNotReArmStillOnlineNick() {
+        let (svc, _) = makeService()
+        let net = UUID()
+        svc.setWatchedList(["alice"])
+
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.count == 1)
+
+        // Our client drops the connection (presence becomes unknown, not a
+        // confirmed offline) then reconnects and re-polls. A reconnect must
+        // not replay an alert for someone who never actually left.
+        svc.onDisconnected(network: net)
+        #expect(svc.presence["alice"] == .unknown)
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.count == 1)
+    }
+
+    @Test func reAddingARemovedNickReArms() {
+        let (svc, _) = makeService()
+        let net = UUID()
+        svc.setWatchedList(["alice"])
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.count == 1)
+
+        // Drop alice from the watchlist, then add her back: her acknowledged
+        // state is forgotten, so her next online sighting alerts afresh.
+        svc.setWatchedList([])
+        svc.setWatchedList(["alice"])
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.count == 2)
+    }
+
     // MARK: - Command routing to the originating socket
 
     @Test func monitorAndIsonGoToTheirOwnNetworkSocket() {

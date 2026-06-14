@@ -82,8 +82,26 @@ final class WatchlistService: ObservableObject {
         var supportsMonitor = false
         var serverMonitorLimit = 0
         var isonTimer: Timer?
+        /// Online nicks (lowercased) accumulated across the CURRENT ISON
+        /// poll cycle. ISON replies arrive one 303 per `ISON` command, and
+        /// each command only carries one chunk of the watched list — so a
+        /// nick's absence from any single 303 does NOT mean it's offline.
+        /// We union every reply here and decide offline only when the cycle
+        /// is finalized at the next poll. Without this, presence flapped
+        /// (and re-alerted) every poll for any watchlist over one chunk.
+        var isonOnlineAccum: Set<String> = []
     }
     private var networks: [UUID: NetworkWatchState] = [:]
+
+    /// Nicks (lowercased) we've already alerted as online and have NOT
+    /// re-armed. This is the "once acknowledged it's gone" gate: an online
+    /// alert fires only when a nick is added here, and a nick is only
+    /// removed on a *confirmed* aggregate-offline transition (a real
+    /// disconnect / logoff seen across every network). Because it's
+    /// decoupled from the presence map, a still-online nick whose presence
+    /// is re-asserted by repeated ISON/MONITOR/activity sightings never
+    /// re-alerts; only an offline-then-online round trip does.
+    private var alertedOnline: Set<String> = []
 
     /// Per-nick last-alert timestamp for short-window dedupe across EVERY
     /// alert path — watch-online (MONITOR / ISON / observed activity),
@@ -146,12 +164,17 @@ final class WatchlistService: ObservableObject {
 
         watched = list
         watchedLower = next
-        // Drop no-longer-watched nicks from every network's presence slice.
+        // Drop no-longer-watched nicks from every network's presence slice
+        // and ISON accumulator.
         for id in networks.keys {
             for k in Array(networks[id]!.presence.keys) where !next.contains(k) {
                 networks[id]!.presence.removeValue(forKey: k)
             }
+            networks[id]!.isonOnlineAccum.formIntersection(next)
         }
+        // Forget the acknowledged state of anyone removed, so re-adding a
+        // nick later starts fresh and alerts on their next online sighting.
+        alertedOnline.formIntersection(next)
         recomputeAllAggregates()
 
         syncRemote(adding: adds, removing: removes)
@@ -186,23 +209,40 @@ final class WatchlistService: ObservableObject {
     }
 
     /// Set a watched nick's presence on one network, refresh the
-    /// aggregate, and fire the online alert only when the *aggregate*
-    /// transitions into online (was not online anywhere, now is). Basing
-    /// the alert on the aggregate transition — rather than a single
-    /// network's view — is what eliminates cross-network alert flapping
-    /// and the old `seenInChannel` re-alert suppression hack in one move.
+    /// aggregate, and gate the online alert through `alertedOnline` so each
+    /// online session produces exactly one alert. The aggregate (the OR
+    /// across networks) is what we act on — that already eliminates
+    /// cross-network flapping — but the alert itself is gated by
+    /// `alertedOnline`, not by the raw transition, so even a same-network
+    /// presence flap (or repeated sightings) can't re-fire while the nick
+    /// is still considered online. A confirmed aggregate-offline re-arms
+    /// the nick so a genuine disconnect→reconnect alerts again; a drop to
+    /// `.unknown` (our own client disconnecting) deliberately does NOT
+    /// re-arm, or a reconnect would replay an alert for everyone still on.
     private func markPresence(nick: String,
                               on network: UUID,
                               to newValue: WatchPresence,
                               source: String) {
         let key = nick.lowercased()
         guard watched.contains(where: { $0.lowercased() == key }) else { return }
-        let aggBefore = presence[key] ?? .unknown
         networks[network, default: NetworkWatchState()].presence[key] = newValue
         let aggAfter = aggregatePresence(for: key)
         if presence[key] != aggAfter { presence[key] = aggAfter }
-        if aggAfter == .online && aggBefore != .online {
-            fireOnlineAlert(nick: nick, source: source)
+        switch aggAfter {
+        case .online:
+            // First online sighting since the last confirmed offline →
+            // alert once and mark acknowledged. `Set.insert` is atomic:
+            // `.inserted` is true only the first time, so concurrent
+            // sources asserting the same nick online can't double-fire.
+            if alertedOnline.insert(key).inserted {
+                fireOnlineAlert(nick: nick, source: source)
+            }
+        case .offline:
+            // Confirmed offline everywhere → re-arm for the next round trip.
+            alertedOnline.remove(key)
+        case .unknown:
+            // Information loss, not a confirmed offline → keep the ack flag.
+            break
         }
     }
 
@@ -297,18 +337,41 @@ final class WatchlistService: ObservableObject {
 
     private func poll(network: UUID) {
         guard let d = delegate, !watched.isEmpty else { return }
+        // Close out the previous cycle (deciding offline from everything we
+        // accumulated) before opening a new one, then fire the chunked
+        // queries. By the time this runs — 30s after the last poll — every
+        // 303 from the prior cycle has long since arrived.
+        beginISONCycle(network: network)
         for chunk in watched.chunked(into: 15) {
             d.watchlistSendRaw("ISON " + chunk.joined(separator: " "), network: network)
         }
     }
 
+    /// Finalize the previous ISON poll cycle and open a fresh accumulator.
+    /// Internal (not private) so tests can drive cycle boundaries without
+    /// waiting on the 30s `Timer`. Marks any watched nick that did not
+    /// appear online in ANY 303 this cycle as offline — the single point
+    /// where ISON declares someone offline, which is why a per-reply
+    /// absence can no longer flap presence.
+    func beginISONCycle(network: UUID) {
+        if let accum = networks[network]?.isonOnlineAccum {
+            for n in watched where !accum.contains(n.lowercased()) {
+                markPresence(nick: n, on: network, to: .offline, source: "ISON")
+            }
+        }
+        networks[network, default: NetworkWatchState()].isonOnlineAccum.removeAll()
+    }
+
     func handleISON(_ onlineNicks: [String], network: UUID) {
-        let onlineLower = Set(onlineNicks.map { $0.lowercased() })
-        for n in watched {
-            markPresence(nick: n,
-                         on: network,
-                         to: onlineLower.contains(n.lowercased()) ? .online : .offline,
-                         source: "ISON")
+        // Online evidence is safe to apply immediately — a nick listed in a
+        // 303 really is online. We also union it into this cycle's
+        // accumulator; absence is reconciled to offline only at the next
+        // `beginISONCycle`, never from a single (chunked) reply.
+        for n in onlineNicks {
+            let key = n.lowercased()
+            guard watched.contains(where: { $0.lowercased() == key }) else { continue }
+            networks[network, default: NetworkWatchState()].isonOnlineAccum.insert(key)
+            markPresence(nick: n, on: network, to: .online, source: "ISON")
         }
     }
 
@@ -325,15 +388,14 @@ final class WatchlistService: ObservableObject {
     }
 
     private func fireOnlineAlert(nick: String, source: String) {
-        // Short-window dedupe across MONITOR / ISON / PRIVMSG sources so a
-        // single sighting that simultaneously trips two paths produces one
-        // banner, not two. Manual test alerts skip the gate by design so
-        // users can verify notification permission repeatedly.
+        // Dedupe is owned by the `alertedOnline` gate in `markPresence`:
+        // this fires at most once per online session (and re-arms only on a
+        // confirmed offline), so MONITOR / ISON / PRIVMSG sightings of an
+        // already-online nick never reach here a second time. We deliberately
+        // do NOT consult the shared short-window `shouldFireAlert` gate here —
+        // it would wrongly swallow a genuine offline→online re-alert that
+        // lands within its window. Manual test alerts call straight in.
         let now = Date()
-        if source != "manual test", !shouldFireAlert(forNick: nick, now: now) {
-            return
-        }
-
         let hit = WatchHit(nick: nick, source: source, timestamp: now)
         recentHits.insert(hit, at: 0)
         if recentHits.count > 25 { recentHits.removeLast(recentHits.count - 25) }

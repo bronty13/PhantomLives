@@ -12,6 +12,29 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [Unreleased] — 2026-06-13
+
+### Fixed
+
+- **Watchlist "is online" alerts no longer spam.** An online alert now
+  fires exactly **once** per online session and stays quiet ("once
+  acknowledged it's gone") until the watched user is seen genuinely
+  offline (disconnect / logoff) — at which point a later return online
+  alerts again. Two compounding bugs caused the old flapping:
+  - **ISON chunk handling.** A watchlist spanning more than one `ISON`
+    command came back as several `303` replies, each listing only its
+    own chunk's online nicks. The handler wrongly treated a nick's
+    absence from *any single* reply as "offline," so presence flapped
+    offline→online every 30-second poll and re-fired the alert. ISON
+    replies are now accumulated across the whole poll cycle; offline is
+    decided only at the cycle boundary, from the union of every reply.
+  - **No acknowledge gate.** Alerts were tied to the raw presence
+    transition, so any flap re-fired. A nick is now alerted once and
+    held in an `alertedOnline` gate that only re-arms on a *confirmed*
+    aggregate-offline. A drop to *unknown* (our own client
+    disconnecting/reconnecting) deliberately does not re-arm, so a
+    reconnect can't replay an alert for everyone still online.
+
 ## [1.0.767] — 2026-06-09
 
 ### Fixed

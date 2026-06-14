@@ -271,6 +271,12 @@ state.
 - Watched users that JOIN a channel you're in or PRIVMSG anywhere also
   count as a sighting, so you're alerted even when `MONITOR` isn't
   available for that user.
+- **One alert per online session.** A watched user coming online alerts
+  you exactly once; while they stay online no further alert fires, no
+  matter how many MONITOR/ISON/activity sightings confirm them. The
+  alert re-arms only after they're seen genuinely offline (disconnect /
+  logoff), so a real return-online alerts you again. A reconnect of *your
+  own* client doesn't replay alerts for everyone already online.
 - Prominence: each hit fires a macOS banner (UNUserNotificationCenter),
   plays a sound, bounces the Dock icon (critical), shows a persistent
   purple banner at the top of the main window, stars + tints that user's
