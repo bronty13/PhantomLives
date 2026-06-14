@@ -2,6 +2,21 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.4.0 — 2026-06-14 (Phase 3, small wins)
+
+### Added
+- **`podcasts_archiver.py`** — Apple Podcasts subscriptions from MTLibrary.sqlite
+  (`ZMTPODCAST` + per-show `ZMTEPISODE` counts): title, author, category, feed,
+  website, subscribed flag → podcasts.html + _index.csv. Verified: 11 shows.
+- **`stickies_archiver.py`** — Stickies notes from `.rtfd` bundles; text via macOS
+  `textutil` (pure-Python RTF-strip fallback). Per-sticky .txt + stickies.html.
+  The .rtfd bundles are preserved separately (rsynced). Verified: 2 notes.
+- Tests grew to 23.
+
+### Not built (no readable/local data)
+- **Freeform** (no container on the test/source Macs), **Maps favorites** (iCloud-
+  encrypted, no local store). Reserved in ROADMAP — build when a source has them.
+
 ## 1.3.0 — 2026-06-14 (Phase 2)
 
 ### Added

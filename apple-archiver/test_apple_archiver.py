@@ -19,6 +19,8 @@ import voicememos_archiver as va
 import safari_archiver as sa
 import calendar_archiver as cala
 import books_archiver as ba
+import podcasts_archiver as pa
+import stickies_archiver as sta
 
 
 def note_proto(text):
@@ -343,6 +345,23 @@ class CalendarTests(unittest.TestCase):
         cala.run_archive(self.db, self.archive)
         self.assertEqual(cala.run_archive(self.db, self.archive)['new'], 0)
 
+    def test_legacy_zcalendaritem(self):
+        # macOS <=12 'Calendar Cache' Core Data schema.
+        db2 = str(self.root / 'Calendar Cache')
+        conn = sqlite3.connect(db2)
+        conn.executescript("""
+            CREATE TABLE ZCALENDARITEM(Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZNOTES TEXT,
+                ZSTARTDATE REAL, ZENDDATE REAL, ZISALLDAY INTEGER, ZCALENDAR INTEGER,
+                ZSTRUCTUREDLOCATION INTEGER);
+        """)
+        conn.execute("INSERT INTO ZCALENDARITEM(Z_PK,ZTITLE,ZSTARTDATE,ZENDDATE,ZISALLDAY) "
+                     "VALUES(1,'Soccer practice',700000000.0,700003600.0,0)")
+        conn.commit(); conn.close()
+        r = cala.run_archive(db2, str(self.root / 'CalArchive2'))
+        self.assertEqual(r['events'], 1)
+        self.assertIn('Soccer practice',
+                      (Path(self.root / 'CalArchive2') / 'calendar.html').read_text())
+
 
 class BooksTests(unittest.TestCase):
     def setUp(self):
@@ -380,6 +399,62 @@ class BooksTests(unittest.TestCase):
     def test_idempotent(self):
         ba.run_archive(str(self.docs), self.archive)
         self.assertEqual(ba.run_archive(str(self.docs), self.archive)['new'], 0)
+
+
+class PodcastsTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.db = str(self.root / 'MTLibrary.sqlite')
+        self.archive = str(self.root / 'PodArchive')
+        conn = sqlite3.connect(self.db)
+        conn.executescript("""
+            CREATE TABLE ZMTPODCAST(Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZAUTHOR TEXT,
+                ZFEEDURL TEXT, ZWEBPAGEURL TEXT, ZCATEGORY TEXT, ZSUBSCRIBED INTEGER);
+            CREATE TABLE ZMTEPISODE(Z_PK INTEGER PRIMARY KEY, ZPODCAST INTEGER, ZTITLE TEXT);
+        """)
+        conn.execute("INSERT INTO ZMTPODCAST VALUES(1,'Security Now','TWiT','http://feed','http://web','Tech',1)")
+        conn.execute("INSERT INTO ZMTEPISODE VALUES(1,1,'Ep1')")
+        conn.execute("INSERT INTO ZMTEPISODE VALUES(2,1,'Ep2')")
+        conn.commit(); conn.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_podcasts(self):
+        r = pa.run_archive(self.db, self.archive)
+        self.assertEqual(r['podcasts'], 1)
+        idx = (Path(self.archive) / '_index.csv').read_text()
+        self.assertIn('Security Now', idx)
+        self.assertIn('2', idx)                     # episode count
+        self.assertIn('Security Now', (Path(self.archive) / 'podcasts.html').read_text())
+
+    def test_idempotent(self):
+        pa.run_archive(self.db, self.archive)
+        self.assertEqual(pa.run_archive(self.db, self.archive)['new'], 0)
+
+
+class StickiesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.data = self.root / 'Stickies'; self.data.mkdir()
+        self.archive = str(self.root / 'StkArchive')
+        d = self.data / 'AAAA-BBBB.rtfd'; d.mkdir()
+        (d / 'TXT.rtf').write_text(
+            r'{\rtf1\ansi\ansicpg1252 Grocery list\par milk and eggs}', encoding='utf-8')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_stickies(self):
+        r = sta.run_archive(str(self.data), self.archive)
+        self.assertEqual(r['stickies'], 1)
+        txt = '\n'.join(p.read_text() for p in (Path(self.archive) / 'notes').glob('*.txt'))
+        self.assertIn('Grocery list', txt)
+        self.assertIn('milk and eggs', txt)
+
+    def test_idempotent(self):
+        sta.run_archive(str(self.data), self.archive)
+        self.assertEqual(sta.run_archive(str(self.data), self.archive)['new'], 0)
 
 
 if __name__ == '__main__':
