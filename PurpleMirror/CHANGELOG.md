@@ -2,6 +2,10 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.9.0 — 2026-06-14
+
+- **Recognize Podcasts + Stickies external jobs** (Phase-3 small wins).
+
 ## 1.8.0 — 2026-06-14
 
 - **Recognize the Phase-2 kinds: Calendar + Books** (`external-calendar-sync.<id>`,
