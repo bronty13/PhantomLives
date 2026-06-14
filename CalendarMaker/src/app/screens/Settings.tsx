@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AppSettings, ExportMode, FillerEntry, Theme } from '../../model/types';
+import type { AppSettings, ExportMode, FillerEntry, Theme, VerseDisplayMode } from '../../model/types';
 import { SAYINGS } from '../../data/sayings';
 import { addCustomSaying, deleteCustomSaying, updateCustomSaying } from '../../storage/db';
 import { newId } from '../../model/factory';
@@ -81,6 +81,14 @@ export function SettingsModal({ settings, themes, customSayings, onClose, onSave
         <div>
           <label>Max items shown per day on the month grid (safety cap): {s.maxItemsPerMonthCell}</label>
           <input type="range" min={2} max={8} value={s.maxItemsPerMonthCell} onChange={(e) => set({ maxItemsPerMonthCell: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
+        </div>
+        <div>
+          <label>Bible verse &amp; saying treatment (default for new calendars)</label>
+          <select value={s.defaultVerseMode} onChange={(e) => set({ defaultVerseMode: e.target.value as VerseDisplayMode })}>
+            <option value="force">Force in cells — print verses/sayings inside each day</option>
+            <option value="separate">Separate calendar — print them on their own page</option>
+          </select>
+          <p className="hint" style={{ margin: '4px 0 0' }}>Each calendar can still override this from the editor toolbar.</p>
         </div>
         <label className="row" style={{ gap: 8, margin: 0, color: 'var(--ink)' }}>
           <input type="checkbox" style={{ width: 'auto' }} checked={s.showVerseOnHome} onChange={(e) => set({ showVerseOnHome: e.target.checked })} />

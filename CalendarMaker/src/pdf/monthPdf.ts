@@ -87,7 +87,7 @@ export function renderMonth(doc: jsPDF, bundle: CalendarBundle, theme: Theme, op
 
     if (!day || day.items.length === 0) continue;
 
-    const verseMode = bundle.verseMode ?? 'separate';
+    const verseMode = bundle.verseMode ?? 'force';
 
     // In separate mode, verse/saying items live on the dedicated verse page —
     // exclude them from the month grid so the main calendar stays uncluttered.

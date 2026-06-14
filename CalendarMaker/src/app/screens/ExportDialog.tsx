@@ -12,7 +12,7 @@ export function ExportDialog({ bundle, theme, settings, onClose }: { bundle: Cal
   const [verseOrder, setVerseOrder] = useState<VerseExportOrder>('verse-before-detail');
   const [busy, setBusy] = useState(false);
 
-  const isSeparate = (bundle.verseMode ?? 'separate') === 'separate';
+  const isSeparate = (bundle.verseMode ?? 'force') === 'separate';
   const hasVerses = hasVerseOrSayingItems(bundle);
   // The verse-page ordering choice only matters for 'both' in separate mode with verses.
   const showVerseOrder = isSeparate && hasVerses && mode === 'both';

@@ -25,16 +25,18 @@ interface Props {
 export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, onChange, onClose }: Props) {
   const [newType, setNewType] = useState<ItemType>('reminder');
   const [newText, setNewText] = useState('');
-  const [newReference, setNewReference] = useState('');
   const [showBiblePicker, setShowBiblePicker] = useState(false);
   const [showSayingPicker, setShowSayingPicker] = useState(false);
+  // When set, the open picker is editing this existing item rather than adding a new one.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const grid = computeWeeks(bundle.year, bundle.month, bundle.weekStartsOn);
   const hasFooter = bundle.fillers.some((f) => f.slot === 'footer');
   const ctx: FitContext = { geo: monthGeometry(grid.weeks, hasFooter), theme, cap };
   const holidayLines = holidayNamesFor(day).length;
 
-  const cls = classifyDay(day, ctx, holidayLines);
+  const verseMode = bundle.verseMode ?? 'force';
+  const cls = classifyDay(day, ctx, holidayLines, verseMode);
   const monthIds = new Set(cls.monthItems.map((i) => i.id));
 
   const { day: dnum } = parseIso(date);
@@ -47,21 +49,25 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, o
 
   const addItem = () => {
     const nextOrder = day.items.reduce((m, i) => Math.max(m, i.order), -1) + 1;
-    const item = makeItem(newType, nextOrder, newText.trim(), newReference || undefined);
+    const item = makeItem(newType, nextOrder, newText.trim());
     onChange({ ...day, items: [...day.items, item] });
     setNewText('');
-    setNewReference('');
   };
 
-  const handleBibleSelect = (text: string, reference: string) => {
-    setNewText(text);
-    setNewReference(reference);
+  /**
+   * Add (or, when editing, update) a verse/saying item the instant it's picked, so
+   * it appears in the list immediately — no separate "+ Add item" step.
+   */
+  const commitStructured = (type: 'bibleVerse' | 'saying', text: string, reference: string) => {
+    if (editingId) {
+      onChange({ ...day, items: day.items.map((i) => (i.id === editingId ? { ...i, type, text, reference: reference || undefined } : i)) });
+    } else {
+      const nextOrder = day.items.reduce((m, i) => Math.max(m, i.order), -1) + 1;
+      const item = makeItem(type, nextOrder, text, reference || undefined);
+      onChange({ ...day, items: [...day.items, item] });
+    }
+    setEditingId(null);
     setShowBiblePicker(false);
-  };
-
-  const handleSayingSelect = (text: string, reference: string) => {
-    setNewText(text);
-    setNewReference(reference);
     setShowSayingPicker(false);
   };
 
@@ -83,11 +89,13 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, o
       {sorted.length === 0 && <div className="hint">No items yet. Add one below.</div>}
 
       {sorted.map((item) => {
+        const isStructured = item.type === 'bibleVerse' || item.type === 'saying';
         const eligible = isMonthEligible(item, ctx);
         const onMonth = monthIds.has(item.id);
-        const detailOnly = !onMonth;
+        // Verses/sayings are placed intentionally (forced into cells, or on the
+        // Scripture page in Separate mode), so they're never the overflow ⊘ case.
+        const detailOnly = !isStructured && !onMonth;
         const st = theme.itemStyles[item.type];
-        const isStructured = item.type === 'bibleVerse' || item.type === 'saying';
         return (
           <div key={item.id} className={`item-row${detailOnly ? ' detail-only' : ''}`}>
             <span className="type-pill" style={{ background: st.color }}>{ITEM_TYPE_LABELS[item.type]}</span>
@@ -99,11 +107,9 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, o
                     {item.reference && <div style={{ fontSize: 11, color: 'var(--muted)' }}>— {item.reference}</div>}
                   </div>
                   <button className="secondary" onClick={() => {
-                    setNewType(item.type);
-                    setNewText(item.text);
-                    setNewReference(item.reference || '');
-                    if (item.type === 'bibleVerse') setShowBiblePicker(true);
-                    else if (item.type === 'saying') setShowSayingPicker(true);
+                    setEditingId(item.id);
+                    if (item.type === 'bibleVerse') { setShowBiblePicker(true); setShowSayingPicker(false); }
+                    else if (item.type === 'saying') { setShowSayingPicker(true); setShowBiblePicker(false); }
                   }} style={{ whiteSpace: 'nowrap' }}>✎ Edit</button>
                 </div>
               ) : (
@@ -113,7 +119,11 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, o
                 <select value={item.type} onChange={(e) => updateItem(item.id, { type: e.target.value as ItemType })} style={{ width: 'auto', flex: 1 }}>
                   {ITEM_TYPES.map((t) => <option key={t} value={t}>{ITEM_TYPE_LABELS[t]}</option>)}
                 </select>
-                {eligible ? (
+                {isStructured ? (
+                  <span className="row" style={{ gap: 4, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                    ✓ {verseMode === 'force' ? 'shown in day cells' : 'on Scripture page'}
+                  </span>
+                ) : eligible ? (
                   <label className="row" style={{ gap: 4, margin: 0, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
                     <input type="checkbox" style={{ width: 'auto' }} checked={item.pinned} onChange={(e) => updateItem(item.id, { pinned: e.target.checked })} />
                     Pin to month
@@ -137,15 +147,21 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, o
 
       {showBiblePicker && (
         <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 4 }}>
-          <label style={{ margin: 0, display: 'block', marginBottom: 8 }}>Select a Bible verse</label>
-          <BiblePicker onSelect={handleBibleSelect} onClose={() => setShowBiblePicker(false)} />
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+            <label style={{ margin: 0 }}>{editingId ? 'Change the Bible verse' : 'Select a Bible verse'}</label>
+            <button className="ghost" onClick={() => { setShowBiblePicker(false); setEditingId(null); }}>Cancel</button>
+          </div>
+          <BiblePicker onSelect={(text, reference) => commitStructured('bibleVerse', text, reference)} />
         </div>
       )}
 
       {showSayingPicker && (
         <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 4 }}>
-          <label style={{ margin: 0, display: 'block', marginBottom: 8 }}>Select a saying</label>
-          <SayingPicker sayings={customSayings} onSelect={handleSayingSelect} onClose={() => setShowSayingPicker(false)} />
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+            <label style={{ margin: 0 }}>{editingId ? 'Change the saying' : 'Select a saying'}</label>
+            <button className="ghost" onClick={() => { setShowSayingPicker(false); setEditingId(null); }}>Cancel</button>
+          </div>
+          <SayingPicker sayings={customSayings} onSelect={(text, reference) => commitStructured('saying', text, reference)} />
         </div>
       )}
 
@@ -156,9 +172,10 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, o
             const t = e.target.value as ItemType;
             setNewType(t);
             setNewText('');
-            setNewReference('');
-            if (t === 'bibleVerse') setShowBiblePicker(true);
-            else if (t === 'saying') setShowSayingPicker(true);
+            // Switching to a structured type opens its picker for a fresh add.
+            setEditingId(null);
+            setShowBiblePicker(t === 'bibleVerse');
+            setShowSayingPicker(t === 'saying');
           }} style={{ width: 140 }}>
             {ITEM_TYPES.map((t) => <option key={t} value={t}>{ITEM_TYPE_LABELS[t]}</option>)}
           </select>
@@ -166,11 +183,10 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, o
             <input type="text" value={newText} placeholder="Event text…" onChange={(e) => setNewText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }} />
           )}
         </div>
-        {newType !== 'bibleVerse' && newType !== 'saying' && (
+        {newType !== 'bibleVerse' && newType !== 'saying' ? (
           <button className="primary" onClick={addItem} disabled={!newText.trim()}>+ Add item</button>
-        )}
-        {newText && (newType === 'bibleVerse' || newType === 'saying') && (
-          <button className="primary" onClick={addItem}>+ Add item</button>
+        ) : (
+          <p className="hint" style={{ margin: 0 }}>Pick a {newType === 'bibleVerse' ? 'verse' : 'saying'} above — it’s added to the day right away.</p>
         )}
       </div>
     </Drawer>

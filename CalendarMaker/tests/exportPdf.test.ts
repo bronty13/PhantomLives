@@ -20,8 +20,8 @@ function sampleBundle(): CalendarBundle {
 }
 
 /** A bundle that carries per-day verse and saying ITEMS (not bundle-level fillers). */
-function verseBundle(): CalendarBundle {
-  const b = makeBundle({ title: 'Verses', year: 2026, month: 6, themeId: 'theme-classic', weekStartsOn: 0 });
+function verseBundle(verseMode?: 'separate' | 'force'): CalendarBundle {
+  const b = makeBundle({ title: 'Verses', year: 2026, month: 6, themeId: 'theme-classic', weekStartsOn: 0, verseMode });
   b.days['2026-06-12'] = {
     date: '2026-06-12',
     holidayIds: [],
@@ -59,25 +59,27 @@ describe('buildCalendarPdf', () => {
   });
 
   it('separate mode: month export adds a verse calendar page (2 pages)', () => {
-    const b = verseBundle(); // verseMode undefined → 'separate'
-    const doc = buildCalendarPdf(b, theme, 'month', 5);
+    const doc = buildCalendarPdf(verseBundle('separate'), theme, 'month', 5);
     expect(doc.getNumberOfPages()).toBe(2);
   });
 
   it('separate mode: "both" export = month + verse calendar + detail (>= 3 pages)', () => {
-    const doc = buildCalendarPdf(verseBundle(), theme, 'both', 5);
+    const doc = buildCalendarPdf(verseBundle('separate'), theme, 'both', 5);
     expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(3);
   });
 
   it('separate mode: verse-after-detail ordering still produces all pages', () => {
-    const doc = buildCalendarPdf(verseBundle(), theme, 'both', 5, { verseOrder: 'verse-after-detail' });
+    const doc = buildCalendarPdf(verseBundle('separate'), theme, 'both', 5, { verseOrder: 'verse-after-detail' });
     expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(3);
   });
 
   it('force mode: no separate verse page (month stays 1 page)', () => {
-    const b = verseBundle();
-    b.verseMode = 'force';
-    const doc = buildCalendarPdf(b, theme, 'month', 5);
+    const doc = buildCalendarPdf(verseBundle('force'), theme, 'month', 5);
+    expect(doc.getNumberOfPages()).toBe(1);
+  });
+
+  it('default (verseMode unset) is Force — no separate verse page', () => {
+    const doc = buildCalendarPdf(verseBundle(), theme, 'month', 5);
     expect(doc.getNumberOfPages()).toBe(1);
   });
 

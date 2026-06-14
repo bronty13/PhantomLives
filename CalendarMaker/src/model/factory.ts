@@ -17,6 +17,7 @@ export function makeBundle(opts: {
   month: number;
   themeId: string;
   weekStartsOn: 0 | 1;
+  verseMode?: import('./types').VerseDisplayMode;
 }): CalendarBundle {
   const now = Date.now();
   return {
@@ -28,6 +29,7 @@ export function makeBundle(opts: {
     weekStartsOn: opts.weekStartsOn,
     days: {},
     fillers: [],
+    verseMode: opts.verseMode,
     createdAt: now,
     updatedAt: now,
   };

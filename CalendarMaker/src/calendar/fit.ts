@@ -76,7 +76,7 @@ export function classifyDay(
   day: Day,
   ctx: FitContext,
   holidayLines = 0,
-  verseMode: VerseDisplayMode = 'separate',
+  verseMode: VerseDisplayMode = 'force',
 ): DayClassification {
   const sorted = [...day.items].sort(pinnedThenOrder);
 

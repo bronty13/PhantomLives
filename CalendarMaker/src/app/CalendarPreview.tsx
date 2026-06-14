@@ -102,7 +102,7 @@ export function CalendarPreview({ bundle, theme, cap, onSelectDay, selectedDate 
           const y = geo.gridY + r * geo.rowH;
           const day = cell.date ? bundle.days[cell.date] : undefined;
           const holidayNames = holidayNamesFor(day);
-          const verseMode = bundle.verseMode ?? 'separate';
+          const verseMode = bundle.verseMode ?? 'force';
           const cls = classifyDay(day ?? { date: cell.date ?? '', items: [], holidayIds: [] }, ctx, holidayNames.length, verseMode);
           const nonForceItems = cls.monthItems.filter((i) => !cls.forceItems.includes(i));
           return (

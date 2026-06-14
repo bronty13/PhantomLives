@@ -50,21 +50,24 @@ your verse:
   › Verse) lets you step back a level anytime.
 
 Pick the **Saying** type to get a searchable list of every built-in and custom
-saying (or hit **↻ Random**). Existing verse/saying items show a small reference
-tag (e.g. *John 3:16*); click **✎ Edit** to reopen the picker. A day can hold both
-a verse and a saying (and as many as you like).
+saying (or hit **↻ Random**). As soon as you pick a verse or saying it's **added
+to the day right away** — no extra step. Existing verse/saying items show a small
+reference tag (e.g. *John 3:16*); click **✎ Edit** to swap it for a different one.
+A day can hold both a verse and a saying (and as many as you like).
 
 #### Two ways verses & sayings appear — the "Verse Mode" toggle
 
 In the toolbar, **Verse Mode** switches how these items print:
 
-- **Separate** *(default)* — verses and sayings are kept **off** the main month
-  grid and printed on their own landscape **"Scripture & Sayings"** calendar
-  page. Your everyday events stay uncluttered, and scripture gets a beautiful
-  page of its own.
-- **Force** — verses and sayings are **plastered at the top of each day cell**
-  (shrunk to fit), and the little colored dots are hidden for a clean look. Other
-  events still show underneath if there's room.
+- **Force** *(default)* — verses and sayings are **plastered at the top of each
+  day cell** (shrunk to fit), and the little colored dots are hidden for a clean
+  look. Other events still show underneath if there's room.
+- **Separate** — verses and sayings are kept **off** the main month grid and
+  printed on their own landscape **"Scripture & Sayings"** calendar page. Your
+  everyday events stay uncluttered, and scripture gets a beautiful page of its own.
+
+The default for **new** calendars is set in **Settings → Bible verse & saying
+treatment** (default **Force**); the toolbar toggle overrides it per calendar.
 
 ### When something won't fit
 
@@ -124,6 +127,9 @@ screen to bring it back).
 
 - **Your name** — used in the home-screen greeting (default *Jan*).
 - Default theme, week start (Sun/Mon), and default export view for new calendars.
+- **Bible verse & saying treatment** — the default mode for new calendars: **Force
+  in cells** (default) or **Separate calendar**. Each calendar can override it from
+  the editor toolbar.
 - The safety cap for how many items show per day on the month grid.
 - Toggles for the home-screen verse and saying cards.
 - **Custom sayings** — manage your own sayings inline. Click **+ Add new saying**

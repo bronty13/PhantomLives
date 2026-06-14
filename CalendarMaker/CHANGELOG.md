@@ -4,6 +4,25 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.3.4 — 2026-06-14
+
+### Fixed
+- **Picking a Bible verse or saying now adds it to the day immediately.** Before,
+  selecting from the picker only staged the text behind a separate “+ Add item”
+  click, so the item didn’t appear in the list until you added something else.
+  Selection now commits the item right away (and re-opening the picker via **✎
+  Edit** updates that same item instead of creating a duplicate).
+
+### Changed
+- **Verse/saying treatment is now a global default in Settings, defaulting to
+  “Force in cells.”** New calendars start in Force mode; each calendar can still
+  override it from the editor toolbar (Separate / Force). Calendars with no
+  explicit choice now fall back to Force (previously Separate).
+
+### Tests
+- +3 (verse and saying commit-on-pick in the day editor; export default is Force).
+  58 total.
+
 ## 0.3.3 — 2026-06-14
 
 ### Added

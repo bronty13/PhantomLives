@@ -17,6 +17,7 @@ export function NewBundleWizard({ themes, settings, onCancel, onCreate }: { them
       year, month,
       themeId: themeId ?? themes[0].id,
       weekStartsOn: settings.defaultWeekStartsOn,
+      verseMode: settings.defaultVerseMode,
     });
     onCreate(b);
   };

@@ -2,7 +2,7 @@
 // stamped into exported bundle files.
 
 export const SCHEMA_VERSION = 1;
-export const APP_VERSION = '0.3.3';
+export const APP_VERSION = '0.3.4';
 export const APP_NAME = 'CalendarMaker';
 
 // ---- Items ----------------------------------------------------------------
@@ -158,7 +158,7 @@ export interface CalendarBundle {
   weekStartsOn: 0 | 1; // 0=Sun, 1=Mon
   days: Record<string, Day>; // keyed 'YYYY-MM-DD'
   fillers: FillerPlacement[];
-  verseMode?: VerseDisplayMode; // default: 'separate'
+  verseMode?: VerseDisplayMode; // unset → falls back to 'force' (AppSettings.defaultVerseMode)
   createdAt: number;
   updatedAt: number;
 }
@@ -183,6 +183,8 @@ export interface AppSettings {
   /** Hard safety cap on items shown per month cell (fit math may allow fewer). */
   maxItemsPerMonthCell: number;
   defaultExportMode: ExportMode;
+  /** How new calendars treat per-day verses/sayings (per-calendar overridable). */
+  defaultVerseMode: VerseDisplayMode;
   showVerseOnHome: boolean;
   showSayingOnHome: boolean;
 }
@@ -193,6 +195,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   defaultWeekStartsOn: 0,
   maxItemsPerMonthCell: 5,
   defaultExportMode: 'both',
+  defaultVerseMode: 'force',
   showVerseOnHome: true,
   showSayingOnHome: true,
 };

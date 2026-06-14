@@ -27,7 +27,7 @@ export function buildDetailSections(
 ): DetailSection[] {
   const sections: DetailSection[] = [];
   const dim = daysInMonth(bundle.year, bundle.month);
-  const verseMode = bundle.verseMode ?? 'separate';
+  const verseMode = bundle.verseMode ?? 'force';
   const isVerseOrSaying = (t: string) => t === 'bibleVerse' || t === 'saying';
   for (let d = 1; d <= dim; d++) {
     const date = isoDate(bundle.year, bundle.month, d);

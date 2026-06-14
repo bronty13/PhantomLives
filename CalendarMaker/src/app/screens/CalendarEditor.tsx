@@ -47,16 +47,16 @@ export function CalendarEditor({ bundle, theme, themes, settings, sayings, onCha
         </select>
         <button onClick={() => setPanel('holidays')}>Holidays</button>
         <button onClick={() => setPanel('fillers')}>Sayings &amp; Verses</button>
-        <div className="row" style={{ gap: 4, background: 'var(--border)', padding: 2, borderRadius: 4 }}>
+        <div className="row" style={{ gap: 4, background: 'var(--border)', padding: 2, borderRadius: 4 }} title="How this calendar prints per-day verses & sayings">
           <button
-            className={bundle.verseMode !== 'force' ? 'secondary' : 'ghost'}
+            className={(bundle.verseMode ?? 'force') === 'separate' ? 'secondary' : 'ghost'}
             onClick={() => onChange({ ...bundle, verseMode: 'separate' })}
             style={{ flex: 1 }}
           >
             Separate
           </button>
           <button
-            className={bundle.verseMode === 'force' ? 'secondary' : 'ghost'}
+            className={(bundle.verseMode ?? 'force') === 'force' ? 'secondary' : 'ghost'}
             onClick={() => onChange({ ...bundle, verseMode: 'force' })}
             style={{ flex: 1 }}
           >

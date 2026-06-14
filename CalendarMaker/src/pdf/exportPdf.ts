@@ -37,7 +37,7 @@ export function buildCalendarPdf(
   // The dedicated verse calendar only appears in 'separate' mode (force mode
   // already plasters verses into the main grid) when the month is being shown.
   const showVerseCal =
-    (bundle.verseMode ?? 'separate') === 'separate' &&
+    (bundle.verseMode ?? 'force') === 'separate' &&
     hasVerseOrSayingItems(bundle) &&
     (mode === 'month' || mode === 'both');
 
