@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Tests for archive_messages.py — the append-only, all-conversations archiver.
+"""Tests for archive_messages.py — append-only, human-browsable Messages archiver.
 
-Builds a tiny synthetic chat.db (only the columns the archiver queries) and
-verifies: all-chats enumeration, GUID-dedup idempotency, the incremental
-watermark, attributedBody text decode (via the reused get_body), and
-attachment path mapping. Standard library only.
+Builds a tiny synthetic chat.db (+ a synthetic AddressBook) and verifies:
+all-chats enumeration, GUID-dedup idempotency, the incremental watermark,
+attributedBody decode (reused get_body), attachment path mapping + per-convo
+media COPIES, contact-name resolution, and the derived views (transcript.txt,
+index.html, _index.csv). Standard library only.
 
 Run:  python3 test_archive_messages.py
 """
@@ -16,14 +17,28 @@ from pathlib import Path
 
 import archive_messages as am
 
+T1 = 700000000000000000
+T2 = 700000001000000000
+T4 = 700000003000000000
 
-def make_db(path, messages):
-    """messages: list of dicts with keys
-       rowid, guid, date, is_from_me, text, ab(bytes|None), handle_id,
-       chat_id, attachments(list of (filename, mime, xfer))
-       plus chats: dict chat_rowid -> (guid, identifier, display_name)
-    Provided as (chats, messages)."""
-    chats, msgs = messages
+CHATS = {
+    1: ('iMessage;-;+15551112222', '+15551112222', None),       # 1:1
+    2: ('iMessage;+;chat999', 'chat999', 'Family Group'),       # group
+}
+
+
+def make_db(path):
+    ab = b'\x00NSString\x01\x94\x84\x01+' + bytes([5]) + b'hello'   # decodes to "hello"
+    msgs = [
+        {'rowid': 1, 'guid': 'G1', 'date': T1, 'is_from_me': 0,
+         'text': 'first message', 'handle': '+15551112222', 'chat_id': 1},
+        {'rowid': 2, 'guid': 'G2', 'date': T2, 'is_from_me': 1,
+         'text': '', 'ab': ab, 'chat_id': 1,
+         'attachments': [('~/Library/Messages/Attachments/ab/12/GUID/IMG_1.HEIC',
+                          'image/heic', 'IMG_1.HEIC')]},
+        {'rowid': 3, 'guid': 'G3', 'date': T2, 'is_from_me': 0,
+         'text': 'group hi', 'handle': '+15553334444', 'chat_id': 2},
+    ]
     conn = sqlite3.connect(path)
     conn.executescript("""
         CREATE TABLE handle(ROWID INTEGER PRIMARY KEY, id TEXT);
@@ -37,60 +52,45 @@ def make_db(path, messages):
                                 mime_type TEXT, transfer_name TEXT);
         CREATE TABLE message_attachment_join(message_id INTEGER, attachment_id INTEGER);
     """)
-    handles = {}
-    for cid, (guid, ident, disp) in chats.items():
-        conn.execute('INSERT INTO chat(ROWID,guid,chat_identifier,display_name) '
-                     'VALUES(?,?,?,?)', (cid, guid, ident, disp))
-    att_rowid = 0
+    for cid, (guid, ident, disp) in CHATS.items():
+        conn.execute('INSERT INTO chat(ROWID,guid,chat_identifier,display_name) VALUES(?,?,?,?)',
+                     (cid, guid, ident, disp))
+    handles, att = {}, 0
     for m in msgs:
         hid = None
         if m.get('handle'):
-            hid = handles.get(m['handle'])
-            if hid is None:
-                hid = len(handles) + 1
-                handles[m['handle']] = hid
-                conn.execute('INSERT INTO handle(ROWID,id) VALUES(?,?)', (hid, m['handle']))
-        conn.execute('INSERT INTO message(ROWID,guid,date,is_from_me,text,'
-                     'attributedBody,handle_id) VALUES(?,?,?,?,?,?,?)',
-                     (m['rowid'], m['guid'], m['date'], m['is_from_me'],
-                      m.get('text'), m.get('ab'), hid))
+            hid = handles.setdefault(m['handle'], len(handles) + 1)
+            conn.execute('INSERT OR IGNORE INTO handle(ROWID,id) VALUES(?,?)', (hid, m['handle']))
+        conn.execute('INSERT INTO message(ROWID,guid,date,is_from_me,text,attributedBody,handle_id) '
+                     'VALUES(?,?,?,?,?,?,?)', (m['rowid'], m['guid'], m['date'], m['is_from_me'],
+                                              m.get('text'), m.get('ab'), hid))
         conn.execute('INSERT INTO chat_message_join(chat_id,message_id) VALUES(?,?)',
                      (m['chat_id'], m['rowid']))
         for (fname, mime, xfer) in m.get('attachments', []):
-            att_rowid += 1
-            conn.execute('INSERT INTO attachment(ROWID,filename,mime_type,'
-                         'transfer_name) VALUES(?,?,?,?)', (att_rowid, fname, mime, xfer))
-            conn.execute('INSERT INTO message_attachment_join(message_id,'
-                         'attachment_id) VALUES(?,?)', (m['rowid'], att_rowid))
+            att += 1
+            conn.execute('INSERT INTO attachment(ROWID,filename,mime_type,transfer_name) '
+                         'VALUES(?,?,?,?)', (att, fname, mime, xfer))
+            conn.execute('INSERT INTO message_attachment_join(message_id,attachment_id) '
+                         'VALUES(?,?)', (m['rowid'], att))
     conn.commit()
     conn.close()
 
 
-# Realistic Mac-epoch nanosecond timestamps (mts() treats >1e10 as ns).
-T1 = 700000000000000000
-T2 = 700000001000000000
-T3 = 700000002000000000
-T4 = 700000003000000000
-
-CHATS = {
-    1: ('iMessage;-;+15551112222', '+15551112222', None),       # 1:1
-    2: ('iMessage;+;chat999', 'chat999', 'Family Group'),       # group
-}
-
-
-def base_messages():
-    # attributedBody blob that get_body should decode to "hello" (text empty).
-    ab = b'\x00NSString\x01\x94\x84\x01+' + bytes([5]) + b'hello'
-    return (CHATS, [
-        {'rowid': 1, 'guid': 'G1', 'date': T1, 'is_from_me': 0,
-         'text': 'first message', 'handle': '+15551112222', 'chat_id': 1},
-        {'rowid': 2, 'guid': 'G2', 'date': T2, 'is_from_me': 1,
-         'text': '', 'ab': ab, 'chat_id': 1,
-         'attachments': [('~/Library/Messages/Attachments/ab/12/GUID/IMG_1.HEIC',
-                          'image/heic', 'IMG_1.HEIC')]},
-        {'rowid': 3, 'guid': 'G3', 'date': T2, 'is_from_me': 0,
-         'text': 'group hi', 'handle': '+15553334444', 'chat_id': 2},
-    ])
+def make_addressbook(sources_dir):
+    """Create a synthetic AddressBook with one contact for +15551112222."""
+    d = Path(sources_dir) / 'SRC1'
+    d.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(d / 'AddressBook-v22.abcddb'))
+    conn.executescript("""
+        CREATE TABLE ZABCDRECORD(Z_PK INTEGER PRIMARY KEY, ZFIRSTNAME TEXT,
+                                 ZLASTNAME TEXT, ZNICKNAME TEXT, ZORGANIZATION TEXT);
+        CREATE TABLE ZABCDPHONENUMBER(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZFULLNUMBER TEXT);
+        CREATE TABLE ZABCDEMAILADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZADDRESS TEXT);
+    """)
+    conn.execute('INSERT INTO ZABCDRECORD VALUES(1,?,?,?,?)', ('Test', 'Person', None, None))
+    conn.execute('INSERT INTO ZABCDPHONENUMBER VALUES(1,1,?)', ('+1 (555) 111-2222',))
+    conn.commit()
+    conn.close()
 
 
 class ArchiveMessagesTests(unittest.TestCase):
@@ -100,58 +100,72 @@ class ArchiveMessagesTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.db = str(self.root / 'chat.db')
         self.archive = str(self.root / 'Archive')
+        make_db(self.db)
+        # Pre-place the raw attachment byte so per-convo media COPY happens.
+        src = Path(self.archive) / 'attachments' / 'ab' / '12' / 'GUID' / 'IMG_1.HEIC'
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_bytes(b'\xff\xd8fakejpegbytes')
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def _manifest(self):
         p = Path(self.archive) / 'manifest.jsonl'
-        if not p.exists():
-            return []
-        return [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+        return [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.exists() else []
 
     def test_backfill_all_chats(self):
-        make_db(self.db, base_messages())
         r = am.run_archive(self.db, self.archive, full=True)
         self.assertEqual(r['appended'], 3)
-        self.assertEqual(r['conversations_touched'], 2)        # both chats
-        entries = self._manifest()
-        self.assertEqual(len(entries), 3)
-        # Two conversation transcript files exist.
+        self.assertEqual(r['conversations'], 2)
+        self.assertEqual(len(self._manifest()), 3)
         convs = list((Path(self.archive) / 'conversations').glob('*/transcript.txt'))
         self.assertEqual(len(convs), 2)
+        # HTML + CSV index generated.
+        self.assertTrue(list((Path(self.archive) / 'conversations').glob('*/index.html')))
+        self.assertTrue((Path(self.archive) / '_index.csv').exists())
 
     def test_attributedbody_decoded(self):
-        make_db(self.db, base_messages())
         am.run_archive(self.db, self.archive, full=True)
         g2 = next(e for e in self._manifest() if e['guid'] == 'G2')
-        self.assertEqual(g2['text'], 'hello')                  # decoded from blob
-        self.assertEqual(g2['sender'], 'Me')                   # is_from_me=1
+        self.assertEqual(g2['text'], 'hello')
+        self.assertEqual(g2['from_me'], 1)
 
     def test_attachment_path_mapping(self):
-        make_db(self.db, base_messages())
         am.run_archive(self.db, self.archive, full=True)
         g2 = next(e for e in self._manifest() if e['guid'] == 'G2')
-        self.assertEqual(len(g2['attachments']), 1)
         at = g2['attachments'][0]
         self.assertEqual(at['kind'], 'photo')
         self.assertEqual(at['path'], 'attachments/ab/12/GUID/IMG_1.HEIC')
 
+    def test_media_copied_into_conversation(self):
+        r = am.run_archive(self.db, self.archive, full=True)
+        self.assertGreaterEqual(r['media_copied'], 1)
+        copies = list((Path(self.archive) / 'conversations').glob('*/media/*_IMG_1.HEIC'))
+        self.assertEqual(len(copies), 1)
+
+    def test_contact_name_resolution(self):
+        make_addressbook(self.root / 'AB')
+        am.run_archive(self.db, self.archive, addressbook_dir=str(self.root / 'AB'), full=True)
+        index = (Path(self.archive) / '_index.csv').read_text()
+        self.assertIn('Test Person', index)                       # name in the index
+        # The 1:1 conversation folder is named after the contact, not the number.
+        self.assertTrue(list((Path(self.archive) / 'conversations').glob('Test Person__*')))
+        # Transcript shows the resolved name.
+        tx = '\n'.join(p.read_text() for p in
+                       (Path(self.archive) / 'conversations').glob('Test Person__*/transcript.txt'))
+        self.assertIn('Test Person:', tx)
+
     def test_idempotent_rerun(self):
-        make_db(self.db, base_messages())
         am.run_archive(self.db, self.archive, full=True)
-        r2 = am.run_archive(self.db, self.archive)            # incremental
-        self.assertEqual(r2['appended'], 0)                   # nothing new
-        self.assertEqual(len(self._manifest()), 3)            # no duplicates
-        # And a --full re-run must still not duplicate (GUID dedup).
+        r2 = am.run_archive(self.db, self.archive)
+        self.assertEqual(r2['appended'], 0)
+        self.assertEqual(len(self._manifest()), 3)
         r3 = am.run_archive(self.db, self.archive, full=True)
         self.assertEqual(r3['appended'], 0)
         self.assertEqual(len(self._manifest()), 3)
 
     def test_incremental_watermark(self):
-        make_db(self.db, base_messages())
         am.run_archive(self.db, self.archive, full=True)
-        # Add a newer message and re-run incrementally.
         conn = sqlite3.connect(self.db)
         conn.execute('INSERT INTO message(ROWID,guid,date,is_from_me,text,handle_id) '
                      'VALUES(?,?,?,?,?,?)', (4, 'G4', T4, 0, 'later message', 1))
@@ -160,16 +174,29 @@ class ArchiveMessagesTests(unittest.TestCase):
         r = am.run_archive(self.db, self.archive)
         self.assertEqual(r['appended'], 1)
         self.assertEqual(len(self._manifest()), 4)
-        self.assertTrue(any(e['guid'] == 'G4' for e in self._manifest()))
 
-    def test_transcript_has_text_and_attachment_ref(self):
-        make_db(self.db, base_messages())
+    def test_imessage_and_sms_merge_into_one_folder(self):
+        # A second 1:1 chat with the SAME handle but a different GUID (iMessage
+        # vs SMS) must MERGE into one conversation folder, not collide/overwrite.
+        conn = sqlite3.connect(self.db)
+        conn.execute("INSERT INTO chat(ROWID,guid,chat_identifier,display_name) "
+                     "VALUES(3,'SMS;-;+15551112222','+15551112222',NULL)")
+        conn.execute('INSERT INTO message(ROWID,guid,date,is_from_me,text,handle_id) '
+                     "VALUES(5,'G5',?,0,'sms msg',1)", (T4,))
+        conn.execute('INSERT INTO chat_message_join(chat_id,message_id) VALUES(3,5)')
+        conn.commit(); conn.close()
         am.run_archive(self.db, self.archive, full=True)
-        text = '\n'.join(p.read_text() for p in
-                         (Path(self.archive) / 'conversations').glob('*/transcript.txt'))
-        self.assertIn('first message', text)
-        self.assertIn('hello', text)
-        self.assertIn('attachments/ab/12/GUID/IMG_1.HEIC', text)
+        # Exactly one folder holds BOTH the iMessage and the SMS text.
+        hits = [p for p in (Path(self.archive) / 'conversations').glob('*/transcript.txt')
+                if 'first message' in p.read_text() and 'sms msg' in p.read_text()]
+        self.assertEqual(len(hits), 1)
+
+    def test_html_has_text(self):
+        am.run_archive(self.db, self.archive, full=True)
+        htmls = '\n'.join(p.read_text() for p in
+                          (Path(self.archive) / 'conversations').glob('*/index.html'))
+        self.assertIn('first message', htmls)
+        self.assertIn('hello', htmls)
 
 
 if __name__ == '__main__':

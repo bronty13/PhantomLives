@@ -1,6 +1,6 @@
 # messages-exporter
 
-**Current release: 1.4.0**
+**Current release: 1.5.0**
 
 Export iMessage conversations from the Mac Messages app by contact name and
 date range. Two output modes:
@@ -37,22 +37,29 @@ then small repeated runs) so nothing is ever lost — even after the source devi
 deletes a thread.
 
 ```bash
-archive_messages.py --db <path/to/chat.db> --archive <dir> [--full]
+archive_messages.py --db <chat.db> --archive <dir> \
+                    [--addressbook-dir <Sources>] [--full]
 ```
 
 - **All chats, not one contact** — enumerates every conversation in the `chat.db`.
 - **Incremental + idempotent** — a `state.json` watermark on `message.date` plus
   GUID-dedup means re-runs append nothing. No watermark (or `--full`) ⇒ full backfill.
-- **Append-only outputs** under `<archive>/`:
-  - `conversations/<chat>/transcript.txt` — appended chronological lines.
-  - `manifest.jsonl` — one JSON line per message GUID (the master record:
-    timestamp, chat, sender, text, and attachment references).
-- **References, never copies, media** — attachment entries point at
-  `<archive>/attachments/…`; the bytes are mirrored separately (e.g. `rsync` of
-  `~/Library/Messages/Attachments/`). This tool never copies/converts/deletes media.
+- **Source of truth (append-only, never rewritten):** `manifest.jsonl` (one JSON
+  line per message GUID — the "nothing ever lost" record) + the raw
+  `attachments/` byte-store (mirrored separately, e.g. `rsync` of
+  `~/Library/Messages/Attachments/`).
+- **Human-browsable views (regenerated from the manifest each run):**
+  - `conversations/<Name>/transcript.txt` — readable, header + **contact names**.
+  - `conversations/<Name>/index.html` — Messages-style bubbles + inline media.
+  - `conversations/<Name>/media/` — that thread's media as **real copies**,
+    date-prefixed (`YYYYMMDD_HHMMSS_origname`).
+  - `_index.csv` — name / folder / #messages / date-range / #media.
+- **Contact names** via `--addressbook-dir` (a pulled AddressBook `Sources` dir):
+  folders + senders become real names; unknown handles stay raw. **iMessage + SMS
+  with the same person merge into one folder**; group chats stay separate.
 - **Standard library only** — no Pillow/ffmpeg/exiftool; runs against a *pulled*
   `chat.db` snapshot on any Mac. (Reuses `export_messages`' `get_body`
-  attributedBody decode + `mts`/`knd`/`san`/`slug` by import.)
+  attributedBody decode + `mts`/`knd`/`san`/`slug`/`norm` by import.)
 
 This is the engine for a **PurpleAttic-style pull archive**: snapshot a remote
 Mac's `chat.db` (`sqlite3 .backup`) + `rsync` its `Attachments/` to a host, then

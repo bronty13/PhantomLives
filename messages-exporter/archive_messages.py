@@ -4,106 +4,156 @@
 #   MESSAGES ARCHIVER  (companion to export_messages.py)
 #
 #   File:     archive_messages.py
-#   Version:  1.4.0
+#   Version:  1.5.0
 #   License:  MIT
 #   Requires: Python 3.9+ (standard library only — NO Pillow/ffmpeg/exiftool)
 #
-#   Description:
-#     Builds a PERMANENT, APPEND-ONLY archive of EVERY iMessage conversation
-#     from a chat.db. Where export_messages.py is a one-shot, per-contact, full
-#     re-export (copying + sanitizing attachments), this tool is designed to run
-#     INCREMENTALLY against a (possibly pulled) chat.db snapshot:
+#   Builds a PERMANENT, APPEND-ONLY, HUMAN-BROWSABLE archive of EVERY iMessage
+#   conversation from a chat.db, designed to run incrementally.
 #
-#       • enumerates ALL chats, not one contact;
-#       • appends only messages newer than the last run (watermark on
-#         message.date) AND de-duplicated by message GUID, so re-runs add
-#         nothing (idempotent);
-#       • writes per-conversation transcripts + a master manifest.jsonl — one
-#         JSON line per message GUID, the "nothing ever lost" record;
-#       • REFERENCES attachment files by their path under <archive>/attachments/
-#         (the media bytes are mirrored separately by rsync). This tool never
-#         copies, converts, or mutates attachments, and never deletes anything.
+#   Source of truth (append-only, never rewritten):
+#     • manifest.jsonl   — one JSON line per message GUID (the "nothing ever
+#                          lost" record). Grows only; de-duplicated by GUID.
+#     • attachments/      — the raw media byte-store (mirrored separately, e.g.
+#                          by rsync). This tool never deletes from it.
 #
-#     Preservation guarantee: append-only. Messages or attachments deleted on
-#     the source device remain in the archive forever.
+#   Human-facing views (DERIVED — regenerated from manifest.jsonl each run, so
+#   the layout can improve without risking the source of truth):
+#     • conversations/<Name>/transcript.txt   — readable, contact names resolved
+#     • conversations/<Name>/index.html       — Messages-style bubbles + media
+#     • conversations/<Name>/media/           — that thread's photos/videos/files,
+#                                               REAL COPIES, date-prefixed names
+#     • _index.csv                            — who / folder / #msgs / dates / #media
 #
-#   Reuses the hard parts from export_messages.py: get_body (attributedBody
-#   NSKeyedArchiver decode), mts (Mac-epoch -> datetime), knd (attachment
-#   classification), san/slug (filesystem-safe names).
+#   Contact names are resolved from a (pulled) AddressBook via --addressbook-dir;
+#   unknown handles stay as the raw number/email.
+#
+#   Reuses export_messages internals: get_body (attributedBody decode), mts,
+#   knd, san, slug, norm.
 #
 #   Usage:
-#     archive_messages.py --db <chat.db> --archive <dir> [--full]
-#                         [--attachments-subdir attachments]
+#     archive_messages.py --db <chat.db> --archive <dir>
+#                         [--addressbook-dir <Sources dir>] [--full]
 #
 # =============================================================================
 import argparse
+import csv
+import hashlib
+import html
 import json
 import os
+import shutil
 import sqlite3
 import sys
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
-# Import the proven internals from the sibling exporter (import-safe: its
-# optional deps are try/except-guarded and main() is __main__-guarded).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from export_messages import get_body, mts, knd, san, slug  # noqa: E402
+from export_messages import get_body, mts, knd, san, slug, norm  # noqa: E402
 
-__version__ = '1.4.0'
+__version__ = '1.5.0'
 
-# chat.db attachment.filename values look like
-#   ~/Library/Messages/Attachments/ab/12/<guid>/IMG_0001.HEIC
-# The media is mirrored to <archive>/<attachments-subdir>/ preserving the path
-# *under* "Attachments/", so we map by splitting on this marker.
 ATTACH_MARKER = '/Attachments/'
 
 
-def chat_folder(display_name, chat_identifier, chat_guid):
-    """Stable, human-ish folder name for a conversation.
+# ─── Contact resolution ──────────────────────────────────────────────────────
 
-    Prefers the group display name, else the chat identifier (the handle for a
-    1:1). A short suffix from the (stable) chat GUID disambiguates same-named
-    chats and keeps the folder stable even if a group is later renamed.
-    """
-    label = (display_name or '').strip() or (chat_identifier or '').strip() or 'chat'
-    base = slug(label, mode='strip', mx=60)
-    if base == 'NO_TEXT':
-        base = 'chat'
-    suffix = san((chat_guid or chat_identifier or 'x').split('/')[-1])[-12:]
+def load_contacts(ab_dir):
+    """Build a {normalized-handle -> display name} map from AddressBook .abcddb
+    files under `ab_dir` (a pulled `.../AddressBook/Sources` directory). Phones
+    are keyed by last-10-digits (norm); emails by lowercase. Returns {} if none."""
+    contacts = {}
+    if not ab_dir:
+        return contacts
+    for ab in Path(ab_dir).glob('*/AddressBook-v22.abcddb'):
+        try:
+            c = sqlite3.connect(f'file:{ab}?mode=ro&immutable=1', uri=True)
+            names = {}
+            for pk, f, l, n, org in c.execute(
+                    'SELECT Z_PK,ZFIRSTNAME,ZLASTNAME,ZNICKNAME,ZORGANIZATION '
+                    'FROM ZABCDRECORD'):
+                f, l = (f or '').strip(), (l or '').strip()
+                nm = f'{f} {l}'.strip() or (n or '').strip() or (org or '').strip()
+                if nm:
+                    names[pk] = nm
+            for owner, num in c.execute(
+                    'SELECT ZOWNER, ZFULLNUMBER FROM ZABCDPHONENUMBER'):
+                if owner in names and num:
+                    k = norm(num)
+                    if k:
+                        contacts.setdefault(k, names[owner])
+            for owner, addr in c.execute(
+                    'SELECT ZOWNER, ZADDRESS FROM ZABCDEMAILADDRESS'):
+                if owner in names and addr:
+                    contacts.setdefault(addr.strip().lower(), names[owner])
+            c.close()
+        except sqlite3.DatabaseError:
+            pass
+    return contacts
+
+
+def resolve(handle, contacts):
+    """Map a chat.db handle (phone/email) to a contact name, else return it as-is."""
+    if not handle:
+        return '?'
+    if handle.lower() in contacts:
+        return contacts[handle.lower()]
+    k = norm(handle)
+    if k and k in contacts:
+        return contacts[k]
+    return handle
+
+
+# ─── Naming ──────────────────────────────────────────────────────────────────
+
+def conv_label(chat_name, chat_id, members, contacts):
+    """Human label for a conversation.
+    1:1  -> the contact name (or the raw handle).
+    group-> its display name, else 'Group: a, b, c[, +N]'."""
+    if chat_name:
+        return chat_name
+    others = [m for m in members if m]
+    if len(others) <= 1:
+        return resolve(chat_id or (others[0] if others else ''), contacts)
+    named = [resolve(m, contacts) for m in others]
+    head = ', '.join(named[:3])
+    return f'Group: {head}' + (f', +{len(named) - 3}' if len(named) > 3 else '')
+
+
+def conv_folder(label, identity_key):
+    """Stable, readable, collision-free folder name: '<label>__<hash8>'.
+    The suffix is a hash of the conversation IDENTITY (not the chat GUID), so it
+    is unique per conversation yet stable across runs."""
+    base = san(label).strip() or 'chat'
+    base = base[:60].rstrip(' ._')
+    suffix = hashlib.sha1(str(identity_key).encode('utf-8')).hexdigest()[:8]
     return f'{base}__{suffix}'
 
 
-def rel_attachment_path(filename, attach_subdir):
-    """Map a chat.db attachment.filename to its path under the archive.
+def media_name(ts_iso, orig, seq):
+    """Date-prefixed, filesystem-safe media filename for the browsable view."""
+    stamp = (ts_iso or '').replace(':', '').replace('-', '').replace('T', '_')[:15]
+    stem = san(orig or f'attachment_{seq}')
+    return f'{stamp or "00000000_000000"}_{stem}'
 
-    Returns e.g. 'attachments/ab/12/<guid>/IMG.HEIC', or None if unmappable.
-    """
-    if not filename:
-        return None
-    i = filename.find(ATTACH_MARKER)
-    if i == -1:
-        # Fall back to just the leaf name under the subdir.
-        return f'{attach_subdir}/{Path(filename).name}'
-    return attach_subdir + '/' + filename[i + len(ATTACH_MARKER):]
 
+# ─── State / dedup ───────────────────────────────────────────────────────────
 
 def load_state(archive):
-    """Read the incremental watermark. Returns {'last_date': int}."""
-    p = Path(archive) / 'state.json'
     try:
-        return json.loads(p.read_text(encoding='utf-8'))
+        return json.loads((Path(archive) / 'state.json').read_text(encoding='utf-8'))
     except (OSError, json.JSONDecodeError):
         return {'last_date': 0}
 
 
 def save_state(archive, last_date, total):
-    p = Path(archive) / 'state.json'
-    p.write_text(json.dumps({'last_date': int(last_date), 'messages': int(total)},
-                            indent=2), encoding='utf-8')
+    (Path(archive) / 'state.json').write_text(
+        json.dumps({'last_date': int(last_date), 'messages': int(total)}, indent=2),
+        encoding='utf-8')
 
 
 def load_seen_guids(manifest_path):
-    """Collect GUIDs already in the manifest so re-runs never duplicate a
-    message even if the watermark is reset (e.g. --full)."""
     seen = set()
     p = Path(manifest_path)
     if not p.exists():
@@ -122,37 +172,29 @@ def load_seen_guids(manifest_path):
     return seen
 
 
-def fetch_attachments(conn, message_rowid):
-    rows = conn.execute(
-        'SELECT a.filename, a.mime_type, a.transfer_name '
-        'FROM attachment a '
-        'JOIN message_attachment_join maj ON maj.attachment_id=a.ROWID '
-        'WHERE maj.message_id=?', (message_rowid,)).fetchall()
-    return rows
+def rel_attachment_path(filename, attach_subdir):
+    if not filename:
+        return None
+    i = filename.find(ATTACH_MARKER)
+    if i == -1:
+        return f'{attach_subdir}/{Path(filename).name}'
+    return attach_subdir + '/' + filename[i + len(ATTACH_MARKER):]
 
 
-def run_archive(db, archive, attach_subdir='attachments', full=False):
-    """Append all new messages from `db` into the append-only archive at
-    `archive`. Returns a summary dict."""
+# ─── Step 1: ingest new messages into the append-only manifest ───────────────
+
+def ingest(db, archive, attach_subdir, full):
     archive = Path(archive)
-    conv_dir = archive / 'conversations'
-    conv_dir.mkdir(parents=True, exist_ok=True)
+    archive.mkdir(parents=True, exist_ok=True)
     manifest_path = archive / 'manifest.jsonl'
 
     state = {'last_date': 0} if full else load_state(archive)
     watermark = int(state.get('last_date', 0) or 0)
     seen = load_seen_guids(manifest_path)
 
-    # immutable=1: the input is a static snapshot (e.g. a `sqlite3 .backup`), so
-    # tell SQLite it won't change — this lets a WAL-mode db open read-only without
-    # its -wal sidecar (else: "unable to open database file"). Matches the
-    # mode=ro&immutable=1 pattern the Swift GUI uses on the live chat.db.
     conn = sqlite3.connect(f'file:{db}?mode=ro&immutable=1', uri=True)
     conn.row_factory = sqlite3.Row
-
-    # One row per message (GROUP BY guards against duplicate chat_message_join
-    # rows), across ALL chats, newer than the watermark, in chronological order.
-    q = (
+    rows = conn.execute(
         'SELECT m.ROWID AS rowid, m.guid AS guid, m.date AS date, '
         '       m.is_from_me AS is_from_me, m.text AS text, '
         '       m.attributedBody AS ab, h.id AS handle_id, '
@@ -162,114 +204,242 @@ def run_archive(db, archive, attach_subdir='attachments', full=False):
         'JOIN chat_message_join cmj ON cmj.message_id=m.ROWID '
         'JOIN chat c ON c.ROWID=cmj.chat_id '
         'LEFT JOIN handle h ON h.ROWID=m.handle_id '
-        'WHERE m.date > ? '
-        'GROUP BY m.ROWID ORDER BY m.date'
-    )
-    rows = conn.execute(q, (watermark,)).fetchall()
+        'WHERE m.date > ? GROUP BY m.ROWID ORDER BY m.date', (watermark,)).fetchall()
 
-    transcripts = {}            # folder -> list of lines to append this run
-    new_entries = []            # manifest lines (dicts) to append this run
+    new_entries = []
     max_date = watermark
-    n_msgs = n_att = 0
-    convos = set()
-
     for m in rows:
         guid = m['guid']
         if not guid or guid in seen:
             continue
         seen.add(guid)
-
         date_raw = int(m['date'] or 0)
         max_date = max(max_date, date_raw)
         try:
-            dt = mts(date_raw).astimezone()
-            ts = dt.isoformat()
-            ts_h = dt.strftime('%Y-%m-%d %H:%M:%S')
+            ts = mts(date_raw).astimezone().isoformat()
         except (ValueError, OverflowError, OSError):
-            ts = ts_h = ''
-        sender = 'Me' if m['is_from_me'] else (m['handle_id'] or m['chat_identifier'] or '?')
-        body = get_body(m['text'], m['ab'])
-
-        folder = chat_folder(m['display_name'], m['chat_identifier'], m['chat_guid'])
-        convos.add(folder)
-
+            ts = ''
         atts = []
-        for a in fetch_attachments(conn, m['rowid']):
-            fname, mime, xfer = a['filename'], a['mime_type'], a['transfer_name']
-            ext = Path(xfer or fname or '').suffix.lower()
+        for a in conn.execute(
+                'SELECT a.filename, a.mime_type, a.transfer_name FROM attachment a '
+                'JOIN message_attachment_join maj ON maj.attachment_id=a.ROWID '
+                'WHERE maj.message_id=?', (m['rowid'],)).fetchall():
+            ext = Path(a['transfer_name'] or a['filename'] or '').suffix.lower()
             atts.append({
-                'orig': xfer or (Path(fname).name if fname else None),
-                'mime': mime,
-                'kind': knd(mime, ext),
-                'path': rel_attachment_path(fname, attach_subdir),
+                'orig': a['transfer_name'] or (Path(a['filename']).name if a['filename'] else None),
+                'mime': a['mime_type'], 'kind': knd(a['mime_type'], ext),
+                'path': rel_attachment_path(a['filename'], attach_subdir),
             })
-            n_att += 1
-
-        # Transcript line(s) for this message.
-        line = f'[{ts_h}] {sender}:'
-        if body:
-            line += f' {body}'
-        lines = [line]
-        for at in atts:
-            lines.append(f'    [{at["kind"]}] {at["orig"] or "?"} -> {at["path"] or "MISSING"}')
-        transcripts.setdefault(folder, []).append('\n'.join(lines))
-
         new_entries.append({
             'guid': guid, 'ts': ts, 'date_raw': date_raw,
-            'chat': (m['display_name'] or m['chat_identifier'] or ''),
-            'chat_id': m['chat_identifier'], 'sender': sender,
-            'from_me': int(m['is_from_me'] or 0), 'text': body,
-            'attachments': atts,
+            'chat_guid': m['chat_guid'], 'chat_id': m['chat_identifier'],
+            'chat_name': (m['display_name'] or '').strip(),
+            'sender_handle': None if m['is_from_me'] else m['handle_id'],
+            'from_me': int(m['is_from_me'] or 0),
+            'text': get_body(m['text'], m['ab']), 'attachments': atts,
         })
-        n_msgs += 1
-
     conn.close()
-
-    # Append (never rewrite) — transcripts per conversation, then the manifest.
-    for folder, lines in transcripts.items():
-        d = conv_dir / folder
-        d.mkdir(parents=True, exist_ok=True)
-        with (d / 'transcript.txt').open('a', encoding='utf-8') as fh:
-            fh.write('\n'.join(lines) + '\n')
 
     if new_entries:
         with manifest_path.open('a', encoding='utf-8') as fh:
             for e in new_entries:
                 fh.write(json.dumps(e, ensure_ascii=False) + '\n')
+    save_state(archive, max_date, len(seen))
+    return len(new_entries), len(seen)
 
-    total = len(seen)
-    save_state(archive, max_date, total)
 
-    return {
-        'appended': n_msgs, 'attachments': n_att,
-        'conversations_touched': len(convos), 'total_messages': total,
-        'last_date': max_date,
-    }
+# ─── Step 2: regenerate the human-facing views from the full manifest ────────
+
+def read_manifest(manifest_path):
+    out = []
+    with Path(manifest_path).open(encoding='utf-8') as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    return out
+
+
+HTML_HEAD = """<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>{title}</title><style>
+body{{font:15px -apple-system,Helvetica,Arial,sans-serif;background:#f2f2f7;margin:0;padding:24px;color:#000}}
+h1{{font-size:20px}} .meta{{color:#666;font-size:13px;margin-bottom:18px}}
+.row{{display:flex;margin:6px 0}} .me{{justify-content:flex-end}}
+.b{{max-width:70%;padding:8px 12px;border-radius:18px;white-space:pre-wrap;word-wrap:break-word}}
+.them .b{{background:#e5e5ea;color:#000;border-bottom-left-radius:4px}}
+.me .b{{background:#1982fc;color:#fff;border-bottom-right-radius:4px}}
+.who{{font-size:11px;color:#888;margin:8px 4px 0}} .ts{{font-size:10px;color:#aaa;margin:2px 4px}}
+img,video{{max-width:280px;max-height:280px;border-radius:12px;display:block;margin:3px 0}}
+a.file{{color:inherit}}
+</style></head><body><h1>{title}</h1><div class="meta">{meta}</div>
+"""
+
+
+def render_html(label, entries, folder_dir):
+    rows = []
+    last_who = None
+    for e in entries:
+        me = e.get('from_me')
+        who = 'Me' if me else (e.get('_sender_name') or e.get('sender_handle') or '?')
+        side = 'me' if me else 'them'
+        if who != last_who and not me:
+            rows.append(f'<div class="who">{html.escape(str(who))}</div>')
+        last_who = who
+        body = html.escape(e.get('text') or '')
+        media_html = ''
+        for at in e.get('attachments', []):
+            mp = at.get('_media_rel')
+            if not mp:
+                continue
+            k = at.get('kind')
+            if k == 'photo':
+                media_html += f'<img src="{html.escape(mp)}" loading="lazy">'
+            elif k == 'video':
+                media_html += f'<video src="{html.escape(mp)}" controls preload="none"></video>'
+            else:
+                media_html += f'<a class="file" href="{html.escape(mp)}">📎 {html.escape(at.get("orig") or "file")}</a><br>'
+        inner = body
+        if media_html:
+            inner = (body + '<br>' if body else '') + media_html
+        if not inner:
+            inner = '<i>(no content)</i>'
+        ts = (e.get('ts') or '')[:19].replace('T', ' ')
+        rows.append(f'<div class="row {side}"><div class="b">{inner}</div></div>'
+                    f'<div class="ts {side}" style="text-align:{"right" if me else "left"}">{ts}</div>')
+    meta = f'{len(entries)} messages'
+    if entries:
+        meta += f' · {entries[0]["ts"][:10]} → {entries[-1]["ts"][:10]}'
+    doc = HTML_HEAD.format(title=html.escape(label), meta=html.escape(meta)) + '\n'.join(rows) + '</body></html>'
+    (folder_dir / 'index.html').write_text(doc, encoding='utf-8')
+
+
+def build_views(archive, attach_subdir, contacts):
+    archive = Path(archive)
+    entries = read_manifest(archive / 'manifest.jsonl')
+    conv_root = archive / 'conversations'
+    conv_root.mkdir(parents=True, exist_ok=True)
+
+    # Determine each chat's member set first, so we can tell a 1:1 from a group.
+    members_by_cg = defaultdict(set)
+    for e in entries:
+        cg = e.get('chat_guid') or e.get('chat_id') or 'unknown'
+        if e.get('sender_handle'):
+            members_by_cg[cg].add(e['sender_handle'])
+
+    def identity_of(e):
+        """Group key: a 1:1 chat is keyed by its handle (so iMessage + SMS with
+        the same person MERGE into one folder); a group chat is keyed by its GUID
+        (kept separate)."""
+        cg = e.get('chat_guid') or e.get('chat_id') or 'unknown'
+        if len(members_by_cg.get(cg, set())) <= 1:           # 1:1 (or all-from-me)
+            cid = e.get('chat_id') or ''
+            return '1:' + (norm(cid) or cid.lower() or cg)
+        return 'g:' + cg
+
+    groups = defaultdict(list)
+    for e in entries:
+        groups[identity_of(e)].append(e)
+
+    index_rows = []
+    media_copied = 0
+    for key, msgs in groups.items():
+        msgs.sort(key=lambda x: x.get('date_raw', 0))
+        members = sorted({m.get('sender_handle') for m in msgs if m.get('sender_handle')})
+        chat_name = next((m.get('chat_name') for m in msgs if m.get('chat_name')), '')
+        chat_id = next((m.get('chat_id') for m in msgs if m.get('chat_id')), '')
+        label = conv_label(chat_name, chat_id, members, contacts)
+        folder = conv_folder(label, key)
+        d = conv_root / folder
+        media_d = d / 'media'
+        d.mkdir(parents=True, exist_ok=True)
+
+        tx = [f'Conversation: {label}', f'Messages: {len(msgs)}']
+        if msgs:
+            tx.append(f'Range: {msgs[0]["ts"][:10]} → {msgs[-1]["ts"][:10]}')
+        tx.append('=' * 60)
+        n_media = 0
+        for e in msgs:
+            e['_sender_name'] = 'Me' if e.get('from_me') else resolve(e.get('sender_handle'), contacts)
+            ts = (e.get('ts') or '')[:19].replace('T', ' ')
+            line = f'[{ts}] {e["_sender_name"]}:'
+            if e.get('text'):
+                line += f' {e["text"]}'
+            tx.append(line)
+            for i, at in enumerate(e.get('attachments', [])):
+                src_rel = at.get('path')
+                src = archive / src_rel if src_rel else None
+                dest_name = media_name(e.get('ts'), at.get('orig'), i)
+                if src and src.exists():
+                    media_d.mkdir(parents=True, exist_ok=True)
+                    dest = media_d / dest_name
+                    if not dest.exists():
+                        try:
+                            shutil.copy2(src, dest)
+                            media_copied += 1
+                        except OSError:
+                            pass
+                    at['_media_rel'] = f'media/{dest_name}'
+                    n_media += 1
+                    tx.append(f'    [{at.get("kind")}] {at.get("orig") or "?"} -> media/{dest_name}')
+                else:
+                    tx.append(f'    [{at.get("kind")}] {at.get("orig") or "?"} -> (not in archive yet)')
+        (d / 'transcript.txt').write_text('\n'.join(tx) + '\n', encoding='utf-8')
+        render_html(label, msgs, d)
+        index_rows.append({
+            'name': label, 'folder': folder, 'messages': len(msgs),
+            'first': msgs[0]['ts'][:10] if msgs else '',
+            'last': msgs[-1]['ts'][:10] if msgs else '', 'media': n_media,
+        })
+
+    index_rows.sort(key=lambda r: r['last'], reverse=True)
+    with (archive / '_index.csv').open('w', newline='', encoding='utf-8') as fh:
+        w = csv.DictWriter(fh, fieldnames=['name', 'folder', 'messages', 'first', 'last', 'media'])
+        w.writeheader()
+        w.writerows(index_rows)
+
+    # Preserve the resolved contact map alongside the archive.
+    if contacts:
+        with (archive / 'contacts.csv').open('w', newline='', encoding='utf-8') as fh:
+            w = csv.writer(fh)
+            w.writerow(['handle_or_norm', 'name'])
+            for k, v in sorted(contacts.items()):
+                w.writerow([k, v])
+
+    return len(groups), media_copied
+
+
+def run_archive(db, archive, attach_subdir='attachments', addressbook_dir=None, full=False):
+    appended, total = ingest(db, archive, attach_subdir, full)
+    contacts = load_contacts(addressbook_dir)
+    convos, media_copied = build_views(archive, attach_subdir, contacts)
+    return {'appended': appended, 'total_messages': total, 'conversations': convos,
+            'media_copied': media_copied, 'contacts': len(contacts)}
 
 
 def main():
     ap = argparse.ArgumentParser(
         prog='archive_messages',
-        description='Append-only, all-conversations Apple Messages archiver.')
+        description='Append-only, human-browsable, all-conversations Messages archiver.')
     ap.add_argument('--db', required=True, help='path to a chat.db (snapshot is fine)')
     ap.add_argument('--archive', required=True, help='archive root directory')
     ap.add_argument('--attachments-subdir', default='attachments',
-                    help='subdir under the archive where media is mirrored '
-                         '(default: attachments)')
+                    help='subdir under the archive where media is mirrored')
+    ap.add_argument('--addressbook-dir', default=None,
+                    help='a pulled AddressBook "Sources" dir for contact-name resolution')
     ap.add_argument('--full', action='store_true',
-                    help='ignore the incremental watermark and re-scan the whole '
-                         'db (still de-duplicated by message GUID)')
+                    help='ignore the watermark and re-scan the whole db (GUID-deduped)')
     ap.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     a = ap.parse_args()
-
     if not Path(a.db).exists():
         ap.error(f'chat.db not found: {a.db}')
-
-    r = run_archive(a.db, a.archive, attach_subdir=a.attachments_subdir, full=a.full)
-    print(f'Messages archive: appended {r["appended"]} new message(s) '
-          f'({r["attachments"]} attachment refs) across '
-          f'{r["conversations_touched"]} conversation(s); '
-          f'archive now holds {r["total_messages"]} message(s).')
+    r = run_archive(a.db, a.archive, attach_subdir=a.attachments_subdir,
+                    addressbook_dir=a.addressbook_dir, full=a.full)
+    print(f'Messages archive: +{r["appended"]} new message(s); {r["total_messages"]} total '
+          f'across {r["conversations"]} conversation(s); copied {r["media_copied"]} media file(s); '
+          f'{r["contacts"]} contacts resolved.')
 
 
 if __name__ == '__main__':

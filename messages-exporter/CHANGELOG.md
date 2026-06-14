@@ -2,6 +2,35 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.5.0 — 2026-06-14
+
+### Changed — `archive_messages.py` is now human-browsable
+The archive split into a clear source-of-truth + derived-views model:
+- **Source of truth (append-only, never rewritten):** `manifest.jsonl` (one line
+  per message GUID) + the raw `attachments/` byte-store.
+- **Derived views (regenerated from the manifest each run, so the layout can
+  improve safely):**
+  - `conversations/<Name>/transcript.txt` — readable, with a header (label /
+    count / date range) and **contact names resolved**.
+  - `conversations/<Name>/index.html` — Messages-style bubbles with inline
+    image/video thumbnails.
+  - `conversations/<Name>/media/` — that thread's photos/videos/files as **real
+    copies**, date-prefixed (`YYYYMMDD_HHMMSS_origname`), browsable.
+  - top-level `_index.csv` — name / folder / #messages / date-range / #media.
+- **Contact-name resolution** via `--addressbook-dir` (a pulled AddressBook
+  `Sources` dir): folders + senders become real names; unknown handles stay raw.
+  Resolves names by phone (last-10-digit match) and email. Writes `contacts.csv`.
+- **iMessage + SMS with the same person MERGE into one conversation folder**
+  (grouped by handle identity, not chat GUID); group chats stay separate. Folder
+  suffix is a hash of the identity — collision-free and stable (fixes a
+  last-8-of-GUID collision that let two threads overwrite each other's view).
+- Reuses `export_messages.norm` (phone normalization) in addition to
+  `get_body`/`mts`/`knd`/`san`/`slug`.
+
+### Tests
+- `test_archive_messages.py` grew to 9: adds contact-name resolution, per-convo
+  media copies, HTML render, and the iMessage/SMS merge.
+
 ## 1.4.0 — 2026-06-14
 
 ### Added
