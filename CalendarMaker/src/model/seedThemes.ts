@@ -24,6 +24,8 @@ interface Spec {
   lifeEvent: [string, string];
   churchEvent: [string, string];
   reminder: [string, string];
+  bibleVerse: [string, string];
+  saying: [string, string];
 }
 
 function build(s: Spec): Theme {
@@ -35,6 +37,8 @@ function build(s: Spec): Theme {
     lifeEvent: style(s.lifeEvent),
     churchEvent: style(s.churchEvent),
     reminder: style(s.reminder),
+    bibleVerse: style(s.bibleVerse),
+    saying: style(s.saying),
   };
   return {
     id: s.id,
@@ -67,6 +71,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['lora', '#4a4a4a'], overflow: '#9aa0ad',
     prayer: ['lora', '#3a5a78'], praise: ['lora', '#0f7a4a'], birthday: ['lora', '#c0397a'],
     lifeEvent: ['inter', '#2b2b2b'], churchEvent: ['playfair', '#6b2d8a'], reminder: ['inter', '#8a6d1f'],
+    bibleVerse: ['lora', '#3a5a78'], saying: ['lora', '#4a4a4a'],
   }),
   build({
     id: 'theme-springtime', name: 'Springtime',
@@ -75,6 +80,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['caveat', '#5a7a4a'], overflow: '#a9c0a3',
     prayer: ['nunito', '#3f7d8f'], praise: ['nunito', '#2f9d5b'], birthday: ['caveat', '#e0568f'],
     lifeEvent: ['nunito', '#4a4a4a'], churchEvent: ['nunito', '#7a5db0'], reminder: ['nunito', '#b07d2f'],
+    bibleVerse: ['nunito', '#3f7d8f'], saying: ['caveat', '#5a7a4a'],
   }),
   build({
     id: 'theme-advent', name: 'Advent',
@@ -83,6 +89,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['playfair', '#6b3f8a'], overflow: '#b3a7c2',
     prayer: ['lora', '#4b1d6b'], praise: ['lora', '#b8860b'], birthday: ['lora', '#9a1b6b'],
     lifeEvent: ['lora', '#3a3a3a'], churchEvent: ['playfair', '#7a1d2f'], reminder: ['lora', '#6b5b2f'],
+    bibleVerse: ['lora', '#4b1d6b'], saying: ['playfair', '#6b3f8a'],
   }),
   build({
     id: 'theme-autumn', name: 'Autumn',
@@ -91,6 +98,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['merriweather', '#6b4a2f'], overflow: '#c2ab92',
     prayer: ['merriweather', '#6b4a2f'], praise: ['merriweather', '#b5651d'], birthday: ['merriweather', '#a8326e'],
     lifeEvent: ['inter', '#3a3a3a'], churchEvent: ['merriweather', '#7a3b14'], reminder: ['inter', '#8a5a1f'],
+    bibleVerse: ['merriweather', '#6b4a2f'], saying: ['merriweather', '#6b4a2f'],
   }),
   build({
     id: 'theme-ocean', name: 'Ocean',
@@ -99,6 +107,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['inter', '#2f6b7a'], overflow: '#9fc2cc',
     prayer: ['inter', '#1186a3'], praise: ['inter', '#0f9d8a'], birthday: ['montserrat', '#d4498f'],
     lifeEvent: ['inter', '#2b2b2b'], churchEvent: ['montserrat', '#3a5db0'], reminder: ['inter', '#7a6d2f'],
+    bibleVerse: ['inter', '#1186a3'], saying: ['inter', '#2f6b7a'],
   }),
   build({
     id: 'theme-sunshine', name: 'Sunshine',
@@ -107,6 +116,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['pacifico', '#e07b1a'], overflow: '#cdbb8a',
     prayer: ['nunito', '#2f7da0'], praise: ['nunito', '#e07b1a'], birthday: ['nunito', '#e0568f'],
     lifeEvent: ['nunito', '#4a4a4a'], churchEvent: ['nunito', '#8a5db0'], reminder: ['nunito', '#b07d2f'],
+    bibleVerse: ['nunito', '#2f7da0'], saying: ['pacifico', '#e07b1a'],
   }),
   build({
     id: 'theme-midnight', name: 'Midnight',
@@ -115,6 +125,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['inter', '#aeb6cc'], overflow: '#5a6280',
     prayer: ['inter', '#7fb0ff'], praise: ['inter', '#5fd6a0'], birthday: ['montserrat', '#ff8ac0'],
     lifeEvent: ['inter', '#dfe4f0'], churchEvent: ['montserrat', '#c08aff'], reminder: ['inter', '#e0c878'],
+    bibleVerse: ['inter', '#7fb0ff'], saying: ['inter', '#aeb6cc'],
   }),
   build({
     id: 'theme-blossom', name: 'Blossom',
@@ -123,6 +134,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['dancing', '#b03a6e'], overflow: '#d9b3c2',
     prayer: ['playfair', '#7a4a8a'], praise: ['dancing', '#d4498f'], birthday: ['dancing', '#e0568f'],
     lifeEvent: ['lora', '#4a3a3a'], churchEvent: ['playfair', '#8a2d6b'], reminder: ['lora', '#9a6d4f'],
+    bibleVerse: ['playfair', '#7a4a8a'], saying: ['dancing', '#b03a6e'],
   }),
   build({
     id: 'theme-forest', name: 'Forest',
@@ -131,6 +143,7 @@ export const SEED_THEMES: Theme[] = [
     filler: ['lora', '#3f5d3a'], overflow: '#aebfa3',
     prayer: ['lora', '#2f5d6b'], praise: ['lora', '#2f7d4a'], birthday: ['lora', '#a8326e'],
     lifeEvent: ['inter', '#3a3a3a'], churchEvent: ['lora', '#5a3b8a'], reminder: ['inter', '#7a5d2f'],
+    bibleVerse: ['lora', '#2f5d6b'], saying: ['lora', '#3f5d3a'],
   }),
   build({
     id: 'theme-berry', name: 'Berry',
@@ -139,5 +152,6 @@ export const SEED_THEMES: Theme[] = [
     filler: ['caveat', '#8a2d6b'], overflow: '#cba7bf',
     prayer: ['inter', '#5a3b8a'], praise: ['caveat', '#b8336a'], birthday: ['caveat', '#d4498f'],
     lifeEvent: ['inter', '#3a3a3a'], churchEvent: ['montserrat', '#7a1d6b'], reminder: ['inter', '#8a5d2f'],
+    bibleVerse: ['inter', '#5a3b8a'], saying: ['caveat', '#8a2d6b'],
   }),
 ];

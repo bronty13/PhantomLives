@@ -3,7 +3,7 @@
 // the SAME font metrics the PDF uses. The renderer only ever draws month-visible
 // items, so a cell physically cannot overflow its borders.
 
-import type { Day, Item, Theme } from '../model/types';
+import type { Day, Item, Theme, VerseDisplayMode } from '../model/types';
 import { CELL, type MonthGeometry } from '../pdf/geometry';
 import { wrapLines } from './measure';
 
@@ -59,6 +59,8 @@ function pack(items: Item[], heights: Map<string, number>, available: number, ca
 export interface DayClassification {
   /** Items shown on the month grid (in render order). */
   monthItems: Item[];
+  /** Subset of monthItems rendered with shrink-to-fit (force mode: verse/saying types). */
+  forceItems: Item[];
   /** Items shown only in the detail view (⊘ marked). */
   detailOnly: Item[];
   /** True when at least one item was demoted to detail-only. */
@@ -68,14 +70,30 @@ export interface DayClassification {
 /**
  * Classify a day's items into month-visible vs detail-only. `holidayLines` is how
  * many holiday lines occupy the top of the cell (each consumes HOLIDAY_LINE_H).
+ * In force mode, verse/saying items always go to monthItems; other items compete for remaining space.
  */
-export function classifyDay(day: Day, ctx: FitContext, holidayLines = 0): DayClassification {
+export function classifyDay(
+  day: Day,
+  ctx: FitContext,
+  holidayLines = 0,
+  verseMode: VerseDisplayMode = 'separate',
+): DayClassification {
   const sorted = [...day.items].sort(pinnedThenOrder);
+
+  // In force mode, partition verse/saying items first
+  let forceItems: Item[] = [];
+  let otherItems: Item[] = sorted;
+
+  if (verseMode === 'force') {
+    forceItems = sorted.filter((i) => i.type === 'bibleVerse' || i.type === 'saying');
+    otherItems = sorted.filter((i) => i.type !== 'bibleVerse' && i.type !== 'saying');
+  }
+
   const eligible: Item[] = [];
   const heights = new Map<string, number>();
   const ineligible: Item[] = [];
 
-  for (const item of sorted) {
+  for (const item of otherItems) {
     const lines = chipLineCount(item, ctx);
     if (lines === 0 || lines > CELL.CHIP_MAX_LINES || chipHeight(lines) > ctx.geo.cellContentH) {
       ineligible.push(item);
@@ -85,7 +103,13 @@ export function classifyDay(day: Day, ctx: FitContext, holidayLines = 0): DayCla
     }
   }
 
-  const baseAvail = ctx.geo.cellContentH - holidayLines * CELL.HOLIDAY_LINE_H;
+  let baseAvail = ctx.geo.cellContentH - holidayLines * CELL.HOLIDAY_LINE_H;
+
+  // In force mode, reserve space for the force block (assume ~3 lines per verse + gap)
+  if (verseMode === 'force' && forceItems.length > 0) {
+    const forceBlockH = Math.min(forceItems.length * CELL.CHIP_LINE_H * 3, baseAvail * 0.5);
+    baseAvail -= forceBlockH;
+  }
 
   // First try without reserving a "+N more" line.
   let monthItems = pack(eligible, heights, baseAvail, ctx.cap);
@@ -97,10 +121,14 @@ export function classifyDay(day: Day, ctx: FitContext, holidayLines = 0): DayCla
     monthItems = eligible.filter((i) => monthSet.has(i.id));
   }
 
-  const monthIds = new Set(monthItems.map((i) => i.id));
+  // In force mode, force items + packed other items
+  const renderedItems = verseMode === 'force' ? [...forceItems, ...monthItems] : monthItems;
+
+  const monthIds = new Set(renderedItems.map((i) => i.id));
   const detailOnly = sorted.filter((i) => !monthIds.has(i.id));
   overflow = detailOnly.length > 0;
-  return { monthItems, detailOnly, hasOverflow: overflow };
+
+  return { monthItems: renderedItems, forceItems, detailOnly, hasOverflow: overflow };
 }
 
 /**

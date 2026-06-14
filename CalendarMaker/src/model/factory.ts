@@ -7,8 +7,8 @@ export function newId(prefix = ''): string {
   return prefix ? `${prefix}-${nanoid(10)}` : nanoid(12);
 }
 
-export function makeItem(type: ItemType, order: number, text = ''): Item {
-  return { id: newId('item'), type, text, showOnMonth: true, pinned: false, order };
+export function makeItem(type: ItemType, order: number, text = '', reference?: string): Item {
+  return { id: newId('item'), type, text, reference, showOnMonth: true, pinned: false, order };
 }
 
 export function makeBundle(opts: {

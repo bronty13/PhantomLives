@@ -13,7 +13,9 @@ export type ItemType =
   | 'birthday'
   | 'lifeEvent'
   | 'churchEvent'
-  | 'reminder';
+  | 'reminder'
+  | 'bibleVerse'
+  | 'saying';
 
 export const ITEM_TYPES: ItemType[] = [
   'prayer',
@@ -22,6 +24,8 @@ export const ITEM_TYPES: ItemType[] = [
   'lifeEvent',
   'churchEvent',
   'reminder',
+  'bibleVerse',
+  'saying',
 ];
 
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
@@ -31,12 +35,16 @@ export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   lifeEvent: 'Life Event',
   churchEvent: 'Church Event',
   reminder: 'Reminder',
+  bibleVerse: 'Bible Verse',
+  saying: 'Saying',
 };
 
 export interface Item {
   id: string;
   type: ItemType;
   text: string;
+  /** Verse: 'John 3:16'. Saying: attribution. Undefined for other types. */
+  reference?: string;
   /** Derived + persisted by fit.ts. false → renders detail-view-only (⊘ marker). */
   showOnMonth: boolean;
   /** User pinned this to a month slot during overflow arbitration. */
@@ -54,6 +62,10 @@ export interface Day {
   /** Holiday IDs (from the catalog) the user toggled ON for this date. */
   holidayIds: string[];
 }
+
+// ---- Verse display mode ---------------------------------------------------
+
+export type VerseDisplayMode = 'separate' | 'force';
 
 // ---- Free-space filler (sayings / verses) ---------------------------------
 
@@ -146,6 +158,7 @@ export interface CalendarBundle {
   weekStartsOn: 0 | 1; // 0=Sun, 1=Mon
   days: Record<string, Day>; // keyed 'YYYY-MM-DD'
   fillers: FillerPlacement[];
+  verseMode?: VerseDisplayMode; // default: 'separate'
   createdAt: number;
   updatedAt: number;
 }

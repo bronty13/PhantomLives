@@ -128,6 +128,12 @@ export async function addCustomSaying(entry: FillerEntry): Promise<void> {
   writeMap(K.sayings, map);
 }
 
+export async function updateCustomSaying(entry: FillerEntry): Promise<void> {
+  const map = readMap<FillerEntry>(K.sayings);
+  map[entry.id] = entry;
+  writeMap(K.sayings, map);
+}
+
 export async function deleteCustomSaying(id: string): Promise<void> {
   const map = readMap<FillerEntry>(K.sayings);
   delete map[id];

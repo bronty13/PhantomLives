@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { CalendarBundle, Day, Item, ItemType, Theme } from '../../model/types';
+import type { CalendarBundle, Day, Item, ItemType, Theme, FillerEntry } from '../../model/types';
 import { ITEM_TYPES, ITEM_TYPE_LABELS, MONTH_NAMES, WEEKDAY_NAMES } from '../../model/types';
 import { classifyDay, isMonthEligible, type FitContext } from '../../calendar/fit';
 import { monthGeometry } from '../../pdf/geometry';
@@ -8,6 +8,8 @@ import { makeItem } from '../../model/factory';
 import { holidayNamesFor } from '../../pdf/holidayNames';
 import { parseIso, weekdayOf } from '../../calendar/dateUtil';
 import { Drawer } from '../components/Modal';
+import { BiblePicker } from './BiblePicker';
+import { SayingPicker } from './SayingPicker';
 
 interface Props {
   date: string;
@@ -15,13 +17,17 @@ interface Props {
   theme: Theme;
   cap: number;
   bundle: CalendarBundle;
+  customSayings: FillerEntry[];
   onChange: (day: Day) => void;
   onClose: () => void;
 }
 
-export function DayEditorPanel({ date, day, theme, cap, bundle, onChange, onClose }: Props) {
+export function DayEditorPanel({ date, day, theme, cap, bundle, customSayings, onChange, onClose }: Props) {
   const [newType, setNewType] = useState<ItemType>('reminder');
   const [newText, setNewText] = useState('');
+  const [newReference, setNewReference] = useState('');
+  const [showBiblePicker, setShowBiblePicker] = useState(false);
+  const [showSayingPicker, setShowSayingPicker] = useState(false);
 
   const grid = computeWeeks(bundle.year, bundle.month, bundle.weekStartsOn);
   const hasFooter = bundle.fillers.some((f) => f.slot === 'footer');
@@ -41,9 +47,22 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, onChange, onClos
 
   const addItem = () => {
     const nextOrder = day.items.reduce((m, i) => Math.max(m, i.order), -1) + 1;
-    const item = makeItem(newType, nextOrder, newText.trim());
+    const item = makeItem(newType, nextOrder, newText.trim(), newReference || undefined);
     onChange({ ...day, items: [...day.items, item] });
     setNewText('');
+    setNewReference('');
+  };
+
+  const handleBibleSelect = (text: string, reference: string) => {
+    setNewText(text);
+    setNewReference(reference);
+    setShowBiblePicker(false);
+  };
+
+  const handleSayingSelect = (text: string, reference: string) => {
+    setNewText(text);
+    setNewReference(reference);
+    setShowSayingPicker(false);
   };
 
   const sorted = [...day.items].sort((a, b) => a.order - b.order);
@@ -68,11 +87,28 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, onChange, onClos
         const onMonth = monthIds.has(item.id);
         const detailOnly = !onMonth;
         const st = theme.itemStyles[item.type];
+        const isStructured = item.type === 'bibleVerse' || item.type === 'saying';
         return (
           <div key={item.id} className={`item-row${detailOnly ? ' detail-only' : ''}`}>
             <span className="type-pill" style={{ background: st.color }}>{ITEM_TYPE_LABELS[item.type]}</span>
             <div className="grow col" style={{ gap: 6 }}>
-              <input type="text" value={item.text} placeholder="Event text…" onChange={(e) => updateItem(item.id, { text: e.target.value })} />
+              {isStructured ? (
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{item.text.substring(0, 50)}{item.text.length > 50 ? '…' : ''}</div>
+                    {item.reference && <div style={{ fontSize: 11, color: 'var(--muted)' }}>— {item.reference}</div>}
+                  </div>
+                  <button className="secondary" onClick={() => {
+                    setNewType(item.type);
+                    setNewText(item.text);
+                    setNewReference(item.reference || '');
+                    if (item.type === 'bibleVerse') setShowBiblePicker(true);
+                    else if (item.type === 'saying') setShowSayingPicker(true);
+                  }} style={{ whiteSpace: 'nowrap' }}>✎ Edit</button>
+                </div>
+              ) : (
+                <input type="text" value={item.text} placeholder="Event text…" onChange={(e) => updateItem(item.id, { text: e.target.value })} />
+              )}
               <div className="row" style={{ gap: 8, fontSize: 12 }}>
                 <select value={item.type} onChange={(e) => updateItem(item.id, { type: e.target.value as ItemType })} style={{ width: 'auto', flex: 1 }}>
                   {ITEM_TYPES.map((t) => <option key={t} value={t}>{ITEM_TYPE_LABELS[t]}</option>)}
@@ -99,15 +135,43 @@ export function DayEditorPanel({ date, day, theme, cap, bundle, onChange, onClos
         );
       })}
 
+      {showBiblePicker && (
+        <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 4 }}>
+          <label style={{ margin: 0, display: 'block', marginBottom: 8 }}>Select a Bible verse</label>
+          <BiblePicker onSelect={handleBibleSelect} onClose={() => setShowBiblePicker(false)} />
+        </div>
+      )}
+
+      {showSayingPicker && (
+        <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 4 }}>
+          <label style={{ margin: 0, display: 'block', marginBottom: 8 }}>Select a saying</label>
+          <SayingPicker sayings={customSayings} onSelect={handleSayingSelect} onClose={() => setShowSayingPicker(false)} />
+        </div>
+      )}
+
       <div className="col" style={{ marginTop: 16, gap: 8 }}>
         <label style={{ margin: 0 }}>Add an item</label>
         <div className="row" style={{ gap: 8 }}>
-          <select value={newType} onChange={(e) => setNewType(e.target.value as ItemType)} style={{ width: 140 }}>
+          <select value={newType} onChange={(e) => {
+            const t = e.target.value as ItemType;
+            setNewType(t);
+            setNewText('');
+            setNewReference('');
+            if (t === 'bibleVerse') setShowBiblePicker(true);
+            else if (t === 'saying') setShowSayingPicker(true);
+          }} style={{ width: 140 }}>
             {ITEM_TYPES.map((t) => <option key={t} value={t}>{ITEM_TYPE_LABELS[t]}</option>)}
           </select>
-          <input type="text" value={newText} placeholder="Event text…" onChange={(e) => setNewText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }} />
+          {newType !== 'bibleVerse' && newType !== 'saying' && (
+            <input type="text" value={newText} placeholder="Event text…" onChange={(e) => setNewText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }} />
+          )}
         </div>
-        <button className="primary" onClick={addItem} disabled={!newText.trim()}>+ Add item</button>
+        {newType !== 'bibleVerse' && newType !== 'saying' && (
+          <button className="primary" onClick={addItem} disabled={!newText.trim()}>+ Add item</button>
+        )}
+        {newText && (newType === 'bibleVerse' || newType === 'saying') && (
+          <button className="primary" onClick={addItem}>+ Add item</button>
+        )}
       </div>
     </Drawer>
   );

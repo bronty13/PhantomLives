@@ -47,6 +47,22 @@ export function CalendarEditor({ bundle, theme, themes, settings, sayings, onCha
         </select>
         <button onClick={() => setPanel('holidays')}>Holidays</button>
         <button onClick={() => setPanel('fillers')}>Sayings &amp; Verses</button>
+        <div className="row" style={{ gap: 4, background: 'var(--border)', padding: 2, borderRadius: 4 }}>
+          <button
+            className={bundle.verseMode !== 'force' ? 'secondary' : 'ghost'}
+            onClick={() => onChange({ ...bundle, verseMode: 'separate' })}
+            style={{ flex: 1 }}
+          >
+            Separate
+          </button>
+          <button
+            className={bundle.verseMode === 'force' ? 'secondary' : 'ghost'}
+            onClick={() => onChange({ ...bundle, verseMode: 'force' })}
+            style={{ flex: 1 }}
+          >
+            Force
+          </button>
+        </div>
         <button onClick={() => setPanel('theme')}>Themes</button>
         <button className="primary" onClick={() => setPanel('export')}>Export PDF</button>
       </div>
@@ -68,6 +84,7 @@ export function CalendarEditor({ bundle, theme, themes, settings, sayings, onCha
           theme={theme}
           cap={settings.maxItemsPerMonthCell}
           bundle={bundle}
+          customSayings={sayings}
           onChange={(d) => setDay(selectedDate, d)}
           onClose={() => setPanel('none')}
         />
