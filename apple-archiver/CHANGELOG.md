@@ -2,6 +2,21 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.7.2 — 2026-06-14 (Mail index blank-space + consolidated archive layout)
+
+### Fixed
+- **Mail index (`mail.html`) no longer shows huge blank gaps between cards.** The
+  card preview is now a whitespace-collapsed one-liner — marketing emails' plain-text
+  is mostly blank lines, which `white-space:pre-wrap` had rendered as tall vertical
+  gaps. Per-message text bodies also collapse runs of 3+ blank lines.
+
+### Changed
+- **Consolidated archive layout.** `archive_index.py` (1.1.0) now expects all of a
+  source's archives under ONE folder — `~/Downloads/<Name> Archive/` with clean
+  per-kind subfolders (`Photos`, `Messages`, `Mail`, `Calls`, …) — and writes the
+  landing page to that folder's root. (Operational sync scripts write there too.)
+- Tests: 35.
+
 ## 1.7.1 — 2026-06-14 (Mail render fixes + filter)
 
 ### Fixed

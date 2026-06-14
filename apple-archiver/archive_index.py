@@ -2,12 +2,13 @@
 # =============================================================================
 #   ARCHIVE INDEX  (landing page)
 #   File:     archive_index.py
-#   Version:  1.0.0
+#   Version:  1.1.0
 #   Requires: Python 3.9+ (standard library only)
 #
-#   Builds ONE landing page linking every archive a source has under ~/Downloads
-#   (photos, messages, notes, reminders, safari, voice memos, calls, calendar,
-#   books, podcasts, stickies). Each card links the archive's entry HTML pages and
+#   Builds ONE landing page linking every archive a source has. All of a source's
+#   archives live consolidated under ONE folder: ~/Downloads/<Name> Archive/, with a
+#   clean per-kind subfolder each (Photos, Messages, Mail, …). The landing page is
+#   written to that folder's root. Each card links the archive's entry HTML pages and
 #   a "browse files" link, with a quick item count. Read-only; regenerable.
 #
 #   Usage:  archive_index.py --name <SourceName> [--downloads <dir>] [--out <file>]
@@ -19,21 +20,22 @@ import os
 import sys
 from pathlib import Path
 
-# Each kind: archive-folder suffix, label, the entry HTML pages (in preference
-# order), and how to count items (an _index.csv, a manifest.jsonl, or a glob).
+# Each kind: per-kind subfolder name (under "<Name> Archive/"), label, the entry
+# HTML pages (in preference order), and how to count items (_index.csv / manifest /
+# glob).
 KINDS = [
-    ('PhotoArchive',      'Photos',      [],                                              ('glob', 'originals/**/*')),
-    ('MessagesArchive',   'Messages',    ['contacts.html'],                               ('manifest', 'manifest.jsonl')),
-    ('NotesArchive',      'Notes',       ['notes.html'],                                  ('csv', '_index.csv')),
-    ('RemindersArchive',  'Reminders',   ['reminders.html'],                              ('csv', '_index.csv')),
-    ('SafariArchive',     'Safari',      ['history.html', 'bookmarks.html', 'readinglist.html'], ('csv', 'history.csv')),
-    ('VoiceMemosArchive', 'Voice Memos', ['voicememos.html'],                             ('glob', 'recordings/*.m4a')),
-    ('CallsArchive',      'Call history',['calls.html'],                                  ('csv', 'calls.csv')),
-    ('CalendarArchive',   'Calendar',    ['calendar.html'],                               ('manifest', 'manifest.jsonl')),
-    ('BooksArchive',      'Books',       ['books.html'],                                  ('csv', '_index.csv')),
-    ('PodcastsArchive',   'Podcasts',    ['podcasts.html'],                               ('csv', '_index.csv')),
-    ('StickiesArchive',   'Stickies',    ['stickies.html'],                               ('csv', '_index.csv')),
-    ('MailArchive',       'Mail',        ['mail.html'],                                   ('manifest', 'manifest.jsonl')),
+    ('Photos',      'Photos',      [],                                              ('glob', 'originals/**/*')),
+    ('Messages',    'Messages',    ['contacts.html'],                               ('manifest', 'manifest.jsonl')),
+    ('Notes',       'Notes',       ['notes.html'],                                  ('csv', '_index.csv')),
+    ('Reminders',   'Reminders',   ['reminders.html'],                              ('csv', '_index.csv')),
+    ('Safari',      'Safari',      ['history.html', 'bookmarks.html', 'readinglist.html'], ('csv', 'history.csv')),
+    ('Voice Memos', 'Voice Memos', ['voicememos.html'],                             ('glob', 'recordings/*.m4a')),
+    ('Calls',       'Call history',['calls.html'],                                  ('csv', 'calls.csv')),
+    ('Calendar',    'Calendar',    ['calendar.html'],                               ('manifest', 'manifest.jsonl')),
+    ('Books',       'Books',       ['books.html'],                                  ('csv', '_index.csv')),
+    ('Podcasts',    'Podcasts',    ['podcasts.html'],                               ('csv', '_index.csv')),
+    ('Stickies',    'Stickies',    ['stickies.html'],                               ('csv', '_index.csv')),
+    ('Mail',        'Mail',        ['mail.html'],                                   ('manifest', 'manifest.jsonl')),
 ]
 
 
@@ -53,14 +55,19 @@ def count(folder, spec):
     return None
 
 
+def base_dir(downloads, name):
+    """The consolidated archive folder for a source: ~/Downloads/<Name> Archive/."""
+    return Path(downloads) / f'{name} Archive'
+
+
 def build(name, downloads, out):
-    downloads = Path(downloads)
+    base = base_dir(downloads, name)
     cards = []
-    for suffix, label, pages, cspec in KINDS:
-        folder = downloads / f'{name}{suffix}'
+    for subdir, label, pages, cspec in KINDS:
+        folder = base / subdir
         if not folder.is_dir():
             continue
-        rel = f'{name}{suffix}'
+        rel = subdir                                   # links are relative to base/
         links = [f'<a href="{html.escape(rel)}/{html.escape(p)}">{html.escape(p.split(".")[0])}</a>'
                  for p in pages if (folder / p).exists()]
         links.append(f'<a href="{html.escape(rel)}/">browse files</a>')
@@ -70,6 +77,7 @@ def build(name, downloads, out):
             f'<div class="card"><div class="lbl">{html.escape(label)}</div>'
             f'<div class="stat">{stat}</div><div class="links">{" · ".join(links)}</div></div>')
 
+    base.mkdir(parents=True, exist_ok=True)
     body = '\n'.join(cards) or '<p>No archives found yet.</p>'
     doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{html.escape(name)} — Archives</title>
 <style>
@@ -93,11 +101,12 @@ def main():
         description='Build a landing page linking all of a source\'s archives.')
     ap.add_argument('--name', required=True, help='source name (e.g. Rachel)')
     ap.add_argument('--downloads', default=str(Path.home() / 'Downloads'),
-                    help='dir holding the <Name>*Archive folders')
-    ap.add_argument('--out', default=None, help='output html (default <downloads>/<Name>-Archives.html)')
-    ap.add_argument('--version', action='version', version='%(prog)s 1.0.0')
+                    help='dir holding the "<Name> Archive/" consolidated folder')
+    ap.add_argument('--out', default=None,
+                    help='output html (default <downloads>/<Name> Archive/<Name>-Archives.html)')
+    ap.add_argument('--version', action='version', version='%(prog)s 1.1.0')
     a = ap.parse_args()
-    out = a.out or str(Path(a.downloads) / f'{a.name}-Archives.html')
+    out = a.out or str(base_dir(a.downloads, a.name) / f'{a.name}-Archives.html')
     n = build(a.name, a.downloads, out)
     print(f'Archive index: {n} archive(s) linked → {out}')
 

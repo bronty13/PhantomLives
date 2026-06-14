@@ -292,7 +292,10 @@ def _message_html(e, atts):
     if e['html']:
         body = f'<div class="htmlbody">{clean_email_html(e["html"])}</div>'
     else:
-        body = f'<pre class="textbody">{esc(e["text"]) or "<em>(no text body)</em>"}</pre>'
+        # Collapse runs of 3+ blank lines so a plain-text body doesn't render as
+        # huge vertical gaps, while keeping paragraph breaks.
+        text = re.sub(r'\n[ \t]*\n[ \t]*(\n[ \t]*)+', '\n\n', e['text'] or '')
+        body = f'<pre class="textbody">{esc(text) or "<em>(no text body)</em>"}</pre>'
     att_html = ''
     if atts:
         items = []
@@ -348,7 +351,9 @@ def build_views(archive, entries):
         index_rows.append({'date': e['date'], 'from': e['from'], 'subject': e['subject'],
                            'account': e['account'], 'mailbox': e['mailbox'],
                            'attachments': len(atts), 'file': html_rel})
-        snippet = (e['text'] or '')[:200]
+        # Collapse all whitespace → the preview is a clean one-liner (marketing
+        # emails' plain-text is mostly blank lines, which pre-wrap rendered as gaps).
+        snippet = ' '.join((e['text'] or '').split())[:200]
         cls = 'item has-att' if atts else 'item'
         cards.append(
             f'<div class="{cls}"><div class="t"><a href="{esc(html_rel)}">{esc(e["subject"])}</a></div>'

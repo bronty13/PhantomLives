@@ -5,6 +5,7 @@ Run:  python3 test_apple_archiver.py
 """
 import gzip
 import json
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -506,28 +507,36 @@ class StickiesTests(unittest.TestCase):
 class ArchiveIndexTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.dl = Path(self.tmp.name)
-        (self.dl / 'RachelNotesArchive').mkdir()
-        (self.dl / 'RachelNotesArchive' / 'notes.html').write_text('<html>notes</html>')
-        (self.dl / 'RachelNotesArchive' / '_index.csv').write_text('title\nA\nB\n')
-        (self.dl / 'RachelCallsArchive').mkdir()
-        (self.dl / 'RachelCallsArchive' / 'calls.html').write_text('<html>calls</html>')
-        (self.dl / 'RachelCallsArchive' / 'calls.csv').write_text('date\nx\n')
+        # Consolidated layout: ~/Downloads/<Name> Archive/<Kind>/…
+        base = self.dl / 'Rachel Archive'
+        (base / 'Notes').mkdir(parents=True)
+        (base / 'Notes' / 'notes.html').write_text('<html>notes</html>')
+        (base / 'Notes' / '_index.csv').write_text('title\nA\nB\n')
+        (base / 'Calls').mkdir(parents=True)
+        (base / 'Calls' / 'calls.html').write_text('<html>calls</html>')
+        (base / 'Calls' / 'calls.csv').write_text('date\nx\n')
         # An unrelated folder must be ignored.
-        (self.dl / 'SomethingElse').mkdir()
+        (base / 'SomethingElse').mkdir()
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def test_landing_page(self):
-        out = str(self.dl / 'Rachel-Archives.html')
+        out = str(self.dl / 'Rachel Archive' / 'Rachel-Archives.html')
         n = ai.build('Rachel', str(self.dl), out)
         self.assertEqual(n, 2)                       # only the two real archive folders
         doc = Path(out).read_text()
         self.assertIn('Notes', doc)
         self.assertIn('Call history', doc)
-        self.assertIn('RachelNotesArchive/notes.html', doc)
+        self.assertIn('Notes/notes.html', doc)       # links relative to the base folder
         self.assertIn('2 items', doc)                # _index.csv minus header
         self.assertNotIn('SomethingElse', doc)
+
+    def test_default_out_path_is_inside_base(self):
+        n = ai.build('Rachel', str(self.dl),
+                     str(ai.base_dir(str(self.dl), 'Rachel') / 'Rachel-Archives.html'))
+        self.assertEqual(n, 2)
+        self.assertTrue((self.dl / 'Rachel Archive' / 'Rachel-Archives.html').exists())
 
 
 class MailTests(unittest.TestCase):
@@ -543,7 +552,7 @@ class MailTests(unittest.TestCase):
         m['From'] = 'Alice <alice@example.com>'; m['To'] = 'rachel@me.com'
         m['Subject'] = 'Hello there'; m['Date'] = 'Sat, 13 Jun 2026 12:30:00 -0700'
         m['Message-ID'] = '<abc@example.com>'
-        m.set_content('This is the body text.')
+        m.set_content('This is the body text.\n\n\n\n\n\n\n\n\n\nBuried far below.')
         m.add_attachment(b'\x89PNGDATA', maintype='image', subtype='png', filename='pic.png')
         (msgs / '1.emlx').write_bytes(self._emlx(m.as_bytes()))
 
@@ -607,6 +616,15 @@ class MailTests(unittest.TestCase):
         self.assertNotIn('min-height:3000px', marker)   # leaked global rule gone
         self.assertNotIn('<body', marker.split('</div>')[0])
         self.assertIn('Real newsletter content here.', marker)
+
+    def test_index_snippet_whitespace_collapsed(self):
+        # The index card preview must be a clean one-liner — no blank-line runs that
+        # render as large vertical gaps (the reported bug).
+        ma.run_archive(str(self.store), self.archive)
+        doc = (Path(self.archive) / 'mail.html').read_text()
+        snippet = re.search(r'This is the body text\..*?</div>', doc, re.S).group(0)
+        self.assertNotIn('\n\n', snippet)
+        self.assertIn('Buried far below', snippet)      # collapsed onto one line
 
     def test_index_has_attachment_filter(self):
         ma.run_archive(str(self.store), self.archive)
