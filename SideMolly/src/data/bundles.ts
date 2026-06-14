@@ -832,6 +832,25 @@ export function revealPostBundle(uid: string): Promise<void> {
   return invoke('reveal_post_bundle', { uid });
 }
 
+export interface PostBundleSettings {
+  configuredPath: string;
+  resolvedPath: string;
+  usingDefault: boolean;
+}
+
+export function getPostBundleSettings(): Promise<PostBundleSettings> {
+  return invoke<PostBundleSettings>('get_post_bundle_settings');
+}
+
+/** Pass null to revert to the default (~/Downloads/Molly post-bundles/). */
+export function setPostBundleDir(path: string | null): Promise<PostBundleSettings> {
+  return invoke<PostBundleSettings>('set_post_bundle_dir', { path });
+}
+
+export function revealPostBundleDir(): Promise<void> {
+  return invoke('reveal_post_bundle_dir');
+}
+
 // ----- Phase 12: Jobs panel ops -----
 
 export function retryJob(id: number): Promise<void> {

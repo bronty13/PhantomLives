@@ -145,7 +145,6 @@ function PlatformCard({ card, bundle, detail, assets, onChange }: {
   const state = (card.posting?.state ?? 'pending') as PostingState;
   const sp = STATES.find((s) => s.value === state)!;
   const initialBody = card.posting?.bodyOverride ?? detail.manifest.descriptionText ?? '';
-  const [postedUrl, setPostedUrl] = useState(card.posting?.postedUrl ?? '');
   const [notes, setNotes] = useState(card.posting?.notes ?? '');
   const [body, setBody] = useState(initialBody);
   const [expanded, setExpanded] = useState(state === 'pending' || state === 'scheduled');
@@ -194,7 +193,8 @@ function PlatformCard({ card, bundle, detail, assets, onChange }: {
   const copyBody = () => navigator.clipboard.writeText(body).catch(() => {});
 
   const markPostedNow = async () => {
-    try { await markPosted(bundle.uid, card.target.id, postedUrl || null); onChange(); }
+    // postedUrl was removed (v0.28.0) — there's never a real link to record.
+    try { await markPosted(bundle.uid, card.target.id, null); onChange(); }
     catch (e) { alert(String(e)); }
   };
 
@@ -266,17 +266,7 @@ function PlatformCard({ card, bundle, detail, assets, onChange }: {
                           upsert({ bodyOverride: body || null })}
           />
 
-          <label className="text-[10px] mt-2 block" style={{ color: 'rgb(var(--surface-muted))' }}>Posted URL</label>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="text"
-              className="sm-input text-xs flex-1 font-mono"
-              value={postedUrl}
-              placeholder="https://…"
-              onChange={(e) => setPostedUrl(e.target.value)}
-              onBlur={() => postedUrl !== (card.posting?.postedUrl ?? '') &&
-                            upsert({ postedUrl: postedUrl || null })}
-            />
+          <div className="flex items-center gap-1.5 mt-2">
             <button type="button" className="sm-button text-xs" onClick={markPostedNow}>
               ✓ Mark posted
             </button>

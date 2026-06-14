@@ -4,6 +4,39 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] — 2026-06-14
+
+### Added — Find your post-bundle: Reveal + a configurable drop folder
+
+- **Reveal right after Send to Molly.** The green "Sent!" confirmation now
+  shows the **exact saved path** and a **📁 Reveal** button that opens it in
+  Finder. Previously the post-send prompt only offered "Mark complete," so the
+  freshly-written `<UID>-post.zip` was hard to locate.
+- **Settings → Post-bundles.** A new settings tab to choose where **Send to
+  Molly** writes the post-bundle (and its browsable `<UID>-post/` sidecar).
+  Defaults to `~/Downloads/Molly post-bundles/`; **Choose folder…**, **Use
+  default**, and **Reveal** mirror the Watched-folder pane. The chosen folder
+  persists in `app_settings` (no migration) and is now the single source of
+  truth for compose, reveal, and the header's "✓ Sent" status — previously the
+  override was documented but never actually wired up.
+
+### Added — Summary PDF rides along in the return bundle
+
+- The **SideMolly Summary PDF** is now (re)generated and included in every
+  post-bundle as `artifacts/summary.pdf`, with a deterministic pointer in
+  `report.json`'s new **`summaryPdf`** field — so Molly has the human-readable
+  recap available alongside the structured report. Generation is best-effort:
+  if it can't render, the deliverable still ships (just without the PDF).
+- Left a note for the Molly side to *consume* it on ingest (it only ships it
+  back for now) — see `Molly/ROADMAP.md` → "Inbound from SideMolly".
+
+### Changed — Removed the unused "Posted URL"
+
+- Dropped the **Posted URL** input from the Content Runner posting card and the
+  **`postedUrl`** field from the post-bundle `report.json`. There was never a
+  real link to record. **Mark posted** still works (it just records the posted
+  state, no URL). The SQLite column is retained unused to avoid a migration.
+
 ## [0.27.5] — 2026-06-13
 
 ### Changed — Summary drops the full per-video transcript dump

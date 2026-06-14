@@ -62,6 +62,11 @@ fn dos_epoch() -> zip::DateTime {
         .expect("MS-DOS epoch is a valid zip DateTime")
 }
 
+/// Deterministic in-zip path for the bundled SideMolly Summary PDF. A
+/// fixed name (rather than the title-derived filename) gives Molly a
+/// stable pointer to read — surfaced as report.json's `summaryPdf`.
+const SUMMARY_IN_ZIP: &str = "artifacts/summary.pdf";
+
 // ---------------------------------------------------------------------------
 // report.json schema (per PLAN.md §9.2)
 // ---------------------------------------------------------------------------
@@ -73,7 +78,9 @@ pub struct ReportTarget {
     pub target_name: String,
     pub state: String,            // pending|scheduled|posted|skipped
     pub posted_at: Option<String>,
-    pub posted_url: Option<String>,
+    // NB: postedUrl was dropped in v0.28.0 — there's never a real posted
+    // link to carry, so the field was removed from both the report and the
+    // posting UI. The DB column is retained (unused) to avoid a migration.
     pub body_override: Option<String>,
     pub files_used: Vec<String>,  // bundle-relative paths the user attached
     pub notes: Option<String>,
@@ -97,6 +104,13 @@ pub struct Report {
     pub targets: Vec<ReportTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle_level_notes: Option<String>,
+    /// In-zip path of the human-readable Summary PDF bundled alongside this
+    /// report (e.g. "artifacts/summary.pdf"), or None if it couldn't be
+    /// generated. Added v0.28.0 so Molly has a deterministic pointer.
+    /// NOTE(molly-side): Molly does not yet surface this on ingest — see
+    /// Molly/ROADMAP.md "Inbound from SideMolly".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary_pdf: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -115,16 +129,101 @@ pub struct ComposeResult {
 // Settings
 // ---------------------------------------------------------------------------
 
+/// app_settings key for the user's chosen post-bundle drop directory.
+/// Empty / unset ⇒ the default below applies. Mirrors watch.rs's
+/// `bundle_watch_dir` convention (same key/value table, no migration).
+const SETTING_KEY_POST_BUNDLE_DIR: &str = "post_bundle_dir";
+
 /// Default drop directory: sibling to the inbound ~/Downloads/Molly
 /// bundles/ folder Molly drops her bundles into. Created on demand;
-/// Robert can override via Settings → Watched folder (Phase 11 reuses
-/// that path-picker UI rather than adding yet another settings tab).
+/// the user can override it in Settings → Post-bundles (the path picker
+/// persists into `app_settings`, read back by `resolved_drop_dir`).
 pub fn default_drop_dir() -> PathBuf {
     if let Some(home) = dirs::home_dir() {
         home.join("Downloads").join("Molly post-bundles")
     } else {
         PathBuf::from("./Molly post-bundles")
     }
+}
+
+fn read_setting(conn: &Connection, key: &str) -> Result<Option<String>, BundleError> {
+    Ok(conn
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            params![key],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?)
+}
+
+fn write_setting(conn: &Connection, key: &str, value: &str) -> Result<(), BundleError> {
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
+}
+
+/// The drop dir compose/reveal/status all agree on: the user's configured
+/// path if set, else `default_drop_dir()`. Returns `(dir, using_default)`.
+/// Keeping this single source of truth is what stops reveal/status from
+/// pointing at the default after the user picks a custom folder.
+fn resolved_drop_dir(conn: &Connection) -> Result<(PathBuf, bool), BundleError> {
+    match read_setting(conn, SETTING_KEY_POST_BUNDLE_DIR)? {
+        Some(p) if !p.trim().is_empty() => Ok((PathBuf::from(p.trim()), false)),
+        _ => Ok((default_drop_dir(), true)),
+    }
+}
+
+/// User-facing settings for the post-bundle drop directory — mirrors
+/// `watch::WatchSettings` so the Settings UI reuses the same pattern.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostBundleSettings {
+    /// What the user actually configured (empty = use default).
+    pub configured_path: String,
+    /// What compose/reveal/status will actually use right now.
+    pub resolved_path: String,
+    /// True when configured_path is empty so the default applies.
+    pub using_default: bool,
+}
+
+#[tauri::command]
+pub fn get_post_bundle_settings<R: Runtime>(
+    handle: AppHandle<R>,
+) -> Result<PostBundleSettings, BundleError> {
+    let conn = open_conn(&handle)?;
+    let configured = read_setting(&conn, SETTING_KEY_POST_BUNDLE_DIR)?.unwrap_or_default();
+    let (resolved, using_default) = resolved_drop_dir(&conn)?;
+    Ok(PostBundleSettings {
+        configured_path: configured,
+        resolved_path: resolved.to_string_lossy().to_string(),
+        using_default,
+    })
+}
+
+#[tauri::command]
+pub fn set_post_bundle_dir<R: Runtime>(
+    handle: AppHandle<R>,
+    path: Option<String>,
+) -> Result<PostBundleSettings, BundleError> {
+    let conn = open_conn(&handle)?;
+    let value = path.unwrap_or_default();
+    write_setting(&conn, SETTING_KEY_POST_BUNDLE_DIR, value.trim())?;
+    drop(conn);
+    get_post_bundle_settings(handle)
+}
+
+/// Reveal the drop directory itself (creating it on demand) — used by the
+/// Settings pane so the user can open the folder even before any compose.
+#[tauri::command]
+pub fn reveal_post_bundle_dir<R: Runtime>(handle: AppHandle<R>) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let (dir, _) = resolved_drop_dir(&conn)?;
+    fs::create_dir_all(&dir)?;
+    crate::fsutil::reveal_in_file_browser(&dir)?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -138,10 +237,9 @@ pub fn compose_post_bundle<R: Runtime>(
 ) -> Result<ComposeResult, BundleError> {
     let conn = open_conn(&handle)?;
 
-    // Build the report in-memory from current DB state.
-    let report = build_report(&conn, &uid)?;
-    let report_json = serde_json::to_string_pretty(&report)
-        .map_err(|e| BundleError::Io(std::io::Error::other(format!("report serialize: {e}"))))?;
+    // Build the report in-memory from current DB state. Held mutable so we
+    // can stamp `summary_pdf` once we know the Summary made it into the zip.
+    let mut report = build_report(&conn, &uid)?;
     // Human-readable notes. Records a working-title change when one was
     // made (report.json carries the structured originalTitle/workingTitle).
     let notes_md = if report.working_title != report.original_title {
@@ -161,11 +259,20 @@ pub fn compose_post_bundle<R: Runtime>(
     let posting_log_json = serde_json::to_string_pretty(&posting_log)
         .map_err(|e| BundleError::Io(std::io::Error::other(format!("posting-log serialize: {e}"))))?;
 
-    // Collect artifacts: transcripts + per-file thumbnails. Keyed by
-    // their in-zip path so the BTreeMap ordering drives deterministic
-    // entry order.
+    // Collect artifacts: transcripts + per-file thumbnails + the Summary
+    // PDF. Keyed by their in-zip path so the BTreeMap ordering drives
+    // deterministic entry order.
     let mut artifacts: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     collect_artifacts(&handle, &conn, &uid, &mut artifacts)?;
+
+    // Stamp the report's summary pointer now that artifacts are gathered,
+    // then serialize. (Serialization deliberately happens *after* collect so
+    // the report can name the bundled Summary PDF — see SUMMARY_IN_ZIP.)
+    report.summary_pdf = artifacts
+        .contains_key(SUMMARY_IN_ZIP)
+        .then(|| SUMMARY_IN_ZIP.to_string());
+    let report_json = serde_json::to_string_pretty(&report)
+        .map_err(|e| BundleError::Io(std::io::Error::other(format!("report serialize: {e}"))))?;
 
     // Optional: include the per-bundle processing log if the user
     // exported it (Phase 5 follow-up). Detect by file presence.
@@ -191,7 +298,7 @@ pub fn compose_post_bundle<R: Runtime>(
         &artifacts,
     )?;
 
-    let drop_dir = default_drop_dir();
+    let (drop_dir, _) = resolved_drop_dir(&conn)?;
     fs::create_dir_all(&drop_dir)?;
     let out_path = drop_dir.join(format!("{uid}-post.zip"));
     let tmp_path = out_path.with_extension("zip.tmp");
@@ -249,8 +356,9 @@ pub fn reveal_post_bundle<R: Runtime>(
     handle: AppHandle<R>,
     uid: String,
 ) -> Result<(), BundleError> {
-    let _ = handle;
-    let out_path = default_drop_dir().join(format!("{uid}-post.zip"));
+    let conn = open_conn(&handle)?;
+    let (dir, _) = resolved_drop_dir(&conn)?;
+    let out_path = dir.join(format!("{uid}-post.zip"));
     if !out_path.exists() {
         return Err(BundleError::NotFound(format!(
             "{} — compose the post-bundle first", out_path.display(),
@@ -277,8 +385,9 @@ pub fn get_post_bundle_status<R: Runtime>(
     handle: AppHandle<R>,
     uid: String,
 ) -> Result<PostBundleStatus, BundleError> {
-    let _ = handle;
-    let out_path = default_drop_dir().join(format!("{uid}-post.zip"));
+    let conn = open_conn(&handle)?;
+    let (dir, _) = resolved_drop_dir(&conn)?;
+    let out_path = dir.join(format!("{uid}-post.zip"));
     let (exists, size_bytes, modified_at) = match fs::metadata(&out_path) {
         Ok(m) => {
             let modified = m.modified().ok()
@@ -513,24 +622,25 @@ fn build_report(conn: &Connection, uid: &str) -> Result<Report, BundleError> {
         title_override
     };
 
+    // postedUrl deliberately omitted (v0.28.0) — never a real link to carry.
     let mut stmt = conn.prepare(
-        "SELECT pt.name, pt.name, bp.state, bp.posted_at, bp.posted_url,
+        "SELECT pt.name, pt.name, bp.state, bp.posted_at,
                 bp.body_override, bp.selected_assets_json, bp.notes, bp.fansite_day
            FROM bundle_postings bp
            JOIN posting_targets pt ON pt.id = bp.target_id
           WHERE bp.bundle_uid = ?1
           ORDER BY pt.position, pt.name, bp.fansite_day",
     )?;
-    let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<i64>)> =
+    let rows: Vec<(String, String, String, Option<String>, Option<String>, String, Option<String>, Option<i64>)> =
         stmt.query_map(params![uid], |r| Ok((
-            r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
-            r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?,
+            r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
+            r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
         )))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(stmt);
 
     let mut targets: Vec<ReportTarget> = Vec::with_capacity(rows.len());
-    for (target_id, target_name, state, posted_at, posted_url, body_override,
+    for (target_id, target_name, state, posted_at, body_override,
          selected_assets_json, notes, fansite_day) in rows {
         // Parse the assets-used JSON into a list of bundle-relative
         // paths. Robust against the legacy `[]` default.
@@ -542,7 +652,7 @@ fn build_report(conn: &Connection, uid: &str) -> Result<Report, BundleError> {
             .unwrap_or_default();
         targets.push(ReportTarget {
             target_id, target_name, state,
-            posted_at, posted_url, body_override, files_used, notes,
+            posted_at, body_override, files_used, notes,
             fansite_day,
         });
     }
@@ -558,6 +668,7 @@ fn build_report(conn: &Connection, uid: &str) -> Result<Report, BundleError> {
         working_title,
         targets,
         bundle_level_notes: None,
+        summary_pdf: None, // stamped by compose once the PDF is in the zip
     })
 }
 
@@ -603,6 +714,22 @@ fn collect_artifacts<R: Runtime>(
         }
     }
 
+    // SideMolly Summary PDF — the human-readable recap of the bundle. We
+    // (re)generate it best-effort so every post-bundle carries an up-to-date
+    // copy under a deterministic in-zip name (report.json points at it via
+    // `summaryPdf`). Best-effort: a render failure must never block the
+    // deliverable, so we simply omit it if generation fails.
+    //
+    // NOTE(molly-side): Molly does not yet *consume* this PDF on ingest —
+    // it only ships it back for availability. When we next work on Molly,
+    // add a viewer/link for report.summaryPdf. Tracked in Molly/ROADMAP.md
+    // → "Inbound from SideMolly".
+    if let Some(pdf) = crate::summary::try_generate_for_dropbox(handle, uid) {
+        if let Ok(bytes) = fs::read(&pdf) {
+            out.insert(SUMMARY_IN_ZIP.to_string(), bytes);
+        }
+    }
+
     Ok(())
 }
 
@@ -630,13 +757,13 @@ mod tests {
                 target_name: "Clips4Sale".into(),
                 state: "posted".into(),
                 posted_at: Some("2026-05-23T14:22:00Z".into()),
-                posted_url: Some("https://example.com/x".into()),
                 body_override: None,
                 files_used: vec!["a.mp4".into()],
                 notes: None,
                 fansite_day: None,
             }],
             bundle_level_notes: None,
+            summary_pdf: Some("artifacts/summary.pdf".into()),
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("\"reportVersion\":1"), "{json}");
@@ -644,6 +771,9 @@ mod tests {
         assert!(json.contains("\"reportComposedAt\""), "{json}");
         assert!(json.contains("\"filesUsed\""), "{json}");
         assert!(json.contains("\"fansiteDay\""), "{json}");
+        assert!(json.contains("\"summaryPdf\":\"artifacts/summary.pdf\""), "{json}");
+        // postedUrl was removed in v0.28.0 — it must not reappear.
+        assert!(!json.contains("postedUrl"), "{json}");
     }
 
     #[test]

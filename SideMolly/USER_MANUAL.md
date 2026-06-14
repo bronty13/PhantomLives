@@ -25,10 +25,18 @@ post-bundle back to Molly to record what actually happened.
   original** reverts it.
 - **Ship it back** — compose a post-bundle ZIP that records what you
   posted; Molly ingests it to close the loop. The ZIP lands in
-  `~/Downloads/Molly post-bundles/<uid>-post.zip`, and a plain
-  `<uid>-post/` folder is written next to it holding the same contents
-  (report, notes, posting log, artifacts) — open that folder to browse
-  the artifacts directly, without unzipping.
+  `~/Downloads/Molly post-bundles/<uid>-post.zip` (you can change this
+  folder in **Settings → Post-bundles**), and a plain `<uid>-post/`
+  folder is written next to it holding the same contents (report, notes,
+  posting log, artifacts, and the **Summary PDF**) — open that folder to
+  browse the artifacts directly, without unzipping. The Summary PDF is
+  generated fresh and bundled in every time, so Molly always gets the
+  human-readable recap alongside the structured report.
+- **Find what you sent** — right after **Send to Molly**, the green
+  confirmation shows the exact saved path and a **📁 Reveal** button that
+  opens it in Finder. You can also reveal the folder any time from
+  **Settings → Post-bundles → Reveal**, or re-reveal a sent bundle via the
+  **📁 ✓ Sent** pill in the bundle header.
 - **Mark it complete** — once you're done with a bundle, click **✓ Complete**
   on its Inbox row to tuck it out of the default view. After **Send to Molly**
   succeeds, SideMolly also offers to complete the bundle in one click.

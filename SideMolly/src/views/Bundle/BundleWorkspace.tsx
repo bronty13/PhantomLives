@@ -328,18 +328,30 @@ function SendToMollyButton({ uid, jobs, onBack }:
 
   if (offerComplete) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+      <div className="flex flex-col gap-1.5 px-3 py-2 rounded-lg"
            style={{ background: '#deffee', border: '1px solid #1f9d55' }}>
-        <span className="text-xs font-semibold" style={{ color: '#0f5d33' }}>
-          Sent! Mark this bundle complete?
-        </span>
-        <button type="button" className="sm-button text-xs" onClick={markComplete}>
-          ✓ Mark complete
-        </button>
-        <button type="button" className="sm-button secondary text-xs"
-                onClick={() => setOfferComplete(false)}>
-          Not yet
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold" style={{ color: '#0f5d33' }}>
+            Sent! Saved to your post-bundles folder.
+          </span>
+          <button type="button" className="sm-button secondary text-xs" onClick={reveal}
+                  title={status?.outputPath ?? 'Reveal the saved post-bundle in Finder'}>
+            📁 Reveal
+          </button>
+          <button type="button" className="sm-button text-xs" onClick={markComplete}>
+            ✓ Mark complete
+          </button>
+          <button type="button" className="sm-button secondary text-xs"
+                  onClick={() => setOfferComplete(false)}>
+            Not yet
+          </button>
+        </div>
+        {status?.outputPath && (
+          <div className="text-[10px] font-mono truncate" style={{ color: '#0f5d33', maxWidth: 460 }}
+               title={status.outputPath}>
+            {status.outputPath}
+          </div>
+        )}
       </div>
     );
   }

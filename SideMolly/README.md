@@ -5,7 +5,7 @@
 > **edit · process · post**, and finally sends a structured post-bundle
 > back to Molly to close the loop.
 
-**Status: shipping (v0.27.5).** All 13 planned phases are live — bundle ingest
+**Status: shipping (v0.28.0).** All 13 planned phases are live — bundle ingest
 (watched folder + drag-drop + verify), per-bundle edit/process (rotate,
 watermark, strip, rename), the Auto-Assembly pipeline (title card → xfades →
 master cut), transcription, Dropbox copy, the three Post Runners

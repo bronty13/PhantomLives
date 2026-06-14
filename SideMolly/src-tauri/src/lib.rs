@@ -263,6 +263,9 @@ pub fn run() {
             post_bundle::compose_post_bundle,
             post_bundle::get_post_bundle_status,
             post_bundle::reveal_post_bundle,
+            post_bundle::get_post_bundle_settings,
+            post_bundle::set_post_bundle_dir,
+            post_bundle::reveal_post_bundle_dir,
             jobs::retry_job,
             jobs::cancel_pending_job,
             jobs::clear_jobs_by_status,
@@ -324,7 +327,7 @@ mod camel_case_contract {
         FanSiteDay, FanSitePlan, FanSiteTargetDay, PostingLogRow,
         PreparedDay, PreparedDayFile,
     };
-    use crate::post_bundle::{ComposeResult, PostBundleStatus};
+    use crate::post_bundle::{ComposeResult, PostBundleSettings, PostBundleStatus};
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, EditDefaults, ExportThumb,
         ImageProgressEvent, IngestResult, RotationUpdate, SummarySettings};
     use crate::manifest::{BundleManifest, FanDay};
@@ -617,6 +620,13 @@ mod camel_case_contract {
             bundle_uid: String::new(), output_path: String::new(),
             exists: false, size_bytes: 0, modified_at: None,
         }).unwrap(), "PostBundleStatus");
+    }
+
+    #[test] fn post_bundle_settings_is_camel_case() {
+        assert_camel(&serde_json::to_value(PostBundleSettings {
+            configured_path: String::new(), resolved_path: String::new(),
+            using_default: true,
+        }).unwrap(), "PostBundleSettings");
     }
 
     #[test] fn posting_card_is_camel_case() {
