@@ -22,9 +22,24 @@ from applearchive_common import (  # noqa: E402
     load_manifest, manifest_keys, append_manifest, write_csv, html_page, esc,
 )
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 CALL_TYPE = {1: 'Phone', 8: 'FaceTime', 16: 'FaceTime Video'}
+
+
+def _addr(v):
+    """ZADDRESS/ZNAME are plaintext on some macOS versions but ENCRYPTED blobs on
+    others (notably ≤12). Return a clean string, or '(encrypted)' for blobs we
+    can't read — never raw bytes."""
+    if v is None:
+        return ''
+    if isinstance(v, (bytes, bytearray)):
+        try:
+            t = bytes(v).decode('utf-8')
+        except UnicodeDecodeError:
+            return '(encrypted)'
+        return t.strip() if (t.strip() and t.isprintable()) else '(encrypted)'
+    return str(v).strip()
 
 
 def _dur(seconds):
@@ -47,10 +62,11 @@ def read_calls(db):
             'SELECT ZADDRESS, ZNAME, ZORIGINATED, ZCALLTYPE, ZANSWERED, '
             '       ZDURATION, ZDATE, ZSERVICE_PROVIDER FROM ZCALLRECORD'):
         when = cd_date(date, '%Y-%m-%d %H:%M:%S')
-        addr_s = s(addr)
+        addr_s = _addr(addr)
+        name_s = _addr(name)
         out.append({
             'id': short_hash(addr_s, when),
-            'address': addr_s, 'name': s(name),
+            'address': addr_s, 'name': name_s if name_s != '(encrypted)' else '',
             'direction': 'outgoing' if orig else 'incoming',
             'kind': CALL_TYPE.get(int(ctype or 0), 'Call'),
             'answered': bool(answered),

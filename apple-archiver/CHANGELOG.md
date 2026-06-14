@@ -2,6 +2,16 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.2.1 — 2026-06-14
+
+### Fixed
+- **Call history: handle encrypted `ZADDRESS`/`ZNAME`.** On some macOS versions
+  (notably ≤12) these are encrypted blobs, not plaintext; the archiver was dumping
+  raw bytes into calls.csv/html. Now shows `(encrypted)` for unreadable values
+  while still preserving the plaintext call metadata (date, direction, duration,
+  answered/missed, kind). The number itself can't be recovered from a pulled DB
+  (the key lives in the source Mac's keychain).
+
 ## 1.2.0 — 2026-06-14
 
 ### Added — Tier 1: Safari, Voice Memos, Call history

@@ -230,6 +230,17 @@ class CallHistoryTests(unittest.TestCase):
         ca.run_archive(self.db, self.archive)
         self.assertEqual(ca.run_archive(self.db, self.archive)['new'], 0)
 
+    def test_encrypted_address_blob(self):
+        # macOS <=12 stores ZADDRESS as an encrypted blob — must not dump raw bytes.
+        conn = sqlite3.connect(self.db)
+        conn.execute("INSERT INTO ZCALLRECORD VALUES(3,?,NULL,0,1,1,30.0,700000200.0,NULL)",
+                     (b'\xb4\x0a#\x07\xef\xfd\xa5\xfe\xc9',))
+        conn.commit(); conn.close()
+        ca.run_archive(self.db, self.archive)
+        csv = (Path(self.archive) / 'calls.csv').read_text()
+        self.assertNotIn("\\x", csv)              # no raw byte escapes leaked
+        self.assertIn('(encrypted)', csv)
+
 
 class VoiceMemosTests(unittest.TestCase):
     def setUp(self):
