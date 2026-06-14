@@ -188,6 +188,42 @@ and *reports-only* http-landing-page and no-header senders. Candidates via
 `--senders` or `--from-csv <analyze senders.csv> --min-count N`. Run it for the
 two Gmail accounts too when ready (`--account gmail`, their keychain services).
 
+## Recurring new-mail sweep (the routine)
+
+New mail keeps trickling in — partly the senders already unsubscribed (CAN-SPAM
+gives them ~10 business days), partly bulk senders on **new subdomains** that old
+exact-address lists miss (the real tuning signal). The repeatable sweep:
+
+```bash
+cd ~/dev/PhantomLives/mail-cleaner
+U="--account icloud --user robert.olen@icloud.com --keychain-service mail-cleaner-icloud"
+
+# 1. See what's new + new bulk variants (read-only)
+python3 mailcleaner.py analyze $U          # or eyeball SINCE <date> by sender
+
+# 2. File church people FIRST so they're never bulk-swept
+python3 mailcleaner.py act $U --senders lists/icloud_church_senders.txt \
+    --action archive --to Church --apply
+
+# 3. Add any new bulk variants to lists/icloud_pass3_delete_senders.txt, then:
+python3 mailcleaner.py unsubscribe $U --senders lists/icloud_pass3_delete_senders.txt --apply
+python3 mailcleaner.py act $U --senders lists/icloud_pass3_delete_senders.txt \
+    --action delete --apply --confirm DELETE
+```
+
+**Church folder** (`lists/icloud_church_senders.txt`, created 2026-06-14): 8
+validated Church @ The Springs (FL) small-group people (Jan & Marty Roberts,
+Norma Crawford, Jan Yoest, John & Debbie Lane, Myrna & Roland, Tamara Estes).
+224 messages moved in on creation. Validated OUT (not in the list): older
+Restoration Church (Buffalo) people + prayer chains, other churches/pastors
+(Pastor Jerry @ The Chapel, Pat Brimer @ Live Oaks), Margaret Phillips (family) —
+add a group later if wanted.
+
+**Facebook**: `@facebookmail.com` notification emails can't be unsubscribed
+headlessly — FB's `o.php` opt-out links are session-bound and return HTTP 400.
+Stop them in **FB → Settings → Notifications → Email**. The addresses are on the
+pass-3 delete list so copies are swept each round regardless.
+
 ## Optional future passes (none urgent)
 
 1. **Deeper iCloud tail** — the remaining 74,495 still has long-tail senders;
