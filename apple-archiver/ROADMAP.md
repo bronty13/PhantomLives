@@ -18,17 +18,16 @@ Per-source Apple-data archives, all on the same PurpleAttic **pull model**
 | Voice Memos | `.m4a` files + `CloudRecordings.db` | `voicememos_archiver.py` |
 | Call history | `CallHistory.storedata` (`ZCALLRECORD`) | `callhistory_archiver.py` |
 
-## Phase 2 — next
+## Phase 2 — shipped (2026-06-14)
 
-- **Calendar** — events (title / start / end / location / notes / attendees /
-  recurrence) from `~/Library/Calendars/Calendar.sqlitedb` (Core Data; expect the
-  same per-version column drift Reminders had — introspect + COALESCE). Views:
-  per-calendar `.md` + month/agenda `calendar.html` + `.ics` export per calendar
-  (so events re-import anywhere). High value.
-- **Books** — highlights & annotations from
-  `~/Library/Containers/com.apple.iBooksX/Data/Documents/AEAnnotation/AEAnnotation*.sqlite`
-  joined to the library DB (`BKLibrary*.sqlite`) for titles/authors. Views:
-  per-book highlights `.md` + `.html`. Niche but irreplaceable for readers.
+| Kind | Source store | Archiver |
+|---|---|---|
+| Calendar | `Calendar.sqlitedb` (13+) / `Calendar Cache` `ZCALENDARITEM` (≤12) | `calendar_archiver.py` — Markdown + HTML + **`.ics`** |
+| Books | `AEAnnotation*.sqlite` + `BKLibrary*.sqlite` | `books_archiver.py` — per-book highlights MD + collapsible HTML |
+
+Both dual-schema / version-robust (column introspection + COALESCE), same as
+Reminders. Verified: Calendar 1,943 events on a Monterey source; Books schema +
+synthetic tests (no highlights on the test Macs yet).
 
 ## Phase 3 — later / heavier
 
