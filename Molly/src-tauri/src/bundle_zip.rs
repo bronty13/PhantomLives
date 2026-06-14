@@ -607,6 +607,17 @@ fn sanitize_name(name: &str) -> String {
     out
 }
 
+/// Human-readable price for info.md / Molly.log. `Some(0)` → "Free", any other
+/// amount → `$X.XX`, and `None` → the caller's `unset` label (which differs
+/// between the markdown and plain-text renderers).
+fn human_price(price_cents: Option<i64>, unset: &str) -> String {
+    match price_cents {
+        Some(0) => "Free".to_string(),
+        Some(c) => format!("${}.{:02}", c / 100, c % 100),
+        None => unset.to_string(),
+    }
+}
+
 fn render_info_md(s: &BundleSnapshot) -> String {
     let mut md = String::new();
     md.push_str(&format!("# {}\n\n", if s.title.is_empty() { "(no title)" } else { &s.title }));
@@ -667,6 +678,14 @@ fn render_info_md(s: &BundleSnapshot) -> String {
                 md.push('\n');
             }
 
+            if s.bundle_type == BundleType::Content {
+                md.push_str("## Price\n\n");
+                md.push_str(&format!(
+                    "- **Price:** {}\n\n",
+                    human_price(s.price_cents, "_(not set)_")
+                ));
+            }
+
             if s.bundle_type != BundleType::YouTube {
                 md.push_str("## Categories\n\n");
                 if s.categories.is_empty() {
@@ -708,10 +727,11 @@ fn render_info_md(s: &BundleSnapshot) -> String {
             }
             if s.handled_in_platform {
                 md.push_str("- **Price:** _handled in delivery platform_\n");
-            } else if let Some(c) = s.price_cents {
-                md.push_str(&format!("- **Price:** ${}.{:02}\n", c / 100, c % 100));
             } else {
-                md.push_str("- **Price:** _(not set)_\n");
+                md.push_str(&format!(
+                    "- **Price:** {}\n",
+                    human_price(s.price_cents, "_(not set)_")
+                ));
             }
             md.push('\n');
 
@@ -878,6 +898,12 @@ fn render_molly_log(
                     sanitize_name(&teaser.original_name)
                 ));
             }
+            if s.bundle_type == BundleType::Content {
+                log.push_str(&format!(
+                    "Price:              {}\n",
+                    human_price(s.price_cents, "(not set)")
+                ));
+            }
             if s.bundle_type != BundleType::YouTube {
                 log.push_str(&format!("Categories ({}):\n", s.categories.len()));
                 for (i, c) in s.categories.iter().enumerate() {
@@ -908,10 +934,11 @@ fn render_molly_log(
             }
             if s.handled_in_platform {
                 log.push_str("Price:              handled in delivery platform\n");
-            } else if let Some(c) = s.price_cents {
-                log.push_str(&format!("Price:              ${}.{:02}\n", c / 100, c % 100));
             } else {
-                log.push_str("Price:              (not set)\n");
+                log.push_str(&format!(
+                    "Price:              {}\n",
+                    human_price(s.price_cents, "(not set)")
+                ));
             }
             log.push_str(&format!("Content tags ({}):\n", s.tags.len()));
             if s.tags.is_empty() {
@@ -1451,6 +1478,29 @@ mod tests {
         assert!(log.contains("Content tags (2):"));
         assert!(log.contains("1. tits"));
         assert!(log.contains("2. panties"));
+    }
+
+    #[test]
+    fn info_md_and_log_render_content_price() {
+        let work = tempfile::tempdir().unwrap();
+        let mut snap = fixture_content(work.path());
+
+        // A concrete price renders as "$X.XX" in both human-readable files.
+        snap.price_cents = Some(1099);
+        let md = render_info_md(&snap);
+        assert!(md.contains("## Price"));
+        assert!(md.contains("- **Price:** $10.99"));
+        let log = render_molly_log(&snap, "deadbeef", &[]);
+        assert!(log.contains("Price:              $10.99"));
+
+        // Free (zero cents) renders the word "Free", never "$0.00".
+        snap.price_cents = Some(0);
+        assert!(render_info_md(&snap).contains("- **Price:** Free"));
+        assert!(render_molly_log(&snap, "deadbeef", &[]).contains("Price:              Free"));
+
+        // No price set is tolerated (shouldn't happen post-autofill, but render cleanly).
+        snap.price_cents = None;
+        assert!(render_info_md(&snap).contains("- **Price:** _(not set)_"));
     }
 
     #[test]

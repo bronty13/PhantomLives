@@ -4,6 +4,39 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] — 2026-06-14
+
+### Added — Content bundles now have a price, defaulted from video length
+
+Content bundles can now carry a **price** (dollars and cents, e.g. `$8.99`),
+just like custom bundles. The price is **defaulted automatically** from the
+total length of the bundle's videos, so Sallie usually doesn't have to think
+about it — and she can always override it or mark the bundle **Free**.
+
+- **Default-from-duration:** as videos are added to a Content bundle, Molly
+  sums their durations and suggests a price using a configurable algorithm:
+  `base + per-minute × minutes`, never below a floor, snapped to the nearest
+  **`$X.99`**. Defaults (base `$5.00`, `$1.00`/min, floor `$8`) track the
+  reference table: 4 min → `$8.99`, 6 min → `$10.99`, 8 min → `$12.99`,
+  12 min → `$16.99`.
+- **On the upload page:** a read-only panel shows the running total video
+  length and the suggested price as she adds/removes clips.
+- **On the Review & Publish page:** the price is editable. It's auto-filled
+  once with the suggestion (only when no price is set yet, so a price Sallie
+  already chose is never overwritten), and she can type any override, tick
+  **Free**, or click **Reset to suggested** to recompute from the current
+  total length.
+- **Configurable in Settings → Bundler:** a new "Content bundle pricing"
+  section sets the base, per-minute rate, and floor, with a live preview. The
+  `$X.99` snap is fixed.
+- **In the bundle:** `manifest.json` already carried `priceCents` for every
+  type; `info.md` and `Molly.log` now show the content bundle's price too
+  (and render `Free` for a $0.00 bundle, not `$0.00`).
+- **Engine note:** the suggested price relies on the bundled video engine
+  reading each clip's duration. If a clip can't be read, it's just left out of
+  the estimate (which is then flagged as possibly low) — it never blocks
+  uploading or publishing.
+
 ## [1.31.1] — 2026-06-14
 
 ### Fixed — GIF Studio errors are now copyable + actionable (Windows os error 193)

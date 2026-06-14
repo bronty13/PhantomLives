@@ -3,9 +3,11 @@ import { db } from '../../data/db';
 import {
   type Bundle,
   type BundleFileInfo,
+  type BundlerSettings,
   deleteBundleDraft,
   deleteBundleFile,
   getBundle,
+  getBundlerSettings,
   listProhibitedWords,
   readMasterClipperCategories,
   reorderBundleFiles,
@@ -13,6 +15,8 @@ import {
   setBundleCategories,
   updateBundleFields,
 } from '../../data/bundles';
+import { computeDefaultPriceCents, DEFAULT_PRICING, formatPriceCents } from '../../lib/pricing';
+import { sumVideoDurations, type DurationTotal } from '../../lib/durationProbe';
 import { listPersonas, type Persona } from '../../data/personas';
 import { listContentTags, setBundleTags, type ContentTag } from '../../data/contentTags';
 import { CategoryChipPicker } from './components/CategoryChipPicker';
@@ -45,6 +49,8 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
   const [error, setError] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
   const [frameOpen, setFrameOpen] = useState(false);
+  const [pricing, setPricing] = useState<BundlerSettings | null>(null);
+  const [durTotal, setDurTotal] = useState<DurationTotal | null>(null);
 
   // reload depends only on `uid`; deliberately NOT on any parent callback,
   // since an unstable parent callback would cause this useCallback's
@@ -58,17 +64,29 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
 
   useEffect(() => {
     let alive = true;
-    Promise.all([reload(), listPersonas(), listProhibitedWords(), loadCategorySuggestions(), listContentTags()])
-      .then(([_, p, pw, sug, tags]) => {
+    Promise.all([reload(), listPersonas(), listProhibitedWords(), loadCategorySuggestions(), listContentTags(), getBundlerSettings()])
+      .then(([_, p, pw, sug, tags, settings]) => {
         if (!alive) return;
         setPersonas(p);
         setProhibited(pw);
         setSuggestions(sug);
         setContentTags(tags);
+        setPricing(settings);
       })
       .catch((e) => alive && setError(String(e)));
     return () => { alive = false; };
   }, [reload]);
+
+  // Re-sum the videos' durations whenever the file set changes, so the
+  // suggested-price preview stays live as Sallie adds/removes clips. Probing
+  // is async + best-effort; the price is only a suggestion she confirms on
+  // the review page, so a probe failure just leaves the estimate low.
+  useEffect(() => {
+    if (!bundle) return;
+    let alive = true;
+    sumVideoDurations(bundle.files).then((t) => { if (alive) setDurTotal(t); }).catch(() => {});
+    return () => { alive = false; };
+  }, [bundle]);
 
   async function onTagsChange(next: number[]) {
     await withBusy(async () => { await setBundleTags(uid, next); await reload(); });
@@ -351,6 +369,12 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           onReorder={onReorderFiles}
         />
 
+        <PricePreview
+          bundle={bundle}
+          pricing={pricing}
+          durTotal={durTotal}
+        />
+
         <SpecialInstructionsField
           value={bundle.specialInstructions}
           onCommit={commitSpecial}
@@ -424,6 +448,61 @@ function guessKind(path: string): 'video' | 'image' {
   const ext = (path.split('.').pop() ?? '').toLowerCase();
   const videoExts = ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'];
   return videoExts.includes(ext) ? 'video' : 'image';
+}
+
+function fmtDuration(totalSeconds: number): string {
+  const s = Math.round(totalSeconds);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+/**
+ * Read-only summary of the bundle's total video length and the suggested
+ * price derived from it. The editable price (override / Free) lives on the
+ * review page — this panel just keeps Sallie oriented as she uploads.
+ */
+function PricePreview({ bundle, pricing, durTotal }: {
+  bundle: Bundle;
+  pricing: BundlerSettings | null;
+  durTotal: DurationTotal | null;
+}) {
+  const videoCount = bundle.files.filter((f) => f.kind === 'video' && f.fansiteDayId === null).length;
+  if (videoCount === 0) return null;
+  const settings = pricing ?? DEFAULT_PRICING;
+  const suggested = durTotal ? computeDefaultPriceCents(durTotal.totalSeconds, settings) : null;
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-semibold opacity-75">Price</label>
+      <div className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm space-y-0.5">
+        {durTotal ? (
+          <div className="opacity-80">
+            Total video length <strong className="font-mono">{fmtDuration(durTotal.totalSeconds)}</strong>{' '}
+            across {durTotal.videoCount} video{durTotal.videoCount === 1 ? '' : 's'}.
+            {durTotal.failedCount > 0 && (
+              <span className="text-amber-700"> (couldn’t read {durTotal.failedCount} — estimate may be low)</span>
+            )}
+          </div>
+        ) : (
+          <div className="opacity-60 italic">Measuring video length…</div>
+        )}
+        {bundle.priceCents === 0 ? (
+          <div>Price: <strong>Free</strong></div>
+        ) : bundle.priceCents != null ? (
+          <div>
+            Price set to <strong className="font-mono">{formatPriceCents(bundle.priceCents)}</strong>{' '}
+            <span className="opacity-60">— change it on the review page.</span>
+          </div>
+        ) : (
+          <div>
+            Suggested price{' '}
+            <strong className="font-mono">{suggested != null ? formatPriceCents(suggested) : '…'}</strong>{' '}
+            <span className="opacity-60">— you’ll confirm or change this on the review page.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 async function loadCategorySuggestions(): Promise<string[]> {

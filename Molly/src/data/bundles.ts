@@ -156,6 +156,13 @@ export interface BundlerSettings {
   youtubeDefaultPrivate: boolean;
   /** Default "Also Post SFW ManyVids" state for a new YouTube bundle (default false). */
   youtubeDefaultPostSfwManyvids: boolean;
+  // Content-bundle default-pricing algorithm (see src/lib/pricing.ts). All in cents.
+  /** Flat base before the per-minute term (default 500 = $5.00). */
+  contentPriceBaseCents: number;
+  /** Added per minute of total video (default 100 = $1.00/min). */
+  contentPricePerMinuteCents: number;
+  /** Lowest whole-dollar price before the $X.99 snap (default 800 = $8). */
+  contentPriceFloorCents: number;
 }
 
 export interface ValidationIssueDto {

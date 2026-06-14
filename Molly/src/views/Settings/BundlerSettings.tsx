@@ -10,6 +10,13 @@ import {
   revealBundlesDir,
   setBundlerSettings,
 } from '../../data/bundles';
+import { computeDefaultPriceCents, formatPriceCents } from '../../lib/pricing';
+
+/** Parse a dollar string from a price input into non-negative whole cents. */
+function dollarsToCents(s: string): number {
+  const n = parseFloat(s.replace(/[$,\s]/g, ''));
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0;
+}
 
 export function BundlerSettings() {
   const [settings, setSettings] = useState<BundlerSettingsDto | null>(null);
@@ -160,6 +167,63 @@ export function BundlerSettings() {
           />
           <span>Also Post SFW ManyVids defaults to <strong>Yes</strong></span>
         </label>
+      </section>
+
+      <section className="pretty-card space-y-3">
+        <h3 className="font-semibold">Content bundle pricing</h3>
+        <p className="text-xs opacity-70">
+          The default price for a new Content bundle, computed from the total length of its
+          videos: <code>base + per-minute × minutes</code>, never below the floor, then snapped
+          to the nearest <strong>$X.99</strong> (the .99 snap is fixed). Sallie can always
+          override it — or mark the bundle Free — on the review page.
+        </p>
+        <div className="grid grid-cols-2 gap-3 items-center">
+          <label className="text-sm">Base price</label>
+          <div className="flex items-center gap-1">
+            <span className="opacity-60">$</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              className="pretty-input w-24"
+              value={(settings.contentPriceBaseCents / 100).toFixed(2)}
+              onChange={(e) => save({ contentPriceBaseCents: dollarsToCents(e.target.value) })}
+            />
+          </div>
+          <label className="text-sm">Per minute of video</label>
+          <div className="flex items-center gap-1">
+            <span className="opacity-60">$</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              className="pretty-input w-24"
+              value={(settings.contentPricePerMinuteCents / 100).toFixed(2)}
+              onChange={(e) => save({ contentPricePerMinuteCents: dollarsToCents(e.target.value) })}
+            />
+            <span className="text-xs opacity-70">/ min</span>
+          </div>
+          <label className="text-sm">Floor (minimum price)</label>
+          <div className="flex items-center gap-1">
+            <span className="opacity-60">$</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              className="pretty-input w-24"
+              value={(settings.contentPriceFloorCents / 100).toFixed(2)}
+              onChange={(e) => save({ contentPriceFloorCents: dollarsToCents(e.target.value) })}
+            />
+          </div>
+        </div>
+        <div className="text-xs bg-pink-50 border border-pink-200 rounded-xl px-3 py-2 space-y-0.5">
+          <div className="font-semibold opacity-70">Preview</div>
+          {[4, 6, 8, 12].map((m) => (
+            <div key={m} className="font-mono">
+              a {m}-minute bundle → {formatPriceCents(computeDefaultPriceCents(m * 60, settings))}
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="pretty-card space-y-3">

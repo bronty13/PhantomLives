@@ -290,10 +290,29 @@ pub struct BundlerSettings {
     /// Default "Also Post SFW ManyVids" state for a new YouTube bundle.
     #[serde(default)]
     pub youtube_default_post_sfw_manyvids: bool,
+    /// Content-bundle default-pricing algorithm (see src/lib/pricing.ts), all
+    /// in cents. `#[serde(default = …)]` keeps settings.json files written
+    /// before these keys existed parsing instead of resetting every setting.
+    #[serde(default = "default_content_base_cents")]
+    pub content_price_base_cents: i64,
+    #[serde(default = "default_content_per_minute_cents")]
+    pub content_price_per_minute_cents: i64,
+    #[serde(default = "default_content_floor_cents")]
+    pub content_price_floor_cents: i64,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_content_base_cents() -> i64 {
+    500
+}
+fn default_content_per_minute_cents() -> i64 {
+    100
+}
+fn default_content_floor_cents() -> i64 {
+    800
 }
 
 impl Default for BundlerSettings {
@@ -306,6 +325,9 @@ impl Default for BundlerSettings {
             last_purge_at: None,
             youtube_default_private: true,
             youtube_default_post_sfw_manyvids: false,
+            content_price_base_cents: 500,
+            content_price_per_minute_cents: 100,
+            content_price_floor_cents: 800,
         }
     }
 }

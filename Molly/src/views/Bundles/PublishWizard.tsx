@@ -3,13 +3,18 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import {
   type Bundle,
   type BundlePublishResult,
+  type BundlerSettings,
   getBundle,
+  getBundlerSettings,
   listProhibitedWords,
   openBundleArchive,
   publishBundle,
   revealBundlesDir,
+  updateBundleFields,
 } from '../../data/bundles';
 import { hasBlockingIssues, validateBundle, type ValidationIssue } from '../../lib/bundleValidation';
+import { computeDefaultPriceCents, DEFAULT_PRICING, formatPriceCents } from '../../lib/pricing';
+import { sumVideoDurations, type DurationTotal } from '../../lib/durationProbe';
 import { ValidationChecklist } from './components/ValidationChecklist';
 import { BundleFilePreview } from './components/BundleFilePreview';
 import { listContentTags, type ContentTag } from '../../data/contentTags';
@@ -31,20 +36,47 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
   const [result, setResult] = useState<BundlePublishResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [serverIssues, setServerIssues] = useState<ValidationIssue[] | null>(null);
+  // Content-bundle price (editable here): the default is auto-filled once from
+  // the videos' total duration, then Sallie owns it.
+  const [pricing, setPricing] = useState<BundlerSettings | null>(null);
+  const [durTotal, setDurTotal] = useState<DurationTotal | null>(null);
+  const [priceDraft, setPriceDraft] = useState('');
+  const [free, setFree] = useState(false);
+  const [committingPrice, setCommittingPrice] = useState(false);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const [b, pw, t] = await Promise.all([
+        const [b, pw, t, s] = await Promise.all([
           getBundle(uid),
           listProhibitedWords(),
           listContentTags(),
+          getBundlerSettings(),
         ]);
         if (!alive) return;
-        setBundle(b);
         setTags(t);
+        setPricing(s);
         setIssues(validateBundle(b, { today: new Date(), prohibitedWords: pw }));
+
+        // Content bundles get a duration-derived default price. Probe the
+        // videos, then auto-fill ONCE (only when no price is set yet) so a
+        // price Sallie has already chosen is never silently overwritten.
+        let cur = b;
+        if (b.summary.bundleType === 'content') {
+          const dur = await sumVideoDurations(b.files);
+          if (!alive) return;
+          setDurTotal(dur);
+          if (b.priceCents == null) {
+            const def = computeDefaultPriceCents(dur.totalSeconds, s);
+            await updateBundleFields(uid, { priceCents: def });
+            cur = await getBundle(uid);
+            if (!alive) return;
+          }
+        }
+        setBundle(cur);
+        setFree(cur.priceCents === 0);
+        setPriceDraft(cur.priceCents != null && cur.priceCents !== 0 ? (cur.priceCents / 100).toFixed(2) : '');
         setStage('review');
       } catch (e) {
         if (!alive) return;
@@ -54,6 +86,22 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
     })();
     return () => { alive = false; };
   }, [uid]);
+
+  // Commit a price change (override / Free / reset) and refresh the bundle.
+  async function applyPrice(cents: number | null) {
+    setCommittingPrice(true);
+    try {
+      await updateBundleFields(uid, { priceCents: cents });
+      const b = await getBundle(uid);
+      setBundle(b);
+      setFree(b.priceCents === 0);
+      setPriceDraft(b.priceCents != null && b.priceCents !== 0 ? (b.priceCents / 100).toFixed(2) : '');
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setCommittingPrice(false);
+    }
+  }
 
   const blocking = hasBlockingIssues(issues);
 
@@ -168,6 +216,56 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                 )}
               </>
             )}
+
+            {bundle.summary.bundleType === 'content' && (() => {
+              const suggestedCents = computeDefaultPriceCents(durTotal?.totalSeconds ?? 0, pricing ?? DEFAULT_PRICING);
+              return (
+                <ReviewSection title="Price">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <span className="opacity-60">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="pretty-input w-28 font-mono"
+                        value={free ? '' : priceDraft}
+                        onChange={(e) => setPriceDraft(e.target.value)}
+                        onBlur={() => {
+                          const c = parseDollarsToCents(priceDraft);
+                          if (c !== bundle.priceCents) applyPrice(c);
+                        }}
+                        placeholder="0.00"
+                        disabled={free || committingPrice}
+                      />
+                    </div>
+                    <label className="text-sm flex items-center gap-2 select-none">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4"
+                        checked={free}
+                        onChange={(e) => applyPrice(e.target.checked ? 0 : null)}
+                        disabled={committingPrice}
+                      />
+                      Free
+                    </label>
+                    <button
+                      type="button"
+                      className="pretty-button secondary text-xs"
+                      disabled={committingPrice || free}
+                      onClick={() => applyPrice(suggestedCents)}
+                      title="Recompute from the current total video length"
+                    >
+                      ↺ Reset to suggested {formatPriceCents(suggestedCents)}
+                    </button>
+                  </div>
+                  <p className="text-xs opacity-60">
+                    {durTotal
+                      ? <>Suggested from {fmtDuration(durTotal.totalSeconds)} across {durTotal.videoCount} video{durTotal.videoCount === 1 ? '' : 's'}.{durTotal.failedCount > 0 ? ` Couldn’t read ${durTotal.failedCount} — suggestion may be low.` : ''}</>
+                      : 'Measuring video length…'}
+                  </p>
+                </ReviewSection>
+              );
+            })()}
 
             {bundle.summary.bundleType === 'custom' && (
               <ReviewSection title="Delivery">
@@ -361,6 +459,22 @@ function ReviewSection({ title, children }: { title: string; children: React.Rea
       {children}
     </section>
   );
+}
+
+function fmtDuration(totalSeconds: number): string {
+  const s = Math.round(totalSeconds);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+/** Parse a dollar input into cents. Empty/invalid → null (price not set). */
+function parseDollarsToCents(s: string): number | null {
+  const cleaned = s.trim().replace(/[$,\s]/g, '');
+  if (cleaned === '') return null;
+  const f = Number(cleaned);
+  if (!Number.isFinite(f) || f < 0) return null;
+  return Math.round(f * 100);
 }
 
 function ReviewRow({ label, value }: { label: string; value: React.ReactNode }) {

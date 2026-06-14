@@ -478,6 +478,7 @@ What to fill in:
 - **🖼️ Thumbnail Image** — *optional!* A pretty little cover image to ride along in the bundle. It should be a **JPG or PNG** and **under 5 MB** (I'll gently let you know if a file's too big). Drop in a file you already have **or** tap **✨ Grab a frame from a video** and Molly opens a little wizard so you can scrub to the *perfect* frame and snap it as your cover (see Frame Grabber below 🌟) — frames I capture are always tucked safely under 5 MB for you. Either way you'll see it preview right there. Don't want one? Just skip it. 💕
 - **🎞️ Teaser GIF** — *also optional!* An animated teaser (.gif) tucked into the bundle. You can drop in a `.gif` you already have **or** tap **✨ Make a GIF from a video** and Molly will whip one up for you (see GIF Studio below 🌟).
 - **Special instructions** — optional free-text for Robert.
+- **💲 Price** — *I do the math for you!* As you add videos, I add up their total length and suggest a price — usually around `$5 + $1 a minute`, never below `$8`, always landing on a pretty `$X.99`. You'll see the running length and my suggestion right under your files. You don't set it here, though — you'll confirm or change it on the **Review & Publish** page (so the suggestion's based on *all* your clips). Want a different number? Type it. Giving it away? Tick **Free** — easy. 💕 *(Psst: the base, per-minute rate, and floor all live in **Settings → Bundler → Content bundle pricing** if you ever want to nudge them.)*
 
 ### Publishing
 
@@ -487,6 +488,8 @@ When you're ready, click **🎁 Review & Publish…**. A wizard slides in from t
 - **Videos** play inline with a controls bar, plus a strip of **5 sample frames** Molly grabs automatically (just like MasterClipper does). Click a sample frame to enlarge it AND seek the player to that timestamp so you can re-watch the moment.
 - If your Mac has a weird codec the player can't decode, Molly tells you politely — your file is still saved in the bundle either way.
 - If you added a **🖼️ Thumbnail** or **🎞️ Teaser GIF**, they show up in a little **Preview assets** row so you can admire them one last time before they ship. ✨
+
+You'll also find your **💲 Price** here, all ready to go: I've already filled in my suggestion based on the total length of your videos. Leave it, type your own number, or tick **Free** to disable the box entirely. Changed your clips and want my fresh suggestion back? Tap **↺ Reset to suggested $X.99** and I'll recompute from the current total. (I only auto-fill *once* — so a price you've chosen yourself is safe and won't get overwritten.) 💕
 
 The **Pre-flight checks** section lists anything still missing; click any issue to jump straight to the field that needs love. Below the files you'll see your **content tags** (more on those below) so you can confirm they look right before sending.
 
