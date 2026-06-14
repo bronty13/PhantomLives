@@ -22,9 +22,34 @@ from applearchive_common import (  # noqa: E402
     load_manifest, manifest_keys, append_manifest, write_csv, html_page, esc,
 )
 
-__version__ = '1.0.1'
+__version__ = '1.1.0'
 
 CALL_TYPE = {1: 'Phone', 8: 'FaceTime', 16: 'FaceTime Video'}
+
+
+def _service(provider, ctype):
+    """Human service from ZSERVICE_PROVIDER (preferred) else the numeric type."""
+    p = s(provider).lower()
+    if 'facetime' in p:
+        return 'FaceTime'
+    if 'telephony' in p or 'phone' in p:
+        return 'Phone'
+    return CALL_TYPE.get(int(ctype or 0), 'Call')
+
+
+# ─── Address decryption (PLACEHOLDER — not implemented) ──────────────────────
+def decrypt_address(blob):
+    """ZADDRESS / ZNAME are ENCRYPTED AT REST on macOS — a key in the source Mac's
+    login keychain, access-controlled to Apple's CallHistory process, encrypts them
+    (a 44-byte opaque blob). They therefore CANNOT be decrypted from a pulled DB.
+
+    Future on-Mac path (experimental, unsupported, macOS-version-specific): run on
+    the source Mac while logged in and read the DECRYPTED value via Apple's private
+    CallHistory / TelephonyUtilities framework (e.g. PyObjC). Not implemented here;
+    returns None so callers fall back to '(encrypted)'. Note: for people the user
+    texts, the real number is already preserved in the Messages + Contacts archives.
+    """
+    return None
 
 
 def _addr(v):
@@ -57,21 +82,27 @@ def read_calls(db):
     conn = open_ro(db)
     if not has_table(conn, 'ZCALLRECORD'):
         conn.close(); return []
+    cols = {r[1] for r in rows(conn, 'PRAGMA table_info(ZCALLRECORD)')}
+    cc = 'ZISO_COUNTRY_CODE' if 'ZISO_COUNTRY_CODE' in cols else 'NULL'
+    sp = 'ZSERVICE_PROVIDER' if 'ZSERVICE_PROVIDER' in cols else 'NULL'
     out = []
-    for addr, name, orig, ctype, answered, dur, date, svc in rows(conn,
-            'SELECT ZADDRESS, ZNAME, ZORIGINATED, ZCALLTYPE, ZANSWERED, '
-            '       ZDURATION, ZDATE, ZSERVICE_PROVIDER FROM ZCALLRECORD'):
+    for addr, name, orig, ctype, answered, dur, date, svc, country in rows(conn,
+            f'SELECT ZADDRESS, ZNAME, ZORIGINATED, ZCALLTYPE, ZANSWERED, '
+            f'       ZDURATION, ZDATE, {sp}, {cc} FROM ZCALLRECORD'):
         when = cd_date(date, '%Y-%m-%d %H:%M:%S')
         addr_s = _addr(addr)
+        if addr_s == '(encrypted)':
+            addr_s = decrypt_address(addr) or '(encrypted)'   # future hook
         name_s = _addr(name)
         out.append({
-            'id': short_hash(addr_s, when),
+            'id': short_hash(addr_s if addr_s != '(encrypted)' else 'enc', when),
             'address': addr_s, 'name': name_s if name_s != '(encrypted)' else '',
             'direction': 'outgoing' if orig else 'incoming',
-            'kind': CALL_TYPE.get(int(ctype or 0), 'Call'),
+            'kind': _service(svc, ctype),
             'answered': bool(answered),
             'missed': bool(not answered and not orig),
-            'duration': _dur(dur), 'date': when, 'service': s(svc),
+            'duration': _dur(dur), 'date': when,
+            'service': s(svc), 'country': s(country).upper(),
         })
     conn.close()
     return out
@@ -88,13 +119,14 @@ def build_views(archive, entries):
         who = e['name'] or e['address'] or 'Unknown'
         arrow = '↗' if e['direction'] == 'outgoing' else ('↙' if e['answered'] else '✖')
         miss = ' missed' if e['missed'] else ''
-        meta = ' · '.join(x for x in [e['kind'], e['duration'], e['service']] if x)
+        meta = ' · '.join(x for x in [e['kind'], e['duration'], e.get('country')] if x)
         cards.append(f'<div class="item{miss}"><div class="t">{arrow} {esc(who)}'
                      f'{" (missed)" if e["missed"] else ""}</div>'
                      f'<div class="meta">{esc(e["date"])} · {esc(meta)}'
                      f'{" · " + esc(e["address"]) if e["name"] else ""}</div></div>')
         csv_rows.append({'date': e['date'], 'who': who, 'address': e['address'],
                          'direction': e['direction'], 'kind': e['kind'],
+                         'country': e.get('country', ''),
                          'answered': 'yes' if e['answered'] else 'no',
                          'duration': e['duration']})
         a = by_addr.setdefault(e['address'] or 'Unknown',
@@ -106,7 +138,8 @@ def build_views(archive, entries):
     (archive / 'calls.html').write_text(
         html_page(f'Call history ({len(entries)})', '\n'.join(cards)), encoding='utf-8')
     write_csv(archive / 'calls.csv',
-              ['date', 'who', 'address', 'direction', 'kind', 'answered', 'duration'], csv_rows)
+              ['date', 'who', 'address', 'direction', 'kind', 'country', 'answered', 'duration'],
+              csv_rows)
     idx = [{'who': v['name'] or k, 'address': k, 'calls': v['calls'], 'missed': v['missed']}
            for k, v in sorted(by_addr.items(), key=lambda kv: kv[1]['calls'], reverse=True)]
     write_csv(archive / '_index.csv', ['who', 'address', 'calls', 'missed'], idx)

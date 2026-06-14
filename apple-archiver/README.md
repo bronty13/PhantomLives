@@ -1,6 +1,6 @@
 # apple-archiver
 
-**Current release: 1.2.1**
+**Current release: 1.2.2**
 
 Permanent, append-only, **browsable** archives of **Apple Notes** and **Apple
 Reminders** — the Notes/Reminders analogue of PhantomLives's photo + Messages

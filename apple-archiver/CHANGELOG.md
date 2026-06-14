@@ -2,6 +2,16 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.2.2 — 2026-06-14
+
+### Added
+- **Call history metadata enrichment.** Uses `ZSERVICE_PROVIDER` (Phone vs
+  FaceTime) and `ZISO_COUNTRY_CODE` (e.g. US) so the log is informative even when
+  the number is `(encrypted)`. New `country` column in calls.csv.
+- **Decryption placeholder.** `decrypt_address()` documents the (encrypted-at-rest)
+  situation and reserves a hook for a future on-Mac, framework-based decryption
+  path; currently returns None → `(encrypted)`.
+
 ## 1.2.1 — 2026-06-14
 
 ### Fixed
