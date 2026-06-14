@@ -2,6 +2,15 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.5.0 — 2026-06-14
+
+- **Recognize the new external-source job kinds: Notes + Reminders.** Adds
+  `com.bronty13.external-notes-sync.<id>` → "External Notes Sync — <Id>" and
+  `external-reminders-sync.<id>` → "External Reminders Sync — <Id>" to the
+  pattern-based recognizer (alongside Photo + Messages), with the matching
+  PurpleAttic-style log parsing and derived activity-log paths. Driven by
+  `apple-archiver`. Still no source name in code.
+
 ## 1.4.0 — 2026-06-14
 
 - **Generic, config-driven external-source profiles (no source name in code).**

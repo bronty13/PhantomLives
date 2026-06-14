@@ -54,8 +54,10 @@ enum JobRegistry {
     /// hardcoded here — the display name + activity-log path are derived from the
     /// label's kind + id, matching what the orchestration scripts write.
     private static let externalKinds: [(prefix: String, kind: String)] = [
-        ("com.bronty13.external-photo-sync.",    "Photo"),
-        ("com.bronty13.external-messages-sync.", "Messages"),
+        ("com.bronty13.external-photo-sync.",     "Photo"),
+        ("com.bronty13.external-messages-sync.",  "Messages"),
+        ("com.bronty13.external-notes-sync.",     "Notes"),
+        ("com.bronty13.external-reminders-sync.", "Reminders"),
     ]
 
     /// The profile for a discovered agent — a tailored one if we know the label,
