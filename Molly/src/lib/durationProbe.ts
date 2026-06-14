@@ -25,6 +25,23 @@ export interface DurationTotal {
   videoCount: number;
   /** Videos whose duration couldn't be read by ffprobe OR the video element. */
   failedCount: number;
+  /** Subset of failedCount that are 0-byte/empty files (a distinct, clearer cause). */
+  emptyCount: number;
+}
+
+/** A user-facing note about videos left out of the duration estimate, or null when all read fine. */
+export function describeUnreadable(d: DurationTotal): string | null {
+  if (d.failedCount <= 0) return null;
+  const parts: string[] = [];
+  if (d.emptyCount > 0) {
+    parts.push(`${d.emptyCount} ${d.emptyCount === 1 ? 'is empty (0 bytes)' : 'are empty (0 bytes)'}`);
+  }
+  const other = d.failedCount - d.emptyCount;
+  if (other > 0) {
+    parts.push(`${other} couldn’t be read`);
+  }
+  const noun = d.videoCount === 1 ? 'video' : 'videos';
+  return `${d.failedCount} of ${d.videoCount} ${noun} left out of the estimate — ${parts.join(', ')}.`;
 }
 
 /** Read a video's duration via a detached <video> element. Resolves 0 on any failure. */
@@ -71,7 +88,15 @@ export async function sumVideoDurations(files: BundleFileInfo[]): Promise<Durati
   const videos = files.filter((f) => f.kind === 'video');
   let totalSeconds = 0;
   let failedCount = 0;
+  let emptyCount = 0;
   for (const f of videos) {
+    // A 0-byte file has nothing to probe — flag it distinctly (it's usually a
+    // failed/placeholder upload) instead of running ffprobe just to fail.
+    if (f.sizeBytes === 0) {
+      failedCount += 1;
+      emptyCount += 1;
+      continue;
+    }
     const cached = durationCache.get(f.absolutePath);
     if (cached != null) {
       totalSeconds += cached;
@@ -85,5 +110,5 @@ export async function sumVideoDurations(files: BundleFileInfo[]): Promise<Durati
       failedCount += 1;
     }
   }
-  return { totalSeconds, videoCount: videos.length, failedCount };
+  return { totalSeconds, videoCount: videos.length, failedCount, emptyCount };
 }

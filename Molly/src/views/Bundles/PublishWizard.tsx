@@ -14,7 +14,7 @@ import {
 } from '../../data/bundles';
 import { hasBlockingIssues, validateBundle, type ValidationIssue } from '../../lib/bundleValidation';
 import { computeDefaultPriceCents, DEFAULT_PRICING, formatPriceCents } from '../../lib/pricing';
-import { sumVideoDurations, type DurationTotal } from '../../lib/durationProbe';
+import { describeUnreadable, sumVideoDurations, type DurationTotal } from '../../lib/durationProbe';
 import { ValidationChecklist } from './components/ValidationChecklist';
 import { BundleFilePreview } from './components/BundleFilePreview';
 import { listContentTags, type ContentTag } from '../../data/contentTags';
@@ -260,9 +260,12 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                   </div>
                   <p className="text-xs opacity-60">
                     {durTotal
-                      ? <>Suggested from {fmtDuration(durTotal.totalSeconds)} across {durTotal.videoCount} video{durTotal.videoCount === 1 ? '' : 's'}.{durTotal.failedCount > 0 ? ` Couldn’t read ${durTotal.failedCount} — suggestion may be low.` : ''}</>
+                      ? `Suggested from ${fmtDuration(durTotal.totalSeconds)} across ${durTotal.videoCount} video${durTotal.videoCount === 1 ? '' : 's'}.`
                       : 'Measuring video length…'}
                   </p>
+                  {durTotal && describeUnreadable(durTotal) && (
+                    <p className="text-xs text-amber-700">⚠️ {describeUnreadable(durTotal)}</p>
+                  )}
                 </ReviewSection>
               );
             })()}

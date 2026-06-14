@@ -36,8 +36,10 @@ about it — and she can always override it or mark the bundle **Free**.
   fall back to a hidden `<video>` element (the same way GIF Studio reads
   duration) — so the estimate works even on a locally-built macOS app whose
   `resources/ffmpeg/` is just a placeholder. If a clip can't be read by either,
-  it's left out of the estimate (flagged as possibly low) — it never blocks
-  uploading or publishing.
+  it's left out of the estimate (flagged) — it never blocks uploading or
+  publishing. **Empty (0-byte) videos are called out distinctly** ("N are empty
+  (0 bytes)") rather than the vague "couldn't read", so a failed upload is
+  obvious.
 
 ## [1.31.1] — 2026-06-14
 

@@ -16,7 +16,7 @@ import {
   updateBundleFields,
 } from '../../data/bundles';
 import { computeDefaultPriceCents, DEFAULT_PRICING, formatPriceCents } from '../../lib/pricing';
-import { sumVideoDurations, type DurationTotal } from '../../lib/durationProbe';
+import { describeUnreadable, sumVideoDurations, type DurationTotal } from '../../lib/durationProbe';
 import { listPersonas, type Persona } from '../../data/personas';
 import { listContentTags, setBundleTags, type ContentTag } from '../../data/contentTags';
 import { CategoryChipPicker } from './components/CategoryChipPicker';
@@ -476,13 +476,15 @@ function PricePreview({ bundle, pricing, durTotal }: {
       <label className="text-xs font-semibold opacity-75">Price</label>
       <div className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm space-y-0.5">
         {durTotal ? (
-          <div className="opacity-80">
-            Total video length <strong className="font-mono">{fmtDuration(durTotal.totalSeconds)}</strong>{' '}
-            across {durTotal.videoCount} video{durTotal.videoCount === 1 ? '' : 's'}.
-            {durTotal.failedCount > 0 && (
-              <span className="text-amber-700"> (couldn’t read {durTotal.failedCount} — estimate may be low)</span>
+          <>
+            <div className="opacity-80">
+              Total video length <strong className="font-mono">{fmtDuration(durTotal.totalSeconds)}</strong>{' '}
+              across {durTotal.videoCount} video{durTotal.videoCount === 1 ? '' : 's'}.
+            </div>
+            {describeUnreadable(durTotal) && (
+              <div className="text-amber-700">⚠️ {describeUnreadable(durTotal)}</div>
             )}
-          </div>
+          </>
         ) : (
           <div className="opacity-60 italic">Measuring video length…</div>
         )}
