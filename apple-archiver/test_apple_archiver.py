@@ -118,6 +118,24 @@ class NotesTests(unittest.TestCase):
         self.assertIn('DELETED', list((Path(self.archive) / 'notes').glob('Recipes/*.md'))[0].read_text())
 
 
+def make_reminders_legacy(path):
+    """Legacy (macOS <=12) schema: reminders + lists share ZREMCDOBJECT, with
+    title in ZTITLE1, created in ZCREATIONDATE1, list name in ZNAME2."""
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        DROP TABLE IF EXISTS ZREMCDOBJECT;
+        CREATE TABLE ZREMCDOBJECT(Z_PK INTEGER PRIMARY KEY, ZTITLE1 TEXT, ZNOTES TEXT,
+            ZDUEDATE REAL, ZCOMPLETED INTEGER, ZCOMPLETIONDATE REAL, ZFLAGGED INTEGER,
+            ZPRIORITY INTEGER, ZCREATIONDATE1 REAL, ZLIST INTEGER, ZNAME2 TEXT);
+    """)
+    conn.execute("INSERT INTO ZREMCDOBJECT(Z_PK,ZNAME2) VALUES(50,'Packing')")     # a list row
+    conn.execute("INSERT INTO ZREMCDOBJECT(Z_PK,ZTITLE1,ZCOMPLETED,ZPRIORITY,ZCREATIONDATE1,ZLIST) "
+                 "VALUES(1,'Passport',0,1,700000000.0,50)")
+    conn.execute("INSERT INTO ZREMCDOBJECT(Z_PK,ZTITLE1,ZCOMPLETED,ZCREATIONDATE1,ZLIST) "
+                 "VALUES(2,'Charger',1,700000000.0,50)")
+    conn.commit(); conn.close()
+
+
 class RemindersTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
@@ -161,6 +179,17 @@ class RemindersTests(unittest.TestCase):
         ra.run_archive(str(self.store), self.archive)
         r = ra.run_archive(str(self.store), self.archive)
         self.assertEqual(r['new_versions'], 0)
+
+    def test_legacy_zremcdobject_schema(self):
+        # macOS <=12 layout (ZREMCDOBJECT, ZTITLE1, ZNAME2) must work too.
+        make_reminders_legacy(self.db)
+        r = ra.run_archive(str(self.store), self.archive)
+        self.assertEqual(r['reminders'], 2)
+        self.assertEqual(r['lists'], 1)
+        md = (Path(self.archive) / 'reminders' / 'Packing.md').read_text()
+        self.assertIn('[ ] Passport', md)
+        self.assertIn('[x] Charger', md)
+        self.assertIn('high', md)
 
 
 if __name__ == '__main__':

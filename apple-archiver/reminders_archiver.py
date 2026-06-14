@@ -41,30 +41,76 @@ def reminder_dbs(path):
     return [p] if p.exists() else []
 
 
+# Core Data column names drift across macOS versions; COALESCE the known variants
+# and only reference columns that actually exist in the given table.
+TITLE_COLS = ['ZTITLE', 'ZTITLE1']
+NOTES_COLS = ['ZNOTES', 'ZNOTES1', 'ZNOTES2']
+DUE_COLS = ['ZDUEDATE', 'ZDUEDATE1']
+CREATED_COLS = ['ZCREATIONDATE', 'ZCREATIONDATE1']
+LISTNAME_COLS = ['ZNAME', 'ZNAME2', 'ZNAME1']
+
+
+def _cols(conn, table):
+    return {r[1] for r in rows(conn, f'PRAGMA table_info({table})')}
+
+
+def _expr(present, candidates, default='NULL'):
+    cols = [c for c in candidates if c in present]
+    if not cols:
+        return default
+    return cols[0] if len(cols) == 1 else 'COALESCE(' + ','.join(cols) + ')'
+
+
 def read_reminders(path):
+    """Read reminders from each store, version-robustly. Supports:
+      • modern (macOS 13+):  reminders in ZREMCDREMINDER, lists in ZREMCDBASELIST,
+                             title ZTITLE / created ZCREATIONDATE / list-name ZNAME
+      • legacy (macOS ≤12):  reminders + lists share ZREMCDOBJECT,
+                             title ZTITLE1 / created ZCREATIONDATE1 / list-name ZNAME2
+    Column variants are detected per-table and COALESCEd."""
     out = []
     for db in reminder_dbs(path):
         conn = open_ro(db)
-        if not has_table(conn, 'ZREMCDREMINDER'):
-            conn.close(); continue
-        lists = {pk: s(nm) for pk, nm in rows(conn,
-                 'SELECT Z_PK, ZNAME FROM ZREMCDBASELIST WHERE ZNAME IS NOT NULL')}
-        for r in rows(conn,
-                'SELECT ZTITLE, ZNOTES, ZDUEDATE, ZCOMPLETED, ZCOMPLETIONDATE, '
-                '       ZFLAGGED, ZPRIORITY, ZCREATIONDATE, ZLIST '
-                'FROM ZREMCDREMINDER'):
-            title, notes, due, completed, compdate, flagged, prio, created, listpk = r
-            if not s(title) and not s(notes):
+        # List-name map from whichever list source(s) exist.
+        lists = {}
+        for src in ('ZREMCDBASELIST', 'ZREMCDOBJECT'):
+            if not has_table(conn, src):
                 continue
-            lst = lists.get(listpk, 'Reminders')
-            rid = short_hash(lst, s(title), s(created))
-            out.append({
-                'id': rid, 'title': s(title), 'notes': s(notes), 'list': lst,
-                'due': cd_date(due), 'completed': bool(completed),
-                'completion_date': cd_date(compdate),
-                'flagged': bool(flagged), 'priority': PRIORITY.get(int(prio or 0), ''),
-                'created': cd_date(created),
-            })
+            nexpr = _expr(_cols(conn, src), LISTNAME_COLS)
+            if nexpr == 'NULL':
+                continue
+            for pk, nm in rows(conn, f'SELECT Z_PK, {nexpr} AS nm FROM {src} WHERE {nexpr} IS NOT NULL'):
+                lists.setdefault(pk, s(nm))
+
+        for table in ('ZREMCDREMINDER', 'ZREMCDOBJECT'):
+            if not has_table(conn, table):
+                continue
+            p = _cols(conn, table)
+            te = _expr(p, TITLE_COLS); ne = _expr(p, NOTES_COLS)
+            de = _expr(p, DUE_COLS); ce = _expr(p, CREATED_COLS)
+            if te == 'NULL':
+                continue
+            sel = (f'SELECT {te} AS t, {ne} AS n, {de} AS due, '
+                   f'{"ZCOMPLETED" if "ZCOMPLETED" in p else "0"} AS done, '
+                   f'{"ZCOMPLETIONDATE" if "ZCOMPLETIONDATE" in p else "NULL"} AS cd, '
+                   f'{"ZFLAGGED" if "ZFLAGGED" in p else "0"} AS fl, '
+                   f'{"ZPRIORITY" if "ZPRIORITY" in p else "0"} AS pr, '
+                   f'{ce} AS cr, {"ZLIST" if "ZLIST" in p else "NULL"} AS lst '
+                   f'FROM {table} WHERE {te} IS NOT NULL')
+            rs = rows(conn, sel)
+            if not rs:
+                continue
+            for title, notes, due, done, compdate, flagged, prio, created, listpk in rs:
+                lst = lists.get(listpk, 'Reminders')
+                out.append({
+                    'id': short_hash(lst, s(title), s(created)),
+                    'title': s(title), 'notes': s(notes), 'list': lst,
+                    'due': cd_date(due), 'completed': bool(done),
+                    'completion_date': cd_date(compdate),
+                    'flagged': bool(flagged), 'priority': PRIORITY.get(int(prio or 0), ''),
+                    'created': cd_date(created),
+                })
+            break       # first populated table wins
         conn.close()
     return out
 

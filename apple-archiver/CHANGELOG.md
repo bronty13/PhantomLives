@@ -13,14 +13,18 @@ Standard-library Python only.
   pure-Python protobuf walker (no `protobuf` dep). Resolves folders + creation/
   modification dates (COALESCE across macOS schema variants). Outputs per-folder
   `.md` notes + searchable `notes.html` + `_index.csv`.
-- **`reminders_archiver.py`** — archives the Reminders Core Data store(s)
-  (`ZREMCDREMINDER` + `ZREMCDBASELIST`); scans every `Data-*.sqlite` under a
-  `Stores` directory. Outputs per-list `.md` (Open/Completed, due/priority/flag/
-  notes) + searchable `reminders.html` + `_index.csv`.
+- **`reminders_archiver.py`** — archives the Reminders Core Data store(s); scans
+  every `Data-*.sqlite` under a `Stores` directory. **Version-robust across two
+  schemas**: modern (macOS 13+: `ZREMCDREMINDER` + `ZREMCDBASELIST`, title
+  `ZTITLE`/created `ZCREATIONDATE`/list `ZNAME`) and legacy (macOS ≤12:
+  `ZREMCDOBJECT`, title `ZTITLE1`/created `ZCREATIONDATE1`/list `ZNAME2`) — column
+  variants are detected per-table and COALESCEd. Outputs per-list `.md`
+  (Open/Completed, due/priority/flag/notes) + searchable `reminders.html` + `_index.csv`.
 - **Append-only + versioned:** `manifest.jsonl` keeps one line per *version* of
   each item (id + content-hash); edits, completions, and deletions on the source
   are preserved forever. Views are regenerated from the latest version each run.
-- Shared helpers in `applearchive_common.py`; 7 tests in `test_apple_archiver.py`
+- Shared helpers in `applearchive_common.py`; 8 tests in `test_apple_archiver.py`
   (synthetic DBs: protobuf decode, idempotency, versioning-on-edit/completion,
-  deleted-note preservation, list status).
-- Validated on real data (this Mac): 236 notes, 6,468 reminders across 9 lists.
+  deleted-note preservation, list status, legacy `ZREMCDOBJECT` schema).
+- Validated on real data: this Mac (Sonoma) 236 notes / 6,468 reminders; a
+  Monterey source (legacy schema) 19 notes / 2,720 reminders across 6 lists.
