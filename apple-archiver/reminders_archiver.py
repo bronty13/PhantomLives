@@ -2,7 +2,7 @@
 # =============================================================================
 #   APPLE REMINDERS ARCHIVER
 #   File:     reminders_archiver.py
-#   Version:  1.0.0
+#   Version:  1.1.0
 #   Requires: Python 3.9+ (standard library only)
 #
 #   Permanent, append-only, browsable archive of Apple Reminders from the
@@ -29,7 +29,7 @@ from applearchive_common import (  # noqa: E402
     html_page, esc,
 )
 
-__version__ = '1.0.0'
+__version__ = '1.1.0'
 
 PRIORITY = {1: 'High', 5: 'Medium', 9: 'Low'}
 
@@ -135,6 +135,45 @@ def _fmt_line(e, md=True):
     return line
 
 
+def reminders_html(title, body_html):
+    """Self-contained Reminders page: searchable, collapsible lists + items, and a
+    'Hide completed' toggle."""
+    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{esc(title)}</title>
+<style>
+body{{font:15px -apple-system,Helvetica,Arial,sans-serif;background:#f2f2f7;margin:0;padding:24px;color:#000}}
+h1{{font-size:20px}} .controls{{margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}}
+input[type=text]{{font-size:15px;padding:8px 12px;width:280px;border:1px solid #ccc;border-radius:8px}}
+button{{font-size:13px;padding:6px 10px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer}}
+label{{font-size:14px;user-select:none}}
+details.list{{background:transparent;margin:14px 0;max-width:760px}}
+details.list>summary{{font-size:17px;font-weight:600;cursor:pointer;padding:4px 0}}
+.cnt{{color:#999;font-size:13px;font-weight:400}}
+details.item{{background:#fff;border-radius:10px;margin:6px 0;padding:8px 12px}}
+details.item>summary{{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:baseline}}
+details.item>summary::-webkit-details-marker{{display:none}}
+.mk{{flex:0 0 auto}} .ttl{{font-weight:500}} .completed .ttl{{color:#999;text-decoration:line-through}}
+.meta{{color:#999;font-size:12px;margin-left:auto;white-space:nowrap}}
+.notes{{white-space:pre-wrap;word-wrap:break-word;margin:6px 0 2px;color:#333}}
+.sub{{color:#aaa;font-size:12px}}
+body.hide-done details.item.completed{{display:none}}
+</style></head><body><h1>{esc(title)}</h1>
+<div class="controls">
+  <input type="text" id="q" placeholder="Filter…" oninput="flt()">
+  <label><input type="checkbox" id="hd" onchange="document.body.classList.toggle('hide-done',this.checked)"> Hide completed</label>
+  <button onclick="setAll(true)">Expand all</button>
+  <button onclick="setAll(false)">Collapse all</button>
+</div>
+<div id="list">
+{body_html}
+</div>
+<script>
+function flt(){{var q=document.getElementById('q').value.toLowerCase();
+document.querySelectorAll('details.item').forEach(function(e){{
+e.style.display=e.textContent.toLowerCase().indexOf(q)<0?'none':''}});}}
+function setAll(open){{document.querySelectorAll('details.item').forEach(function(e){{e.open=open}});}}
+</script></body></html>"""
+
+
 def build_views(archive, entries):
     archive = Path(archive)
     rem_root = archive / 'reminders'
@@ -166,22 +205,31 @@ def build_views(archive, entries):
         index_rows.append({'list': lst, 'open': len(opn), 'completed': len(done),
                            'total': len(items)})
 
-        cards = []
+        items_html = []
         for e in opn + done:
-            cls = 't done' if e['completed'] else 't'
+            comp = ' completed' if e['completed'] else ''
+            mark = '☑' if e['completed'] else '☐'
             meta = ' · '.join(x for x in [e['due'] and f"due {e['due']}", e['priority'],
-                                          '🚩' if e['flagged'] else '',
-                                          e['completed'] and 'completed'] if x)
-            notes_html = f'<div class="body">{esc(e["notes"])}</div>' if e['notes'] else ''
-            cards.append(f'<div class="item"><div class="{cls}">'
-                         f'{"☑ " if e["completed"] else "☐ "}{esc(e["title"]) or "(untitled)"}</div>'
-                         f'<div class="meta">{esc(meta)}</div>{notes_html}</div>')
-        sections.append(f'<h2 style="max-width:760px">{esc(lst)} '
-                        f'<span style="color:#999;font-size:13px">({len(opn)} open · {len(done)} done)</span></h2>'
-                        + '\n'.join(cards))
+                                          '🚩' if e['flagged'] else ''] if x)
+            detail = []
+            if e['notes']:
+                detail.append(f'<div class="notes">{esc(e["notes"])}</div>')
+            if e['completed'] and e['completion_date']:
+                detail.append(f'<div class="sub">completed {esc(e["completion_date"])}</div>')
+            if e['created']:
+                detail.append(f'<div class="sub">created {esc(e["created"])}</div>')
+            body = ''.join(detail) or '<div class="sub">—</div>'
+            items_html.append(
+                f'<details class="item{comp}"><summary><span class="mk">{mark}</span>'
+                f'<span class="ttl">{esc(e["title"]) or "(untitled)"}</span>'
+                f'<span class="meta">{esc(meta)}</span></summary>{body}</details>')
+        sections.append(
+            f'<details class="list" open><summary class="lh">{esc(lst)} '
+            f'<span class="cnt">({len(opn)} open · {len(done)} done)</span></summary>'
+            + ''.join(items_html) + '</details>')
 
     (archive / 'reminders.html').write_text(
-        html_page(f'Reminders ({len(current)})', '\n'.join(sections)), encoding='utf-8')
+        reminders_html(f'Reminders ({len(current)})', '\n'.join(sections)), encoding='utf-8')
     write_csv(archive / '_index.csv', ['list', 'open', 'completed', 'total'], index_rows)
     return len(current), len(by_list)
 

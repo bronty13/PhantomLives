@@ -163,7 +163,10 @@ class RemindersTests(unittest.TestCase):
         self.assertIn('[ ] Milk', md)
         self.assertIn('[x] Eggs', md)
         self.assertIn('high', md)                            # priority 1 → High
-        self.assertTrue((Path(self.archive) / 'reminders.html').exists())
+        h = (Path(self.archive) / 'reminders.html').read_text()
+        self.assertIn('Hide completed', h)                   # the toggle
+        self.assertIn('<details class="item', h)             # collapsible items
+        self.assertIn('hide-done', h)                        # toggle wiring
 
     def test_versioning_on_completion(self):
         make_reminders(self.db, [(10, 'L')], [('Task', '', None, False, False, 0, 10)])

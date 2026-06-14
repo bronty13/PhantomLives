@@ -2,6 +2,15 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.1.0 — 2026-06-14
+
+### Added
+- **Reminders HTML is now collapsible + filterable.** Each reminder is a
+  collapsible `<details>` (summary = checkbox/title/meta; expand for notes +
+  completion/created dates), each list is a collapsible section, and a **"Hide
+  completed"** toggle hides done items. Plus Expand-all / Collapse-all buttons and
+  the existing live text filter. (`reminders_archiver.py` 1.0.0 → 1.1.0.)
+
 ## 1.0.0 — 2026-06-14
 
 Initial release — permanent, append-only, browsable archives of Apple Notes and
