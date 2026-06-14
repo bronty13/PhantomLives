@@ -49,8 +49,8 @@ final class JobController: ObservableObject, Identifiable {
 
     var health: SyncStatusParser.Health {
         let base = SyncStatusParser.health(agentLoaded: agentLoaded, lastExitCode: lastExitCode, isSyncing: isRunning)
-        // A recognized log-level failure (e.g. Rachel's "pull exit: 12", which the
-        // wrapper script swallows so launchd still sees exit 0) downgrades health.
+        // A recognized log-level failure (e.g. a PurpleAttic sync's "pull exit: 12",
+        // which the wrapper script swallows so launchd still sees exit 0) downgrades health.
         if base == .healthy, summary?.ok == false { return .warning }
         return base
     }
@@ -170,8 +170,8 @@ final class JobController: ObservableObject, Identifiable {
     // MARK: Plist interval edit (defensive)
 
     /// Rewrite ONLY `StartInterval` in the agent's plist, then reload it. Keeps a
-    /// backup and restores it if the reload fails, so an operational plist (e.g.
-    /// Rachel's photo-sync) can't be left broken.
+    /// backup and restores it if the reload fails, so an operational plist (e.g. a
+    /// PurpleAttic external-source sync) can't be left broken.
     private func setPlistInterval(_ seconds: Int) async {
         guard let dict = NSDictionary(contentsOfFile: plistPath) as? [String: Any] else {
             lastActionMessage = "Couldn't read \(label).plist"; return

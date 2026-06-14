@@ -2,15 +2,23 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.4.0 — 2026-06-14
+
+- **Generic, config-driven external-source profiles (no source name in code).**
+  PurpleAttic's per-source archive jobs are now labelled
+  `com.bronty13.external-photo-sync.<id>` / `external-messages-sync.<id>`.
+  PurpleMirror recognizes them by *pattern* and derives the display name +
+  activity-log path from the label's kind + source id — e.g.
+  `…external-photo-sync.<id>` → "External Photo Sync — <Id>". Onboarding a new
+  source (configured in PurpleAttic's `external-sources.json`) needs no PurpleMirror
+  change; the row appears automatically with the right name.
+
 ## 1.3.0 — 2026-06-14
 
-- **Tailored profile for the new "Rachel Messages Sync" job**
-  (`com.bronty13.rachel-messages-sync`) — PurpleAttic's permanent Apple Messages
-  archive. It would already auto-discover as a generic row; this gives it a
-  friendly name, its real activity log
-  (`~/Library/Logs/PurpleAttic/rachel-messages-sync.log`), and the
+- **Tailored profile for PurpleAttic's Apple Messages archive job** — gives the
+  per-source messages sync a friendly name, its real activity log, and
   PurpleAttic-style log parsing (staged N new / no new items / pull exit), so it
-  reads like the photo-sync row.
+  reads like the photo-sync row. (Superseded by the generic recognizer in 1.4.0.)
 
 ## 1.2.0 — 2026-06-13
 
@@ -18,16 +26,16 @@ All notable changes to PurpleMirror are documented here.
   it now **auto-discovers every PhantomLives launchd agent** in
   `~/Library/LaunchAgents` (labels under `com.phantomlives.*` / `com.bronty13.*`)
   and shows one row per job. Out of the box that surfaces both the **Obsidian
-  Sync** and PurpleAttic's **Rachel Photo Sync**; any agent added later appears
+  Sync** and PurpleAttic's per-source archive jobs; any agent added later appears
   automatically (no relaunch).
 - **Full per-job control.** Each job has its own **Run Now**, **enable/disable**,
   and **interval** controls, plus its **own log** in the log window (pick the job
   from the toolbar). Known jobs get tailored status parsing — Obsidian shows
-  "Mirrored N files", Rachel shows "Staged N new / No new items / Pull failed
-  (exit N)"; unknown jobs get a generic last-line summary.
+  "Mirrored N files", external archives show "Staged N new / No new items / Pull
+  failed (exit N)"; unknown jobs get a generic last-line summary.
 - **Two scheduling backends.** Script-managed jobs (Obsidian) still go through the
-  script's `--install-agent` / `--uninstall-agent`. Plist-managed jobs (Rachel's
-  hand-written agent) are controlled directly: enable/disable via
+  script's `--install-agent` / `--uninstall-agent`. Plist-managed jobs (PurpleAttic's
+  hand-written agents) are controlled directly: enable/disable via
   `launchctl bootstrap/bootout`, and an interval change **safely rewrites only the
   plist's `StartInterval`** (keeping a backup and restoring it if the reload fails)
   so an operational backup plist can't be left broken.

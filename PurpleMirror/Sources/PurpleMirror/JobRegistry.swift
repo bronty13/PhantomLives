@@ -7,7 +7,7 @@ enum Scheduling: Equatable {
     /// installed plist when re-installing (e.g. `OBSIDIAN_VAULT`, baked into the plist).
     case script(path: String, envKeys: [String])
     /// Managed by editing the plist's `StartInterval` and `launchctl bootstrap/bootout`
-    /// directly (Rachel's hand-written plist, and any unknown discovered agent).
+    /// directly (PurpleAttic's hand-written external-source plists, and any unknown agent).
     case plist
 }
 
@@ -36,7 +36,7 @@ enum JobRegistry {
         (NSHomeDirectory() as NSString).appendingPathComponent(rel)
     }
 
-    /// Tailored profiles for jobs we understand.
+    /// Tailored profiles for jobs we understand by exact label.
     private static var known: [String: JobProfile] {
         [
             "com.phantomlives.obsidian-sync": JobProfile(
@@ -46,29 +46,35 @@ enum JobRegistry {
                 scheduling: .script(path: home("dev/PhantomLives/sync-md-to-obsidian.sh"),
                                     envKeys: ["OBSIDIAN_VAULT"])
             ),
-            "com.bronty13.rachel-photo-sync": JobProfile(
-                displayName: "Rachel Photo Sync",
-                logKind: .purpleAtticSync,
-                // The launchd StandardOutPath is rachel-sync.launchd.log; the rich
-                // activity log the script writes is rachel-sync.log.
-                activityLogPathOverride: home("Library/Logs/PurpleAttic/rachel-sync.log"),
-                scheduling: .plist
-            ),
-            "com.bronty13.rachel-messages-sync": JobProfile(
-                displayName: "Rachel Messages Sync",
-                logKind: .purpleAtticSync,   // same log vocabulary as the photo sync
-                activityLogPathOverride: home("Library/Logs/PurpleAttic/rachel-messages-sync.log"),
-                scheduling: .plist
-            ),
         ]
     }
 
+    /// PurpleAttic's per-source external archive jobs are labelled
+    /// `com.bronty13.external-<kind>-sync.<source-id>`. No source name is
+    /// hardcoded here — the display name + activity-log path are derived from the
+    /// label's kind + id, matching what the orchestration scripts write.
+    private static let externalKinds: [(prefix: String, kind: String)] = [
+        ("com.bronty13.external-photo-sync.",    "Photo"),
+        ("com.bronty13.external-messages-sync.", "Messages"),
+    ]
+
     /// The profile for a discovered agent — a tailored one if we know the label,
-    /// else a generic plist-managed profile derived from the descriptor.
+    /// a derived one for an external-source job, else a generic plist-managed one.
     static func profile(for descriptor: AgentDescriptor) -> JobProfile {
         if let p = known[descriptor.label] { return p }
+        let label = descriptor.label
+        for (prefix, kind) in externalKinds where label.hasPrefix(prefix) {
+            let id = String(label.dropFirst(prefix.count))     // the source id from config
+            let pretty = id.isEmpty ? "" : id.prefix(1).uppercased() + id.dropFirst()
+            return JobProfile(
+                displayName: "External \(kind) Sync — \(pretty)",
+                logKind: .purpleAtticSync,
+                activityLogPathOverride: home("Library/Logs/PurpleAttic/external-\(kind.lowercased())-sync-\(id).log"),
+                scheduling: .plist
+            )
+        }
         return JobProfile(
-            displayName: displayName(forLabel: descriptor.label),
+            displayName: displayName(forLabel: label),
             logKind: .generic,
             activityLogPathOverride: nil,   // → falls back to the plist StandardOutPath
             scheduling: .plist
@@ -76,7 +82,7 @@ enum JobRegistry {
     }
 
     /// Prettify an unknown reverse-DNS label → a title.
-    /// `com.bronty13.rachel-photo-sync` → "Rachel Photo Sync".
+    /// `com.bronty13.disk-cleaner` → "Disk Cleaner".
     static func displayName(forLabel label: String) -> String {
         let leaf = label.split(separator: ".").last.map(String.init) ?? label
         let words = leaf.split(whereSeparator: { $0 == "-" || $0 == "_" })

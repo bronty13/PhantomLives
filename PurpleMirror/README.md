@@ -3,9 +3,9 @@
 A tiny macOS **menu-bar** app that monitors and controls PhantomLives's
 **background launchd jobs** — the Obsidian Markdown sync
 (`sync-md-to-obsidian.sh` / `com.phantomlives.obsidian-sync`) **and** PurpleAttic's
-photo-archive jobs (e.g. Rachel's hourly sync, `com.bronty13.rachel-photo-sync`).
-It's a thin GUI — each script/plist stays the single source of truth; PurpleMirror
-just drives and reports them.
+per-source archive jobs (`com.bronty13.external-photo-sync.<id>` /
+`external-messages-sync.<id>`). It's a thin GUI — each script/plist stays the
+single source of truth; PurpleMirror just drives and reports them.
 
 It **auto-discovers** jobs: every launchd agent in `~/Library/LaunchAgents` whose
 label is under `com.phantomlives.*` or `com.bronty13.*` shows up as a row, so new
@@ -25,9 +25,9 @@ jobs added later appear automatically with no relaunch.
   - `xmark.icloud` — a job's last run failed
 - **Status panel** (click the glyph): one row per job — health, last-activity time,
   and a tailored one-line digest. Known jobs are parsed specially (Obsidian →
-  "Mirrored N files"; Rachel → "Staged N new" / "No new items" / "Pull failed
-  (exit N)"); unknown jobs show their last log line. Each row has **Run Now** and
-  **View Log**.
+  "Mirrored N files"; external archives → "Staged N new" / "No new items" /
+  "Pull failed (exit N)"); unknown jobs show their last log line. Each row has
+  **Run Now** and **View Log**.
 - **Settings** — pick a job, then: toggle its automatic background run
   (load/unload its launchd agent), change its interval (15 min / 30 min / 1 hr /
   2 hr / 6 hr or a custom number of minutes), Run Now, and see its log/script/label
@@ -59,7 +59,7 @@ Discovery scans the `~/Library/LaunchAgents` **directory** (so the transient
 gets a *profile* that picks its display name, log path, log parser, and scheduling
 backend:
 
-| Action | Script-managed job (Obsidian) | Plist-managed job (Rachel, and any unknown agent) |
+| Action | Script-managed job (Obsidian) | Plist-managed job (external archives, and any unknown agent) |
 |---|---|---|
 | Status | tail log + parse `launchctl print gui/<uid>/<label>` | same |
 | Run Now | `launchctl kickstart -k …` (or runs the script if not loaded) | `launchctl kickstart -k …` (bootstraps first if needed) |

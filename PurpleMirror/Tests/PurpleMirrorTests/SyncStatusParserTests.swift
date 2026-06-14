@@ -156,29 +156,29 @@ import Foundation
 /// Parsing a launchd plist into an ``AgentDescriptor`` + the safe interval edit.
 @Suite struct LaunchAgentPlistTests {
 
-    private var rachelDict: [String: Any] {
+    private var agentDict: [String: Any] {
         [
-            "Label": "com.bronty13.rachel-photo-sync",
-            "ProgramArguments": ["/bin/bash", "/Users/b/Library/Application Support/PurpleAttic/rachel-photo-sync.sh"],
+            "Label": "com.bronty13.external-photo-sync.alpha",
+            "ProgramArguments": ["/bin/bash", "/Users/b/Library/Application Support/PurpleAttic/external-photo-sync.sh", "alpha"],
             "StartInterval": 3600,
             "RunAtLoad": false,
-            "StandardOutPath": "/Users/b/Library/Logs/PurpleAttic/rachel-sync.launchd.log",
+            "StandardOutPath": "/Users/b/Library/Logs/PurpleAttic/external-photo-sync-alpha.launchd.log",
             "EnvironmentVariables": ["HOME": "/Users/b", "PATH": "/usr/bin:/bin"],
         ]
     }
 
     @Test func parseExtractsFields() {
-        let d = LaunchAgentPlist.parse(rachelDict)
-        #expect(d?.label == "com.bronty13.rachel-photo-sync")
+        let d = LaunchAgentPlist.parse(agentDict)
+        #expect(d?.label == "com.bronty13.external-photo-sync.alpha")
         #expect(d?.startInterval == 3600)
         #expect(d?.runAtLoad == false)
-        #expect(d?.stdoutPath == "/Users/b/Library/Logs/PurpleAttic/rachel-sync.launchd.log")
+        #expect(d?.stdoutPath == "/Users/b/Library/Logs/PurpleAttic/external-photo-sync-alpha.launchd.log")
         #expect(d?.environment["HOME"] == "/Users/b")
     }
 
     @Test func scriptPathSkipsInterpreter() {
         // The first non-/bin//usr/ path is the actual script, not /bin/bash.
-        #expect(LaunchAgentPlist.parse(rachelDict)?.scriptPath?.hasSuffix("rachel-photo-sync.sh") == true)
+        #expect(LaunchAgentPlist.parse(agentDict)?.scriptPath?.hasSuffix("external-photo-sync.sh") == true)
     }
 
     @Test func parseNilWithoutLabel() {
@@ -186,12 +186,12 @@ import Foundation
     }
 
     @Test func withStartIntervalChangesOnlyInterval() {
-        let updated = LaunchAgentPlist.withStartInterval(rachelDict, seconds: 7200)
+        let updated = LaunchAgentPlist.withStartInterval(agentDict, seconds: 7200)
         #expect(updated["StartInterval"] as? Int == 7200)
         // Everything else preserved.
-        #expect((updated["ProgramArguments"] as? [String])?.count == 2)
+        #expect((updated["ProgramArguments"] as? [String])?.count == 3)
         #expect((updated["EnvironmentVariables"] as? [String: String])?["HOME"] == "/Users/b")
-        #expect(updated["StandardOutPath"] as? String == rachelDict["StandardOutPath"] as? String)
+        #expect(updated["StandardOutPath"] as? String == agentDict["StandardOutPath"] as? String)
     }
 }
 
@@ -200,7 +200,7 @@ import Foundation
 
     @Test func shouldManageOnlyRepoNamespaces() {
         #expect(JobRegistry.shouldManage(label: "com.phantomlives.obsidian-sync"))
-        #expect(JobRegistry.shouldManage(label: "com.bronty13.rachel-photo-sync"))
+        #expect(JobRegistry.shouldManage(label: "com.bronty13.external-photo-sync.alpha"))
         #expect(!JobRegistry.shouldManage(label: "com.apple.something"))
         #expect(!JobRegistry.shouldManage(label: "md.obsidian.helper"))
     }
@@ -210,12 +210,19 @@ import Foundation
         #expect(obsidian.displayName == "Obsidian Sync")
         #expect(obsidian.logKind == .obsidian)
         if case .script = obsidian.scheduling {} else { Issue.record("Obsidian should be script-managed") }
+    }
 
-        let rachel = JobRegistry.profile(for: descriptor("com.bronty13.rachel-photo-sync"))
-        #expect(rachel.displayName == "Rachel Photo Sync")
-        #expect(rachel.logKind == .purpleAtticSync)
-        #expect(rachel.scheduling == .plist)
-        #expect(rachel.activityLogPathOverride?.hasSuffix("rachel-sync.log") == true)
+    @Test func externalSourceProfilesAreDerivedNotHardcoded() {
+        // No source NAME appears in code — display + log path come from the label id.
+        let p = JobRegistry.profile(for: descriptor("com.bronty13.external-photo-sync.alpha"))
+        #expect(p.displayName == "External Photo Sync — Alpha")
+        #expect(p.logKind == .purpleAtticSync)
+        #expect(p.scheduling == .plist)
+        #expect(p.activityLogPathOverride?.hasSuffix("external-photo-sync-alpha.log") == true)
+
+        let m = JobRegistry.profile(for: descriptor("com.bronty13.external-messages-sync.dad"))
+        #expect(m.displayName == "External Messages Sync — Dad")
+        #expect(m.activityLogPathOverride?.hasSuffix("external-messages-sync-dad.log") == true)
     }
 
     @Test func unknownAgentGetsGenericProfile() {
@@ -227,7 +234,7 @@ import Foundation
     }
 
     @Test func displayNamePrettifiesLabels() {
-        #expect(JobRegistry.displayName(forLabel: "com.bronty13.rachel-photo-sync") == "Rachel Photo Sync")
+        #expect(JobRegistry.displayName(forLabel: "com.bronty13.disk-cleaner") == "Disk Cleaner")
         #expect(JobRegistry.displayName(forLabel: "com.phantomlives.backup_now") == "Backup Now")
     }
 

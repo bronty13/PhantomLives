@@ -15,7 +15,7 @@ enum SyncStatusParser {
     /// How a job's log should be parsed for the status line.
     enum LogKind: String, Equatable, Codable {
         case obsidian          // "… Mirrored N markdown files → /path"
-        case purpleAtticSync   // Rachel/PurpleAttic: "pull exit: N", "staged N NEW", "no new items"
+        case purpleAtticSync   // PurpleAttic sync: "pull exit: N", "staged N NEW", "no new items"
         case generic           // unknown job: show the last meaningful line
     }
 
@@ -80,7 +80,7 @@ enum SyncStatusParser {
                           detail: dest)
     }
 
-    // MARK: PurpleAttic sync log (Rachel et al.)
+    // MARK: PurpleAttic sync log (external-source photo/messages archives)
 
     /// Parse a PurpleAttic-style sync log. The orchestration script logs lines like:
     ///   `2026-06-13 17:25:16 pull exit: 0  — local files: 42966, size: 241G`
