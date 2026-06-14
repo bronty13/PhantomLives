@@ -2,6 +2,37 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.6.0 — 2026-06-14 (call-history decryption investigation)
+
+### Investigated
+- **Can we decrypt call-history numbers?** Full investigation in **`DECRYPTION.md`**.
+  Conclusion: `ZADDRESS`/`ZNAME` are AES-GCM blobs (ciphertext + 16-byte IV +
+  16-byte tag) keyed by the source Mac's *login-keychain* "Call History User Data
+  Key", released only to an interactive (Aqua) session. Proven over SSH with
+  `CallHistory.framework` (PyObjC): `CHManager.recentCalls()` returns all 200 call
+  objects and every non-sensitive field, but `remoteParticipantHandles` (the
+  number) is **empty for all of them** with one diagnostic — *"Failed to get Call
+  History User Data Key from keychain — User interaction is not allowed."* So
+  **offline/pulled-DB decryption is impossible by design**; only an *in-GUI-session*
+  helper can recover numbers.
+
+### Added
+- **`calls_decrypt_helper.py`** (opt-in, **not deployed**) — run on the source Mac
+  *inside its unlocked GUI session* to dump decrypted call addresses + metadata to
+  `calls_decrypted.json` (read-only; never touches the DB). Warns loudly if run in a
+  locked/SSH context (addresses come back blank).
+- **`callhistory_archiver.py` `--decrypted <json>`** — folds a `calls_decrypted.json`
+  sidecar into the archive, matched on the raw call instant (timezone-proof epoch,
+  ±1s). `decrypt_address()` documents the evidence; still returns `None` offline.
+
+### Changed
+- **Call identity is now address-independent** (`when` + duration + direction) and
+  **versioned by address/name content-hash**, so a call first seen `(encrypted)`
+  and later recovered with a real number *upgrades in place* (latest version wins)
+  instead of duplicating. Existing call archives are rebuilt once from the pulled DB
+  on next run (calls are re-derivable; nothing lost — old manifest kept as `.bak`).
+- Tests grew to 26 (added: decrypted-sidecar upgrades the encrypted call, no dup).
+
 ## 1.5.1 — 2026-06-14 (calendar dual-schema fix)
 
 ### Fixed

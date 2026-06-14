@@ -47,11 +47,21 @@ store). Reserved — add when a source actually has them.
   index (sender/subject/date/folder) rather than full re-render. `messages-exporter`
   already covers the highest-value conversational data, so this is last.
 
+## Call-history decryption — investigated, concluded (2026-06-14)
+
+Done. Full writeup in **`DECRYPTION.md`**. The numbers are AES-GCM encrypted with a
+login-keychain key released only to an interactive GUI session — **offline/pulled-DB
+decryption is impossible**. Proven over SSH: the framework returns every call but
+blank addresses ("User interaction is not allowed"). An opt-in
+**`calls_decrypt_helper.py`** (run in the source's GUI session) can recover numbers
+and `callhistory_archiver.py --decrypted` folds them in; left **disabled** because it
+puts a running component on the source Mac and the practical payoff is only
+*call-only* numbers (texted contacts' numbers are already in Messages + Contacts).
+**Decision pending** from the maintainer on whether to enable it.
+
 ## Polish backlog
 - Top-level `index.html` landing page linking every source's sub-archives.
-- Notes attachments (currently text-only).
-- Hard attempt at decrypting call-history numbers on the source Mac (private
-  framework, unsupported) — see `callhistory_archiver.decrypt_address`.
+- ~~Notes attachments~~ (done, 1.5.0).
 
 ## Adding a source / kind (the pattern)
 

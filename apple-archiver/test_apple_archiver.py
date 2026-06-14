@@ -267,6 +267,28 @@ class CallHistoryTests(unittest.TestCase):
         self.assertNotIn("\\x", csv)              # no raw byte escapes leaked
         self.assertIn('(encrypted)', csv)
 
+    def test_decrypted_sidecar_upgrades_encrypted_call(self):
+        # An encrypted call, then a GUI-helper sidecar recovers its number: the
+        # SAME call is upgraded (latest version wins), not duplicated.
+        conn = sqlite3.connect(self.db)
+        conn.execute("INSERT INTO ZCALLRECORD VALUES(3,?,NULL,0,1,1,30.0,700000200.0,NULL)",
+                     (b'\xb4\x0a#\x07\xef\xfd\xa5\xfe\xc9',))
+        conn.commit(); conn.close()
+        ca.run_archive(self.db, self.archive)
+        self.assertEqual(ca.run_archive(self.db, self.archive)['calls'], 3)
+
+        epoch = 700000200.0 + ca.CORE_DATA_EPOCH          # timezone-proof match key
+        side = Path(self.archive) / 'calls_decrypted.json'
+        side.write_text(json.dumps({'calls': [
+            {'epoch': epoch, 'address': '+15559998888'}]}))
+        r = ca.run_archive(self.db, self.archive, decrypted_path=str(side))
+        self.assertEqual(r['new'], 1)                      # one upgraded version appended
+        self.assertEqual(r['calls'], 3)                    # not duplicated
+        csv = (Path(self.archive) / 'calls.csv').read_text()
+        self.assertIn('+15559998888', csv)                # recovered number shown
+        self.assertNotIn('(encrypted)', csv)              # the encrypted call was upgraded
+        self.assertEqual(len(csv.strip().splitlines()), 1 + 3)   # header + 3 calls, no dup row
+
 
 class VoiceMemosTests(unittest.TestCase):
     def setUp(self):

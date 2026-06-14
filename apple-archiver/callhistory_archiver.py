@@ -12,17 +12,19 @@
 #   Usage:  callhistory_archiver.py --db <CallHistory.storedata> --archive <dir>
 # =============================================================================
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from applearchive_common import (  # noqa: E402
-    open_ro, rows, has_table, s, cd_date, short_hash,
+    open_ro, rows, has_table, s, cd_date, cd_dt, short_hash, CORE_DATA_EPOCH,
+    content_hash, latest_per_id,
     load_manifest, manifest_keys, append_manifest, write_csv, html_page, esc,
 )
 
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 CALL_TYPE = {1: 'Phone', 8: 'FaceTime', 16: 'FaceTime Video'}
 
@@ -37,17 +39,26 @@ def _service(provider, ctype):
     return CALL_TYPE.get(int(ctype or 0), 'Call')
 
 
-# ─── Address decryption (PLACEHOLDER — not implemented) ──────────────────────
+# ─── Address decryption (investigated; offline-impossible by design) ─────────
 def decrypt_address(blob):
-    """ZADDRESS / ZNAME are ENCRYPTED AT REST on macOS — a key in the source Mac's
-    login keychain, access-controlled to Apple's CallHistory process, encrypts them
-    (a 44-byte opaque blob). They therefore CANNOT be decrypted from a pulled DB.
+    """ZADDRESS / ZNAME are ENCRYPTED AT REST (44-byte AES-GCM blob: ciphertext +
+    16-byte IV + 16-byte tag). The key lives in the source Mac's *login* keychain,
+    released only to an interactive (Aqua) session. A pulled DB therefore CANNOT be
+    decrypted offline — see DECRYPTION.md for the full investigation.
 
-    Future on-Mac path (experimental, unsupported, macOS-version-specific): run on
-    the source Mac while logged in and read the DECRYPTED value via Apple's private
-    CallHistory / TelephonyUtilities framework (e.g. PyObjC). Not implemented here;
-    returns None so callers fall back to '(encrypted)'. Note: for people the user
-    texts, the real number is already preserved in the Messages + Contacts archives.
+    Evidence (run on the source Mac over SSH, CallHistory.framework via PyObjC):
+    `CHManager.recentCalls()` returns every call object, but `remoteParticipantHandles`
+    (where the decrypted number would appear) is EMPTY for all of them, with one
+    diagnostic: "Failed to get Call History User Data Key from keychain — User
+    interaction is not allowed." i.e. the SSH session can't unlock the key; an
+    unlocked GUI session is the only context where the number resolves.
+
+    The only viable route is an *in-GUI-session* helper (PyObjC over recentCalls() →
+    remoteParticipantHandles[].value), which breaks the pull model and is therefore
+    opt-in, not wired in here. This hook returns None so callers fall back to
+    '(encrypted)'. Note: for people the user actually texts, the real number is
+    already preserved in the Messages + Contacts archives, so the practical loss is
+    small — only call-only (never-texted) numbers stay opaque.
     """
     return None
 
@@ -78,7 +89,28 @@ def _dur(seconds):
     return (f'{h}:{m:02d}:{s2:02d}' if h else f'{m}:{s2:02d}')
 
 
-def read_calls(db):
+def load_decrypted(path):
+    """Load a calls_decrypted.json sidecar (produced on the source Mac by
+    calls_decrypt_helper.py, the only context where addresses decrypt) into a
+    {rounded-unix-epoch: address} map. Timezone-proof: matched on the raw instant,
+    not a formatted local time."""
+    idx = {}
+    if not path or not Path(path).exists():
+        return idx
+    try:
+        data = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return idx
+    for c in data.get('calls', []):
+        ep, addr = c.get('epoch'), (c.get('address') or '').strip()
+        if ep is None or not addr:
+            continue
+        idx[round(float(ep))] = addr
+    return idx
+
+
+def read_calls(db, decrypted=None):
+    decrypted = decrypted or {}
     conn = open_ro(db)
     if not has_table(conn, 'ZCALLRECORD'):
         conn.close(); return []
@@ -92,10 +124,19 @@ def read_calls(db):
         when = cd_date(date, '%Y-%m-%d %H:%M:%S')
         addr_s = _addr(addr)
         if addr_s == '(encrypted)':
-            addr_s = decrypt_address(addr) or '(encrypted)'   # future hook
+            addr_s = decrypt_address(addr) or '(encrypted)'   # offline hook (always None)
+            if addr_s == '(encrypted)' and decrypted and date is not None:
+                # Fold in a number recovered by the GUI-session helper, matched on
+                # the raw call instant (±1s for rounding).
+                ep = round(float(date) + CORE_DATA_EPOCH)
+                for k in (ep, ep - 1, ep + 1):
+                    if k in decrypted:
+                        addr_s = decrypted[k]; break
         name_s = _addr(name)
         out.append({
-            'id': short_hash(addr_s if addr_s != '(encrypted)' else 'enc', when),
+            # Address-independent identity (the call instant + shape) so a later
+            # GUI-helper decryption *upgrades* the same call instead of duplicating it.
+            'id': short_hash(when, s(dur), 'out' if orig else 'in'),
             'address': addr_s, 'name': name_s if name_s != '(encrypted)' else '',
             'direction': 'outgoing' if orig else 'incoming',
             'kind': _service(svc, ctype),
@@ -110,6 +151,7 @@ def read_calls(db):
 
 def build_views(archive, entries):
     archive = Path(archive)
+    entries = latest_per_id(entries)     # newest version of each call (decrypted > encrypted)
     entries = sorted(entries, key=lambda e: e.get('date') or '', reverse=True)
 
     # Per-call HTML + CSV.
@@ -146,17 +188,21 @@ def build_views(archive, entries):
     return len(entries)
 
 
-def run_archive(db, archive):
+def run_archive(db, archive, decrypted_path=None):
     archive = Path(archive); archive.mkdir(parents=True, exist_ok=True)
     mpath = archive / 'manifest.jsonl'
     seen = manifest_keys(load_manifest(mpath))
+    decrypted = load_decrypted(decrypted_path)
     new = []
-    for e in read_calls(db):
-        key = (e['id'], e['id'])     # calls are immutable; id alone identifies them
+    for e in read_calls(db, decrypted):
+        # Versioned by (id, content-hash of the address/name): a call first seen
+        # '(encrypted)' and later recovered with a real number appends a new
+        # version; build_views shows the latest. Nothing is ever rewritten.
+        key = (e['id'], content_hash(e['address'], e['name']))
         if key in seen:
             continue
         seen.add(key)
-        rec = dict(e); rec['hash'] = e['id']
+        rec = dict(e); rec['hash'] = key[1]
         new.append(rec)
     append_manifest(mpath, new)
     total = build_views(archive, load_manifest(mpath))
@@ -168,11 +214,14 @@ def main():
         description='Append-only Apple call-history archiver.')
     ap.add_argument('--db', required=True, help='path to CallHistory.storedata')
     ap.add_argument('--archive', required=True, help='archive root directory')
+    ap.add_argument('--decrypted', default=None,
+                    help='optional calls_decrypted.json from calls_decrypt_helper.py '
+                         '(run on the source Mac in a GUI session) to fill in numbers')
     ap.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     a = ap.parse_args()
     if not Path(a.db).exists():
         ap.error(f'CallHistory.storedata not found: {a.db}')
-    r = run_archive(a.db, a.archive)
+    r = run_archive(a.db, a.archive, decrypted_path=a.decrypted)
     print(f'Call history: +{r["new"]} new call(s); {r["calls"]} total.')
 
 
