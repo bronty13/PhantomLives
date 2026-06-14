@@ -1,6 +1,6 @@
 {
   "name": "quizzer",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "description": "Lightweight, portable quiz creator/customizer SPA that deploys self-contained, offline, branded quizzes to any browser.",
   "type": "module",
@@ -19,7 +19,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "restore:stubs": "node scripts/restore-stubs.mjs",
-    "check:stubs": "node scripts/check-stubs.mjs"
+    "check:stubs": "node scripts/check-stubs.mjs",
+    "deploy": "bash scripts/deploy-pages.sh"
   },
   "dependencies": {
     "@tiptap/pm": "^2.10.3",

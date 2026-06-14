@@ -28,7 +28,7 @@ Android Chrome.
 npm install          # first time only
 npm run dev          # creator dev server (also builds both player templates) → http://localhost:1500
 npm run build        # production build → dist/index.html (the creator, single file)
-npm test             # vitest (80 tests)
+npm test             # vitest (88 tests)
 npm run typecheck    # tsc --noEmit
 ```
 
@@ -49,6 +49,27 @@ To use the creator without a dev server, just `npm run build` and open
 | `npm test` / `npm run typecheck` | Tests / type-check. |
 
 ---
+
+## Hosting the creator (one bookmark, auto-updates)
+
+> Note the two meanings of "deploy" in this project. **This** section is about
+> hosting the **creator** (the authoring app) at one permanent web address. The
+> *next* section is about how the creator emits a finished **quiz/wheel** file
+> when you click "Deploy" inside it. Different things.
+
+Host the creator on GitHub Pages so you keep a single bookmark, get updates by
+refreshing, and — crucially — **never lose the quizzes/wheels you've authored**.
+The creator stores your work in IndexedDB, which is keyed to the page **origin**;
+a stable `https://…` address keeps that data intact across every update, whereas
+re-opening a downloaded `file://` copy from a new path can orphan it.
+
+```bash
+npm run deploy        # build + write version.json + push to the Pages repo
+```
+
+First-time setup, the version-bump checklist, and how the in-app **update banner**
++ **What's New** popup work are in **[`docs/distribution.md`](docs/distribution.md)**.
+Live (after one-time setup): <https://bronty13.github.io/quizzer/>.
 
 ## How deployment works (the two-bundle architecture)
 

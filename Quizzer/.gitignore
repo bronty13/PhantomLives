@@ -6,3 +6,4 @@ dist-wheel/
 .DS_Store
 *.tsbuildinfo
 coverage/
+.pages-deploy/

@@ -3,6 +3,32 @@
 All notable changes to **Quizzer** are recorded here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Semantic Versioning.
 
+## 0.4.0 — 2026-06-14
+
+### Added (hosted creator + in-app updates)
+
+- **One-command GitHub Pages deployment for the creator** (`npm run deploy` →
+  `scripts/deploy-pages.sh`). Builds the full pipeline, writes a `version.json`,
+  and pushes `index.html` + `version.json` to a public Pages repo (default
+  `bronty13/quizzer`), so the creator lives at one permanent bookmarkable URL.
+  Hosting the creator at a stable origin keeps authored quizzes/wheels (IndexedDB
+  is keyed to origin) intact across updates. See `docs/distribution.md`.
+- **In-app update banner.** On load the creator best-effort fetches `version.json`
+  next to itself and, if a newer version is published, shows a green
+  "A newer version is ready — Update now" bar. Silent offline / under `file://`.
+- **"What's New" popup.** After updating, a once-per-version popup
+  (`src/creator/data/whatsNew.ts`) summarizes what changed; the last-seen version
+  is remembered in `localStorage` (`quizzer.lastSeenVersion`).
+- **`APP_VERSION`** constant (`src/shared/appMeta.ts`) and a tested numeric
+  version comparator (`src/shared/version.ts`). The deploy script **refuses to
+  publish if `APP_VERSION` and `package.json` drift**, since the banner compares
+  them.
+
+### Notes
+
+- The deploy script restores the committed template stubs after building, so the
+  outer working tree stays clean and `npm run check:stubs` keeps passing.
+
 ## 0.3.2 — 2026-06-06
 
 ### Fixed

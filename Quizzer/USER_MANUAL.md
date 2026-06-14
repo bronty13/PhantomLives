@@ -6,11 +6,22 @@ with no internet. This manual is for the person *creating* them.
 
 ## 1. Opening Quizzer
 
-Open `dist/index.html` (the Quizzer Creator) in any modern browser. Everything you
-make is saved automatically in that browser on that computer. To move your work to
-another machine, use **Export** (below).
+The best way to use Quizzer is from its **web link** (a bookmark) if one has been
+set up for you — open it any time, on any device. Everything you make is saved
+automatically in *that browser*, and using a fixed web link keeps your saved
+quizzes and wheels safe across updates. (You can also open a downloaded
+`dist/index.html` directly, but if you move that file to a new folder the browser
+may not find your earlier work — the bookmark avoids that.)
 
 The top bar has four areas: **Quizzes**, **Wheels**, **Branding**, and **Settings**.
+
+### Keeping Quizzer up to date
+
+When you open the bookmark and a newer version has been published, a green bar
+appears at the top: **"A newer version of Quizzer is ready — Update now."** Click
+**Update now** and it reloads to the latest — your quizzes and wheels stay put.
+Right after updating, a **"What's New"** popup tells you what changed; click
+**Got it** and it won't show that note again.
 
 ## 2. Set up Branding (do this first)
 

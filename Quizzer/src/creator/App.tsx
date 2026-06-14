@@ -18,6 +18,12 @@ import { WheelList } from './screens/WheelList';
 import { WheelEditor } from './screens/WheelEditor';
 import { BrandingManager } from './screens/BrandingManager';
 import { GlobalSettingsScreen } from './screens/GlobalSettings';
+import { UpdateBanner } from './components/UpdateBanner';
+import { WhatsNew } from './components/WhatsNew';
+import { unseenNotes, type ReleaseNote } from './data/whatsNew';
+import { APP_VERSION } from '../shared/appMeta';
+
+const LAST_SEEN_KEY = 'quizzer.lastSeenVersion';
 
 type Route = 'home' | 'edit' | 'wheels' | 'editWheel' | 'branding' | 'settings';
 
@@ -29,6 +35,16 @@ export function App() {
   const [settings, setSettings] = useState<GlobalSettings | null>(null);
   const [editing, setEditing] = useState<Quiz | null>(null);
   const [editingWheel, setEditingWheel] = useState<Wheel | null>(null);
+  const [whatsNew, setWhatsNew] = useState<ReleaseNote[]>([]);
+
+  // On first load, show the What's New popup for any versions newer than the one
+  // last seen, then record this build as seen so it never nags again. A brand-new
+  // install (no marker) shows nothing — there's no update to announce.
+  useEffect(() => {
+    const lastSeen = localStorage.getItem(LAST_SEEN_KEY);
+    setWhatsNew(unseenNotes(lastSeen));
+    localStorage.setItem(LAST_SEEN_KEY, APP_VERSION);
+  }, []);
 
   const reload = useCallback(async () => {
     const [q, w, b, s] = await Promise.all([
@@ -112,6 +128,8 @@ export function App() {
 
   return (
     <div className="creator">
+      <UpdateBanner />
+      {whatsNew.length > 0 && <WhatsNew notes={whatsNew} onClose={() => setWhatsNew([])} />}
       <nav className="topnav">
         <span className="brand">📝 Quizzer</span>
         <button className={navCls(route, 'home')} onClick={() => setRoute('home')}>Quizzes</button>
