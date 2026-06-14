@@ -43,11 +43,16 @@ Override the repo with `PAGES_REPO=owner/name npm run deploy`.
    `src/data/whatsNew.ts` — plain language, large-print friendly. This is what the
    user sees in the **What's New** popup after updating (separate from the
    technical `CHANGELOG.md`).
-3. Deploy:
+3. Update `USER_MANUAL.md` if behavior changed — it **is** the in-app Help (Help
+   button → User Manual), inlined into the build. Also update `CHANGELOG.md`.
+4. Run checks: `npm run typecheck && npm test`.
+5. Deploy:
    ```bash
    npm run deploy
    ```
    This builds, writes `version.json`, and pushes to the Pages repo.
+6. **Email Jan** — what's new, what to try, reassurance. Use the template in
+   `docs/release-email.md`. This is a release blocker, not an afterthought.
 
 That's it. What the user experiences:
 

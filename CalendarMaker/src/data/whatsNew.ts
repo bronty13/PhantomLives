@@ -12,6 +12,14 @@ export interface ReleaseNote {
 
 export const WHATS_NEW: ReleaseNote[] = [
   {
+    version: '0.4.0',
+    date: 'June 14, 2026',
+    highlights: [
+      'New “Help” button at the top opens a full, plain-language guide to everything.',
+      'You can make the guide’s text bigger or smaller with the A+ and A− buttons.',
+    ],
+  },
+  {
     version: '0.3.5',
     date: 'June 14, 2026',
     highlights: [

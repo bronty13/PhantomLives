@@ -6,7 +6,14 @@ calendar. Build named calendar "bundles," add events and holidays, decorate with
 sayings and Bible verses, pick a theme, and export to **PDF**.
 
 Everything (app code, ~31k-verse NASB Bible, sayings, fonts) is inlined into a
-single `index.html`. Unzip, double-click, done — no server, no internet.
+single `index.html` — no server, no internet needed.
+
+**For the end user it's hosted** at a permanent link they bookmark once and update
+just by refreshing (their saved calendars persist): the build is deployed to
+GitHub Pages via `npm run deploy`. See **`docs/distribution.md`** for setup and the
+per-release flow, and **`docs/release-email.md`** for the plain-language email sent
+to the user on every release. The single file still works offline from `file://`
+as a fallback.
 
 ## Features
 
@@ -47,6 +54,11 @@ single `index.html`. Unzip, double-click, done — no server, no internet.
   **embedded** so the printed PDF matches the screen on any machine.
 - **PDF export** — **Month view** (landscape grid), **Detail view** (portrait,
   date-ordered list), or **Both** in one document.
+- **In-app Help** — a **Help** button opens the full `USER_MANUAL.md` rendered
+  large-print with an A−/A+ size control (one source of truth: the committed
+  manual is inlined via `?raw`).
+- **Painless updates** — an "update available" banner (reads a deployed
+  `version.json`) and a large-print **What's New** popup once per version.
 
 ## Build / run
 

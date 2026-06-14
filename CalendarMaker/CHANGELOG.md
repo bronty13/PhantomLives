@@ -4,6 +4,32 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.4.0 — 2026-06-14
+
+### Added
+- **In-app User Manual.** A **Help** button (home + editor) opens the full
+  `USER_MANUAL.md` rendered large-print and high-contrast, with an **A− / A+** text
+  size control. Single source of truth: the committed manual is inlined via `?raw`
+  and rendered by a tiny dependency-free Markdown component
+  (`src/app/components/Markdown.tsx`) — the repo doc and the in-app help can never
+  drift.
+- `USER_MANUAL.md` rewritten comprehensive **and** plain-language for a
+  non-technical, low-vision user on Windows + mouse (says "click", covers the
+  hosted-bookmark workflow, updates, Ctrl-+ zoom, and simple troubleshooting).
+
+### Process / docs
+- **Release-email pattern** (`docs/release-email.md`): every release sends the user
+  a short, friendly email (what's new, what to try, reassurance) — a quieter,
+  not-cutesy cousin of the Molly rule; added to the repo `CLAUDE.md`. Includes the
+  onboarding/migration email (`docs/onboarding-current.md`) and the
+  different-origin data-migration caveat.
+- Updated `DESIGN.md`, `HANDOFF.md`, `README.md`, `docs/distribution.md` for the
+  hosted distribution + in-app help architecture.
+
+### Tests
+- +3 (Markdown renderer: headings/lists/bold/code/links + list grouping; the real
+  manual inlines and renders its key sections). 67 total.
+
 ## 0.3.5 — 2026-06-14
 
 ### Added

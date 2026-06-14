@@ -88,6 +88,12 @@ These apply to **every** code, config, script, test, or doc change. Do not skip 
 
 → The full voice guide, tone rules, message skeleton, required content (diff window, Windows-only test steps, concrete click path, regression check), and `gh release edit` workflow live in **`docs/molly-release-messaging.md`** — read it before cutting any Molly release.
 
+## CalendarMaker release emails — a note to Jan
+
+**Every time we ship a CalendarMaker release, send Jan a short, friendly email with what's new, what to try, and reassurance that nothing breaks — and keep `USER_MANUAL.md` (which is the in-app Help) + the top entry of `src/data/whatsNew.ts` current in the same plain voice. A doc/app mismatch is a release blocker.** This is the quieter, *not-cutesy* cousin of the Molly rule: warm and personal, but plain and practical. Jan is non-technical, has low vision, and uses a **Windows 11 laptop + external mouse** (say "click", not "tap").
+
+→ Voice rules, the recurring update-email skeleton, how to write "what to try" steps, the onboarding/migration email, and the data-migration caveat (hosted URL is a different origin → offer to move her calendars, don't make her export/import) live in **`CalendarMaker/docs/release-email.md`**. Ship/deploy mechanics are in **`CalendarMaker/docs/distribution.md`**. Read both before shipping a CalendarMaker release.
+
 ## SQL migrations are immutable
 
 Once a migration file has been added to a release (committed to `main` AND/OR applied to any developer's local database), **never edit it**. `tauri-plugin-sql` and similar runtime migrators hash the migration file at every launch and refuse to start when the hash doesn't match the stored value — that's the "migration N was previously applied but has been modified" crash.

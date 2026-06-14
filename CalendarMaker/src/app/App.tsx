@@ -13,6 +13,7 @@ import { NewBundleWizard } from './screens/NewBundleWizard';
 import { SettingsModal } from './screens/Settings';
 import { WhatsNew } from './components/WhatsNew';
 import { UpdateBanner } from './components/UpdateBanner';
+import { UserManual } from './components/UserManual';
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -23,6 +24,7 @@ export function App() {
   const [active, setActive] = useState<CalendarBundle | null>(null);
   const [modal, setModal] = useState<'none' | 'new' | 'settings'>('none');
   const [whatsNew, setWhatsNew] = useState<ReleaseNote[]>([]);
+  const [showManual, setShowManual] = useState(false);
 
   const reloadBundles = useCallback(async () => setBundles(await listBundles()), []);
   const reloadThemes = useCallback(async () => setThemes(await listThemes()), []);
@@ -89,9 +91,13 @@ export function App() {
         <div className="brand">Calendar<span>Maker</span></div>
         <div className="spacer" />
         {active ? (
-          <button className="ghost" onClick={() => { setActive(null); reloadBundles(); }}>← All calendars</button>
+          <>
+            <button className="ghost" onClick={() => setShowManual(true)}>Help</button>
+            <button className="ghost" onClick={() => { setActive(null); reloadBundles(); }}>← All calendars</button>
+          </>
         ) : (
           <>
+            <button onClick={() => setShowManual(true)}>Help</button>
             <button onClick={() => setModal('settings')}>Settings</button>
             <button className="primary" onClick={() => setModal('new')}>+ New calendar</button>
           </>
@@ -147,6 +153,7 @@ export function App() {
       {whatsNew.length > 0 && (
         <WhatsNew notes={whatsNew} onClose={() => setWhatsNew([])} />
       )}
+      {showManual && <UserManual onClose={() => setShowManual(false)} />}
     </div>
   );
 }

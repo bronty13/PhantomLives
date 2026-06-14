@@ -36,7 +36,11 @@ Regenerate only when sources/font set change; otherwise plain `build` is enough.
 - `src/model/` — `types.ts` (all interfaces + `SCHEMA_VERSION`/`APP_VERSION`),
   `factory.ts` (constructors), `seedThemes.ts` (the 10 built-ins).
 - `src/data/` — generated data + hand-written helpers (`bible.ts`, `sayings.ts`,
-  `holidays.ts` catalog, `fonts.ts` registry/@font-face/jsPDF registration).
+  `holidays.ts` catalog, `fonts.ts` registry/@font-face/jsPDF registration,
+  `whatsNew.ts` friendly release notes, `manual.ts` = `USER_MANUAL.md` inlined via
+  `?raw`).
+- `src/update/` — `version.ts` (numeric semver-ish compare for the What's-New +
+  update-banner logic).
 - `src/calendar/` — **pure** logic (vitest target): `dateUtil`, `grid`
   (`computeWeeks`, `largestBlankRun`), `holidayResolver` (rules + Easter
   computus), `measure` (singleton headless jsPDF metrics), `fit` (the overflow
@@ -48,7 +52,9 @@ Regenerate only when sources/font set change; otherwise plain `build` is enough.
 - `src/storage/` — `db.ts` (idb + first-run theme seeding), `bundleIO.ts`
   (`.cmcal.json` export/parse + schema guard).
 - `src/app/` — React UI: `App.tsx` (state/router), `CalendarPreview.tsx` (the
-  WYSIWYG HTML grid that mirrors the PDF), `screens/*`, `components/*`.
+  WYSIWYG HTML grid that mirrors the PDF), `screens/*`, `components/*`
+  (incl. `UpdateBanner`, `WhatsNew`, `UserManual`, `Markdown` — the tiny in-house
+  Markdown renderer for the in-app manual).
 
 ## The overflow guarantee (the core invariant)
 
@@ -94,5 +100,22 @@ cue; the PDF renders normal weight.
   "both" puts them in one doc. Detail page numbers are added by `exportPdf`
   (not `renderDetail`) so they don't clobber the month page.
 - This subproject is pure SPA → **exempt** from `build-app.sh`/`install.sh`.
-- Release hygiene: bump `version` in `package.json` **and** `APP_VERSION` in
-  `src/model/types.ts`, update CHANGELOG/README/USER_MANUAL, add/adjust tests.
+- Release hygiene each release: bump `version` in `package.json` **and**
+  `APP_VERSION` in `src/model/types.ts` (keep equal); add a top entry to
+  `src/data/whatsNew.ts` (friendly) **and** `CHANGELOG.md` (technical); update
+  `USER_MANUAL.md` (it *is* the in-app Help) + README; add/adjust tests; then
+  `npm run deploy` and **send Jan the release email** (`docs/release-email.md`).
+
+## Distribution & in-app updates (the user-facing release path)
+
+The app is hosted on GitHub Pages (`bronty13/calendarmaker`, public, `noindex`)
+so the user keeps one bookmark and refreshes to update — a stable origin keeps her
+`localStorage` calendars intact (a `file://` origin would orphan them).
+
+- `npm run deploy` (`scripts/deploy-pages.sh`) builds, writes `version.json`, and
+  pushes `index.html` to the Pages repo (cloned into gitignored `.pages-deploy/`).
+- `UpdateBanner` fetches `version.json` next to the app and prompts when newer.
+- `WhatsNew` shows `unseenNotes(cm.lastSeenVersion)` once per new version (first
+  install is silent). `UserManual` renders `USER_MANUAL.md` (single source).
+- Full guide: `docs/distribution.md`. Email pattern: `docs/release-email.md`.
+  Both are required reading before shipping (see repo `CLAUDE.md`).

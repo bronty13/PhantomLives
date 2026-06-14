@@ -1,145 +1,179 @@
 # CalendarMaker — User Manual
 
-CalendarMaker makes beautiful, printable monthly calendars. It runs entirely in
-your web browser, with no internet needed.
+CalendarMaker helps you make beautiful, printable monthly calendars — with
+prayers, birthdays, reminders, Bible verses, and sayings on any day. It runs in
+your web browser. You don't need to install anything.
 
-## Getting started
+This manual lives inside the app: click **Help** at the top any time to read it.
+Use the **A−** and **A+** buttons at the bottom of this window to make the text
+smaller or larger.
 
-1. Unzip `CalendarMaker-app.zip`.
-2. Double-click `index.html` — it opens in your browser.
-3. (Optional) In your browser settings, set the **download folder** to
-   `~/Downloads/CalendarMaker/` so your exported PDFs land together.
+## Opening CalendarMaker
+
+CalendarMaker opens from a **bookmark** (a saved link) in your web browser.
+
+- Click the bookmark and the app opens. That's it — nothing to download.
+- It's fine to leave the tab open. You can come back any time.
+
+**Tip for easier reading:** to make everything on the screen bigger, hold the
+**Ctrl** key and press the **+** key (do it again for even bigger). **Ctrl** and
+**−** makes it smaller again. **Ctrl** and **0** returns to normal.
+
+## Getting updates
+
+When a newer version of CalendarMaker is ready, a **green bar** appears across the
+top that says *"A newer version is ready."* Click **Update now** and the app
+refreshes to the latest version. Your calendars are kept safe — nothing is lost.
+
+After an update, a **"What's New"** box appears once to tell you what changed.
+Click **Got it** to close it.
 
 ## The home screen
 
-- A **greeting** at the top says "Good morning/afternoon/evening, <your name>".
-  Set your name in **Settings** (it defaults to *Jan*).
-- A **verse of the moment** and **a little encouragement** (a saying) appear
-  below it, each in its own pretty style. Click **↻** to see another. You can turn
-  either off in **Settings**.
-- Below them is **Your calendars** — every calendar you've made.
+When you open CalendarMaker you see the home screen:
 
-## Making a calendar
+- A **greeting** at the top — "Good morning, Jan" (your name comes from
+  **Settings**).
+- A **Bible verse** and a **saying** in pretty boxes. Click the **↻ another**
+  text on a box to see a different one. You can turn these off in **Settings**.
+- **Your calendars** — every calendar you have made. Click one to open it. Use
+  **+ New calendar** to start a new one.
+
+## Making a new calendar
 
 1. Click **+ New calendar**.
-2. Enter a **Title** — this is the saved name (e.g. "Grace Church — June 2026").
-3. Choose the **Month & year**. It defaults to *next month*; use the dropdown and
-   the −/+ year buttons to pick any month, past or future.
-4. Pick a **Theme** (you can change it later).
-5. Click **Create** — the calendar editor opens.
+2. Type a **Title**. This is just the name you'll recognize it by, like
+   "Family — June 2026".
+3. Choose the **Month and year**. Use the dropdown for the month and the **−** and
+   **+** buttons for the year.
+4. Choose a **Theme** (the colors and fonts). You can change this later.
+5. Click **Create**. Your new calendar opens, ready to fill in.
 
-## Adding events to a day
+## Adding things to a day
 
-1. **Click a day** on the calendar.
-2. In the panel, choose a **type** (Prayer, Praise, Birthday, Life Event, Church
-   Event, Reminder, **Bible Verse**, **Saying**), type the text, and click
-   **+ Add item**.
-3. Add as many as you like. Edit text or change a type anytime; click ✕ to delete.
+Click any **day** on the calendar. A panel slides in from the right. At the
+bottom, under **Add an item**, choose what kind of thing you're adding:
 
-### Bible verses & sayings on a day
+- **Prayer**, **Praise**, **Birthday**, **Life Event**, **Church Event**, or
+  **Reminder** — type the words in the box and click **+ Add item**.
+- **Bible Verse** or **Saying** — a picker appears (see below). What you pick is
+  added to the day right away.
 
-When you pick the **Bible Verse** type, a fast picker appears. Two ways to find
-your verse:
+You can add as many items as you like. To remove one, click the **✕** next to it.
+To change wording on a regular item, just type in its box.
 
-- **Type it** — start typing a reference in the box: `John 3:16`, `Phil 4:13`,
-  even `1 Jo 5 4`. Press **Enter** to grab it. Typing just a name (e.g. `phil`)
-  narrows the book grid (Philippians / Philemon).
-- **Tap it** — tap a **book** (grouped Old / New Testament; shown as compact
-  3-letter abbreviations like `Gen`, `1Sa`, `Phi` — hover to see the full name),
-  then a **chapter**, then a **verse**. The breadcrumb at the top (Book › Chapter
-  › Verse) lets you step back a level anytime.
+### Adding a Bible verse
 
-Pick the **Saying** type to get a searchable list of every built-in and custom
-saying (or hit **↻ Random**). As soon as you pick a verse or saying it's **added
-to the day right away** — no extra step. Existing verse/saying items show a small
-reference tag (e.g. *John 3:16*); click **✎ Edit** to swap it for a different one.
-A day can hold both a verse and a saying (and as many as you like).
+When you choose **Bible Verse**, a finder appears. There are two easy ways:
 
-#### Two ways verses & sayings appear — the "Verse Mode" toggle
+- **Type it.** In the box, type a reference like **John 3:16** and press
+  **Enter**. Short forms work too, like **Phil 4:13**.
+- **Click through it.** Click a **book** (the books are shown in short form, like
+  **Gen** for Genesis — rest your mouse on one to see the full name), then click a
+  **chapter** number, then a **verse** number. The verse is added.
 
-In the toolbar, **Verse Mode** switches how these items print:
+If you only type part of a book name, like **phil**, the list shrinks to just the
+matching books so you can click the right one.
 
-- **Force** *(default)* — verses and sayings are **plastered at the top of each
-  day cell** (shrunk to fit), and the little colored dots are hidden for a clean
-  look. Other events still show underneath if there's room.
-- **Separate** — verses and sayings are kept **off** the main month grid and
-  printed on their own landscape **"Scripture & Sayings"** calendar page. Your
-  everyday events stay uncluttered, and scripture gets a beautiful page of its own.
+### Adding a saying
 
-The default for **new** calendars is set in **Settings → Bible verse & saying
-treatment** (default **Force**); the toolbar toggle overrides it per calendar.
+When you choose **Saying**, you get a list of all the built-in sayings, the
+Morning Affirmations, and any you've added yourself. Type in the search box to
+find one, or click **↻ Random** for a surprise. Click a saying to add it.
 
-### When something won't fit
+### Changing a verse or saying you already added
 
-The month grid stays clean no matter what:
+A verse or saying on a day shows a small label (like *John 3:16*). Click **✎ Edit**
+next to it to pick a different one.
 
-- If a day has more items than fit, you'll see an alert. The extra items are
-  **saved** and will print in the **Detail view**, marked with a ⊘ in a
-  different color.
-- To choose which items appear on the **month grid**, tick **Pin to month** on
-  the ones you want. The rest become detail-only.
-- A very long item that can't fit a cell at all is automatically detail-only
-  (labeled "too long").
+### How verses and sayings are printed
+
+There are two styles, chosen with the **Separate / Force** buttons at the top of
+the calendar:
+
+- **Force** (the usual setting) — verses and sayings are printed **right inside
+  each day's box** on the calendar.
+- **Separate** — verses and sayings are kept off the main calendar and printed on
+  their **own extra page**, so your everyday events stay tidy.
+
+You can set which one new calendars start with in **Settings**. Each calendar can
+be switched any time with those two buttons.
+
+### If a day has too much to fit
+
+A day's box can only hold so much. If you add more than fits:
+
+- The calendar still looks neat — extra items are **never lost**.
+- The leftover items are printed in the **Detail view** (a printed list of every
+  day, described below).
+- To choose which items show on the calendar itself, click **Pin to month** on the
+  ones you want to keep on the grid.
 
 ## Holidays
 
-Click **Holidays** in the toolbar. Every holiday that falls in your month is
-listed (federal, observances, and Christian days like Good Friday and Easter).
-Click **Off/On** to place each one on your calendar.
+Click **Holidays** at the top. You'll see the holidays that fall in your month —
+national holidays, common observances, and Christian days like Good Friday and
+Easter. Click **On** or **Off** next to each to add or remove it from your
+calendar.
 
-## Sayings & verses (whole-month filler)
+## A verse or saying for the whole month
 
-This is separate from per-day verses (above) — it decorates the calendar's empty
-space with a single saying or verse for the whole month. Click **Sayings &
-Verses**:
+Besides putting verses on individual days, you can add **one** verse or saying that
+decorates the calendar's empty space for the whole month. Click **Sayings &
+Verses** at the top, choose where it goes and what it is, then click **Place**.
 
-- **Where**: the **footer band** (below the grid) or the **grid free space**
-  (empty day cells).
-- **What**: a **Bible verse** (Random, or pick a book / chapter / verse) or a
-  **Saying** (click ↻ for another).
-- Click **Place…**. Remove a placement anytime from the same panel.
+## Choosing the look (Themes)
 
-## Themes
+Click **Themes** to change the colors and fonts. You can also **Duplicate** one of
+the built-in looks and **Edit** your copy — change the color and font for each kind
+of item, the title, the headings, and the background. Your own themes can be
+deleted; the built-in ones cannot (make a copy instead).
 
-Click **Themes** to switch the look, or to **Duplicate** a built-in theme and
-**Edit** your copy — set the font and color for each item type, plus the title,
-header, holiday, saying, and background colors. Delete your custom themes when
-done. Built-in themes can't be edited or deleted (duplicate them instead).
+## Printing your calendar (Save as PDF)
 
-## Exporting to PDF
+A **PDF** is a file you can print or email. Click **Export PDF**, then choose:
 
-Click **Export PDF**, then choose:
+- **Month view** — the calendar grid on one page (wide / landscape).
+- **Detail view** — a list of every day and what's on it (tall / portrait).
+- **Both** — the calendar page first, then the list, in one file.
 
-- **Month view** — the printable calendar grid (landscape).
-- **Detail view** — a date-ordered list of every day and its events (portrait).
-- **Both** — month grid first, then the detail list, in one PDF.
+Click **Export PDF** to save the file. Then open that file and print it the normal
+way (in most browsers, **Ctrl** and **P**).
 
-If you've added per-day verses/sayings in **Separate** mode, a **Scripture &
-Sayings** calendar page is included automatically (whenever the month is part of
-the export). For **Both**, you can choose the page order: *Calendar → Scripture →
-Detail* (default) or *Calendar → Detail → Scripture*.
+If you used **Separate** mode for verses, an extra **Scripture & Sayings** page is
+added automatically.
 
-Click **Export PDF** to download. You can also **Export bundle (.cmcal.json)** to
-back up the calendar or move it to another computer (use **Import…** on the home
-screen to bring it back).
+## Keeping a backup or moving to another computer
+
+Your calendars are saved in this browser on this computer. To keep a spare copy or
+move a calendar elsewhere:
+
+- Click **Export PDF** isn't a backup — for a true backup use **Export bundle**.
+  It saves a small `.cmcal.json` file.
+- On the home screen, **Import…** brings a saved `.cmcal.json` back in.
 
 ## Settings
 
-- **Your name** — used in the home-screen greeting (default *Jan*).
-- Default theme, week start (Sun/Mon), and default export view for new calendars.
-- **Bible verse & saying treatment** — the default mode for new calendars: **Force
-  in cells** (default) or **Separate calendar**. Each calendar can override it from
-  the editor toolbar.
-- The safety cap for how many items show per day on the month grid.
-- Toggles for the home-screen verse and saying cards.
-- **Custom sayings** — manage your own sayings inline. Click **+ Add new saying**
-  to enter text and an optional attribution; click any saying's **✎** to edit it
-  in place, or **✕** to delete it. Everything saves right away and joins the pool
-  used by the home card, the day-level Saying picker, and the whole-month filler.
-  Expand **Built-in Sayings** to browse the seeded ones (they can't be edited or
-  removed).
+Click **Settings** on the home screen to change:
 
-## Where is my data?
+- **Your name** — used in the greeting.
+- **Default theme**, **week start** (Sunday or Monday), and **default print view**
+  for new calendars.
+- **Bible verse & saying treatment** — whether new calendars start in **Force** or
+  **Separate** mode.
+- **Max items per day** — a safety limit so days never look crowded.
+- Turn the home-screen **verse** and **saying** boxes on or off.
+- **Your Sayings** — add, edit, or delete your own sayings. Click **+ Add new
+  saying**, type the words (and who said it, if you like), and it's saved right
+  away. Click the **✎** to edit one or **✕** to delete it.
 
-Calendars are saved in your browser on this computer. To move them or keep a
-backup, use **Export bundle (.cmcal.json)** and **Import…**.
+## A little trouble-shooting
+
+- **The page looks blank or stuck.** Close the tab and click your bookmark again.
+- **The text is too small.** Use **A+** in this Help window, or hold **Ctrl** and
+  press **+** to enlarge the whole app.
+- **I don't see my calendars.** Make sure you opened the same bookmark in the same
+  browser you used before. Your calendars are saved in that browser.
+- **Something seems off after an update.** Close the tab and reopen the bookmark.
+
+If you're ever unsure, you can't break anything — your saved calendars stay put.
