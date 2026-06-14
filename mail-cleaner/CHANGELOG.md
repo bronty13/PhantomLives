@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1 — 2026-06-14
+
+**Data-loss fix** in `act --action archive|trash` on servers without MOVE (iCloud).
+
+- Previously the COPY/STORE fallback issued `COPY` then immediately flagged the
+  originals `\Deleted` **without checking the COPY succeeded**. When iCloud
+  transiently rejected a COPY batch, the originals were still expunged → mail
+  destroyed (it left the source but never reached the destination). Real
+  incident: a large auto-foldering run lost ~960 messages (SleepHQ/`circle.so`,
+  plus LastPass/Xfinity/Comcast/Hyatt/National Grid account mail) this way.
+- Now `copy_verified()` requires an OK COPY response **before** the original is
+  flagged `\Deleted`. On a batch-copy failure it salvages one message at a time;
+  anything that still won't copy is **left in place and never deleted**, and the
+  count is reported (`! N message(s) could NOT be copied … NOT deleted`).
+- Copy-path batch size dropped 1000 → 500 to limit blast radius.
+- `delete` (permanent) path is unchanged.
+
 ## 0.3.0 — 2026-06-13
 
 New **`unsubscribe`** subcommand — stop bulk senders at the source instead of

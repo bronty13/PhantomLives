@@ -31,7 +31,7 @@ Output: ~/Downloads/mail-cleaner/<account>_<timestamp>/
 
 from __future__ import annotations
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import argparse
 import csv
@@ -471,6 +471,22 @@ def verify_from(M: imaplib.IMAP4_SSL, uids: list[bytes],
     return kept
 
 
+def copy_verified(M: imaplib.IMAP4_SSL, ids: str, dest: str) -> bool:
+    """COPY a batch to `dest` and confirm the server accepted it.
+
+    CRITICAL for archive/trash on servers without MOVE (iCloud): the caller
+    must NOT flag the originals \\Deleted unless the copy actually succeeded,
+    or a transient COPY failure silently destroys mail (it gets expunged from
+    the source but never lands in the destination). iCloud lacks UIDPLUS, so we
+    can't match COPYUID; we treat an OK tagged response as success and any
+    NO/BAD/exception as failure. Returns True only on a confirmed copy."""
+    try:
+        typ, _ = M.uid("COPY", ids, f'"{dest}"')
+        return typ == "OK"
+    except imaplib.IMAP4.error:
+        return False
+
+
 def cmd_act(args: argparse.Namespace) -> None:
     preset = PRESETS.get(args.account, {})
     host = args.host or preset.get("host")
@@ -556,29 +572,44 @@ def cmd_act(args: argparse.Namespace) -> None:
     # even on servers (Gmail) that auto-expunge \Deleted during the loop.
     pre = mailbox_count(M, args.mailbox)
     done = 0
-    for batch in chunked(all_uids, 1000):
+    failed: list[bytes] = []  # copy failed -> left in source, NEVER deleted
+    dest = (args.to if args.action == "archive"
+            else args.trash_folder if args.action == "trash" else None)
+    # Smaller batches for the copy path: a failed 1000-COPY used to take the
+    # whole batch down with it. 500 limits blast radius; salvage handles the rest.
+    bsize = 1000 if args.action == "delete" else 500
+    for batch in chunked(all_uids, bsize):
         ids = b",".join(batch).decode()
-        if args.action == "archive":
-            if have_move:
-                M.uid("MOVE", ids, f'"{args.to}"')
-            else:
-                M.uid("COPY", ids, f'"{args.to}"')
-                M.uid("STORE", ids, "+FLAGS", r"(\Deleted)")
-        elif args.action == "trash":
-            trash = args.trash_folder
-            if have_move:
-                M.uid("MOVE", ids, f'"{trash}"')
-            else:
-                M.uid("COPY", ids, f'"{trash}"')
-                M.uid("STORE", ids, "+FLAGS", r"(\Deleted)")
-        elif args.action == "delete":
+        if args.action == "delete":
             M.uid("STORE", ids, "+FLAGS", r"(\Deleted)")
             if have_uidplus:
                 M.uid("EXPUNGE", ids)
-        done += len(batch)
+            done += len(batch)
+        elif have_move:
+            M.uid("MOVE", ids, f'"{dest}"')
+            done += len(batch)
+        else:
+            # COPY must be CONFIRMED before we delete the originals. If a batch
+            # copy fails, salvage one message at a time so one bad/oversized
+            # message can't doom the whole batch — and anything that still
+            # won't copy is left in place, never deleted.
+            if copy_verified(M, ids, dest):
+                M.uid("STORE", ids, "+FLAGS", r"(\Deleted)")
+                done += len(batch)
+            else:
+                for u in batch:
+                    uid = u.decode()
+                    if copy_verified(M, uid, dest):
+                        M.uid("STORE", uid, "+FLAGS", r"(\Deleted)")
+                        done += 1
+                    else:
+                        failed.append(u)
         sys.stdout.write(f"\r  {args.action}: {done:,}/{len(all_uids):,}")
         sys.stdout.flush()
     print()
+    if failed:
+        print(f"  ! {len(failed):,} message(s) could NOT be copied to "
+              f"'{dest}' — left in {args.mailbox}, NOT deleted (no data lost).")
     # Drain the \Deleted flags. UID MOVE removes immediately (nothing to do);
     # the COPY/STORE fallback and non-UIDPLUS delete need a real expunge that
     # we poll to completion (iCloud drains lazily — see helper).
