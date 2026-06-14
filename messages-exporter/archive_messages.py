@@ -4,7 +4,7 @@
 #   MESSAGES ARCHIVER  (companion to export_messages.py)
 #
 #   File:     archive_messages.py
-#   Version:  1.5.0
+#   Version:  1.7.0
 #   License:  MIT
 #   Requires: Python 3.9+ (standard library only — NO Pillow/ffmpeg/exiftool)
 #
@@ -52,7 +52,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from export_messages import get_body, mts, knd, san, slug, norm  # noqa: E402
 
-__version__ = '1.6.0'
+__version__ = '1.7.0'
 
 ATTACH_MARKER = '/Attachments/'
 
@@ -93,34 +93,116 @@ def load_contacts(ab_dir):
     return contacts
 
 
+CORE_DATA_EPOCH = 978307200   # 2001-01-01 → unix seconds
+
+
+def clean_label(lbl):
+    """Apple wraps labels like '_$!<Mobile>!$_' — unwrap to 'Mobile'."""
+    if not lbl:
+        return ''
+    m = lbl
+    if m.startswith('_$!<') and m.endswith('>!$_'):
+        m = m[4:-4]
+    return m.strip()
+
+
+def _cd_date(val, yearless=False):
+    """Core Data timestamp (seconds since 2001) → 'YYYY-MM-DD' (or 'MM-DD')."""
+    if val is None:
+        return ''
+    try:
+        dt = datetime.fromtimestamp(float(val) + CORE_DATA_EPOCH)
+        return dt.strftime('%m-%d' if yearless else '%Y-%m-%d')
+    except (ValueError, OverflowError, OSError):
+        return ''
+
+
+def _rows(c, sql):
+    try:
+        return c.execute(sql).fetchall()
+    except sqlite3.DatabaseError:
+        return []
+
+
+def _s(x):
+    """Coerce any DB value to a trimmed string (some 'text' columns hold ints)."""
+    return ('' if x is None else str(x)).strip()
+
+
 def load_contacts_full(ab_dir):
-    """Per-contact records for the browsable contacts.html:
-    [{'name', 'org', 'phones': [...], 'emails': [...]}]. Empty if no AddressBook."""
+    """ALL fields per contact from every AddressBook .abcddb under `ab_dir`:
+    name parts, org/dept/title, birthday + custom dates, phones, emails, postal
+    addresses, URLs, social/IM handles, related names, note, photo bytes, and
+    created/modified timestamps. Empty list if no AddressBook."""
     out = []
     if not ab_dir:
         return out
     for ab in Path(ab_dir).glob('*/AddressBook-v22.abcddb'):
         try:
             c = sqlite3.connect(f'file:{ab}?mode=ro&immutable=1', uri=True)
-            recs = {}
-            for pk, f, l, n, org in c.execute(
-                    'SELECT Z_PK,ZFIRSTNAME,ZLASTNAME,ZNICKNAME,ZORGANIZATION '
-                    'FROM ZABCDRECORD'):
-                f, l = (f or '').strip(), (l or '').strip()
-                name = f'{f} {l}'.strip() or (n or '').strip() or (org or '').strip()
-                if name:
-                    recs[pk] = {'name': name, 'org': (org or '').strip(),
-                                'phones': [], 'emails': []}
-            for owner, num in c.execute('SELECT ZOWNER, ZFULLNUMBER FROM ZABCDPHONENUMBER'):
-                if owner in recs and num:
-                    recs[owner]['phones'].append(num.strip())
-            for owner, addr in c.execute('SELECT ZOWNER, ZADDRESS FROM ZABCDEMAILADDRESS'):
-                if owner in recs and addr:
-                    recs[owner]['emails'].append(addr.strip())
-            c.close()
-            out.extend(recs.values())
         except sqlite3.DatabaseError:
-            pass
+            continue
+        recs = {}
+        for r in _rows(c,
+                'SELECT Z_PK,ZTITLE,ZFIRSTNAME,ZMIDDLENAME,ZLASTNAME,ZSUFFIX,'
+                'ZMAIDENNAME,ZNICKNAME,ZPHONETICFIRSTNAME,ZPHONETICLASTNAME,'
+                'ZORGANIZATION,ZDEPARTMENT,ZJOBTITLE,ZBIRTHDAY,ZBIRTHDAYYEARLESS,'
+                'ZCREATIONDATE,ZMODIFICATIONDATE,ZIMAGEDATA FROM ZABCDRECORD'):
+            (pk, title, f, mid, l, suf, maiden, nick, phf, phl, org, dept, job,
+             bday, bdayyl, created, modified, img) = r
+            parts = [_s(x) for x in (title, f, mid, l, suf) if _s(x)]
+            name = ' '.join(parts) or _s(nick) or _s(org)
+            if not name:
+                continue
+            recs[pk] = {
+                'pk': pk, 'name': name, 'prefix': _s(title),
+                'first': _s(f), 'middle': _s(mid), 'last': _s(l), 'suffix': _s(suf),
+                'maiden': _s(maiden), 'nickname': _s(nick),
+                'phonetic': ' '.join(x for x in [_s(phf), _s(phl)] if x),
+                'org': _s(org), 'department': _s(dept), 'title': _s(job),
+                'birthday': _cd_date(bday, yearless=bool(bdayyl)),
+                'note': '',     # filled from ZABCDNOTE.ZTEXT below
+                'created': _cd_date(created), 'modified': _cd_date(modified),
+                'phones': [], 'emails': [], 'addresses': [], 'urls': [],
+                'socials': [], 'ims': [], 'related': [], 'dates': [],
+                '_photo': bytes(img) if img else None, 'photo': None,
+            }
+        for owner, lbl, num in _rows(c, 'SELECT ZOWNER,ZLABEL,ZFULLNUMBER FROM ZABCDPHONENUMBER'):
+            if owner in recs and _s(num):
+                recs[owner]['phones'].append({'label': clean_label(lbl), 'value': _s(num)})
+        for owner, lbl, addr in _rows(c, 'SELECT ZOWNER,ZLABEL,ZADDRESS FROM ZABCDEMAILADDRESS'):
+            if owner in recs and _s(addr):
+                recs[owner]['emails'].append({'label': clean_label(lbl), 'value': _s(addr)})
+        for owner, lbl, st, city, state, zc, country in _rows(c,
+                'SELECT ZOWNER,ZLABEL,ZSTREET,ZCITY,ZSTATE,ZZIPCODE,ZCOUNTRYNAME '
+                'FROM ZABCDPOSTALADDRESS'):
+            if owner in recs:
+                recs[owner]['addresses'].append({
+                    'label': clean_label(lbl), 'street': _s(st), 'city': _s(city),
+                    'state': _s(state), 'zip': _s(zc), 'country': _s(country)})
+        for owner, lbl, url in _rows(c, 'SELECT ZOWNER,ZLABEL,ZURL FROM ZABCDURLADDRESS'):
+            if owner in recs and _s(url):
+                recs[owner]['urls'].append({'label': clean_label(lbl), 'url': _s(url)})
+        for owner, svc, user, url in _rows(c,
+                'SELECT ZOWNER,ZSERVICENAME,ZUSERNAME,ZURLSTRING FROM ZABCDSOCIALPROFILE'):
+            if owner in recs:
+                recs[owner]['socials'].append({'service': _s(svc),
+                    'username': _s(user), 'url': _s(url)})
+        for owner, svc, addr in _rows(c, 'SELECT ZOWNER,ZSERVICE,ZADDRESS FROM ZABCDMESSAGINGADDRESS'):
+            if owner in recs and _s(addr):
+                recs[owner]['ims'].append({'service': _s(svc), 'address': _s(addr)})
+        for owner, lbl, nm in _rows(c, 'SELECT ZOWNER,ZLABEL,ZNAME FROM ZABCDRELATEDNAME'):
+            if owner in recs and _s(nm):
+                recs[owner]['related'].append({'label': clean_label(lbl), 'name': _s(nm)})
+        for owner, lbl, dt, yl in _rows(c, 'SELECT ZOWNER,ZLABEL,ZDATE,ZDATEYEARLESS FROM ZABCDCONTACTDATE'):
+            if owner in recs and dt is not None:
+                recs[owner]['dates'].append({'label': clean_label(lbl), 'date': _cd_date(dt, yearless=bool(yl))})
+        # ZABCDNOTE.ZTEXT is the modern note location (keyed by ZCONTACT).
+        for contact, txt in _rows(c, 'SELECT ZCONTACT,ZTEXT FROM ZABCDNOTE'):
+            if contact in recs and _s(txt) and not recs[contact]['note']:
+                recs[contact]['note'] = _s(txt)
+        c.close()
+        out.extend(recs.values())
     out.sort(key=lambda r: r['name'].lower())
     return out
 
@@ -351,13 +433,14 @@ def render_html(label, entries, folder_dir):
 CONTACTS_HTML_HEAD = """<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Contacts ({n})</title><style>
 body{{font:15px -apple-system,Helvetica,Arial,sans-serif;background:#f2f2f7;margin:0;padding:24px;color:#000}}
-h1{{font-size:20px}} input{{font-size:15px;padding:8px 12px;width:280px;border:1px solid #ccc;border-radius:8px;margin-bottom:16px}}
-.c{{background:#fff;border-radius:12px;padding:12px 16px;margin:8px 0;max-width:640px}}
-.n{{font-weight:600;font-size:16px}} .org{{color:#666;font-size:13px}}
-.h{{color:#333;font-size:13px;margin-top:4px}} a{{color:#1982fc;text-decoration:none}}
+h1{{font-size:20px}} input{{font-size:15px;padding:8px 12px;width:300px;border:1px solid #ccc;border-radius:8px;margin-bottom:16px}}
+.c{{background:#fff;border-radius:12px;padding:14px 16px;margin:8px 0;max-width:680px;display:flex;gap:14px}}
+.ph{{width:56px;height:56px;border-radius:28px;object-fit:cover;flex:0 0 auto;background:#ddd}}
+.body{{flex:1}} .n{{font-weight:600;font-size:16px}} .org{{color:#666;font-size:13px}}
+.f{{color:#333;font-size:13px;margin-top:4px}} .lbl{{color:#999;font-size:11px;text-transform:uppercase;margin-right:6px}}
+a{{color:#1982fc;text-decoration:none}} .note{{color:#555;font-size:13px;margin-top:6px;white-space:pre-wrap}}
 </style></head><body><h1>Contacts ({n})</h1>
-<input id="q" placeholder="Filter contacts…" oninput="f()">
-<div id="list">
+<input id="q" placeholder="Filter contacts…" oninput="f()"><div id="list">
 """
 
 CONTACTS_HTML_TAIL = """</div><script>
@@ -367,32 +450,100 @@ e.style.display=e.textContent.toLowerCase().indexOf(q)<0?'none':''});}
 </script></body></html>"""
 
 
-def render_contacts_html(archive, full_contacts, handle_to_folder):
+def _conv_link(rec, handle_to_folder):
+    for p in rec['phones']:
+        f = handle_to_folder.get(norm(p['value']))
+        if f:
+            return f
+    for em in rec['emails']:
+        f = handle_to_folder.get(em['value'].lower())
+        if f:
+            return f
+    return None
+
+
+def write_contacts(archive, full_contacts, handle_to_folder):
+    """Export contact photos, a full-fidelity contacts.json, and a rich,
+    searchable contacts.html showing every field."""
+    archive = Path(archive)
+    photos_dir = archive / 'contacts' / 'photos'
+
+    # 1. Export photos + finalize each record's photo path.
+    seen = set()
+    for r in full_contacts:
+        if r.get('_photo'):
+            photos_dir.mkdir(parents=True, exist_ok=True)
+            stem = san(r['name']) or f'contact_{r["pk"]}'
+            fn = f'{stem}.jpg'
+            if fn in seen:
+                fn = f'{stem}_{r["pk"]}.jpg'
+            seen.add(fn)
+            try:
+                (photos_dir / fn).write_bytes(r['_photo'])
+                r['photo'] = f'contacts/photos/{fn}'
+            except OSError:
+                r['photo'] = None
+
+    # 2. Full-fidelity JSON (drop the raw photo bytes; keep the path).
+    serializable = [{k: v for k, v in r.items() if k != '_photo'} for r in full_contacts]
+    (archive / 'contacts.json').write_text(
+        json.dumps(serializable, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    # 3. Rich HTML.
+    def field(label, value):
+        return f'<div class="f"><span class="lbl">{html.escape(label)}</span>{value}</div>'
+
     cards = []
     for r in full_contacts:
-        link = None
+        rows = [f'<div class="n">{html.escape(r["name"])}</div>']
+        sub = ' · '.join(x for x in [r['title'], r['department'], r['org']] if x and x != r['name'])
+        if sub:
+            rows.append(f'<div class="org">{html.escape(sub)}</div>')
+        if r['nickname']:
+            rows.append(field('nickname', html.escape(r['nickname'])))
+        if r['maiden']:
+            rows.append(field('maiden', html.escape(r['maiden'])))
+        if r['phonetic']:
+            rows.append(field('phonetic', html.escape(r['phonetic'])))
         for p in r['phones']:
-            link = handle_to_folder.get(norm(p))
-            if link:
-                break
-        if not link:
-            for em in r['emails']:
-                link = handle_to_folder.get(em.lower())
-                if link:
-                    break
-        bits = [f'<div class="n">{html.escape(r["name"])}</div>']
-        if r['org'] and r['org'] != r['name']:
-            bits.append(f'<div class="org">{html.escape(r["org"])}</div>')
-        for p in r['phones']:
-            bits.append(f'<div class="h">📞 {html.escape(p)}</div>')
+            rows.append(field(p['label'] or 'phone', f'📞 {html.escape(p["value"])}'))
         for em in r['emails']:
-            bits.append(f'<div class="h">✉️ {html.escape(em)}</div>')
+            rows.append(field(em['label'] or 'email',
+                              f'✉️ <a href="mailto:{html.escape(em["value"])}">{html.escape(em["value"])}</a>'))
+        for a in r['addresses']:
+            txt = ', '.join(x for x in [a['street'], a['city'], a['state'], a['zip'], a['country']] if x)
+            if txt:
+                rows.append(field(a['label'] or 'address', f'📍 {html.escape(txt)}'))
+        for u in r['urls']:
+            rows.append(field(u['label'] or 'url',
+                              f'🔗 <a href="{html.escape(u["url"])}">{html.escape(u["url"])}</a>'))
+        for s in r['socials']:
+            who = s['username'] or s['url']
+            if who:
+                rows.append(field(s['service'] or 'social', html.escape(who)))
+        for im in r['ims']:
+            rows.append(field(im['service'] or 'IM', html.escape(im['address'])))
+        if r['birthday']:
+            rows.append(field('birthday', f'🎂 {html.escape(r["birthday"])}'))
+        for d in r['dates']:
+            rows.append(field(d['label'] or 'date', html.escape(d['date'])))
+        for rel in r['related']:
+            rows.append(field(rel['label'] or 'related', html.escape(rel['name'])))
+        if r['note']:
+            rows.append(f'<div class="note">📝 {html.escape(r["note"])}</div>')
+        link = _conv_link(r, handle_to_folder)
         if link:
-            bits.append(f'<div class="h"><a href="conversations/{html.escape(link)}/index.html">→ conversation</a></div>')
-        cards.append('<div class="c">' + ''.join(bits) + '</div>')
-    doc = (CONTACTS_HTML_HEAD.format(n=len(full_contacts)) + '\n'.join(cards)
-           + CONTACTS_HTML_TAIL)
-    (Path(archive) / 'contacts.html').write_text(doc, encoding='utf-8')
+            rows.append(f'<div class="f"><a href="conversations/{html.escape(link)}/index.html">→ conversation</a></div>')
+        meta = ' · '.join(x for x in [f'added {r["created"]}' if r['created'] else '',
+                                      f'updated {r["modified"]}' if r['modified'] else ''] if x)
+        if meta:
+            rows.append(f'<div class="f" style="color:#bbb;font-size:11px">{html.escape(meta)}</div>')
+
+        img = f'<img class="ph" src="{html.escape(r["photo"])}" loading="lazy">' if r.get('photo') else '<div class="ph"></div>'
+        cards.append(f'<div class="c">{img}<div class="body">' + ''.join(rows) + '</div></div>')
+
+    doc = CONTACTS_HTML_HEAD.format(n=len(full_contacts)) + '\n'.join(cards) + CONTACTS_HTML_TAIL
+    (archive / 'contacts.html').write_text(doc, encoding='utf-8')
 
 
 def build_views(archive, attach_subdir, contacts, addressbook_dir=None):
@@ -491,7 +642,7 @@ def build_views(archive, attach_subdir, contacts, addressbook_dir=None):
                 w.writerow([k, v])
     full = load_contacts_full(addressbook_dir)
     if full:
-        render_contacts_html(archive, full, handle_to_folder)
+        write_contacts(archive, full, handle_to_folder)
 
     return len(groups), media_copied
 

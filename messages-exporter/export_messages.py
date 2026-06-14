@@ -48,7 +48,7 @@ import sqlite3, shutil, re, json, argparse, subprocess, sys, hashlib, os, time
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = '1.6.0'
+__version__ = '1.7.0'
 
 # Offset from Unix epoch (1970-01-01 UTC) to Mac absolute time epoch
 # (2001-01-01 UTC). chat.db stores `message.date` in Mac absolute time;

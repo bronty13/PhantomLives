@@ -2,6 +2,21 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.7.0 — 2026-06-14
+
+### Added — full contact fidelity
+`archive_messages.py` now maps **every** AddressBook field, not just name/phone:
+- name parts (prefix/first/middle/last/suffix/maiden/nickname/phonetic),
+  organization / department / job title, birthday + custom dates, note,
+  created/modified timestamps;
+- **phones, emails, postal addresses, URLs, social profiles, IM/messaging
+  handles, related names** — each with its (unwrapped) label;
+- **contact photos** exported to `contacts/photos/<name>.jpg` from `ZIMAGEDATA`.
+- New outputs: **`contacts.json`** (full-fidelity machine record, one object per
+  contact) + an enriched **`contacts.html`** (photo, all fields, searchable, with
+  the "→ conversation" link). `contacts.csv` (the name-resolution map) stays.
+- Apple label format `_$!<Mobile>!$_` is unwrapped to `Mobile`.
+
 ## 1.6.0 — 2026-06-14
 
 ### Added

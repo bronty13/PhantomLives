@@ -77,18 +77,39 @@ def make_db(path):
 
 
 def make_addressbook(sources_dir):
-    """Create a synthetic AddressBook with one contact for +15551112222."""
+    """Synthetic AddressBook (realistic schema) with one rich contact for
+    +15551112222: name parts, phone, email, postal address, birthday, note, photo."""
     d = Path(sources_dir) / 'SRC1'
     d.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(d / 'AddressBook-v22.abcddb'))
     conn.executescript("""
-        CREATE TABLE ZABCDRECORD(Z_PK INTEGER PRIMARY KEY, ZFIRSTNAME TEXT,
-                                 ZLASTNAME TEXT, ZNICKNAME TEXT, ZORGANIZATION TEXT);
-        CREATE TABLE ZABCDPHONENUMBER(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZFULLNUMBER TEXT);
-        CREATE TABLE ZABCDEMAILADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZADDRESS TEXT);
+        CREATE TABLE ZABCDRECORD(Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT, ZFIRSTNAME TEXT,
+            ZMIDDLENAME TEXT, ZLASTNAME TEXT, ZSUFFIX TEXT, ZMAIDENNAME TEXT,
+            ZNICKNAME TEXT, ZPHONETICFIRSTNAME TEXT, ZPHONETICLASTNAME TEXT,
+            ZORGANIZATION TEXT, ZDEPARTMENT TEXT, ZJOBTITLE TEXT, ZBIRTHDAY REAL,
+            ZBIRTHDAYYEARLESS REAL, ZNOTE TEXT, ZCREATIONDATE REAL,
+            ZMODIFICATIONDATE REAL, ZIMAGEDATA BLOB);
+        CREATE TABLE ZABCDPHONENUMBER(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT, ZFULLNUMBER TEXT);
+        CREATE TABLE ZABCDEMAILADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT, ZADDRESS TEXT);
+        CREATE TABLE ZABCDPOSTALADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT,
+            ZSTREET TEXT, ZCITY TEXT, ZSTATE TEXT, ZZIPCODE TEXT, ZCOUNTRYNAME TEXT);
+        CREATE TABLE ZABCDURLADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT, ZURL TEXT);
+        CREATE TABLE ZABCDSOCIALPROFILE(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER,
+            ZSERVICENAME TEXT, ZUSERNAME TEXT, ZURLSTRING TEXT);
+        CREATE TABLE ZABCDMESSAGINGADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZSERVICE TEXT, ZADDRESS TEXT);
+        CREATE TABLE ZABCDRELATEDNAME(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT, ZNAME TEXT);
+        CREATE TABLE ZABCDCONTACTDATE(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT,
+            ZDATE REAL, ZDATEYEARLESS REAL);
+        CREATE TABLE ZABCDNOTE(Z_PK INTEGER PRIMARY KEY, ZCONTACT INTEGER, ZTEXT TEXT);
     """)
-    conn.execute('INSERT INTO ZABCDRECORD VALUES(1,?,?,?,?)', ('Test', 'Person', None, None))
-    conn.execute('INSERT INTO ZABCDPHONENUMBER VALUES(1,1,?)', ('+1 (555) 111-2222',))
+    conn.execute('INSERT INTO ZABCDRECORD(Z_PK,ZFIRSTNAME,ZLASTNAME,ZNICKNAME,'
+                 'ZORGANIZATION,ZJOBTITLE,ZBIRTHDAY,ZIMAGEDATA) VALUES(1,?,?,?,?,?,?,?)',
+                 ('Test', 'Person', 'Testy', 'Acme Inc', 'Engineer', 500000000.0,
+                  b'\xff\xd8fakejpegphoto'))
+    conn.execute("INSERT INTO ZABCDPHONENUMBER VALUES(1,1,'_$!<Mobile>!$_',?)", ('+1 (555) 111-2222',))
+    conn.execute("INSERT INTO ZABCDEMAILADDRESS VALUES(1,1,'_$!<Home>!$_',?)", ('test@example.com',))
+    conn.execute("INSERT INTO ZABCDPOSTALADDRESS VALUES(1,1,'_$!<Home>!$_','1 Main St','Buffalo','NY','14201','USA')")
+    conn.execute("INSERT INTO ZABCDNOTE VALUES(1,1,'a note about Test')")
     conn.commit()
     conn.close()
 
@@ -164,6 +185,30 @@ class ArchiveMessagesTests(unittest.TestCase):
         self.assertIn('Test Person', doc)
         self.assertIn('Filter contacts', doc)            # the search box
         self.assertIn('→ conversation', doc)             # linked to their thread
+        self.assertIn('Buffalo', doc)                    # postal address mapped
+        self.assertIn('a note about Test', doc)          # note mapped
+
+    def test_contacts_json_all_fields(self):
+        make_addressbook(self.root / 'AB')
+        am.run_archive(self.db, self.archive, addressbook_dir=str(self.root / 'AB'), full=True)
+        recs = json.loads((Path(self.archive) / 'contacts.json').read_text())
+        r = next(x for x in recs if x['name'] == 'Test Person')
+        self.assertEqual(r['org'], 'Acme Inc')
+        self.assertEqual(r['title'], 'Engineer')
+        self.assertEqual(r['nickname'], 'Testy')
+        self.assertEqual(r['phones'][0]['label'], 'Mobile')        # label unwrapped
+        self.assertEqual(r['emails'][0]['value'], 'test@example.com')
+        self.assertEqual(r['addresses'][0]['city'], 'Buffalo')
+        self.assertTrue(r['birthday'])                              # core-data date parsed
+        self.assertEqual(r['note'], 'a note about Test')
+        self.assertTrue(r['photo'])                                 # photo exported + linked
+
+    def test_contact_photo_exported(self):
+        make_addressbook(self.root / 'AB')
+        am.run_archive(self.db, self.archive, addressbook_dir=str(self.root / 'AB'), full=True)
+        photos = list((Path(self.archive) / 'contacts' / 'photos').glob('*.jpg'))
+        self.assertEqual(len(photos), 1)
+        self.assertEqual(photos[0].read_bytes(), b'\xff\xd8fakejpegphoto')
 
     def test_idempotent_rerun(self):
         am.run_archive(self.db, self.archive, full=True)

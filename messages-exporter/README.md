@@ -1,6 +1,6 @@
 # messages-exporter
 
-**Current release: 1.6.0**
+**Current release: 1.7.0**
 
 Export iMessage conversations from the Mac Messages app by contact name and
 date range. Two output modes:
@@ -54,8 +54,10 @@ archive_messages.py --db <chat.db> --archive <dir> \
   - `conversations/<Name>/media/` — that thread's media as **real copies**,
     date-prefixed (`YYYYMMDD_HHMMSS_origname`).
   - `_index.csv` — name / folder / #messages / date-range / #media.
-  - `contacts.html` — searchable contacts page (name / org / phones / emails)
-    with a **"→ conversation"** link to each person's thread.
+  - `contacts.html` / `contacts.json` — **all** AddressBook fields per contact
+    (name parts, org/title, birthday + dates, phones/emails/addresses/URLs/
+    social/IM/related — each labelled, plus notes), exported **contact photos**
+    (`contacts/photos/`), searchable, with a **"→ conversation"** link.
 - **Contact names** via `--addressbook-dir` (a pulled AddressBook `Sources` dir):
   folders + senders become real names; unknown handles stay raw. **iMessage + SMS
   with the same person merge into one folder**; group chats stay separate.
