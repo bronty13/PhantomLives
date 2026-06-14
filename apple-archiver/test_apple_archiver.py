@@ -17,6 +17,8 @@ import reminders_archiver as ra
 import callhistory_archiver as ca
 import voicememos_archiver as va
 import safari_archiver as sa
+import calendar_archiver as cala
+import books_archiver as ba
 
 
 def note_proto(text):
@@ -302,6 +304,82 @@ class SafariTests(unittest.TestCase):
     def test_idempotent(self):
         sa.run_archive(str(self.sdir), self.archive)
         self.assertEqual(sa.run_archive(str(self.sdir), self.archive)['new'], 0)
+
+
+class CalendarTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.db = str(self.root / 'Calendar.sqlitedb')
+        self.archive = str(self.root / 'CalArchive')
+        conn = sqlite3.connect(self.db)
+        conn.executescript("""
+            CREATE TABLE Calendar(ROWID INTEGER PRIMARY KEY, title TEXT);
+            CREATE TABLE Location(ROWID INTEGER PRIMARY KEY, title TEXT, address TEXT);
+            CREATE TABLE CalendarItem(ROWID INTEGER PRIMARY KEY, summary TEXT, description TEXT,
+                start_date REAL, end_date REAL, all_day INTEGER, calendar_id INTEGER,
+                location_id INTEGER);
+        """)
+        conn.execute("INSERT INTO Calendar VALUES(1,'Family')")
+        conn.execute("INSERT INTO Location VALUES(1,'Home','1 Main St')")
+        conn.execute("INSERT INTO CalendarItem VALUES(1,'Dentist','cleaning',700000000.0,700003600.0,0,1,1)")
+        conn.execute("INSERT INTO CalendarItem VALUES(2,'Holiday',NULL,700100000.0,700186400.0,1,1,NULL)")
+        conn.commit(); conn.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_events_and_ics(self):
+        r = cala.run_archive(self.db, self.archive)
+        self.assertEqual(r['events'], 2)
+        self.assertEqual(r['calendars'], 1)
+        ics = (Path(self.archive) / 'ics' / 'Family.ics').read_text()
+        self.assertIn('BEGIN:VEVENT', ics)
+        self.assertIn('SUMMARY:Dentist', ics)
+        self.assertIn('VALUE=DATE:', ics)          # the all-day event
+        self.assertIn('LOCATION:Home', ics)
+        self.assertTrue((Path(self.archive) / 'calendar.html').exists())
+
+    def test_idempotent(self):
+        cala.run_archive(self.db, self.archive)
+        self.assertEqual(cala.run_archive(self.db, self.archive)['new'], 0)
+
+
+class BooksTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.docs = self.root / 'Documents'
+        (self.docs / 'BKLibrary').mkdir(parents=True)
+        (self.docs / 'AEAnnotation').mkdir(parents=True)
+        self.archive = str(self.root / 'BooksArchive')
+        lib = sqlite3.connect(str(self.docs / 'BKLibrary' / 'BKLibrary-1.sqlite'))
+        lib.executescript("CREATE TABLE ZBKLIBRARYASSET(Z_PK INTEGER PRIMARY KEY, "
+                          "ZASSETID TEXT, ZTITLE TEXT, ZAUTHOR TEXT);")
+        lib.execute("INSERT INTO ZBKLIBRARYASSET VALUES(1,'ASSET1','Dune','Frank Herbert')")
+        lib.commit(); lib.close()
+        an = sqlite3.connect(str(self.docs / 'AEAnnotation' / 'AEAnnotation-1.sqlite'))
+        an.executescript("CREATE TABLE ZAEANNOTATION(Z_PK INTEGER PRIMARY KEY, ZANNOTATIONASSETID TEXT, "
+                         "ZANNOTATIONSELECTEDTEXT TEXT, ZANNOTATIONNOTE TEXT, ZANNOTATIONLOCATION TEXT, "
+                         "ZANNOTATIONCREATIONDATE REAL, ZANNOTATIONSTYLE INTEGER, ZANNOTATIONDELETED INTEGER);")
+        an.execute("INSERT INTO ZAEANNOTATION VALUES(1,'ASSET1','Fear is the mind-killer','remember this','epubcfi(/6)',700000000.0,3,0)")
+        an.execute("INSERT INTO ZAEANNOTATION VALUES(2,'ASSET1','deleted highlight',NULL,'epubcfi(/7)',700000001.0,1,1)")
+        an.commit(); an.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_highlights(self):
+        r = ba.run_archive(str(self.docs), self.archive)
+        self.assertEqual(r['highlights'], 1)        # the deleted one is excluded
+        self.assertEqual(r['books'], 1)
+        md = (Path(self.archive) / 'books' / 'Dune.md').read_text()
+        self.assertIn('Fear is the mind-killer', md)
+        self.assertIn('remember this', md)
+        h = (Path(self.archive) / 'books.html').read_text()
+        self.assertIn('Frank Herbert', h)
+
+    def test_idempotent(self):
+        ba.run_archive(str(self.docs), self.archive)
+        self.assertEqual(ba.run_archive(str(self.docs), self.archive)['new'], 0)
 
 
 if __name__ == '__main__':

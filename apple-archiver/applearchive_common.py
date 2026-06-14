@@ -43,14 +43,20 @@ def s(x):
     return ('' if x is None else str(x)).strip()
 
 
+def cd_dt(val):
+    """Core Data timestamp (seconds since 2001) → naive local datetime, or None."""
+    if val is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(val) + CORE_DATA_EPOCH)
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 def cd_date(val, fmt='%Y-%m-%d %H:%M'):
     """Core Data timestamp (seconds since 2001) → formatted local datetime, or ''."""
-    if val is None:
-        return ''
-    try:
-        return datetime.fromtimestamp(float(val) + CORE_DATA_EPOCH).strftime(fmt)
-    except (ValueError, OverflowError, OSError):
-        return ''
+    dt = cd_dt(val)
+    return dt.strftime(fmt) if dt else ''
 
 
 def san(name):

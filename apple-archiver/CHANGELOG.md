@@ -2,6 +2,21 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.3.0 — 2026-06-14 (Phase 2)
+
+### Added
+- **`calendar_archiver.py`** — Apple Calendar events from `Calendar.sqlitedb`
+  (modern `CalendarItem`+`Calendar`+`Location` schema). Per calendar: a Markdown
+  agenda, a browsable `calendar.html`, and a **re-importable `.ics`** (in `ics/`)
+  with VEVENTs (all-day → `VALUE=DATE`), plus `_index.csv`. Events versioned by
+  content. Verified: 2,543 events / 7 calendars on this Mac.
+- **`books_archiver.py`** — Apple Books highlights + notes from
+  `AEAnnotation/AEAnnotation*.sqlite` (`ZAEANNOTATION`, skips deleted) joined to
+  titles/authors in `BKLibrary/BKLibrary*.sqlite` (`ZBKLIBRARYASSET`). Per-book
+  Markdown + a collapsible searchable `books.html` (highlight color from
+  `ZANNOTATIONSTYLE`) + `_index.csv`. Highlights versioned by content.
+- Tests grew to 18.
+
 ## 1.2.2 — 2026-06-14
 
 ### Added
