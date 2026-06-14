@@ -2,6 +2,14 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.6.0 — 2026-06-14
+
+- **Recognize the Tier-1 apple-archiver job kinds: Safari, Voice Memos, Calls.**
+  Adds `external-safari-sync.<id>`, `external-voicememos-sync.<id>`, and
+  `external-calls-sync.<id>` to the pattern recognizer. The activity-log path is
+  now derived from the label *token* (not the display name), so multi-word kinds
+  like "Voice Memos" map correctly to `external-voicememos-sync-<id>.log`.
+
 ## 1.5.0 — 2026-06-14
 
 - **Recognize the new external-source job kinds: Notes + Reminders.** Adds

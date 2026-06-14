@@ -53,11 +53,16 @@ enum JobRegistry {
     /// `com.bronty13.external-<kind>-sync.<source-id>`. No source name is
     /// hardcoded here — the display name + activity-log path are derived from the
     /// label's kind + id, matching what the orchestration scripts write.
-    private static let externalKinds: [(prefix: String, kind: String)] = [
-        ("com.bronty13.external-photo-sync.",     "Photo"),
-        ("com.bronty13.external-messages-sync.",  "Messages"),
-        ("com.bronty13.external-notes-sync.",     "Notes"),
-        ("com.bronty13.external-reminders-sync.", "Reminders"),
+    /// Each entry: the label token (as it appears in `external-<token>-sync.<id>`
+    /// and the log filename) → the human display kind.
+    private static let externalKinds: [(token: String, kind: String)] = [
+        ("photo",      "Photo"),
+        ("messages",   "Messages"),
+        ("notes",      "Notes"),
+        ("reminders",  "Reminders"),
+        ("safari",     "Safari"),
+        ("voicememos", "Voice Memos"),
+        ("calls",      "Calls"),
     ]
 
     /// The profile for a discovered agent — a tailored one if we know the label,
@@ -65,13 +70,15 @@ enum JobRegistry {
     static func profile(for descriptor: AgentDescriptor) -> JobProfile {
         if let p = known[descriptor.label] { return p }
         let label = descriptor.label
-        for (prefix, kind) in externalKinds where label.hasPrefix(prefix) {
+        for (token, kind) in externalKinds {
+            let prefix = "com.bronty13.external-\(token)-sync."
+            guard label.hasPrefix(prefix) else { continue }
             let id = String(label.dropFirst(prefix.count))     // the source id from config
             let pretty = id.isEmpty ? "" : id.prefix(1).uppercased() + id.dropFirst()
             return JobProfile(
                 displayName: "External \(kind) Sync — \(pretty)",
                 logKind: .purpleAtticSync,
-                activityLogPathOverride: home("Library/Logs/PurpleAttic/external-\(kind.lowercased())-sync-\(id).log"),
+                activityLogPathOverride: home("Library/Logs/PurpleAttic/external-\(token)-sync-\(id).log"),
                 scheduling: .plist
             )
         }
