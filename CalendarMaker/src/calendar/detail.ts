@@ -27,6 +27,8 @@ export function buildDetailSections(
 ): DetailSection[] {
   const sections: DetailSection[] = [];
   const dim = daysInMonth(bundle.year, bundle.month);
+  const verseMode = bundle.verseMode ?? 'separate';
+  const isVerseOrSaying = (t: string) => t === 'bibleVerse' || t === 'saying';
   for (let d = 1; d <= dim; d++) {
     const date = isoDate(bundle.year, bundle.month, d);
     const holidayNames = holidayNamesFor(date);
@@ -36,11 +38,17 @@ export function buildDetailSections(
 
     let lines: DetailLine[] = [];
     if (day && items.length) {
-      const { monthItems } = classifyDay(day, ctx, holidayNames.length);
+      const { monthItems } = classifyDay(day, ctx, holidayNames.length, verseMode);
       const monthIds = new Set(monthItems.map((i) => i.id));
       lines = [...items]
         .sort((a, b) => a.order - b.order)
-        .map((item) => ({ item, detailOnly: !monthIds.has(item.id) }));
+        .map((item) => ({
+          item,
+          // Verses/sayings are placed intentionally (forced into cells, or on the
+          // dedicated Scripture calendar in separate mode), so they're never the
+          // "demoted / overflow" ⊘ case — only regular items can be detail-only.
+          detailOnly: isVerseOrSaying(item.type) ? false : !monthIds.has(item.id),
+        }));
     }
 
     sections.push({

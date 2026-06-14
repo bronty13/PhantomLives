@@ -32,8 +32,30 @@ your web browser, with no internet needed.
 
 1. **Click a day** on the calendar.
 2. In the panel, choose a **type** (Prayer, Praise, Birthday, Life Event, Church
-   Event, Reminder), type the text, and click **+ Add item**.
+   Event, Reminder, **Bible Verse**, **Saying**), type the text, and click
+   **+ Add item**.
 3. Add as many as you like. Edit text or change a type anytime; click ✕ to delete.
+
+### Bible verses & sayings on a day
+
+When you pick the **Bible Verse** type, a picker appears: choose the **Book**,
+then **Chapter**, then **Verse** — the verse text fills in automatically. Pick
+the **Saying** type to get a searchable list of every built-in and custom saying
+(or hit **↻ Random**). Existing verse/saying items show a small reference tag
+(e.g. *John 3:16*); click **✎ Edit** to reopen the picker. A day can hold both a
+verse and a saying (and as many as you like).
+
+#### Two ways verses & sayings appear — the "Verse Mode" toggle
+
+In the toolbar, **Verse Mode** switches how these items print:
+
+- **Separate** *(default)* — verses and sayings are kept **off** the main month
+  grid and printed on their own landscape **"Scripture & Sayings"** calendar
+  page. Your everyday events stay uncluttered, and scripture gets a beautiful
+  page of its own.
+- **Force** — verses and sayings are **plastered at the top of each day cell**
+  (shrunk to fit), and the little colored dots are hidden for a clean look. Other
+  events still show underneath if there's room.
 
 ### When something won't fit
 
@@ -53,9 +75,11 @@ Click **Holidays** in the toolbar. Every holiday that falls in your month is
 listed (federal, observances, and Christian days like Good Friday and Easter).
 Click **Off/On** to place each one on your calendar.
 
-## Sayings & verses
+## Sayings & verses (whole-month filler)
 
-Click **Sayings & Verses** to decorate the empty space:
+This is separate from per-day verses (above) — it decorates the calendar's empty
+space with a single saying or verse for the whole month. Click **Sayings &
+Verses**:
 
 - **Where**: the **footer band** (below the grid) or the **grid free space**
   (empty day cells).
@@ -78,6 +102,11 @@ Click **Export PDF**, then choose:
 - **Detail view** — a date-ordered list of every day and its events (portrait).
 - **Both** — month grid first, then the detail list, in one PDF.
 
+If you've added per-day verses/sayings in **Separate** mode, a **Scripture &
+Sayings** calendar page is included automatically (whenever the month is part of
+the export). For **Both**, you can choose the page order: *Calendar → Scripture →
+Detail* (default) or *Calendar → Detail → Scripture*.
+
 Click **Export PDF** to download. You can also **Export bundle (.cmcal.json)** to
 back up the calendar or move it to another computer (use **Import…** on the home
 screen to bring it back).
@@ -88,10 +117,12 @@ screen to bring it back).
 - Default theme, week start (Sun/Mon), and default export view for new calendars.
 - The safety cap for how many items show per day on the month grid.
 - Toggles for the home-screen verse and saying cards.
-- **Custom sayings** — type a saying (and an optional attribution) and click
-  **+ Add**; it's saved right away and joins the random pool used by the home card
-  and the Sayings & Verses picker. Delete your custom sayings with ✕. The built-in
-  sayings can't be removed.
+- **Custom sayings** — manage your own sayings inline. Click **+ Add new saying**
+  to enter text and an optional attribution; click any saying's **✎** to edit it
+  in place, or **✕** to delete it. Everything saves right away and joins the pool
+  used by the home card, the day-level Saying picker, and the whole-month filler.
+  Expand **Built-in Sayings** to browse the seeded ones (they can't be edited or
+  removed).
 
 ## Where is my data?
 

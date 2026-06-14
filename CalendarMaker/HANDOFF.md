@@ -42,8 +42,9 @@ Regenerate only when sources/font set change; otherwise plain `build` is enough.
   computus), `measure` (singleton headless jsPDF metrics), `fit` (the overflow
   engine), `detail` (`buildDetailSections`).
 - `src/pdf/` — `geometry` (shared point constants — **the WYSIWYG contract**),
-  `monthPdf`, `detailPdf`, `exportPdf` (orchestrates month/detail/both),
-  `holidayNames`, `util` (hex/color/ellipsize).
+  `monthPdf`, `detailPdf`, `versePdf` (the separate "Scripture & Sayings" page),
+  `exportPdf` (orchestrates month/verse/detail), `holidayNames`,
+  `util` (hex/color/ellipsize).
 - `src/storage/` — `db.ts` (idb + first-run theme seeding), `bundleIO.ts`
   (`.cmcal.json` export/parse + schema guard).
 - `src/app/` — React UI: `App.tsx` (state/router), `CalendarPreview.tsx` (the
@@ -63,6 +64,27 @@ invariant; never weaken it.
 
 Sizes are fixed for grid chips (theme controls font *family* + *color*, not size)
 — deliberate, so one long item can't blow out a cell.
+
+## Bible verses & sayings (v0.3.0)
+
+`bibleVerse` and `saying` are first-class `ItemType`s (with an optional
+`Item.reference`). `CalendarBundle.verseMode` (`'separate'` default | `'force'`)
+controls rendering, threaded through `classifyDay(day, ctx, holidayLines,
+verseMode)`, which now also returns `forceItems` (the verse/saying subset, always
+kept in `monthItems`, never demoted):
+
+- **separate** — month grid *excludes* verse/saying items (monthPdf/CalendarPreview
+  filter them out); they print on a dedicated landscape page via `versePdf.ts`
+  (`renderVerseCalendar`), inserted by `exportPdf` when the bundle has such items
+  and the month is shown. `ExportOptions.verseOrder` picks before/after detail.
+- **force** — `classifyDay` reserves up to 50% of cell height for the force block
+  (shrink-to-fit, drawn by `drawShrinkText`), packs other items into what's left,
+  and suppresses the colored bullet dots.
+
+`buildDetailSections` treats verse/saying items as **never** ⊘ detail-only —
+they're always placed intentionally (forced into cells or on the Scripture page).
+Note: embedded fonts ship only normal/bold, so verse *italic* is a preview-only
+cue; the PDF renders normal weight.
 
 ## Conventions / gotchas
 

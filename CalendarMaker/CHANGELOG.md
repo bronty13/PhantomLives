@@ -4,6 +4,43 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.3.0 — 2026-06-14
+
+### Added
+- **Bible verses & sayings as per-day items.** Click any day and add a **Bible
+  Verse** (via a Book → Chapter → Verse picker over the full embedded NASB) or a
+  **Saying** (a searchable list of the seeded + your custom sayings, with a
+  Random button). Both are first-class item types alongside Prayer, Praise, etc.,
+  and carry a reference (e.g. `John 3:16`) or attribution.
+- **Two verse display modes**, toggled per calendar in the editor toolbar:
+  - **Separate Calendar** (default) — verses/sayings are kept off the main grid
+    and printed on their own landscape **"Scripture & Sayings"** calendar page.
+    Export order is configurable for Both mode: *Calendar → Scripture → Detail*
+    (default) or *Calendar → Detail → Scripture*.
+  - **Force in Cells** — verses/sayings are plastered at the top of each day cell
+    (shrink-to-fit), and the colored list dots are suppressed for a cleaner look.
+    Remaining space still shows other items if they fit (the overflow guarantee
+    is preserved — a reserved block height is subtracted before packing).
+- **Enhanced sayings editor** in Settings — inline **click-to-edit** for each of
+  your custom sayings (text + attribution), a collapsible built-in sayings
+  reference, and an inline "Add new saying" form. Edit/Delete per entry, saved
+  immediately.
+
+### Changed
+- The detail view now appends a verse/saying's reference inline (e.g.
+  `Bible Verse: For God so loved… — John 3:16`).
+- All 10 built-in themes gained `bibleVerse` and `saying` styles.
+- The bundle-level **footer/grid filler** ("monthly" saying/verse inserter) stays
+  as an option, unchanged.
+
+### Tests
+- +9 (4 fit/overflow tests for force mode + invariants; 5 PDF tests for the verse
+  calendar page across modes/orderings). 47 total.
+
+### Notes
+- Embedded fonts ship only normal/bold faces, so verse *italic* is a preview-only
+  visual cue — the PDF renders verses in the theme's normal weight.
+
 ## 0.2.2 — 2026-06-07
 
 ### Fixed

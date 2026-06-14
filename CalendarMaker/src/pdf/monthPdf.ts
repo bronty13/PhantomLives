@@ -3,7 +3,7 @@
 // overflow. Fillers (sayings/verses) fill the grid's free space and/or footer.
 
 import type { jsPDF } from 'jspdf';
-import type { CalendarBundle, Theme } from '../model/types';
+import type { CalendarBundle, Day, Theme } from '../model/types';
 import { MONTH_NAMES, WEEKDAY_ABBR } from '../model/types';
 import { computeWeeks, largestBlankRun, weekdayOrder } from '../calendar/grid';
 import { classifyDay, type FitContext } from '../calendar/fit';
@@ -15,6 +15,11 @@ import { holidayNamesFor } from './holidayNames';
 
 export interface MonthRenderOpts {
   cap: number;
+}
+
+/** True if an item is a verse or saying (force-mode-eligible). */
+function isVerseOrSaying(type: string): boolean {
+  return type === 'bibleVerse' || type === 'saying';
 }
 
 export function renderMonth(doc: jsPDF, bundle: CalendarBundle, theme: Theme, opts: MonthRenderOpts): void {
@@ -82,22 +87,51 @@ export function renderMonth(doc: jsPDF, bundle: CalendarBundle, theme: Theme, op
 
     if (!day || day.items.length === 0) continue;
 
-    const { monthItems, detailOnly } = classifyDay(day, ctx, holidayNames.length);
+    const verseMode = bundle.verseMode ?? 'separate';
 
-    // Item chips.
+    // In separate mode, verse/saying items live on the dedicated verse page —
+    // exclude them from the month grid so the main calendar stays uncluttered.
+    const gridDay: Day =
+      verseMode === 'separate'
+        ? { ...day, items: day.items.filter((it) => !isVerseOrSaying(it.type)) }
+        : day;
+
+    const { monthItems, forceItems, detailOnly } = classifyDay(gridDay, ctx, holidayNames.length, verseMode);
+    const forceIds = new Set(forceItems.map((i) => i.id));
+    const suppressDots = verseMode === 'force' && forceItems.length > 0;
+
+    // Force-mode verse/saying block (shrink-to-fit, italic for verses) at the top.
+    if (verseMode === 'force' && forceItems.length > 0) {
+      const cellContentW = geo.colW - 2 * CELL.PAD;
+      const forceBlockH = Math.min(forceItems.length * CELL.CHIP_LINE_H * 3, geo.cellContentH * 0.5);
+      const perItemH = forceBlockH / forceItems.length;
+      for (const item of forceItems) {
+        const style = theme.itemStyles[item.type];
+        const italic = item.type === 'bibleVerse';
+        const full = item.reference ? `${item.text}  — ${item.reference}` : item.text;
+        drawShrinkText(doc, style.color, style.font, full, x + CELL.PAD, cursorY, cellContentW, perItemH, italic);
+        cursorY += perItemH;
+      }
+    }
+
+    // Item chips (non-force items).
     for (const item of monthItems) {
+      if (forceIds.has(item.id)) continue; // already drawn in the force block
       const style = theme.itemStyles[item.type];
       const lines = wrapLines(item.text, style.font, CELL.CHIP_FONT, geo.cellContentW).slice(0, CELL.CHIP_MAX_LINES);
-      // colored type swatch
-      setFill(doc, style.color);
-      doc.circle(x + CELL.PAD + 1.8, cursorY + CELL.CHIP_FONT - 2.4, 1.7, 'F');
+      // colored type swatch (suppressed in force mode for a cleaner look)
+      if (!suppressDots) {
+        setFill(doc, style.color);
+        doc.circle(x + CELL.PAD + 1.8, cursorY + CELL.CHIP_FONT - 2.4, 1.7, 'F');
+      }
       // chip text
       setText(doc, style.color);
       setPdfFont(doc, style.font, false);
       doc.setFontSize(CELL.CHIP_FONT);
+      const textX = suppressDots ? x + CELL.PAD : x + CELL.PAD + CELL.BULLET_W;
       let ly = cursorY + CELL.CHIP_FONT - 1;
       for (const line of lines) {
-        doc.text(line, x + CELL.PAD + CELL.BULLET_W, ly);
+        doc.text(line, textX, ly);
         ly += CELL.CHIP_LINE_H;
       }
       cursorY += lines.length * CELL.CHIP_LINE_H + CELL.CHIP_GAP;
@@ -171,4 +205,56 @@ function drawFiller(
     doc.text(line, x + w / 2, ly, { align: 'center' });
     ly += size * 1.2;
   }
+}
+
+/**
+ * Shrink-to-fit text into a left-aligned rectangle, top-anchored. Used for the
+ * force-mode verse/saying block inside a day cell. Embedded fonts ship only
+ * normal/bold faces, so the `italic` flag is a visual cue in the preview only —
+ * here we render normal weight (kept in the signature for API symmetry).
+ * Exported for reuse by the verse calendar page.
+ */
+export function drawShrinkText(
+  doc: jsPDF,
+  color: string,
+  font: string,
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  _italic = false,
+  maxSize = 8,
+  minSize = 5,
+): void {
+  setText(doc, color);
+  setPdfFont(doc, font, false);
+  let size = maxSize;
+  let lines: string[] = [];
+  for (; size >= minSize; size--) {
+    doc.setFontSize(size);
+    lines = doc.splitTextToSize(text, w) as string[];
+    if (lines.length * size * 1.15 <= h) break;
+  }
+  doc.setFontSize(size);
+  let ly = y + size;
+  for (const line of lines) {
+    if (ly > y + h) break; // clip to the reserved rectangle
+    doc.text(line, x, ly);
+    ly += size * 1.15;
+  }
+}
+
+/** Shrink-to-fit, centered (exported wrapper for the verse calendar page). */
+export function drawFillerPublic(
+  doc: jsPDF,
+  theme: Theme,
+  text: string,
+  reference: string | undefined,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  drawFiller(doc, theme, text, reference, x, y, w, h);
 }

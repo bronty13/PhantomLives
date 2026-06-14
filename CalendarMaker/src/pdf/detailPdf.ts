@@ -85,7 +85,9 @@ export function renderDetail(doc: jsPDF, bundle: CalendarBundle, theme: Theme, c
       doc.setFontSize(10.5);
       const label = `${ITEM_TYPE_LABELS[item.type as ItemType]}: `;
       const indent = L.MARGIN + 8 + 10;
-      const lines = doc.splitTextToSize(label + item.text, contentW - 8 - 10) as string[];
+      // Verses/sayings carry a reference (e.g. "John 3:16") — append it inline.
+      const body = item.reference ? `${item.text}  — ${item.reference}` : item.text;
+      const lines = doc.splitTextToSize(label + body, contentW - 8 - 10) as string[];
 
       for (let li = 0; li < lines.length; li++) {
         if (y > contentBottom) pageBreak();
