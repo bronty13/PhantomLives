@@ -84,15 +84,22 @@ So the SSH path sees every call but no numbers; the GUI-agent path has the keych
 but is blocked by TCC from even reading the call store. (The earlier "ACL admits a
 non-Apple binary?" unknown is moot — TCC blocks it first.)
 
-## Conclusion
+## Conclusion — and it works (verified end-to-end)
 
 - **Offline / pulled-DB / over-SSH decryption is impossible by design.**
-- **A GUI-session helper CAN decrypt — but only after a one-time Full Disk Access
-  grant** to the binary that runs it (`/usr/bin/python3`, or better a dedicated
-  helper app). That grant is a manual click in **System Settings → Privacy &
-  Security → Full Disk Access** on the source Mac: TCC.db is SIP-protected and
-  cannot be scripted. Once granted, the Aqua LaunchAgent has *both* capabilities
-  and `recentCalls()` returns decrypted numbers.
+- **A GUI-session helper CAN decrypt — after a one-time Full Disk Access grant** to
+  the binary that runs it (`/usr/bin/python3`, or a dedicated helper app). That grant
+  is a manual click in **System Settings → Privacy & Security → Full Disk Access** on
+  the source Mac: TCC.db is SIP-protected and cannot be scripted. Once granted, the
+  Aqua LaunchAgent has *both* capabilities and decryption succeeds.
+- **Verified:** with FDA granted to `/usr/bin/python3` on the source Mac, the Aqua
+  agent decrypted **404/404 calls** (every number recovered, 0 left `(encrypted)`),
+  the Vortex pull folded them in (upgrading the encrypted entries in place), and a
+  re-run added nothing (idempotent).
+- **Use `callsWithPredicate:limit:offset:batchSize:`, not `recentCalls()`** — the
+  latter caps at the most recent 200 calls; the predicate query returns the full
+  history (all 404 here). The helper prefers the predicate and falls back to
+  `recentCalls()`.
 
 ## The opt-in path (helper staged on the source Mac, not enabled)
 

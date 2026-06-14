@@ -93,11 +93,20 @@ def load_calls():
     if mgr is None:
         mgr = CHManager.alloc().init()
 
-    calls = mgr.recentCalls()
+    # Prefer callsWithPredicate:limit:offset:batchSize: — it returns the FULL
+    # history; recentCalls() caps at the most recent 200. Fall back to recentCalls.
+    calls = None
+    if mgr.respondsToSelector_('callsWithPredicate:limit:offset:batchSize:'):
+        try:
+            calls = mgr.callsWithPredicate_limit_offset_batchSize_(None, 1_000_000, 0, 0)
+        except Exception:
+            calls = None
+    if not calls:
+        calls = mgr.recentCalls()
     if not calls:
         sys.stderr.write(
-            'WARNING: recentCalls() returned 0 — the call store could not be read. '
-            'This binary almost certainly lacks Full Disk Access. Grant it in System '
+            'WARNING: 0 calls returned — the call store could not be read. This '
+            'binary almost certainly lacks Full Disk Access. Grant it in System '
             'Settings -> Privacy & Security -> Full Disk Access, then re-run.\n')
         return []
 

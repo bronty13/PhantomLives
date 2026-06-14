@@ -2,6 +2,21 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.6.1 — 2026-06-14 (call-history decryption — working)
+
+### Confirmed working
+- With Full Disk Access granted to `/usr/bin/python3` on the source Mac, the Aqua
+  GUI-session agent decrypted **404/404 calls** (0 left `(encrypted)`); the Vortex
+  pull folded them in (upgrading the encrypted entries in place) and a re-run was
+  idempotent. End-to-end path proven.
+
+### Changed
+- **`calls_decrypt_helper.py` now uses `callsWithPredicate:limit:offset:batchSize:`**
+  (full history) instead of `recentCalls()` (which caps at the most recent 200), so a
+  one-shot backfill recovers *all* historical calls, not just the latest 200. Falls
+  back to `recentCalls()` if the predicate selector is unavailable. The 0-calls
+  warning now points at the missing-FDA cause.
+
 ## 1.6.0 — 2026-06-14 (call-history decryption investigation)
 
 ### Investigated
