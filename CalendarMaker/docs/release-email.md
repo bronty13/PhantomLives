@@ -71,14 +71,12 @@ needed, and send.
 
 The hosted app is a **different web address** from the old file, so calendars she
 saved in the old version **won't appear automatically** in the new one. Don't make
-Jan do an export/import. Instead, **offer to move them for her**:
+Jan do an export/import alone. Instead, **offer to move them for her** on a
+screen-share.
 
-1. On her laptop, open the **old** version, open each calendar, click **Export
-   bundle** to save its `.cmcal.json`.
-2. Open the **new** bookmarked version, click **Import…** on the home screen, pick
-   each `.cmcal.json`.
-
-Do this over a screen-share or in person if she has calendars worth keeping.
+→ Step-by-step screen-share checklist: **`docs/migration-checklist.md`** (open both
+versions, Export bundle from each old calendar → Import into the new app → verify →
+swap the bookmark). Nothing can lose data — it only copies.
 
 ## After sending
 
