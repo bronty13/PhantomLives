@@ -4,6 +4,23 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.1] — 2026-06-14
+
+### Changed — Post-bundles are named for the bundle
+
+- The return file is now **`<YYYY-MM-DD>-post-<title>.zip`** (with a matching
+  browsable folder of the same name) instead of the opaque `<UID>-post.zip` —
+  so it's recognizable at a glance in Finder. The date is the bundle's date;
+  the title is the effective (working) title, filesystem-sanitized the same way
+  the master cut and Summary PDF are.
+- Reveal and the header's "✓ Sent" status now resolve the **actual** saved
+  path (recorded at compose time), so they keep working even if you rename the
+  title or change the drop folder afterward. A re-compose under a new name also
+  tidies up the previously-written file so you're never left with two copies.
+- Unchanged on the wire: the inner zip stays `<UID>-post-inner.zip` and
+  `report.json` keeps `bundleUid = <UID>`, which is what Molly's return-file
+  ingest matches on — it never reads the outer filename, so the rename is safe.
+
 ## [0.28.0] — 2026-06-14
 
 ### Added — Find your post-bundle: Reveal + a configurable drop folder

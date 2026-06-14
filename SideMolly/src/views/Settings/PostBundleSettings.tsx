@@ -56,9 +56,9 @@ export function PostBundleSettings() {
         <div className="font-semibold mb-2">Post-bundles folder</div>
         <div className="text-xs mb-2" style={{ color: 'rgb(var(--surface-muted))' }}>
           Where <strong>Send to Molly</strong> writes the composed{' '}
-          <code>&lt;UID&gt;-post.zip</code> (plus a plain, browsable{' '}
-          <code>&lt;UID&gt;-post/</code> sidecar folder). This is the file you
-          hand back to Molly.
+          <code>&lt;date&gt;-post-&lt;title&gt;.zip</code> (plus a plain,
+          browsable folder of the same name). This is the file you hand back
+          to Molly.
         </div>
         <div className="font-mono text-xs sm-card mt-2" style={{ background: 'rgb(var(--surface-base))' }}>
           {settings.resolvedPath}

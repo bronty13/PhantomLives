@@ -24,14 +24,15 @@ post-bundle back to Molly to record what actually happened.
   from…" hint), the change is logged in the post-bundle, and **Reset to
   original** reverts it.
 - **Ship it back** — compose a post-bundle ZIP that records what you
-  posted; Molly ingests it to close the loop. The ZIP lands in
-  `~/Downloads/Molly post-bundles/<uid>-post.zip` (you can change this
-  folder in **Settings → Post-bundles**), and a plain `<uid>-post/`
-  folder is written next to it holding the same contents (report, notes,
-  posting log, artifacts, and the **Summary PDF**) — open that folder to
-  browse the artifacts directly, without unzipping. The Summary PDF is
-  generated fresh and bundled in every time, so Molly always gets the
-  human-readable recap alongside the structured report.
+  posted; Molly ingests it to close the loop. The ZIP is named for the
+  bundle so it's easy to spot —
+  `~/Downloads/Molly post-bundles/<YYYY-MM-DD>-post-<title>.zip` (you can
+  change the folder in **Settings → Post-bundles**), and a plain folder of
+  the same name is written next to it holding the same contents (report,
+  notes, posting log, artifacts, and the **Summary PDF**) — open that
+  folder to browse the artifacts directly, without unzipping. The Summary
+  PDF is generated fresh and bundled in every time, so Molly always gets
+  the human-readable recap alongside the structured report.
 - **Find what you sent** — right after **Send to Molly**, the green
   confirmation shows the exact saved path and a **📁 Reveal** button that
   opens it in Finder. You can also reveal the folder any time from
@@ -112,8 +113,8 @@ Each row has actions on the right:
 - **🗑 Delete** — remove a bundle for good. You'll get a *Delete? Yes / Cancel*
   confirm first. Deleting removes SideMolly's record and its working folder
   (`~/Downloads/SideMolly/work/<uid>/`) but **leaves** any post-bundle you
-  already sent (`~/Downloads/Molly post-bundles/<uid>-post.zip`) and the
-  original incoming ZIP untouched.
+  already sent (in `~/Downloads/Molly post-bundles/`) and the original
+  incoming ZIP untouched.
 
 Completing is reversible and only affects what shows in the Inbox — it doesn't
 touch files, postings, or the post-bundle. Deleting is permanent.

@@ -4,8 +4,9 @@
 // SideMolly's own verify_outer_zip — the contract a Molly post-ingest
 // mirrors — accepts it unchanged):
 //
-//   <UID>-post.zip                      (outer)
-//   ├── <UID>-post-inner.zip            (inner — MS-DOS epoch, sorted entries)
+//   <YYYY-MM-DD>-post-<Title>.zip       (outer — human-readable name)
+//   ├── <UID>-post-inner.zip            (inner — MS-DOS epoch, sorted entries;
+//   │                                    the name Molly's ingest matches on)
 //   │   ├── report.json                 (structured posting outcomes per §9.2)
 //   │   ├── notes.md                    (Robert's freeform notes; empty allowed)
 //   │   ├── posting-log.json            (timestamped posting actions)
@@ -15,8 +16,9 @@
 //   │       └── thumbnails/<stem>.jpg            (export-thumb selection, configurable count)
 //   └── hashes.json                     (inner-zip hash + per-entry hashes)
 //
-// Sidecar: a plain, unzipped `<UID>-post/` folder is written next to the
-// zip with the same inner payload, at normal perms. The zip is the
+// Sidecar: a plain, unzipped `<YYYY-MM-DD>-post-<Title>/` folder (same stem
+// as the zip) is written next to it with the same inner payload, at normal
+// perms. The zip is the
 // Molly-bound deliverable; because it's multi-root, double-clicking it
 // makes macOS Archive Utility synthesize a non-traversable 0o700 wrapper
 // ("you don't have permission to see its contents") — the sidecar lets
@@ -227,6 +229,96 @@ pub fn reveal_post_bundle_dir<R: Runtime>(handle: AppHandle<R>) -> Result<(), Bu
 }
 
 // ---------------------------------------------------------------------------
+// Output naming
+// ---------------------------------------------------------------------------
+//
+// The post-bundle is named `<YYYY-MM-DD>-post-<Title>.zip` (with a matching
+// `<YYYY-MM-DD>-post-<Title>/` sidecar folder) so it's recognizable at a
+// glance in Finder. The date is the bundle UID's date prefix; the title is
+// the effective (working) title, filesystem-sanitized via the same
+// `master_cut_basename` used for the master cut + Summary PDF.
+//
+// Only this OUTER name is human-facing — the inner zip stays
+// `<UID>-post-inner.zip` and report.json keeps `bundleUid = <UID>`, which is
+// what Molly's return-file ingest matches on (it never parses the outer
+// filename). So the rename is safe for the round-trip.
+
+/// app_settings key recording the exact path of a bundle's last-composed
+/// post-bundle, so reveal/status find it even after a title/drop-dir change,
+/// and so a re-compose under a new name can clean up the stale file.
+fn last_path_key(uid: &str) -> String {
+    format!("post_bundle_path:{uid}")
+}
+
+/// Parse the `YYYY-MM-DD` date prefix out of a bundle UID like
+/// `2026-01-01-0001`. Returns None for any UID that isn't date-prefixed,
+/// so callers can fall back to the bare UID.
+fn uid_date_prefix(uid: &str) -> Option<String> {
+    let p: Vec<&str> = uid.splitn(4, '-').collect();
+    let dn = |s: &str, n: usize| s.len() == n && s.chars().all(|c| c.is_ascii_digit());
+    if p.len() >= 3 && dn(p[0], 4) && dn(p[1], 2) && dn(p[2], 2) {
+        Some(format!("{}-{}-{}", p[0], p[1], p[2]))
+    } else {
+        None
+    }
+}
+
+/// Pure basename builder (no DB) — testable in isolation. Produces
+/// `<date>-post-<slug>`; falls back to `<uid>-post` when there's no title
+/// so the file stays uniquely identifiable.
+fn format_post_basename(uid: &str, title: &str) -> String {
+    let t = title.trim();
+    if t.is_empty() {
+        return format!("{uid}-post");
+    }
+    let slug = crate::bundles::master_cut_basename(t);
+    match uid_date_prefix(uid) {
+        Some(date) => format!("{date}-post-{slug}"),
+        None => format!("{uid}-post-{slug}"),
+    }
+}
+
+/// The human-readable basename for this bundle's post-bundle output,
+/// resolving the effective (working) title from the DB.
+fn post_bundle_basename(conn: &Connection, uid: &str) -> String {
+    let title = crate::bundles::fetch_bundle_title(conn, uid).unwrap_or_default();
+    format_post_basename(uid, &title)
+}
+
+/// The path reveal/status should point at: the exact path recorded at the
+/// last compose when it still exists (survives title/drop-dir changes),
+/// else the deterministic name in the currently-resolved drop dir.
+fn current_post_path(conn: &Connection, uid: &str) -> Result<PathBuf, BundleError> {
+    if let Some(p) = read_setting(conn, &last_path_key(uid))? {
+        let pb = PathBuf::from(p.trim());
+        if !pb.as_os_str().is_empty() && pb.exists() {
+            return Ok(pb);
+        }
+    }
+    let (dir, _) = resolved_drop_dir(conn)?;
+    Ok(dir.join(format!("{}.zip", post_bundle_basename(conn, uid))))
+}
+
+/// Remove a prior post-bundle (zip + sidecar) for this UID when a re-compose
+/// lands under a different name or folder — so a title/dir change doesn't
+/// leave two copies behind. Best-effort; never fails the compose.
+fn cleanup_prior_output(conn: &Connection, uid: &str, new_path: &Path) {
+    if let Ok(Some(prior)) = read_setting(conn, &last_path_key(uid)) {
+        let prior_path = PathBuf::from(prior.trim());
+        if prior_path.as_os_str().is_empty() || prior_path == new_path {
+            return;
+        }
+        let _ = fs::remove_file(&prior_path);
+        // Sidecar shares the zip's stem (filename minus the ".zip").
+        if let (Some(parent), Some(stem)) =
+            (prior_path.parent(), prior_path.file_stem().and_then(|s| s.to_str()))
+        {
+            let _ = fs::remove_dir_all(parent.join(stem));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Compose command
 // ---------------------------------------------------------------------------
 
@@ -300,14 +392,26 @@ pub fn compose_post_bundle<R: Runtime>(
 
     let (drop_dir, _) = resolved_drop_dir(&conn)?;
     fs::create_dir_all(&drop_dir)?;
-    let out_path = drop_dir.join(format!("{uid}-post.zip"));
-    let tmp_path = out_path.with_extension("zip.tmp");
+    // Human-readable `<YYYY-MM-DD>-post-<Title>.zip`. Construct the temp name
+    // explicitly (not via with_extension) so a title containing a dot — e.g.
+    // "Clip v1.2" — isn't truncated.
+    let base = post_bundle_basename(&conn, &uid);
+    let out_path = drop_dir.join(format!("{base}.zip"));
+    let tmp_path = drop_dir.join(format!("{base}.zip.tmp"));
+
+    // Drop any earlier copy that lived under a different name/folder, so a
+    // since-changed title or drop dir doesn't strand a stale post-bundle.
+    cleanup_prior_output(&conn, &uid, &out_path);
+
     fs::write(&tmp_path, &outer_bytes)?;
     let outer_sha = sha256_hex(&outer_bytes);
 
     // Atomic replace.
     if out_path.exists() { let _ = fs::remove_file(&out_path); }
     fs::rename(&tmp_path, &out_path)?;
+    // Record the path so reveal/status find it and the next compose can tidy
+    // up if the name changes. Non-critical — the zip already shipped.
+    let _ = write_setting(&conn, &last_path_key(&uid), &out_path.to_string_lossy());
 
     // ── Sidecar folder ───────────────────────────────────────────────
     // A plain, browsable copy of the inner payload sitting next to the
@@ -316,7 +420,7 @@ pub fn compose_post_bundle<R: Runtime>(
     // non-traversable 0o700 wrapper ("you don't have permission to see
     // its contents"). The sidecar is created at normal perms and lets
     // the user open the artifacts directly, no extraction required.
-    let sidecar = drop_dir.join(format!("{uid}-post"));
+    let sidecar = drop_dir.join(&base);
     if let Err(e) = write_sidecar_folder(
         &sidecar, &report_json, &notes_md, &posting_log_json,
         log_bytes.as_deref(), &artifacts,
@@ -357,8 +461,7 @@ pub fn reveal_post_bundle<R: Runtime>(
     uid: String,
 ) -> Result<(), BundleError> {
     let conn = open_conn(&handle)?;
-    let (dir, _) = resolved_drop_dir(&conn)?;
-    let out_path = dir.join(format!("{uid}-post.zip"));
+    let out_path = current_post_path(&conn, &uid)?;
     if !out_path.exists() {
         return Err(BundleError::NotFound(format!(
             "{} — compose the post-bundle first", out_path.display(),
@@ -386,8 +489,7 @@ pub fn get_post_bundle_status<R: Runtime>(
     uid: String,
 ) -> Result<PostBundleStatus, BundleError> {
     let conn = open_conn(&handle)?;
-    let (dir, _) = resolved_drop_dir(&conn)?;
-    let out_path = dir.join(format!("{uid}-post.zip"));
+    let out_path = current_post_path(&conn, &uid)?;
     let (exists, size_bytes, modified_at) = match fs::metadata(&out_path) {
         Ok(m) => {
             let modified = m.modified().ok()
@@ -783,6 +885,32 @@ mod tests {
         assert_eq!(e.month(), 1);
         assert_eq!(e.day(), 1);
         assert_eq!(e.hour(), 0);
+    }
+
+    #[test]
+    fn uid_date_prefix_parses_dated_uids() {
+        assert_eq!(uid_date_prefix("2026-01-01-0001").as_deref(), Some("2026-01-01"));
+        assert_eq!(uid_date_prefix("2026-12-31-9999").as_deref(), Some("2026-12-31"));
+        assert_eq!(uid_date_prefix("2026-1-1-1"), None);   // wrong field widths
+        assert_eq!(uid_date_prefix("not-a-date"), None);
+        assert_eq!(uid_date_prefix("nope"), None);
+    }
+
+    #[test]
+    fn post_basename_uses_date_and_sanitized_title() {
+        assert_eq!(format_post_basename("2026-01-01-0001", "My Clip"),
+                   "2026-01-01-post-My Clip");
+        // filesystem-unsafe chars are mapped via master_cut_basename
+        assert_eq!(format_post_basename("2026-03-09-0007", "A/B: C"),
+                   "2026-03-09-post-A_B_ C");
+        // interior dots survive (the tmp-name pitfall this guards against)
+        assert_eq!(format_post_basename("2026-03-09-0007", "Clip v1.2"),
+                   "2026-03-09-post-Clip v1.2");
+        // empty/whitespace title → unique uid-based fallback (no title slug)
+        assert_eq!(format_post_basename("2026-01-01-0001", "   "),
+                   "2026-01-01-0001-post");
+        // non-date uid keeps the full uid as the prefix
+        assert_eq!(format_post_basename("weirduid", "T"), "weirduid-post-T");
     }
 
     #[test]
