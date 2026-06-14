@@ -32,9 +32,11 @@ about it — and she can always override it or mark the bundle **Free**.
 - **In the bundle:** `manifest.json` already carried `priceCents` for every
   type; `info.md` and `Molly.log` now show the content bundle's price too
   (and render `Free` for a $0.00 bundle, not `$0.00`).
-- **Engine note:** the suggested price relies on the bundled video engine
-  reading each clip's duration. If a clip can't be read, it's just left out of
-  the estimate (which is then flagged as possibly low) — it never blocks
+- **Engine note:** durations are read from the bundled ffprobe first, then
+  fall back to a hidden `<video>` element (the same way GIF Studio reads
+  duration) — so the estimate works even on a locally-built macOS app whose
+  `resources/ffmpeg/` is just a placeholder. If a clip can't be read by either,
+  it's left out of the estimate (flagged as possibly low) — it never blocks
   uploading or publishing.
 
 ## [1.31.1] — 2026-06-14
