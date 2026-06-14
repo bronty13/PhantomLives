@@ -29,20 +29,6 @@ That cleared the **🎁 / 🎉 / 🏷️ / 🔴 / 🎨 / ⏱ / 🎁-Rewards / Da
 
 ---
 
-## 📥 Inbound from SideMolly (post-bundle ingest)
-
-SideMolly is the outbound companion that processes a Molly bundle and hands a
-`<UID>-post.zip` back. As of **SideMolly v0.28.0**, that return bundle now
-carries the **SideMolly Summary PDF** — the human-readable recap of the
-processed bundle — at a deterministic in-zip path, pointed to by
-`report.json`'s new `summaryPdf` field (`"artifacts/summary.pdf"`).
-
-| Idea | Effort | Flavor | Notes |
-|---|---|---|---|
-| **Surface the SideMolly Summary PDF on post-bundle ingest** | S–M | 🟢 | Molly doesn't read it yet — it's only shipped back for availability. When Molly ingests a post-bundle, read `report.summaryPdf` and offer a viewer / "Open Summary" link (and/or file it alongside the clip). The PDF is always present when `summaryPdf` is non-null; treat a missing field as "older SideMolly, no summary." Cross-ref: `SideMolly/src-tauri/src/post_bundle.rs` (`SUMMARY_IN_ZIP`, `Report.summary_pdf`). |
-
----
-
 ## 📣 Promo composer extensions (partially-shipped concept)
 
 The 🔴 Reddit hub (v1.17.0) already gives Sallie subreddit tracking, the post log (with future-scheduled posts), and a caption library. The original Phase-10 Promo-Scheduler menu still has a few items worth doing — they layer on top of what's there now:
