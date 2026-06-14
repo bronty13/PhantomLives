@@ -26,7 +26,11 @@ struct MenuView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 460)
+                // A `.window` MenuBarExtra sizes to content's *ideal* height, but a
+                // bare ScrollView reports ~0 there and collapses to an empty strip.
+                // Give it a DEFINITE height sized to the rows (capped) so it renders
+                // and only scrolls once the list is genuinely tall.
+                .frame(height: listHeight)
             }
             Divider()
             actions
@@ -55,6 +59,14 @@ struct MenuView: View {
     private var subtitle: String {
         let n = model.jobs.count
         return n == 0 ? "No jobs" : "\(n) job\(n == 1 ? "" : "s") · \(model.aggregateHealth.label)"
+    }
+
+    /// Estimated natural height of the grouped job list, capped so very long lists
+    /// scroll instead of growing the window past ~460pt.
+    private var listHeight: CGFloat {
+        let rows = CGFloat(model.jobs.count) * 44      // each JobRow ≈ 44pt
+        let headers = CGFloat(model.groups.count) * 34 // each group header ≈ 34pt
+        return min(rows + headers + 12, 460)
     }
 
     private var actions: some View {
