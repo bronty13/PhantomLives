@@ -2,6 +2,15 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.6.0 — 2026-06-14
+
+### Added
+- **`contacts.html`** — a browsable, searchable contacts page generated from the
+  pulled AddressBook: each person's name, organization, phones, and emails, with
+  a live filter box and a **"→ conversation"** link to their thread's
+  `index.html` where one matches. Written at the archive root alongside
+  `contacts.csv`.
+
 ## 1.5.0 — 2026-06-14
 
 ### Changed — `archive_messages.py` is now human-browsable

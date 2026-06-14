@@ -52,7 +52,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from export_messages import get_body, mts, knd, san, slug, norm  # noqa: E402
 
-__version__ = '1.5.0'
+__version__ = '1.6.0'
 
 ATTACH_MARKER = '/Attachments/'
 
@@ -91,6 +91,38 @@ def load_contacts(ab_dir):
         except sqlite3.DatabaseError:
             pass
     return contacts
+
+
+def load_contacts_full(ab_dir):
+    """Per-contact records for the browsable contacts.html:
+    [{'name', 'org', 'phones': [...], 'emails': [...]}]. Empty if no AddressBook."""
+    out = []
+    if not ab_dir:
+        return out
+    for ab in Path(ab_dir).glob('*/AddressBook-v22.abcddb'):
+        try:
+            c = sqlite3.connect(f'file:{ab}?mode=ro&immutable=1', uri=True)
+            recs = {}
+            for pk, f, l, n, org in c.execute(
+                    'SELECT Z_PK,ZFIRSTNAME,ZLASTNAME,ZNICKNAME,ZORGANIZATION '
+                    'FROM ZABCDRECORD'):
+                f, l = (f or '').strip(), (l or '').strip()
+                name = f'{f} {l}'.strip() or (n or '').strip() or (org or '').strip()
+                if name:
+                    recs[pk] = {'name': name, 'org': (org or '').strip(),
+                                'phones': [], 'emails': []}
+            for owner, num in c.execute('SELECT ZOWNER, ZFULLNUMBER FROM ZABCDPHONENUMBER'):
+                if owner in recs and num:
+                    recs[owner]['phones'].append(num.strip())
+            for owner, addr in c.execute('SELECT ZOWNER, ZADDRESS FROM ZABCDEMAILADDRESS'):
+                if owner in recs and addr:
+                    recs[owner]['emails'].append(addr.strip())
+            c.close()
+            out.extend(recs.values())
+        except sqlite3.DatabaseError:
+            pass
+    out.sort(key=lambda r: r['name'].lower())
+    return out
 
 
 def resolve(handle, contacts):
@@ -316,7 +348,54 @@ def render_html(label, entries, folder_dir):
     (folder_dir / 'index.html').write_text(doc, encoding='utf-8')
 
 
-def build_views(archive, attach_subdir, contacts):
+CONTACTS_HTML_HEAD = """<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Contacts ({n})</title><style>
+body{{font:15px -apple-system,Helvetica,Arial,sans-serif;background:#f2f2f7;margin:0;padding:24px;color:#000}}
+h1{{font-size:20px}} input{{font-size:15px;padding:8px 12px;width:280px;border:1px solid #ccc;border-radius:8px;margin-bottom:16px}}
+.c{{background:#fff;border-radius:12px;padding:12px 16px;margin:8px 0;max-width:640px}}
+.n{{font-weight:600;font-size:16px}} .org{{color:#666;font-size:13px}}
+.h{{color:#333;font-size:13px;margin-top:4px}} a{{color:#1982fc;text-decoration:none}}
+</style></head><body><h1>Contacts ({n})</h1>
+<input id="q" placeholder="Filter contacts…" oninput="f()">
+<div id="list">
+"""
+
+CONTACTS_HTML_TAIL = """</div><script>
+function f(){var q=document.getElementById('q').value.toLowerCase();
+document.querySelectorAll('.c').forEach(function(e){
+e.style.display=e.textContent.toLowerCase().indexOf(q)<0?'none':''});}
+</script></body></html>"""
+
+
+def render_contacts_html(archive, full_contacts, handle_to_folder):
+    cards = []
+    for r in full_contacts:
+        link = None
+        for p in r['phones']:
+            link = handle_to_folder.get(norm(p))
+            if link:
+                break
+        if not link:
+            for em in r['emails']:
+                link = handle_to_folder.get(em.lower())
+                if link:
+                    break
+        bits = [f'<div class="n">{html.escape(r["name"])}</div>']
+        if r['org'] and r['org'] != r['name']:
+            bits.append(f'<div class="org">{html.escape(r["org"])}</div>')
+        for p in r['phones']:
+            bits.append(f'<div class="h">📞 {html.escape(p)}</div>')
+        for em in r['emails']:
+            bits.append(f'<div class="h">✉️ {html.escape(em)}</div>')
+        if link:
+            bits.append(f'<div class="h"><a href="conversations/{html.escape(link)}/index.html">→ conversation</a></div>')
+        cards.append('<div class="c">' + ''.join(bits) + '</div>')
+    doc = (CONTACTS_HTML_HEAD.format(n=len(full_contacts)) + '\n'.join(cards)
+           + CONTACTS_HTML_TAIL)
+    (Path(archive) / 'contacts.html').write_text(doc, encoding='utf-8')
+
+
+def build_views(archive, attach_subdir, contacts, addressbook_dir=None):
     archive = Path(archive)
     entries = read_manifest(archive / 'manifest.jsonl')
     conv_root = archive / 'conversations'
@@ -344,6 +423,7 @@ def build_views(archive, attach_subdir, contacts):
         groups[identity_of(e)].append(e)
 
     index_rows = []
+    handle_to_folder = {}        # 1:1 identity tail -> conversation folder (for contacts.html)
     media_copied = 0
     for key, msgs in groups.items():
         msgs.sort(key=lambda x: x.get('date_raw', 0))
@@ -352,6 +432,8 @@ def build_views(archive, attach_subdir, contacts):
         chat_id = next((m.get('chat_id') for m in msgs if m.get('chat_id')), '')
         label = conv_label(chat_name, chat_id, members, contacts)
         folder = conv_folder(label, key)
+        if key.startswith('1:'):
+            handle_to_folder[key[2:]] = folder
         d = conv_root / folder
         media_d = d / 'media'
         d.mkdir(parents=True, exist_ok=True)
@@ -400,13 +482,16 @@ def build_views(archive, attach_subdir, contacts):
         w.writeheader()
         w.writerows(index_rows)
 
-    # Preserve the resolved contact map alongside the archive.
+    # Preserve the resolved contact map + render a browsable contacts.html.
     if contacts:
         with (archive / 'contacts.csv').open('w', newline='', encoding='utf-8') as fh:
             w = csv.writer(fh)
             w.writerow(['handle_or_norm', 'name'])
             for k, v in sorted(contacts.items()):
                 w.writerow([k, v])
+    full = load_contacts_full(addressbook_dir)
+    if full:
+        render_contacts_html(archive, full, handle_to_folder)
 
     return len(groups), media_copied
 
@@ -414,7 +499,7 @@ def build_views(archive, attach_subdir, contacts):
 def run_archive(db, archive, attach_subdir='attachments', addressbook_dir=None, full=False):
     appended, total = ingest(db, archive, attach_subdir, full)
     contacts = load_contacts(addressbook_dir)
-    convos, media_copied = build_views(archive, attach_subdir, contacts)
+    convos, media_copied = build_views(archive, attach_subdir, contacts, addressbook_dir)
     return {'appended': appended, 'total_messages': total, 'conversations': convos,
             'media_copied': media_copied, 'contacts': len(contacts)}
 

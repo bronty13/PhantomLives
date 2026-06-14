@@ -155,6 +155,16 @@ class ArchiveMessagesTests(unittest.TestCase):
                        (Path(self.archive) / 'conversations').glob('Test Person__*/transcript.txt'))
         self.assertIn('Test Person:', tx)
 
+    def test_contacts_html(self):
+        make_addressbook(self.root / 'AB')
+        am.run_archive(self.db, self.archive, addressbook_dir=str(self.root / 'AB'), full=True)
+        ch = Path(self.archive) / 'contacts.html'
+        self.assertTrue(ch.exists())
+        doc = ch.read_text()
+        self.assertIn('Test Person', doc)
+        self.assertIn('Filter contacts', doc)            # the search box
+        self.assertIn('→ conversation', doc)             # linked to their thread
+
     def test_idempotent_rerun(self):
         am.run_archive(self.db, self.archive, full=True)
         r2 = am.run_archive(self.db, self.archive)
