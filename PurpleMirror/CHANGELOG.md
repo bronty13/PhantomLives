@@ -2,6 +2,16 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.3.0 — 2026-06-14
+
+- **Tailored profile for the new "Rachel Messages Sync" job**
+  (`com.bronty13.rachel-messages-sync`) — PurpleAttic's permanent Apple Messages
+  archive. It would already auto-discover as a generic row; this gives it a
+  friendly name, its real activity log
+  (`~/Library/Logs/PurpleAttic/rachel-messages-sync.log`), and the
+  PurpleAttic-style log parsing (staged N new / no new items / pull exit), so it
+  reads like the photo-sync row.
+
 ## 1.2.0 — 2026-06-13
 
 - **Multi-job background-jobs dashboard.** PurpleMirror is no longer Obsidian-only:

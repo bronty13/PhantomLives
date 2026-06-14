@@ -54,6 +54,12 @@ enum JobRegistry {
                 activityLogPathOverride: home("Library/Logs/PurpleAttic/rachel-sync.log"),
                 scheduling: .plist
             ),
+            "com.bronty13.rachel-messages-sync": JobProfile(
+                displayName: "Rachel Messages Sync",
+                logKind: .purpleAtticSync,   // same log vocabulary as the photo sync
+                activityLogPathOverride: home("Library/Logs/PurpleAttic/rachel-messages-sync.log"),
+                scheduling: .plist
+            ),
         ]
     }
 
