@@ -53,6 +53,22 @@ final class WatchlistService: ObservableObject {
     /// Defaults to Glass to preserve prior behavior.
     var soundName: String = "Glass"
 
+    /// When true, the burst of "already online" sightings that arrives in
+    /// the first few seconds after a network finishes connecting (the
+    /// initial MONITOR/ISON roster) is acknowledged *silently* — those
+    /// contacts are marked online and gated as already-alerted, but no
+    /// banner/sound/Dock-bounce fires. Off by default: connecting still
+    /// alerts you for everyone already online, exactly as before. Opt in to
+    /// only be alerted about people who come online *after* you connect.
+    /// Synced from `AppSettings.suppressInitialWatchRoster` by ChatModel.
+    var suppressInitialRoster: Bool = false
+
+    /// How long after a network's welcome completes its online sightings
+    /// count as the "initial roster" and are suppressed (when the setting
+    /// above is on). MONITOR/ISON replies to the connect-time registration
+    /// land within a second or two; this leaves comfortable headroom.
+    private static let rosterPrimeWindow: TimeInterval = 6.0
+
     /// Per-nick `ContactAlertOverride` resolver. Set by ChatModel at
     /// init so this service can consult per-contact overrides without
     /// importing SettingsStore. Each `fireSystemAlert(...)` call passes
@@ -82,6 +98,13 @@ final class WatchlistService: ObservableObject {
         var supportsMonitor = false
         var serverMonitorLimit = 0
         var isonTimer: Timer?
+        /// True while this network is inside its connect-time roster window
+        /// (see `suppressInitialRoster`). Online sightings on this network
+        /// are acknowledged silently while set.
+        var primingRoster = false
+        /// One-shot timer that ends the priming window. Invalidated on
+        /// disconnect alongside `isonTimer`.
+        var rosterPrimeTimer: Timer?
         /// Online nicks (lowercased) accumulated across the CURRENT ISON
         /// poll cycle. ISON replies arrive one 303 per `ISON` command, and
         /// each command only carries one chunk of the watched list — so a
@@ -235,7 +258,14 @@ final class WatchlistService: ObservableObject {
             // `.inserted` is true only the first time, so concurrent
             // sources asserting the same nick online can't double-fire.
             if alertedOnline.insert(key).inserted {
-                fireOnlineAlert(nick: nick, source: source)
+                // During a network's connect-time roster window we still
+                // mark the nick acknowledged (above) but stay silent — the
+                // user opted out of being alerted for people already online
+                // when they connected. They'll still get alerted if this
+                // person later goes offline and comes back.
+                if networks[network]?.primingRoster != true {
+                    fireOnlineAlert(nick: nick, source: source)
+                }
             }
         case .offline:
             // Confirmed offline everywhere → re-arm for the next round trip.
@@ -263,6 +293,12 @@ final class WatchlistService: ObservableObject {
     }
 
     func onWelcomeCompleted(network: UUID) {
+        // Open the connect-time roster window first (if opted in) so the
+        // MONITOR registration / first ISON poll we kick off right below is
+        // treated as the initial roster, not as live arrivals.
+        if suppressInitialRoster {
+            beginRosterPriming(network: network)
+        }
         if networks[network]?.supportsMonitor == true {
             register(network: network)
         } else {
@@ -272,10 +308,36 @@ final class WatchlistService: ObservableObject {
 
     func onDisconnected(network: UUID) {
         networks[network]?.isonTimer?.invalidate()
+        networks[network]?.rosterPrimeTimer?.invalidate()
         // Drop only the disconnecting network's slice. Other networks keep
         // their presence, timers, and MONITOR capability untouched.
         networks.removeValue(forKey: network)
         recomputeAllAggregates()
+    }
+
+    // MARK: - Connect-time roster suppression
+
+    /// Begin (or restart) the connect-time roster window for a network:
+    /// while active, online sightings on it are acknowledged silently.
+    /// Production schedules `endRosterPriming` after `rosterPrimeWindow`;
+    /// tests drive the boundary directly. Internal, not private, so the
+    /// test suite can open/close the window without a live run loop.
+    func beginRosterPriming(network: UUID) {
+        networks[network, default: NetworkWatchState()].rosterPrimeTimer?.invalidate()
+        networks[network, default: NetworkWatchState()].primingRoster = true
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.rosterPrimeWindow,
+                                         repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.endRosterPriming(network: network) }
+        }
+        networks[network, default: NetworkWatchState()].rosterPrimeTimer = timer
+    }
+
+    /// Close the roster window: later online sightings on this network
+    /// alert normally again.
+    func endRosterPriming(network: UUID) {
+        networks[network]?.rosterPrimeTimer?.invalidate()
+        networks[network]?.rosterPrimeTimer = nil
+        networks[network]?.primingRoster = false
     }
 
     /// A watched-list change pushes the diff to every connected

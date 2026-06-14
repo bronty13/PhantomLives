@@ -29,7 +29,9 @@ struct NotificationsSetup: View {
                        isOn: $settings.settings.systemNotificationsOnWatchHit)
                 Toggle("Open query when a watched contact first messages me",
                        isOn: $settings.settings.popQueryBufferOnWatch)
-                Text("A watch hit fires when a watched address-book contact comes online (via MONITOR or ISON polling) or speaks while you're connected. *Open query* additionally switches the active network and selects the new query buffer when a watched contact's PRIVMSG creates a fresh conversation — off by default so it doesn't yank you out of what you're doing. Per-contact overrides live on the contact's card in the Address Book (⇧⌘B).")
+                Toggle("Don't alert for contacts already online when I connect",
+                       isOn: $settings.settings.suppressInitialWatchRoster)
+                Text("A watch hit fires when a watched address-book contact comes online (via MONITOR or ISON polling) or speaks while you're connected. Each contact alerts once when they come online and stays quiet until they go offline and return. *Open query* additionally switches the active network and selects the new query buffer when a watched contact's PRIVMSG creates a fresh conversation — off by default so it doesn't yank you out of what you're doing. *Don't alert for contacts already online when I connect* silences the burst of \"already here\" alerts at connect time — you'll only be alerted about people who come online afterwards (and anyone who later drops and comes back); off by default. Per-contact overrides live on the contact's card in the Address Book (⇧⌘B).")
                     .font(.caption).foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }

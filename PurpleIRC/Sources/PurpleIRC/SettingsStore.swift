@@ -746,6 +746,12 @@ struct AppSettings: Codable {
     /// that network and select the query. Off by default — opt-in
     /// because it interrupts the user's current focus.
     var popQueryBufferOnWatch: Bool = false
+    /// When on, the burst of contacts already online at the moment a
+    /// network finishes connecting is acknowledged silently — you're only
+    /// alerted about people who come online *after* you connect (and about
+    /// anyone who later drops and returns). Off by default: connecting
+    /// alerts you for everyone already online, as it always has.
+    var suppressInitialWatchRoster: Bool = false
 
     // Persistent logs
     var enablePersistentLogs: Bool = false
@@ -935,6 +941,7 @@ struct AppSettings: Codable {
         self.selectedServerID = try c.decodeIfPresent(UUID.self, forKey: .selectedServerID)
         self.playSoundOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .playSoundOnWatchHit) ?? true
         self.popQueryBufferOnWatch = try c.decodeIfPresent(Bool.self, forKey: .popQueryBufferOnWatch) ?? false
+        self.suppressInitialWatchRoster = try c.decodeIfPresent(Bool.self, forKey: .suppressInitialWatchRoster) ?? false
         self.bounceDockOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .bounceDockOnWatchHit) ?? true
         self.systemNotificationsOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .systemNotificationsOnWatchHit) ?? true
         self.highlightOnOwnNick = try c.decodeIfPresent(Bool.self, forKey: .highlightOnOwnNick) ?? true

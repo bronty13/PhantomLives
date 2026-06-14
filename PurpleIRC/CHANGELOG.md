@@ -14,6 +14,17 @@ count (`1.0.<count>`).
 
 ## [Unreleased] — 2026-06-13
 
+### Added
+
+- **Setup → Notifications → "Don't alert for contacts already online when
+  I connect."** Off by default (connecting still alerts you for everyone
+  already online, as before). When on, the burst of "already here"
+  sightings in the first few seconds after a network connects is
+  acknowledged silently — you're only alerted about contacts who come
+  online *after* you connect, plus anyone who later drops and returns.
+  (`AppSettings.suppressInitialWatchRoster` → per-network priming window
+  in `WatchlistService`.)
+
 ### Fixed
 
 - **Watchlist "is online" alerts no longer spam.** An online alert now

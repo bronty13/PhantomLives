@@ -277,6 +277,11 @@ state.
   alert re-arms only after they're seen genuinely offline (disconnect /
   logoff), so a real return-online alerts you again. A reconnect of *your
   own* client doesn't replay alerts for everyone already online.
+- **Optionally skip the connect-time roster.** Setup → Notifications →
+  *Don't alert for contacts already online when I connect* (off by
+  default) silences the burst of "already here" alerts you'd otherwise
+  get at connect, leaving only post-connect arrivals (and anyone who
+  later drops and returns).
 - Prominence: each hit fires a macOS banner (UNUserNotificationCenter),
   plays a sound, bounces the Dock icon (critical), shows a persistent
   purple banner at the top of the main window, stars + tints that user's

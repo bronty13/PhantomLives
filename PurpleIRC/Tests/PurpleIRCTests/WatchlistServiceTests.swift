@@ -174,6 +174,81 @@ struct WatchlistServiceTests {
         #expect(svc.recentHits.count == 2)
     }
 
+    // MARK: - Connect-time roster suppression (opt-in)
+
+    @Test func initialRosterAlertsWhenSuppressionOff() {
+        // Default behavior: connecting alerts you for everyone already on.
+        let (svc, _) = makeService()       // suppressInitialRoster defaults off
+        let net = UUID()
+        svc.setWatchedList(["alice", "bob"])
+        svc.handleISON(["alice", "bob"], network: net)
+        #expect(svc.recentHits.count == 2)
+    }
+
+    @Test func initialRosterIsSilentWhenSuppressionOn() {
+        let (svc, _) = makeService()
+        svc.suppressInitialRoster = true
+        let net = UUID()
+        svc.setWatchedList(["alice", "bob"])
+        svc.beginRosterPriming(network: net)
+
+        // The connect-time roster is acknowledged but silent.
+        svc.handleISON(["alice", "bob"], network: net)
+        #expect(svc.presence["alice"] == .online)
+        #expect(svc.presence["bob"] == .online)
+        #expect(svc.recentHits.isEmpty)
+
+        // Window closes; re-seeing the same already-acknowledged people
+        // still doesn't alert (they never left).
+        svc.endRosterPriming(network: net)
+        svc.beginISONCycle(network: net)
+        svc.handleISON(["alice", "bob"], network: net)
+        #expect(svc.recentHits.isEmpty)
+    }
+
+    @Test func arrivalAfterRosterWindowAlertsEvenWhenSuppressionOn() {
+        let (svc, _) = makeService()
+        svc.suppressInitialRoster = true
+        let net = UUID()
+        svc.setWatchedList(["alice", "carol"])
+        svc.beginRosterPriming(network: net)
+
+        // Only alice is on at connect → silently acknowledged.
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.isEmpty)
+
+        // Window closes. carol was offline at connect and now comes online
+        // → a genuine post-connect arrival, so it alerts.
+        svc.endRosterPriming(network: net)
+        svc.beginISONCycle(network: net)
+        svc.handleISON(["alice", "carol"], network: net)
+        #expect(svc.recentHits.count == 1)
+        #expect(svc.recentHits.first?.nick == "carol")
+    }
+
+    @Test func rosterMemberWhoDropsAndReturnsStillAlertsUnderSuppression() {
+        let (svc, _) = makeService()
+        svc.suppressInitialRoster = true
+        let net = UUID()
+        svc.setWatchedList(["alice"])
+        svc.beginRosterPriming(network: net)
+
+        // alice present at connect → silent.
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.isEmpty)
+        svc.endRosterPriming(network: net)
+
+        // alice drops…
+        svc.beginISONCycle(network: net)
+        svc.handleISON([], network: net)
+        svc.beginISONCycle(network: net)
+        #expect(svc.presence["alice"] == .offline)
+
+        // …and comes back: a real round trip, so now it alerts.
+        svc.handleISON(["alice"], network: net)
+        #expect(svc.recentHits.count == 1)
+    }
+
     // MARK: - Command routing to the originating socket
 
     @Test func monitorAndIsonGoToTheirOwnNetworkSocket() {

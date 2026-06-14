@@ -1142,6 +1142,7 @@ final class ChatModel: ObservableObject {
         watchlist.bounceDock = s.bounceDockOnWatchHit
         watchlist.systemNotifications = s.systemNotificationsOnWatchHit
         watchlist.soundName = s.eventSounds["watchlistHit"] ?? "Glass"
+        watchlist.suppressInitialRoster = s.suppressInitialWatchRoster
         // Push the "Require Touch ID" preference so the cached DEK is stored
         // behind (or without) a user-presence ACL. Re-stamps on change while
         // unlocked; a no-op when the gate already matches.
