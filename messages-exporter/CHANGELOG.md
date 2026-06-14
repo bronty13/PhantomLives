@@ -2,6 +2,15 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.7.1 — 2026-06-14
+
+### Fixed
+- **Contact photos were unreadable.** AddressBook image blobs carry a 1-byte tag
+  before the JPEG (`0x01` = embedded JPEG, `0x02` = external reference); writing
+  the raw blob produced corrupt `.jpg` files. Now strips the prefix to the JPEG
+  SOI, falls back to `ZTHUMBNAILIMAGEDATA`, and skips `0x02` reference-only records
+  (no embedded image). Verified: 40/40 exported photos are valid JPEGs.
+
 ## 1.7.0 — 2026-06-14
 
 ### Added — full contact fidelity

@@ -4,7 +4,7 @@
 #   MESSAGES ARCHIVER  (companion to export_messages.py)
 #
 #   File:     archive_messages.py
-#   Version:  1.7.0
+#   Version:  1.7.1
 #   License:  MIT
 #   Requires: Python 3.9+ (standard library only — NO Pillow/ffmpeg/exiftool)
 #
@@ -52,7 +52,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from export_messages import get_body, mts, knd, san, slug, norm  # noqa: E402
 
-__version__ = '1.7.0'
+__version__ = '1.7.1'
 
 ATTACH_MARKER = '/Attachments/'
 
@@ -129,6 +129,21 @@ def _s(x):
     return ('' if x is None else str(x)).strip()
 
 
+def jpeg_from_blob(blob):
+    """AddressBook image blobs are a JPEG with a 1-byte tag prefix: 0x01 = embedded
+    JPEG (the rest is the image), 0x02 = external reference (no usable image here).
+    Return clean JPEG bytes, or None if there's no embedded image."""
+    if not blob:
+        return None
+    b = bytes(blob)
+    if b[:2] == b'\xff\xd8':                 # already a bare JPEG
+        return b
+    i = b.find(b'\xff\xd8\xff')              # strip a short prefix (e.g. 0x01) before SOI
+    if 0 <= i <= 4:
+        return b[i:]
+    return None                              # 0x02 reference / not an embedded JPEG
+
+
 def load_contacts_full(ab_dir):
     """ALL fields per contact from every AddressBook .abcddb under `ab_dir`:
     name parts, org/dept/title, birthday + custom dates, phones, emails, postal
@@ -147,9 +162,10 @@ def load_contacts_full(ab_dir):
                 'SELECT Z_PK,ZTITLE,ZFIRSTNAME,ZMIDDLENAME,ZLASTNAME,ZSUFFIX,'
                 'ZMAIDENNAME,ZNICKNAME,ZPHONETICFIRSTNAME,ZPHONETICLASTNAME,'
                 'ZORGANIZATION,ZDEPARTMENT,ZJOBTITLE,ZBIRTHDAY,ZBIRTHDAYYEARLESS,'
-                'ZCREATIONDATE,ZMODIFICATIONDATE,ZIMAGEDATA FROM ZABCDRECORD'):
+                'ZCREATIONDATE,ZMODIFICATIONDATE,ZIMAGEDATA,ZTHUMBNAILIMAGEDATA '
+                'FROM ZABCDRECORD'):
             (pk, title, f, mid, l, suf, maiden, nick, phf, phl, org, dept, job,
-             bday, bdayyl, created, modified, img) = r
+             bday, bdayyl, created, modified, img, thumb) = r
             parts = [_s(x) for x in (title, f, mid, l, suf) if _s(x)]
             name = ' '.join(parts) or _s(nick) or _s(org)
             if not name:
@@ -165,7 +181,7 @@ def load_contacts_full(ab_dir):
                 'created': _cd_date(created), 'modified': _cd_date(modified),
                 'phones': [], 'emails': [], 'addresses': [], 'urls': [],
                 'socials': [], 'ims': [], 'related': [], 'dates': [],
-                '_photo': bytes(img) if img else None, 'photo': None,
+                '_photo': jpeg_from_blob(img) or jpeg_from_blob(thumb), 'photo': None,
             }
         for owner, lbl, num in _rows(c, 'SELECT ZOWNER,ZLABEL,ZFULLNUMBER FROM ZABCDPHONENUMBER'):
             if owner in recs and _s(num):

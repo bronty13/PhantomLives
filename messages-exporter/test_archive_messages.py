@@ -88,7 +88,7 @@ def make_addressbook(sources_dir):
             ZNICKNAME TEXT, ZPHONETICFIRSTNAME TEXT, ZPHONETICLASTNAME TEXT,
             ZORGANIZATION TEXT, ZDEPARTMENT TEXT, ZJOBTITLE TEXT, ZBIRTHDAY REAL,
             ZBIRTHDAYYEARLESS REAL, ZNOTE TEXT, ZCREATIONDATE REAL,
-            ZMODIFICATIONDATE REAL, ZIMAGEDATA BLOB);
+            ZMODIFICATIONDATE REAL, ZIMAGEDATA BLOB, ZTHUMBNAILIMAGEDATA BLOB);
         CREATE TABLE ZABCDPHONENUMBER(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT, ZFULLNUMBER TEXT);
         CREATE TABLE ZABCDEMAILADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT, ZADDRESS TEXT);
         CREATE TABLE ZABCDPOSTALADDRESS(Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZLABEL TEXT,
@@ -102,10 +102,11 @@ def make_addressbook(sources_dir):
             ZDATE REAL, ZDATEYEARLESS REAL);
         CREATE TABLE ZABCDNOTE(Z_PK INTEGER PRIMARY KEY, ZCONTACT INTEGER, ZTEXT TEXT);
     """)
+    # ZIMAGEDATA carries a 1-byte tag (0x01) before the JPEG SOI, like real AddressBook.
     conn.execute('INSERT INTO ZABCDRECORD(Z_PK,ZFIRSTNAME,ZLASTNAME,ZNICKNAME,'
                  'ZORGANIZATION,ZJOBTITLE,ZBIRTHDAY,ZIMAGEDATA) VALUES(1,?,?,?,?,?,?,?)',
                  ('Test', 'Person', 'Testy', 'Acme Inc', 'Engineer', 500000000.0,
-                  b'\xff\xd8fakejpegphoto'))
+                  b'\x01\xff\xd8\xfffakejpegphoto'))
     conn.execute("INSERT INTO ZABCDPHONENUMBER VALUES(1,1,'_$!<Mobile>!$_',?)", ('+1 (555) 111-2222',))
     conn.execute("INSERT INTO ZABCDEMAILADDRESS VALUES(1,1,'_$!<Home>!$_',?)", ('test@example.com',))
     conn.execute("INSERT INTO ZABCDPOSTALADDRESS VALUES(1,1,'_$!<Home>!$_','1 Main St','Buffalo','NY','14201','USA')")
@@ -208,7 +209,10 @@ class ArchiveMessagesTests(unittest.TestCase):
         am.run_archive(self.db, self.archive, addressbook_dir=str(self.root / 'AB'), full=True)
         photos = list((Path(self.archive) / 'contacts' / 'photos').glob('*.jpg'))
         self.assertEqual(len(photos), 1)
-        self.assertEqual(photos[0].read_bytes(), b'\xff\xd8fakejpegphoto')
+        # The 0x01 tag prefix is stripped → a valid JPEG starting with the SOI marker.
+        data = photos[0].read_bytes()
+        self.assertEqual(data[:3], b'\xff\xd8\xff')
+        self.assertEqual(data, b'\xff\xd8\xfffakejpegphoto')
 
     def test_idempotent_rerun(self):
         am.run_archive(self.db, self.archive, full=True)

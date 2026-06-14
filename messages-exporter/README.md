@@ -1,6 +1,6 @@
 # messages-exporter
 
-**Current release: 1.7.0**
+**Current release: 1.7.1**
 
 Export iMessage conversations from the Mac Messages app by contact name and
 date range. Two output modes:
