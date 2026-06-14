@@ -23,3 +23,12 @@ hello@keychron.com
 noreply@h5.hilton.com
 store-news@amazon.com
 paulamooney@creator.patreon.com
+# ---- Facebook (added 2026-06-14; o.php opt-out links are session-bound/expire,
+#      so unsubscribe must be done in FB Settings > Notifications > Email.
+#      These addresses are deleted on each sweep regardless.) ----
+friends@facebookmail.com
+messages@facebookmail.com
+memories@facebookmail.com
+friendupdates@facebookmail.com
+friendsuggestion@facebookmail.com
+reminders@facebookmail.com

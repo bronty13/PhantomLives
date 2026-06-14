@@ -1,0 +1,25 @@
+# mail-cleaner — iCloud CHURCH senders (move to "Church" folder, KEEP)
+# Real people in Robert's active small group at Church @ The Springs (C@TS),
+# The Villages FL. Validated 2026-06-14. Mail from these people is moved into
+# the "Church" folder so it never gets lost in a bulk sweep.
+#
+# RULE: each new-mail sweep, run --
+#   python3 mailcleaner.py act --account icloud --user robert.olen@icloud.com \
+#       --keychain-service mail-cleaner-icloud --senders lists/icloud_church_senders.txt \
+#       --action archive --to Church --apply
+# (archive = COPY + \Deleted + expunge into Church, since iCloud has no MOVE.)
+#
+# Deliberately NOT here (validated out 2026-06-14): the older Restoration Church
+# (Buffalo) people + prayer chains, other churches/pastors (Pastor Jerry @ The
+# Chapel, Pat Brimer @ Live Oaks), and Margaret Phillips (likely family). Add a
+# group later if wanted.
+#
+# ---- Church @ The Springs small group ----
+grammiejan3@gmail.com
+marty.roberts726@gmail.com
+ncraw4d@pacbell.net
+jy2nana@gmail.com
+cheezit1960@yahoo.com
+debbie.lane7@yahoo.com
+myrnaandroland@gmail.com
+hiitgirl1967@gmail.com
