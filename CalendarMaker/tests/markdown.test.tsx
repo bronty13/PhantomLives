@@ -21,6 +21,10 @@ describe('Markdown renderer', () => {
     expect(screen.getByText('Title')).toBeTruthy();
     expect(container.querySelector('strong')?.textContent).toBe('bold');
     expect(container.querySelector('code')?.textContent).toBe('code');
+    // Bold (**) must win over italic (*) — no stray <em> inside bold.
+    const boldOnly = render(<Markdown md={'**hi** and *there*'} />);
+    expect(boldOnly.container.querySelector('strong')?.textContent).toBe('hi');
+    expect(boldOnly.container.querySelector('em')?.textContent).toBe('there');
     const link = container.querySelector('a');
     expect(link?.getAttribute('href')).toBe('https://example.com');
     expect(container.querySelectorAll('ul li')).toHaveLength(2);

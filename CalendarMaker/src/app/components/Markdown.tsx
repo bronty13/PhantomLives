@@ -7,8 +7,9 @@ import type { ReactNode } from 'react';
 
 function renderInline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
-  // Tokenize bold / code / link; everything else is literal text.
-  const re = /(\*\*([^*]+)\*\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
+  // Tokenize bold / code / link / italic; everything else is literal text.
+  // Bold (**…**) is listed before italic (*…*) so the double-star wins.
+  const re = /(\*\*([^*]+)\*\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))|(\*([^*]+)\*)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -20,6 +21,8 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
       out.push(<code key={`${keyBase}-c${i}`} style={{ background: 'var(--line, #eee)', padding: '1px 5px', borderRadius: 4 }}>{m[4]}</code>);
     } else if (m[6] !== undefined && m[7] !== undefined) {
       out.push(<a key={`${keyBase}-l${i}`} href={m[7]} target="_blank" rel="noreferrer">{m[6]}</a>);
+    } else if (m[9] !== undefined) {
+      out.push(<em key={`${keyBase}-i${i}`}>{m[9]}</em>);
     }
     last = m.index + m[0].length;
     i++;
