@@ -2,6 +2,20 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.5.0 — 2026-06-14 (polish)
+
+### Added
+- **Notes attachments.** `notes_archiver.py` now links each note's embedded
+  attachments (images/scans/audio/files): it joins the attachment rows
+  (`ZNOTE`→note, `ZMEDIA`→media object) to the on-disk `Media/<uuid>/…` files
+  (mirrored into the archive's `media/`) and embeds them in `notes.html` (inline
+  `<img>`, `<audio>` players, file links) + lists them in each note's Markdown.
+  Versioned (a changed attachment set bumps the note version). Verified on real
+  data: 177 attachments (31 images + 146 audio + files).
+- **`archive_index.py`** — a per-source landing page (`<Name>-Archives.html`)
+  linking every archive's browsable views + raw files, with item counts.
+- Tests grew to 25.
+
 ## 1.4.0 — 2026-06-14 (Phase 3, small wins)
 
 ### Added

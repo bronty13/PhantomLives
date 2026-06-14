@@ -21,6 +21,7 @@ import calendar_archiver as cala
 import books_archiver as ba
 import podcasts_archiver as pa
 import stickies_archiver as sta
+import archive_index as ai
 
 
 def note_proto(text):
@@ -37,7 +38,8 @@ def make_notestore(path, notes):
         CREATE TABLE ZICCLOUDSYNCINGOBJECT(Z_PK INTEGER PRIMARY KEY, ZIDENTIFIER TEXT,
             ZTITLE1 TEXT, ZTITLE2 TEXT, ZFOLDER INTEGER, ZNOTEDATA INTEGER,
             ZCREATIONDATE3 REAL, ZCREATIONDATE1 REAL, ZCREATIONDATE REAL,
-            ZMODIFICATIONDATE1 REAL, ZMODIFICATIONDATE REAL, ZMARKEDFORDELETION INTEGER);
+            ZMODIFICATIONDATE1 REAL, ZMODIFICATIONDATE REAL, ZMARKEDFORDELETION INTEGER,
+            ZNOTE INTEGER, ZMEDIA INTEGER, ZTYPEUTI TEXT, ZFILENAME TEXT);
         CREATE TABLE ZICNOTEDATA(Z_PK INTEGER PRIMARY KEY, ZDATA BLOB);
     """)
     # folder row
@@ -125,6 +127,26 @@ class NotesTests(unittest.TestCase):
         make_notestore(self.db, [('N1', 'Gone', 'about to delete', 100, True)])
         na.run_archive(self.db, self.archive)
         self.assertIn('DELETED', list((Path(self.archive) / 'notes').glob('Recipes/*.md'))[0].read_text())
+
+    def test_note_attachment_linked(self):
+        make_notestore(self.db, [('N1', 'Trip', 'trip photos', 100, False)])
+        # The note above is Z_PK 201 (pk+200). Add a media object + attachment row.
+        conn = sqlite3.connect(self.db)
+        conn.execute("INSERT INTO ZICCLOUDSYNCINGOBJECT(Z_PK,ZIDENTIFIER) VALUES(66,'MEDIA-UUID-1')")
+        conn.execute("INSERT INTO ZICCLOUDSYNCINGOBJECT(Z_PK,ZNOTE,ZMEDIA,ZTYPEUTI,ZFILENAME) "
+                     "VALUES(300,201,66,'public.png','pic.png')")
+        conn.commit(); conn.close()
+        # Place the media file where the archiver expects it (media/<uuid>/<gen>/file).
+        md = Path(self.archive) / 'media' / 'MEDIA-UUID-1' / '1'
+        md.mkdir(parents=True)
+        (md / 'pic.png').write_bytes(b'\x89PNG\r\n\x1a\n' + b'x' * 50)
+        r = na.run_archive(self.db, self.archive)
+        self.assertEqual(r['media'], 1)
+        h = (Path(self.archive) / 'notes.html').read_text()
+        self.assertIn('media/MEDIA-UUID-1/1/pic.png', h)
+        self.assertIn('<img', h)
+        g = next(e for e in self._manifest() if e['id'] == 'N1')
+        self.assertEqual(g['attachments'][0]['media'], 'MEDIA-UUID-1')
 
 
 def make_reminders_legacy(path):
@@ -455,6 +477,33 @@ class StickiesTests(unittest.TestCase):
     def test_idempotent(self):
         sta.run_archive(str(self.data), self.archive)
         self.assertEqual(sta.run_archive(str(self.data), self.archive)['new'], 0)
+
+
+class ArchiveIndexTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.dl = Path(self.tmp.name)
+        (self.dl / 'RachelNotesArchive').mkdir()
+        (self.dl / 'RachelNotesArchive' / 'notes.html').write_text('<html>notes</html>')
+        (self.dl / 'RachelNotesArchive' / '_index.csv').write_text('title\nA\nB\n')
+        (self.dl / 'RachelCallsArchive').mkdir()
+        (self.dl / 'RachelCallsArchive' / 'calls.html').write_text('<html>calls</html>')
+        (self.dl / 'RachelCallsArchive' / 'calls.csv').write_text('date\nx\n')
+        # An unrelated folder must be ignored.
+        (self.dl / 'SomethingElse').mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_landing_page(self):
+        out = str(self.dl / 'Rachel-Archives.html')
+        n = ai.build('Rachel', str(self.dl), out)
+        self.assertEqual(n, 2)                       # only the two real archive folders
+        doc = Path(out).read_text()
+        self.assertIn('Notes', doc)
+        self.assertIn('Call history', doc)
+        self.assertIn('RachelNotesArchive/notes.html', doc)
+        self.assertIn('2 items', doc)                # _index.csv minus header
+        self.assertNotIn('SomethingElse', doc)
 
 
 if __name__ == '__main__':
