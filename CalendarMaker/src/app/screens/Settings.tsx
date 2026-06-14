@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { AppSettings, ExportMode, FillerEntry, Theme } from '../../model/types';
 import { SAYINGS } from '../../data/sayings';
-import { addCustomSaying, deleteCustomSaying } from '../../storage/db';
+import { addCustomSaying, deleteCustomSaying, updateCustomSaying } from '../../storage/db';
 import { newId } from '../../model/factory';
 import { Modal } from '../components/Modal';
 
@@ -18,16 +18,31 @@ export function SettingsModal({ settings, themes, customSayings, onClose, onSave
   const [s, setS] = useState<AppSettings>(settings);
   const set = (patch: Partial<AppSettings>) => setS({ ...s, ...patch });
 
-  const [newSaying, setNewSaying] = useState('');
-  const [newAttrib, setNewAttrib] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editRef, setEditRef] = useState('');
+  const [showBuiltin, setShowBuiltin] = useState(false);
 
-  const addSaying = async () => {
-    const text = newSaying.trim();
-    if (!text) return;
-    await addCustomSaying({ id: newId('saying'), kind: 'saying', text, reference: newAttrib.trim() || undefined });
-    setNewSaying('');
-    setNewAttrib('');
+  const startEdit = (saying: FillerEntry) => {
+    setEditingId(saying.id);
+    setEditText(saying.text);
+    setEditRef(saying.reference || '');
+  };
+
+  const saveEdit = async () => {
+    const text = editText.trim();
+    if (!text || !editingId) return;
+    const saying = customSayings.find((s) => s.id === editingId);
+    if (!saying) return;
+    await updateCustomSaying({ ...saying, text, reference: editRef.trim() || undefined });
+    setEditingId(null);
     onSayingsChanged();
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+    setEditRef('');
   };
 
   const removeSaying = async (id: string) => {
@@ -80,27 +95,79 @@ export function SettingsModal({ settings, themes, customSayings, onClose, onSave
 
         <div>
           <label style={{ margin: 0 }}>Sayings ({SAYINGS.length} built-in + {customSayings.length} yours)</label>
-          <p className="hint" style={{ margin: '4px 0 8px' }}>Add your own sayings to the random pool. (Saved immediately.)</p>
-          <div className="col" style={{ gap: 8 }}>
-            <textarea rows={2} value={newSaying} placeholder="Your saying…" onChange={(e) => setNewSaying(e.target.value)} />
-            <div className="row" style={{ gap: 8 }}>
-              <input type="text" value={newAttrib} placeholder="Attribution (optional)" onChange={(e) => setNewAttrib(e.target.value)} />
-              <button className="primary" onClick={addSaying} disabled={!newSaying.trim()} style={{ whiteSpace: 'nowrap' }}>+ Add</button>
-            </div>
-          </div>
-          {customSayings.length > 0 && (
-            <div className="col" style={{ gap: 6, marginTop: 10 }}>
-              {customSayings.map((cs) => (
-                <div className="item-row" key={cs.id} style={{ marginBottom: 0 }}>
-                  <div className="grow">
-                    <div>{cs.text}</div>
-                    {cs.reference && <div className="hint">— {cs.reference}</div>}
-                  </div>
-                  <button className="ghost danger" onClick={() => removeSaying(cs.id)} title="Delete">✕</button>
+          <p className="hint" style={{ margin: '4px 0 8px' }}>Add, edit, or delete your own sayings. (Saved immediately.)</p>
+
+          <button className="secondary" onClick={() => setShowBuiltin(!showBuiltin)} style={{ marginBottom: 8, width: '100%' }}>
+            {showBuiltin ? '▼' : '▶'} Built-in Sayings ({SAYINGS.length})
+          </button>
+          {showBuiltin && (
+            <div className="col" style={{ gap: 6, marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+              {SAYINGS.map((bs) => (
+                <div key={bs.id}>
+                  <div>{bs.text}</div>
+                  {bs.reference && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>— {bs.reference}</div>}
                 </div>
               ))}
             </div>
           )}
+
+          <label style={{ margin: 0 }}>Your Sayings ({customSayings.length})</label>
+          <div className="col" style={{ gap: 8, marginTop: 8 }}>
+            {customSayings.map((cs) => (
+              <div key={cs.id}>
+                {editingId === cs.id ? (
+                  <div className="col" style={{ gap: 6, padding: 8, background: 'var(--bg-secondary)', borderRadius: 4 }}>
+                    <textarea rows={2} value={editText} placeholder="Saying text…" onChange={(e) => setEditText(e.target.value)} />
+                    <input type="text" value={editRef} placeholder="Attribution (optional)" onChange={(e) => setEditRef(e.target.value)} />
+                    <div className="row" style={{ gap: 6 }}>
+                      <button className="primary" onClick={saveEdit} disabled={!editText.trim()}>Save</button>
+                      <button className="secondary" onClick={cancelEdit}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="item-row" style={{ marginBottom: 0 }}>
+                    <div className="grow col" style={{ gap: 2 }}>
+                      <div>{cs.text}</div>
+                      {cs.reference && <div className="hint">— {cs.reference}</div>}
+                    </div>
+                    <div className="row" style={{ gap: 4 }}>
+                      <button className="secondary" onClick={() => startEdit(cs)} title="Edit">✎</button>
+                      <button className="ghost danger" onClick={() => removeSaying(cs.id)} title="Delete">✕</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <button className="secondary" onClick={() => {
+              setEditingId('new');
+              setEditText('');
+              setEditRef('');
+            }} style={{ width: '100%' }}>+ Add new saying</button>
+
+            {editingId === 'new' && (
+              <div className="col" style={{ gap: 6, padding: 8, background: 'var(--bg-secondary)', borderRadius: 4 }}>
+                <textarea rows={2} value={editText} placeholder="Your saying…" onChange={(e) => setEditText(e.target.value)} />
+                <input type="text" value={editRef} placeholder="Attribution (optional)" onChange={(e) => setEditRef(e.target.value)} />
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="primary" onClick={async () => {
+                    const text = editText.trim();
+                    if (!text) return;
+                    await addCustomSaying({ id: newId('saying'), kind: 'saying', text, reference: editRef.trim() || undefined });
+                    setEditingId(null);
+                    setEditText('');
+                    setEditRef('');
+                    onSayingsChanged();
+                  }} disabled={!editText.trim()}>Add</button>
+                  <button className="secondary" onClick={() => {
+                    setEditingId(null);
+                    setEditText('');
+                    setEditRef('');
+                  }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
