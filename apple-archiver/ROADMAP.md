@@ -29,16 +29,29 @@ Both dual-schema / version-robust (column introspection + COALESCE), same as
 Reminders. Verified: Calendar 1,943 events on a Monterey source; Books schema +
 synthetic tests (no highlights on the test Macs yet).
 
-## Phase 3 — later / heavier
+## Phase 3 — small wins shipped (2026-06-14)
+
+| Kind | Source store | Archiver |
+|---|---|---|
+| Podcasts | `MTLibrary.sqlite` (`ZMTPODCAST`/`ZMTEPISODE`) | `podcasts_archiver.py` |
+| Stickies | `.rtfd` bundles (`textutil` → text) | `stickies_archiver.py` |
+
+**Not built** — no readable/local data on the test or source Macs: **Freeform**
+(no container present), **Maps** favorites/guides (iCloud-encrypted, no local
+store). Reserved — add when a source actually has them.
+
+## Phase 3 — the big one (remaining)
 
 - **Mail** — `~/Library/Mail/` `.emlx` messages (+ attachments). Highest volume
   and complexity; likely an additive rsync of the maildir-ish tree + a parsed
-  index (sender/subject/date/folder) rather than full re-render. The
-  `messages-exporter` already covers the highest-value conversational data, so
-  this is lower priority.
-- **Candidates** (smaller, opportunistic): Freeform boards
-  (`~/Library/Containers/com.apple.freeform`), Stickies, Podcasts subscriptions,
-  News saved stories, Maps favorites/guides, Shortcuts.
+  index (sender/subject/date/folder) rather than full re-render. `messages-exporter`
+  already covers the highest-value conversational data, so this is last.
+
+## Polish backlog
+- Top-level `index.html` landing page linking every source's sub-archives.
+- Notes attachments (currently text-only).
+- Hard attempt at decrypting call-history numbers on the source Mac (private
+  framework, unsupported) — see `callhistory_archiver.decrypt_address`.
 
 ## Adding a source / kind (the pattern)
 
