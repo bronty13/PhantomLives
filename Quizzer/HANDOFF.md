@@ -111,7 +111,7 @@ src/creator/       authoring app
 
 scripts/           embed-{player,wheel}.mjs, ensure-{player,wheel}.mjs,
                    restore-stubs.mjs, check-stubs.mjs
-tests/             80 vitest suites
+tests/             88 vitest suites (incl. version.test.ts — compare/isNewer/unseenNotes)
 ```
 
 ## Data model (essentials)
@@ -139,12 +139,41 @@ tests/             80 vitest suites
 - `normalize()` = trim + collapse whitespace + lower-case (unless case-sensitive) —
   the one helper every grader shares.
 
+## Distribution: hosting the creator (≠ the in-app "Deploy")
+
+Two unrelated meanings of "deploy" live in this repo — don't conflate them:
+
+1. **In-app "Deploy"** (everything above) — the creator emitting a finished
+   *quiz/wheel* file for a respondent. Per-activity output, origin-independent.
+2. **Hosting the creator itself** (this section, since v0.4.0) — publishing the
+   single-file *creator* to GitHub Pages so the author keeps one bookmark.
+
+Hosted at **<https://bronty13.github.io/quizzer/>** (public repo
+`bronty13/quizzer`, Pages = `main` / root). The creator's authored data lives in
+**IndexedDB, keyed to origin**, so a stable `https://` URL is what keeps quizzes/
+wheels intact across updates — the same argument CalendarMaker makes for
+`localStorage`. (Local `file://`/dev copies are a *different* origin and won't
+share that data — author from the bookmark.)
+
+- **`npm run deploy`** (`scripts/deploy-pages.sh`): asserts `APP_VERSION`
+  (`src/shared/appMeta.ts`) == `package.json` version → full `npm run build` →
+  **`npm run restore:stubs`** (so the build's regenerated blobs don't dirty the
+  tree) → writes `version.json` → pushes `index.html` + `version.json` to the
+  Pages repo. Override target with `PAGES_REPO=owner/name`.
+- **In-app update UX:** `UpdateBanner.tsx` fetches `version.json` on load and
+  shows "Update now" when newer; `WhatsNew.tsx` + `data/whatsNew.ts` show a
+  once-per-version popup (last-seen in `localStorage` `quizzer.lastSeenVersion`).
+  Version math: `src/shared/version.ts` (numeric compare) + `appMeta.ts`.
+- **Release checklist** lives in `docs/distribution.md`: bump both versions, add a
+  `WHATS_NEW` top entry, update CHANGELOG/docs, `npm run typecheck && npm test`,
+  `npm run deploy`.
+
 ## Commands
 
 `npm run dev` (creator, ensures both templates) · `npm run dev:player` /
 `npm run dev:wheel` (a player standalone + demo) · `npm run build` (the only correct
-full build) · `npm test` (80) · `npm run typecheck` · `npm run restore:stubs` /
-`npm run check:stubs` (before committing).
+full build) · `npm test` (88) · `npm run typecheck` · `npm run restore:stubs` /
+`npm run check:stubs` (before committing) · `npm run deploy` (publish creator to Pages).
 
 ## Extending — where things go
 
