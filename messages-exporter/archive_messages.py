@@ -143,7 +143,11 @@ def run_archive(db, archive, attach_subdir='attachments', full=False):
     watermark = int(state.get('last_date', 0) or 0)
     seen = load_seen_guids(manifest_path)
 
-    conn = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
+    # immutable=1: the input is a static snapshot (e.g. a `sqlite3 .backup`), so
+    # tell SQLite it won't change — this lets a WAL-mode db open read-only without
+    # its -wal sidecar (else: "unable to open database file"). Matches the
+    # mode=ro&immutable=1 pattern the Swift GUI uses on the live chat.db.
+    conn = sqlite3.connect(f'file:{db}?mode=ro&immutable=1', uri=True)
     conn.row_factory = sqlite3.Row
 
     # One row per message (GROUP BY guards against duplicate chat_message_join
