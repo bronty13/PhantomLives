@@ -2,6 +2,42 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.4.0 — 2026-06-14
+
+### Added
+- **`archive_messages.py` — a permanent, append-only Messages archiver**
+  (companion to `export_messages.py`). Where the exporter is a one-shot,
+  per-contact, full re-export that copies + sanitizes attachments,
+  `archive_messages` builds a **permanent, append-only archive of EVERY
+  conversation** from a `chat.db`, designed to run incrementally:
+  - enumerates **all chats** (not one contact);
+  - appends only messages newer than the last run (watermark on
+    `message.date`) **and** de-duplicated by message GUID, so re-runs add
+    nothing (idempotent — verified by test);
+  - writes per-conversation `conversations/<chat>/transcript.txt` + a master
+    `manifest.jsonl` (one JSON line per message GUID — the "nothing ever lost"
+    record);
+  - **references** attachment files by their path under `<archive>/attachments/`
+    (the media bytes are mirrored separately, e.g. by `rsync`); it never copies,
+    converts, or deletes attachments, and never rewrites archive content;
+  - **standard library only** (no Pillow/ffmpeg/exiftool), so it runs against a
+    pulled `chat.db` snapshot on any Mac.
+  Reuses the proven internals from `export_messages.py` — `get_body`
+  (`attributedBody` NSKeyedArchiver decode), `mts`, `knd`, `san`, `slug` — by
+  importing them (import-safe: optional deps are guarded, `main()` is
+  `__main__`-guarded).
+  - **Preservation guarantee:** append-only + GUID-dedup means messages or
+    attachments deleted on the source device remain in the archive forever.
+  - Use: `archive_messages.py --db <chat.db> --archive <dir> [--full]`.
+- This is the engine behind a PurpleAttic-style *pull* archive (a remote Mac's
+  `chat.db` snapshot + `Attachments/` rsynced to a host, processed there), the
+  Messages analogue of the photo archive.
+
+### Tests
+- `test_archive_messages.py` — 6 tests over a synthetic `chat.db`: all-chats
+  enumeration, `attributedBody` decode, attachment path mapping, GUID-dedup
+  idempotency (incremental **and** `--full`), and the incremental watermark.
+
 ## 1.3.3 — 2026-05-12
 
 ### Added

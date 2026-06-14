@@ -1,6 +1,6 @@
 # messages-exporter
 
-**Current release: 1.3.2**
+**Current release: 1.4.0**
 
 Export iMessage conversations from the Mac Messages app by contact name and
 date range. Two output modes:
@@ -27,6 +27,37 @@ cd messages-exporter
 # Grant Full Disk Access to your Terminal app, then:
 export_messages "Jane Doe" --start "2026-04-01" --end "2026-04-30 23:59:59"
 ```
+
+## Permanent archive mode (`archive_messages.py`)
+
+`export_messages.py` is a **one-shot, per-contact** export. Its companion
+`archive_messages.py` is the opposite: a **permanent, append-only archive of
+EVERY conversation**, built to run **incrementally** (a big initial backfill,
+then small repeated runs) so nothing is ever lost — even after the source device
+deletes a thread.
+
+```bash
+archive_messages.py --db <path/to/chat.db> --archive <dir> [--full]
+```
+
+- **All chats, not one contact** — enumerates every conversation in the `chat.db`.
+- **Incremental + idempotent** — a `state.json` watermark on `message.date` plus
+  GUID-dedup means re-runs append nothing. No watermark (or `--full`) ⇒ full backfill.
+- **Append-only outputs** under `<archive>/`:
+  - `conversations/<chat>/transcript.txt` — appended chronological lines.
+  - `manifest.jsonl` — one JSON line per message GUID (the master record:
+    timestamp, chat, sender, text, and attachment references).
+- **References, never copies, media** — attachment entries point at
+  `<archive>/attachments/…`; the bytes are mirrored separately (e.g. `rsync` of
+  `~/Library/Messages/Attachments/`). This tool never copies/converts/deletes media.
+- **Standard library only** — no Pillow/ffmpeg/exiftool; runs against a *pulled*
+  `chat.db` snapshot on any Mac. (Reuses `export_messages`' `get_body`
+  attributedBody decode + `mts`/`knd`/`san`/`slug` by import.)
+
+This is the engine for a **PurpleAttic-style pull archive**: snapshot a remote
+Mac's `chat.db` (`sqlite3 .backup`) + `rsync` its `Attachments/` to a host, then
+run `archive_messages.py` there — the Messages analogue of the photo archive.
+Tested in `test_archive_messages.py`.
 
 ## Features
 
