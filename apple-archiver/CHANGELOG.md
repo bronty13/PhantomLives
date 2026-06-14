@@ -2,6 +2,25 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.7.0 — 2026-06-14 (Mail — the big one)
+
+### Added
+- **`mail_archiver.py`** — permanent, append-only archive of Apple Mail from a pulled
+  `~/Library/Mail/V<n>/` (V9 = macOS 12). Parses each `.emlx` (leading byte-count line +
+  raw RFC-2822 + trailing flags plist) with the stdlib `email` module; rejoins
+  `.partial.emlx` messages with their external attachments under the sibling
+  `Data/Attachments/<num>/` tree. Per message it writes a **re-importable `.eml`**, a
+  **readable HTML render** (headers + body + inline images), and **extracts attachments**
+  (collision-safe names) to a browsable `attachments/<id>/` tree; plus a sortable
+  `mail.html` index + `_index.csv`, grouped by account/mailbox. Manifest keyed by a stable
+  per-stored-message id (account + mailbox + message number) → incremental + idempotent;
+  deletions on the source are preserved. Stdlib-only.
+- `archive_index.py` + PurpleMirror (`JobRegistry.externalKinds`) recognize the `mail`
+  kind. Tests grew to 31 (parse, all-mailbox enumeration, inline + external attachments,
+  same-named-attachment de-dup, `.eml` re-import, idempotency).
+- **Verified on real data:** Rachel's Monterey Mac — 3,633 messages across 2 accounts,
+  342 attachments, 0 unparseable; idempotent on re-run.
+
 ## 1.6.1 — 2026-06-14 (call-history decryption — working)
 
 ### Confirmed working

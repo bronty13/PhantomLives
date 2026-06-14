@@ -22,6 +22,8 @@ import books_archiver as ba
 import podcasts_archiver as pa
 import stickies_archiver as sta
 import archive_index as ai
+import mail_archiver as ma
+from email.message import EmailMessage
 
 
 def note_proto(text):
@@ -526,6 +528,86 @@ class ArchiveIndexTests(unittest.TestCase):
         self.assertIn('RachelNotesArchive/notes.html', doc)
         self.assertIn('2 items', doc)                # _index.csv minus header
         self.assertNotIn('SomethingElse', doc)
+
+
+class MailTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.store = self.root / 'V9'
+        self.archive = str(self.root / 'MailArchive')
+        acct = self.store / 'AE14B604-ACCT' / 'INBOX.mbox' / 'MBX-UUID' / 'Data'
+        msgs = acct / 'Messages'; msgs.mkdir(parents=True)
+
+        # (1) Full .emlx with an inline attachment.
+        m = EmailMessage()
+        m['From'] = 'Alice <alice@example.com>'; m['To'] = 'rachel@me.com'
+        m['Subject'] = 'Hello there'; m['Date'] = 'Sat, 13 Jun 2026 12:30:00 -0700'
+        m['Message-ID'] = '<abc@example.com>'
+        m.set_content('This is the body text.')
+        m.add_attachment(b'\x89PNGDATA', maintype='image', subtype='png', filename='pic.png')
+        (msgs / '1.emlx').write_bytes(self._emlx(m.as_bytes()))
+
+        # (2) .partial.emlx whose attachment lives in the sibling Attachments tree.
+        p = EmailMessage()
+        p['From'] = 'Bob <bob@example.com>'; p['To'] = 'rachel@me.com'
+        p['Subject'] = 'Wedding info'; p['Date'] = 'Sun, 14 Jun 2026 09:00:00 -0700'
+        p['Message-ID'] = '<def@example.com>'
+        p.set_content('See attached PDF.')
+        (msgs / '2.partial.emlx').write_bytes(self._emlx(p.as_bytes()))
+        att = acct / 'Attachments' / '2' / '2'; att.mkdir(parents=True)
+        (att / 'report.pdf').write_bytes(b'%PDF-1.4 fake')
+
+        # (3) Two attachments with the SAME filename — must not clobber each other.
+        d = EmailMessage()
+        d['From'] = 'Carol <carol@example.com>'; d['To'] = 'rachel@me.com'
+        d['Subject'] = 'Two photos'; d['Date'] = 'Mon, 15 Jun 2026 10:00:00 -0700'
+        d['Message-ID'] = '<ghi@example.com>'
+        d.set_content('Two same-named pics.')
+        d.add_attachment(b'AAA', maintype='image', subtype='jpeg', filename='photo.jpg')
+        d.add_attachment(b'BBB', maintype='image', subtype='jpeg', filename='photo.jpg')
+        (msgs / '3.emlx').write_bytes(self._emlx(d.as_bytes()))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @staticmethod
+    def _emlx(msg_bytes):
+        return (str(len(msg_bytes)).encode() + b'\n' + msg_bytes +
+                b'<?xml version="1.0"?><plist></plist>')
+
+    def test_archive(self):
+        r = ma.run_archive(str(self.store), self.archive)
+        self.assertEqual(r['messages'], 3)
+        self.assertEqual(r['failed'], 0)
+        self.assertEqual(r['attachments'], 4)        # pic.png + report.pdf + 2× photo.jpg
+        doc = (Path(self.archive) / 'mail.html').read_text()
+        self.assertIn('Hello there', doc)
+        self.assertIn('Wedding info', doc)
+
+    def test_same_named_attachments_not_clobbered(self):
+        ma.run_archive(str(self.store), self.archive)
+        jpgs = sorted(p.name for p in (Path(self.archive) / 'attachments').rglob('*.jpg'))
+        self.assertEqual(jpgs, ['photo-2.jpg', 'photo.jpg'])   # both survived, de-duped
+        # Re-importable .eml exported + attachments extracted.
+        self.assertTrue(list((Path(self.archive) / 'messages').rglob('*.eml')))
+        self.assertTrue(list((Path(self.archive) / 'attachments').rglob('pic.png')))
+        self.assertTrue(list((Path(self.archive) / 'attachments').rglob('report.pdf')))
+
+    def test_idempotent(self):
+        ma.run_archive(str(self.store), self.archive)
+        self.assertEqual(ma.run_archive(str(self.store), self.archive)['new'], 0)
+
+    def test_eml_reimportable(self):
+        ma.run_archive(str(self.store), self.archive)
+        eml = next(iter((Path(self.archive) / 'messages').rglob('*.eml')))
+        reparsed = ma.email.message_from_bytes(eml.read_bytes())
+        self.assertIn('example.com', reparsed['From'])
+
+    def test_partial_attachment_rejoined(self):
+        # The .partial.emlx body carries no payload; the file must come from disk.
+        ma.run_archive(str(self.store), self.archive)
+        pdf = next(iter((Path(self.archive) / 'attachments').rglob('report.pdf')))
+        self.assertEqual(pdf.read_bytes(), b'%PDF-1.4 fake')
 
 
 if __name__ == '__main__':

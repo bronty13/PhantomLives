@@ -33,6 +33,7 @@ KINDS = [
     ('BooksArchive',      'Books',       ['books.html'],                                  ('csv', '_index.csv')),
     ('PodcastsArchive',   'Podcasts',    ['podcasts.html'],                               ('csv', '_index.csv')),
     ('StickiesArchive',   'Stickies',    ['stickies.html'],                               ('csv', '_index.csv')),
+    ('MailArchive',       'Mail',        ['mail.html'],                                   ('manifest', 'manifest.jsonl')),
 ]
 
 

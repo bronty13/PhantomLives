@@ -40,12 +40,16 @@ synthetic tests (no highlights on the test Macs yet).
 (no container present), **Maps** favorites/guides (iCloud-encrypted, no local
 store). Reserved — add when a source actually has them.
 
-## Phase 3 — the big one (remaining)
+## Phase 3 — the big one — SHIPPED (2026-06-14)
 
-- **Mail** — `~/Library/Mail/` `.emlx` messages (+ attachments). Highest volume
-  and complexity; likely an additive rsync of the maildir-ish tree + a parsed
-  index (sender/subject/date/folder) rather than full re-render. `messages-exporter`
-  already covers the highest-value conversational data, so this is last.
+- **Mail** (`mail_archiver.py`) — additive rsync of `~/Library/Mail/V<n>/` (no `--delete`)
+  + `.emlx` parse (stdlib `email`): byte-count line → RFC-2822 → flags plist; `.partial.emlx`
+  attachments rejoined from the sibling `Data/Attachments/<num>/` tree. Per message: a
+  re-importable `.eml`, a readable HTML render, extracted attachments (collision-safe), a
+  sortable `mail.html` + `_index.csv` grouped by account/mailbox. Manifest keyed by
+  account+mailbox+msgnum (incremental, idempotent; deletions preserved). **Verified on
+  Rachel's Monterey Mac: 3,633 messages / 2 accounts / 342 attachments / 0 unparseable.**
+  Gated by `mail.enabled` → `SRC_MAIL_ENABLED`; launchd `external-mail-sync.<id>`.
 
 ## Call-history decryption — investigated, concluded (2026-06-14)
 
