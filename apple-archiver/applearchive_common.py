@@ -129,23 +129,36 @@ def write_csv(path, fieldnames, dict_rows):
 
 # ─── HTML ────────────────────────────────────────────────────────────────────
 
-def html_page(title, body_html, search=True):
+def html_page(title, body_html, search=True, filters=None):
+    """Render a standard archive page. `filters` is an optional list of
+    (label, css_class) checkboxes; when checked, only `.item`s carrying that class
+    are shown (AND-combined with the text filter). Backward-compatible (default none)."""
     head = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{html.escape(title)}</title>
 <style>
 body{{font:15px -apple-system,Helvetica,Arial,sans-serif;background:#f2f2f7;margin:0;padding:24px;color:#000}}
-h1{{font-size:20px}} input{{font-size:15px;padding:8px 12px;width:300px;border:1px solid #ccc;border-radius:8px;margin-bottom:16px}}
+h1{{font-size:20px}} input[type=text],input#q{{font-size:15px;padding:8px 12px;width:300px;border:1px solid #ccc;border-radius:8px;margin-bottom:16px}}
+.controls{{margin-bottom:16px}} .fltl{{font-size:13px;color:#444;margin-left:12px;cursor:pointer}}
 .item{{background:#fff;border-radius:12px;padding:12px 16px;margin:8px 0;max-width:760px}}
 .t{{font-weight:600;font-size:16px}} .meta{{color:#888;font-size:12px;margin:2px 0 6px}}
 .body{{white-space:pre-wrap;word-wrap:break-word}} .done{{color:#999;text-decoration:line-through}}
 a{{color:#1982fc;text-decoration:none}} .tag{{color:#999;font-size:11px;text-transform:uppercase;margin-right:6px}}
 </style></head><body><h1>{html.escape(title)}</h1>
 """
-    box = ('<input id="q" placeholder="Filter…" oninput="f()">'
-           '<div id="list">') if search else '<div id="list">'
+    controls = ''
+    if search:
+        controls += '<input type="text" id="q" placeholder="Filter…" oninput="f()">'
+    for label, cls in (filters or []):
+        controls += (f'<label class="fltl"><input type="checkbox" class="flt" '
+                     f'data-cls="{html.escape(cls)}" onchange="f()"> {html.escape(label)}</label>')
+    box = (f'<div class="controls">{controls}</div>' if controls else '') + '<div id="list">'
     tail = """</div><script>
-function f(){var q=document.getElementById('q').value.toLowerCase();
+function f(){
+var qe=document.getElementById('q');var q=qe?qe.value.toLowerCase():'';
+var reqs=[];document.querySelectorAll('.flt:checked').forEach(function(c){reqs.push(c.getAttribute('data-cls'));});
 document.querySelectorAll('.item').forEach(function(e){
-e.style.display=e.textContent.toLowerCase().indexOf(q)<0?'none':''});}
+var show=e.textContent.toLowerCase().indexOf(q)>=0;
+for(var i=0;i<reqs.length;i++){if(!e.classList.contains(reqs[i])){show=false;break;}}
+e.style.display=show?'':'none';});}
 </script></body></html>"""
     return head + box + body_html + tail
 

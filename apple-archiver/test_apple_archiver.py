@@ -567,6 +567,18 @@ class MailTests(unittest.TestCase):
         d.add_attachment(b'BBB', maintype='image', subtype='jpeg', filename='photo.jpg')
         (msgs / '3.emlx').write_bytes(self._emlx(d.as_bytes()))
 
+        # (4) An HTML email shipping a full document (head/style/body) — must be
+        # cleaned so its global CSS can't leak into our page (the blank-space bug).
+        e = EmailMessage()
+        e['From'] = 'News <news@example.com>'; e['To'] = 'rachel@me.com'
+        e['Subject'] = 'Newsletter'; e['Date'] = 'Tue, 16 Jun 2026 08:00:00 -0700'
+        e['Message-ID'] = '<jkl@example.com>'
+        e.set_content('plain fallback')
+        e.add_alternative(
+            '<html><head><style>body{min-height:3000px;margin:200px}</style></head>'
+            '<body><p>Real newsletter content here.</p></body></html>', subtype='html')
+        (msgs / '4.emlx').write_bytes(self._emlx(e.as_bytes()))
+
     def tearDown(self):
         self.tmp.cleanup()
 
@@ -577,12 +589,31 @@ class MailTests(unittest.TestCase):
 
     def test_archive(self):
         r = ma.run_archive(str(self.store), self.archive)
-        self.assertEqual(r['messages'], 3)
+        self.assertEqual(r['messages'], 4)
         self.assertEqual(r['failed'], 0)
         self.assertEqual(r['attachments'], 4)        # pic.png + report.pdf + 2× photo.jpg
         doc = (Path(self.archive) / 'mail.html').read_text()
         self.assertIn('Hello there', doc)
         self.assertIn('Wedding info', doc)
+
+    def test_html_body_is_cleaned(self):
+        # The HTML email's global <style>/<body> wrappers must be stripped so they
+        # can't leak CSS (min-height/margin) and create blank space; content stays.
+        ma.run_archive(str(self.store), self.archive)
+        page = next(p for p in (Path(self.archive) / 'messages').rglob('*.html')
+                    if 'Newsletter' in p.read_text())
+        body = page.read_text()
+        marker = body.split('class="htmlbody"', 1)[1]
+        self.assertNotIn('min-height:3000px', marker)   # leaked global rule gone
+        self.assertNotIn('<body', marker.split('</div>')[0])
+        self.assertIn('Real newsletter content here.', marker)
+
+    def test_index_has_attachment_filter(self):
+        ma.run_archive(str(self.store), self.archive)
+        doc = (Path(self.archive) / 'mail.html').read_text()
+        self.assertIn('data-cls="has-att"', doc)        # the filter checkbox
+        self.assertIn('class="item has-att"', doc)      # at least one tagged card
+        self.assertIn('With attachments only', doc)
 
     def test_same_named_attachments_not_clobbered(self):
         ma.run_archive(str(self.store), self.archive)

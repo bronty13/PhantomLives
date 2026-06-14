@@ -2,6 +2,22 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.7.1 — 2026-06-14 (Mail render fixes + filter)
+
+### Fixed
+- **Mail HTML no longer renders with large blank white gaps.** Email bodies ship a
+  whole HTML document (`<html>/<head>/<body>` + global `<style>`); embedded inline,
+  their `body{…}`/min-height/spacer CSS leaked into the page. `clean_email_html()`
+  now keeps only the body's inner markup (inline styles preserved) and strips
+  `script`/`style`/`head` + the wrapper tags.
+
+### Added
+- **`mail.html` "📎 With attachments only" filter** — a checkbox (with a live count)
+  that shows just messages with attachments, AND-combined with the text filter. Built
+  on a new reusable `html_page(filters=[(label, css_class)])` parameter (class-based
+  `.item` filtering); backward-compatible, no change to other archivers' pages.
+- Tests grew to 33 (HTML-body cleaning, attachment-filter markup).
+
 ## 1.7.0 — 2026-06-14 (Mail — the big one)
 
 ### Added

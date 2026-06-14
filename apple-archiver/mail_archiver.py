@@ -23,6 +23,7 @@ import email
 import email.policy
 import email.utils
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -265,6 +266,23 @@ def _write_attachments(archive, e):
 _IMG_EXT = ('.jpg', '.jpeg', '.png', '.gif', '.heic', '.webp', '.tiff', '.bmp')
 
 
+def clean_email_html(htm):
+    """Make an email's HTML safe to embed inline. Email bodies ship a whole
+    document — <html>/<head>/<body> + global <style> rules — which, dropped into our
+    page, leak `body{…}`/min-height/spacer CSS and produce large blank gaps. Keep
+    only the body's inner markup (inline styles preserved); strip script/style/head
+    and the document wrapper tags."""
+    if not htm:
+        return ''
+    m = re.search(r'<body[^>]*>(.*)</body>', htm, re.I | re.S)
+    inner = m.group(1) if m else htm
+    inner = re.sub(r'<script[^>]*>.*?</script>', '', inner, flags=re.I | re.S)
+    inner = re.sub(r'<style[^>]*>.*?</style>', '', inner, flags=re.I | re.S)
+    inner = re.sub(r'<head[^>]*>.*?</head>', '', inner, flags=re.I | re.S)
+    inner = re.sub(r'</?(html|head|body)[^>]*>', '', inner, flags=re.I)
+    return inner.strip()
+
+
 def _message_html(e, atts):
     rows = ''.join(
         f'<tr><td class="k">{esc(k)}</td><td>{esc(v)}</td></tr>'
@@ -272,7 +290,7 @@ def _message_html(e, atts):
                      ('Date', e['date']), ('Subject', e['subject']),
                      ('Mailbox', f"{e['account']} · {e['mailbox']}")] if v)
     if e['html']:
-        body = f'<div class="htmlbody">{e["html"]}</div>'
+        body = f'<div class="htmlbody">{clean_email_html(e["html"])}</div>'
     else:
         body = f'<pre class="textbody">{esc(e["text"]) or "<em>(no text body)</em>"}</pre>'
     att_html = ''
@@ -307,10 +325,12 @@ def build_views(archive, entries):
     current = latest_per_id(entries)
     current.sort(key=lambda e: e.get('sort') or '', reverse=True)
 
-    cards, index_rows, n_att = [], [], 0
+    cards, index_rows, n_att, n_with_att = [], [], 0, 0
     for e in current:
         atts = _write_attachments(archive, e)
         n_att += len(atts)
+        if atts:
+            n_with_att += 1
         acct_dir = msgs_root / san(e['account']) / san(e['mailbox'])
         acct_dir.mkdir(parents=True, exist_ok=True)
         stem = f"{slug(e['subject'])[:60]}__{short_hash(e['id'])}"
@@ -329,15 +349,18 @@ def build_views(archive, entries):
                            'account': e['account'], 'mailbox': e['mailbox'],
                            'attachments': len(atts), 'file': html_rel})
         snippet = (e['text'] or '')[:200]
+        cls = 'item has-att' if atts else 'item'
         cards.append(
-            f'<div class="item"><div class="t"><a href="{esc(html_rel)}">{esc(e["subject"])}</a></div>'
+            f'<div class="{cls}"><div class="t"><a href="{esc(html_rel)}">{esc(e["subject"])}</a></div>'
             f'<div class="meta">{esc(e["from"])} · {esc(e["date"])} · '
             f'{esc(e["account"])}/{esc(e["mailbox"])}'
-            f'{" · " + str(len(atts)) + " attachment(s)" if atts else ""}</div>'
+            f'{" · 📎 " + str(len(atts)) + " attachment(s)" if atts else ""}</div>'
             f'<div class="body">{esc(snippet)}</div></div>')
 
     (archive / 'mail.html').write_text(
-        html_page(f'Mail ({len(current)})', '\n'.join(cards)), encoding='utf-8')
+        html_page(f'Mail ({len(current)})', '\n'.join(cards),
+                  filters=[(f'📎 With attachments only ({n_with_att})', 'has-att')]),
+        encoding='utf-8')
     write_csv(archive / '_index.csv',
               ['date', 'from', 'subject', 'account', 'mailbox', 'attachments', 'file'],
               index_rows)
