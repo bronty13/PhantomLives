@@ -2,6 +2,11 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.8.0 — 2026-06-14
+
+- **Recognize the Phase-2 kinds: Calendar + Books** (`external-calendar-sync.<id>`,
+  `external-books-sync.<id>`). They group under their source like the rest.
+
 ## 1.7.0 — 2026-06-14
 
 - **Jobs are now grouped by source.** With many per-source archives (photo,

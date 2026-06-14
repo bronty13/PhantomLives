@@ -69,6 +69,8 @@ enum JobRegistry {
         ("safari",     "Safari"),
         ("voicememos", "Voice Memos"),
         ("calls",      "Calls"),
+        ("calendar",   "Calendar"),
+        ("books",      "Books"),
     ]
 
     /// The profile for a discovered agent — a tailored one if we know the label,
