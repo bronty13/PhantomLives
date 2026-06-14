@@ -102,7 +102,9 @@ export function CalendarPreview({ bundle, theme, cap, onSelectDay, selectedDate 
           const y = geo.gridY + r * geo.rowH;
           const day = cell.date ? bundle.days[cell.date] : undefined;
           const holidayNames = holidayNamesFor(day);
-          const cls = classifyDay(day ?? { date: cell.date ?? '', items: [], holidayIds: [] }, ctx, holidayNames.length);
+          const verseMode = bundle.verseMode ?? 'separate';
+          const cls = classifyDay(day ?? { date: cell.date ?? '', items: [], holidayIds: [] }, ctx, holidayNames.length, verseMode);
+          const nonForceItems = cls.monthItems.filter((i) => !cls.forceItems.includes(i));
           return (
             <div
               key={i}
@@ -126,11 +128,21 @@ export function CalendarPreview({ bundle, theme, cap, onSelectDay, selectedDate 
                         {name}
                       </div>
                     ))}
-                    {cls.monthItems.map((item) => {
+                    {verseMode === 'force' && cls.forceItems.map((item) => {
                       const st = theme.itemStyles[item.type];
                       return (
+                        <div key={item.id} style={{ marginBottom: CELL.CHIP_GAP, fontFamily: cssFontFamily(st.font), fontSize: CELL.CHIP_FONT - 0.5, lineHeight: `${CELL.CHIP_LINE_H}px`, color: st.color, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', fontStyle: 'italic' }}>
+                          {item.text}
+                          {item.reference && <> — {item.reference}</>}
+                        </div>
+                      );
+                    })}
+                    {nonForceItems.map((item) => {
+                      const st = theme.itemStyles[item.type];
+                      const suppressDot = verseMode === 'force' && cls.forceItems.length > 0;
+                      return (
                         <div key={item.id} className="cal-chip" style={{ marginBottom: CELL.CHIP_GAP }}>
-                          <span className="dot" style={{ background: st.color }} />
+                          {!suppressDot && <span className="dot" style={{ background: st.color }} />}
                           <span style={{ fontFamily: cssFontFamily(st.font), fontSize: CELL.CHIP_FONT, lineHeight: `${CELL.CHIP_LINE_H}px`, color: st.color, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: CELL.CHIP_MAX_LINES, WebkitBoxOrient: 'vertical' }}>
                             {item.text}
                           </span>
