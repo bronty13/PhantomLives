@@ -151,6 +151,50 @@ import Foundation
     @Test func genericSummaryNilWhenEmpty() {
         #expect(SyncStatusParser.summary("   \n\n", kind: .generic) == nil)
     }
+
+    // A Tier-1 archiver (calls/mail/notes/…) prints a timestamp-less summary line
+    // between timestamped "… exit: 0" / "=== sync done ===" markers. That line must
+    // become the headline, with a real (non-nil) timestamp from the markers.
+    @Test func purpleAtticTier1PrintedSummary() {
+        let log = """
+        2026-06-14 16:13:22 decrypted sidecar pulled: 404 call(s) with a number
+        Call history: +0 new call(s); 404 total.
+        2026-06-14 16:13:24 callhistory_archiver exit: 0
+        2026-06-14 16:13:24 === sync done ===
+        """
+        let s = SyncStatusParser.summary(log, kind: .purpleAtticSync)
+        #expect(s?.headline == "Call history: +0 new call(s); 404 total.")
+        #expect(s?.ok == true)
+        #expect(s?.date != nil)                                    // not "never"
+    }
+
+    @Test func purpleAtticTier1IgnoresRsyncNoise() {
+        // Mail's run emits rsync output (timestamp-less) before the real summary;
+        // the "… pulled" timestamped line must clear it so only the summary wins.
+        let log = """
+        2026-06-14 16:22:01 === sync start (Rachel) ===
+        building file list ... done
+        ./INBOX.mbox/
+        2026-06-14 16:22:13 mail tree pulled (rsync rc=0): 3633 .emlx, 600M
+        Mail archive: +2 new message(s); 3633 total; 342 attachment(s); 0 unparseable.
+        2026-06-14 16:22:20 mail_archiver exit: 0
+        2026-06-14 16:22:20 === sync done ===
+        """
+        let s = SyncStatusParser.summary(log, kind: .purpleAtticSync)
+        #expect(s?.headline == "Mail archive: +2 new message(s); 3633 total; 342 attachment(s); 0 unparseable.")
+        #expect(s?.ok == true)
+    }
+
+    @Test func purpleAtticTier1NonZeroExitFails() {
+        let log = """
+        2026-06-14 16:13:22 pulled 4 reminder store(s)
+        Reminders archive: +0 new version(s); 2720 reminders across 6 list(s).
+        2026-06-14 16:13:24 reminders_archiver exit: 9
+        """
+        let s = SyncStatusParser.summary(log, kind: .purpleAtticSync)
+        #expect(s?.headline == "Sync failed (exit 9)")
+        #expect(s?.ok == false)
+    }
 }
 
 /// Parsing a launchd plist into an ``AgentDescriptor`` + the safe interval edit.

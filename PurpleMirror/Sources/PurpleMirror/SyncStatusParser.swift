@@ -82,17 +82,26 @@ enum SyncStatusParser {
 
     // MARK: PurpleAttic sync log (external-source photo/messages archives)
 
-    /// Parse a PurpleAttic-style sync log. The orchestration script logs lines like:
-    ///   `2026-06-13 17:25:16 pull exit: 0  — local files: 42966, size: 241G`
-    ///   `2026-06-13 17:25:18 staged 2 NEW file(s) for review → …/20260613-172517`
-    ///   `2026-06-13 16:32:09 no new items this run — nothing to stage for review`
-    /// The most recent recognizable outcome line wins (later lines override earlier).
+    /// Parse a PurpleAttic-style sync log. Two flavors are handled:
+    ///  • photo/messages: explicit outcome lines —
+    ///      `staged 2 NEW file(s) …` / `no new items this run …` / `pull exit: N`.
+    ///  • Tier-1 archivers (notes/reminders/safari/calls/calendar/mail/…): each run
+    ///    prints a one-line summary with NO leading timestamp, e.g.
+    ///      `Call history: +0 new call(s); 404 total.`
+    ///      `Mail archive: +0 new message(s); 3633 total; 342 attachment(s); 0 unparseable.`
+    ///    sandwiched between timestamped `… exit: 0` / `=== sync done ===` markers.
+    /// The freshest candidate wins; the explicit photo/messages outcome is preferred
+    /// over the generic printed summary on a tie.
     static func purpleAtticSyncSummary(_ log: String) -> LogSummary? {
-        var summary: LogSummary?
+        var specific: LogSummary?       // explicit photo/messages outcome (or a failure)
+        var generic: LogSummary?        // a Tier-1 archiver's printed summary line
         var lastDetail: String?
+        var lastDate: Date?
+        var pendingHeadline: String?    // a timestamp-less summary line awaiting its run's commit
 
         for line in log.split(whereSeparator: \.isNewline).map(String.init) {
             let date = leadingTimestamp(line)
+            if let date { lastDate = date }
 
             // Carry the freshest "local files: N, size: S" as the detail line.
             if let r = line.range(of: "local files: ") {
@@ -108,29 +117,66 @@ enum SyncStatusParser {
 
             if line.contains("staged ") && line.contains(" NEW file") {
                 let n = Int(line[line.range(of: "staged ")!.upperBound...].prefix { $0.isNumber }) ?? 0
-                summary = LogSummary(date: date, headline: "Staged \(n) new item\(n == 1 ? "" : "s")", ok: true, detail: nil)
+                specific = LogSummary(date: date, headline: "Staged \(n) new item\(n == 1 ? "" : "s")", ok: true, detail: nil)
+                pendingHeadline = nil
             } else if line.contains("no new items this run") {
-                summary = LogSummary(date: date, headline: "No new items", ok: true, detail: nil)
+                specific = LogSummary(date: date, headline: "No new items", ok: true, detail: nil)
+                pendingHeadline = nil
             } else if line.contains("review staging is now ACTIVE") {
-                summary = LogSummary(date: date, headline: "Caught up — staging active", ok: true, detail: nil)
+                specific = LogSummary(date: date, headline: "Caught up — staging active", ok: true, detail: nil)
+                pendingHeadline = nil
             } else if line.contains("initial catch-up in progress") {
-                summary = LogSummary(date: date, headline: "Catching up…", ok: true, detail: nil)
-            } else if let r = line.range(of: "pull exit: ") {
+                specific = LogSummary(date: date, headline: "Catching up…", ok: true, detail: nil)
+                pendingHeadline = nil
+            } else if line.contains("unreachable") {
+                specific = LogSummary(date: date, headline: "Mac unreachable — skipped", ok: nil, detail: nil)
+                pendingHeadline = nil
+            } else if line.contains("another sync is running") {
+                specific = LogSummary(date: date, headline: "Skipped (already running)", ok: nil, detail: nil)
+                pendingHeadline = nil
+            } else if let r = line.range(of: " exit: ") {
+                // A run boundary: "<tool> exit: N" (also "pull exit: N").
                 let code = Int(line[r.upperBound...].prefix { $0.isNumber || $0 == "-" })
                 if let code, code != 0 {
-                    summary = LogSummary(date: date, headline: "Pull failed (exit \(code))", ok: false, detail: nil)
+                    let isPull = line.contains("pull exit:")
+                    specific = LogSummary(date: date,
+                                          headline: isPull ? "Pull failed (exit \(code))" : "Sync failed (exit \(code))",
+                                          ok: false, detail: nil)
+                    pendingHeadline = nil
+                } else {
+                    // Success: commit this run's printed summary (if any) as the headline.
+                    if let h = pendingHeadline {
+                        generic = LogSummary(date: date ?? lastDate, headline: h, ok: true, detail: nil)
+                    }
+                    pendingHeadline = nil
                 }
-                // pull exit 0 is not itself the headline — the staged/no-new line that
-                // follows in the same run is more informative — but keep its timestamp.
-            } else if line.contains("unreachable") {
-                summary = LogSummary(date: date, headline: "Mac unreachable — skipped", ok: nil, detail: nil)
-            } else if line.contains("another sync is running") {
-                summary = LogSummary(date: date, headline: "Skipped (already running)", ok: nil, detail: nil)
+            } else if line.contains("=== sync done ===") {
+                if let h = pendingHeadline {
+                    generic = LogSummary(date: date ?? lastDate, headline: h, ok: true, detail: nil)
+                }
+                pendingHeadline = nil
+            } else if date != nil {
+                // Some other timestamped line ("… pulled", "=== sync start ==="):
+                // clear so we only capture the NEXT (this run's) printed summary.
+                pendingHeadline = nil
+            } else {
+                // A non-timestamped, non-empty line = candidate printed-summary headline.
+                let t = line.trimmingCharacters(in: .whitespaces)
+                if !t.isEmpty { pendingHeadline = t }
             }
         }
 
-        if summary != nil { summary!.detail = summary!.detail ?? lastDetail }
-        return summary
+        // Freshest wins; prefer the cleaner explicit outcome on a tie.
+        var chosen: LogSummary?
+        switch (specific, generic) {
+        case (nil, nil): chosen = nil
+        case (let s?, nil): chosen = s
+        case (nil, let g?): chosen = g
+        case (let s?, let g?):
+            chosen = (g.date ?? .distantPast) > (s.date ?? .distantPast) ? g : s
+        }
+        if var c = chosen { c.detail = c.detail ?? lastDetail; return c }
+        return nil
     }
 
     // MARK: Generic fallback
