@@ -1,0 +1,25 @@
+# mail-cleaner — iCloud third-pass DELETE list (PERMANENT)
+# New bulk-sender variants that arrived after the 2026-06-12 pass-2 sweep
+# (found in the 2026-06-14 new-mail sweep). Several are *new subdomains* of
+# senders already on pass-2, so the old lines didn't catch them. Unsubscribed
+# + deleted on 2026-06-14.
+#
+# ---- new subdomain/address variants ----
+disneyplus@messaging.disneyplus.com
+info@inspire.line6.com
+ebay@ebay.com
+pageupdates@facebookmail.com
+notification@facebookmail.com
+notifications-noreply@linkedin.com
+newsdigest@insideapple.apple.com
+developer@insideapple.apple.com
+# ---- recurring bulk (also on pass-2; included so this sweep catches them) ----
+info@members.netflix.com
+appletv@insideapple.apple.com
+newsletter@news.anker.com
+email@e.fender.com
+bestbuy@email.bestbuy.com
+hello@keychron.com
+noreply@h5.hilton.com
+store-news@amazon.com
+paulamooney@creator.patreon.com
