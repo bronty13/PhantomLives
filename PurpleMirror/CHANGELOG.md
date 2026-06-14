@@ -2,6 +2,16 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.7.0 — 2026-06-14
+
+- **Jobs are now grouped by source.** With many per-source archives (photo,
+  messages, notes, reminders, safari, voice memos, calls…), the menu groups jobs
+  under a collapsible header per source (e.g. **Rachel**), with that group's
+  worst-health glyph and a job count. Each job still runs/enables/schedules
+  **individually** (Run Now + View Log per row); rows now show the compact kind
+  ("Photo", "Voice Memos", …) since the group header carries the source name.
+  Obsidian / unknown agents fall under their own groups. The list scrolls when tall.
+
 ## 1.6.0 — 2026-06-14
 
 - **Recognize the Tier-1 apple-archiver job kinds: Safari, Voice Memos, Calls.**

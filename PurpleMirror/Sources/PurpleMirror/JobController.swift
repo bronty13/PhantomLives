@@ -36,6 +36,8 @@ final class JobController: ObservableObject, Identifiable {
     // MARK: Derived
 
     var displayName: String { profile.displayName }
+    var group: String { profile.group }
+    var shortName: String { profile.shortName.isEmpty ? profile.displayName : profile.shortName }
     var intervalHuman: String { SyncStatusParser.humanizeInterval(intervalSeconds) }
     var lastActivityRelative: String { SyncStatusParser.relativeAge(of: summary?.date) }
     var scriptPath: String? { if case .script(let p, _) = profile.scheduling { return p } else { return descriptor.scriptPath } }

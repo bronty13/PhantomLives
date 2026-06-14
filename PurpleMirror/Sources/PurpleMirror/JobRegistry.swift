@@ -21,6 +21,11 @@ struct JobProfile: Equatable {
     /// activity log differs from the launchd stdout capture).
     var activityLogPathOverride: String?
     var scheduling: Scheduling
+    /// Section the job is grouped under in the UI (e.g. the source "Rachel"); jobs
+    /// are grouped by this but still operated on individually.
+    var group: String = "Other"
+    /// Compact name shown within a group (e.g. "Photo"); defaults to displayName.
+    var shortName: String = ""
 }
 
 enum JobRegistry {
@@ -44,7 +49,8 @@ enum JobRegistry {
                 logKind: .obsidian,
                 activityLogPathOverride: home("Library/Logs/phantomlives-obsidian-sync.log"),
                 scheduling: .script(path: home("dev/PhantomLives/sync-md-to-obsidian.sh"),
-                                    envKeys: ["OBSIDIAN_VAULT"])
+                                    envKeys: ["OBSIDIAN_VAULT"]),
+                group: "Obsidian", shortName: "Markdown Sync"
             ),
         ]
     }
@@ -79,14 +85,17 @@ enum JobRegistry {
                 displayName: "External \(kind) Sync — \(pretty)",
                 logKind: .purpleAtticSync,
                 activityLogPathOverride: home("Library/Logs/PurpleAttic/external-\(token)-sync-\(id).log"),
-                scheduling: .plist
+                scheduling: .plist,
+                group: pretty.isEmpty ? "Other" : pretty,   // group by source
+                shortName: kind                              // compact name within the group
             )
         }
         return JobProfile(
             displayName: displayName(forLabel: label),
             logKind: .generic,
             activityLogPathOverride: nil,   // → falls back to the plist StandardOutPath
-            scheduling: .plist
+            scheduling: .plist,
+            group: "Other", shortName: displayName(forLabel: label)
         )
     }
 

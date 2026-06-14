@@ -17,12 +17,16 @@ struct MenuView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                VStack(spacing: 6) {
-                    ForEach(model.jobs) { job in
-                        JobRow(job: job) { openLog(for: job.id) }
-                        if job.id != model.jobs.last?.id { Divider() }
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach(model.groups, id: \.name) { grp in
+                            GroupSection(name: grp.name, jobs: grp.jobs,
+                                         health: model.groupHealth(grp.jobs),
+                                         openLog: { openLog(for: $0) })
+                        }
                     }
                 }
+                .frame(maxHeight: 460)
             }
             Divider()
             actions
@@ -100,6 +104,46 @@ struct MenuView: View {
     }
 }
 
+/// A collapsible section grouping one source's jobs (e.g. all of "Rachel").
+private struct GroupSection: View {
+    let name: String
+    let jobs: [JobController]
+    let health: SyncStatusParser.Health
+    var openLog: (String) -> Void
+    @State private var expanded = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button { expanded.toggle() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Image(systemName: health.symbol).foregroundStyle(color(health)).font(.caption)
+                    Text(name).font(.subheadline.weight(.semibold))
+                    Text("\(jobs.count)").font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            if expanded {
+                VStack(spacing: 6) {
+                    ForEach(jobs) { job in JobRow(job: job) { openLog(job.id) } }
+                }
+                .padding(.leading, 4)
+            }
+        }
+    }
+
+    private func color(_ h: SyncStatusParser.Health) -> Color {
+        switch h {
+        case .healthy: return .green
+        case .running: return .accentColor
+        case .warning: return .orange
+        case .error:   return .red
+        }
+    }
+}
+
 /// One job's row: status glyph, name, last-activity digest, and a Run-Now / View-Log pair.
 private struct JobRow: View {
     @ObservedObject var job: JobController
@@ -111,7 +155,7 @@ private struct JobRow: View {
                 .foregroundStyle(color)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
-                Text(job.displayName).font(.callout.weight(.medium))
+                Text(job.shortName).font(.callout.weight(.medium))
                 Text(secondary)
                     .font(.caption)
                     .foregroundStyle(.secondary)

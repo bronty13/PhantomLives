@@ -71,6 +71,24 @@ final class JobsModel: ObservableObject {
         jobs.map(\.health).max(by: { $0.severity < $1.severity }) ?? .warning
     }
 
+    /// Jobs grouped by source for display (still operated on individually).
+    /// Named sources sort first (alphabetically); "Obsidian"/"Other" go last.
+    var groups: [(name: String, jobs: [JobController])] {
+        var m: [String: [JobController]] = [:]
+        for j in jobs { m[j.group, default: []].append(j) }
+        func rank(_ g: String) -> Int { (g == "Obsidian" || g == "Other") ? 1 : 0 }
+        return m.keys.sorted {
+            rank($0) != rank($1) ? rank($0) < rank($1)
+                                 : $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }.map { name in
+            (name, m[name]!.sorted { $0.shortName.localizedCaseInsensitiveCompare($1.shortName) == .orderedAscending })
+        }
+    }
+
+    func groupHealth(_ js: [JobController]) -> SyncStatusParser.Health {
+        js.map(\.health).max(by: { $0.severity < $1.severity }) ?? .healthy
+    }
+
     var selectedJob: JobController? {
         jobs.first { $0.id == selectedJobID }
     }
