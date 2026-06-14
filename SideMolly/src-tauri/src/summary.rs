@@ -222,6 +222,13 @@ pub(crate) fn summary_fields(
         f.push(("SHA-256".into(), a.sha256.clone()));
     }
 
+    // TODO(price): As of Molly v1.32.0 the *content* bundle type also carries a
+    // price (`m.price_cents`, defaulted from total video duration; `Some(0)` means
+    // Free). Add a "Price" row to the "content" arm below, mirroring the "custom"
+    // arm's `format_price(...)`. Also teach `format_price` to render `Some(0)` as
+    // "Free" (today it would print "$0.00"). When implemented, update the tests:
+    // `summary_fields_content_shows_base_fields` currently asserts content has NO
+    // Price row, and add a Free-case assertion to `format_price_variants`.
     match m.bundle_type.as_str() {
         "custom" => {
             match m.delivery_kind.as_deref() {

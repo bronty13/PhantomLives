@@ -199,6 +199,12 @@ export function DistributeTab({ summary, manifest, refreshSignal }: Props) {
 /** Posting-facing fields the user copies/checks at distribution time:
  *  the description (copyable for pasting into YouTube/ManyVids) and, for
  *  YouTube bundles, Molly's SFW-ManyVids and private-upload choices. */
+// TODO(price): As of Molly v1.32.0 content bundles carry a price
+// (`manifest.priceCents`, defaulted from total video duration; `0` means Free,
+// `null` means not set). Surface it here for content bundles — e.g. a "Price"
+// row rendering `manifest.priceCents === 0 ? 'Free' : fmtPrice(...)` — so Sallie
+// sees the price she set in Molly at distribution time. (Today price is only
+// shown for custom bundles, in CustomRunner/DocDrawer.)
 function PostingInfoSection({ manifest }: { manifest: BundleManifest }) {
   const [copied, setCopied] = useState(false);
   const description = manifest.descriptionText?.trim() ?? '';
