@@ -52,7 +52,7 @@ single `index.html`. Unzip, double-click, done — no server, no internet.
 
 ```bash
 npm install
-npm run ingest:content   # parse ~/Downloads/nasb.txt + tlc_quotes_seed.json → src/data/*-data.ts
+npm run ingest:content   # parse ~/Downloads/nasb.txt + tlc_quotes_seed.json + affirmations/*.docx → src/data/*-data.ts
 npm run embed:fonts      # subset OFL fonts to Latin → src/data/fonts-data.ts (needs the build venv, see below)
 npm run build            # → dist/index.html (single file) + dist/CalendarMaker-app.zip
 npm run dev              # local dev server (Vite, port 1530)
@@ -91,4 +91,6 @@ PDFs are named `CalendarMaker_<Month>-<Year>_<mode>_<timestamp>.pdf`.
   **Export bundle (.cmcal.json)** to back up or move a calendar to another
   machine/browser.
 - The NASB text is the user-provided `~/Downloads/nasb.txt`; sayings come from
-  `~/Downloads/tlc_quotes_seed.json`.
+  `~/Downloads/tlc_quotes_seed.json` plus the Morning Affirmations in
+  `~/Downloads/affirmations/*.docx` (deduplicated across the base/Husbands/Wives
+  variants).

@@ -44,6 +44,19 @@ describe('seed data', () => {
     expect(SAYINGS.every((s) => s.kind === 'saying' && s.text.length > 0)).toBe(true);
   });
 
+  it('includes the Morning Affirmations (deduplicated, no IDs collide)', () => {
+    const affirmations = SAYINGS.filter((s) => s.reference === 'Morning Affirmation');
+    expect(affirmations.length).toBeGreaterThanOrEqual(20);
+    // The base + gendered-unique lines, no duplicate text.
+    const texts = affirmations.map((a) => a.text);
+    expect(new Set(texts).size).toBe(texts.length);
+    // A signature line from the base set is present.
+    expect(texts.some((t) => t.startsWith('Jesus is first in my life'))).toBe(true);
+    // No duplicate ids across the whole seed.
+    const ids = SAYINGS.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('has the full Bible and can fetch verses', () => {
     expect(BIBLE_BOOKS).toHaveLength(66);
     const john316 = getVerse('John', 3, 16);

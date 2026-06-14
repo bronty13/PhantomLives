@@ -4,6 +4,26 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.3.3 — 2026-06-14
+
+### Added
+- **Morning Affirmations in the sayings pool.** 23 affirmations (the shared base
+  set plus the lines unique to the Husbands/Wives variants, deduplicated) now seed
+  the Sayings pool, attributed “Morning Affirmation”. They appear everywhere
+  sayings do — the home card, the day-level Saying picker, and the whole-month
+  filler.
+
+### Changed
+- `scripts/ingest-content.mjs` now also parses `~/Downloads/affirmations/*.docx`
+  (via JSZip — `.docx` is a zip of XML) and merges the deduplicated affirmations
+  into the generated `src/data/sayings-data.ts` alongside the Tara-Leigh Cobble
+  quotes. Run `npm run ingest:content` (override the folder with `--affirmations
+  <dir>`); the step is skipped gracefully if the folder is absent.
+
+### Tests
+- +1 (the seed includes the deduplicated affirmations with unique ids/texts and a
+  known base line). 53 total.
+
 ## 0.3.2 — 2026-06-14
 
 ### Changed

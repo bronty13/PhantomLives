@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 // Ingest the curated content sources into committed, build-reproducible data modules:
 //
-//   ~/Downloads/nasb.txt            -> src/data/bible-data.ts   (full NASB tree)
-//   ~/Downloads/tlc_quotes_seed.json -> src/data/sayings-data.ts (sayings catalog)
+//   ~/Downloads/nasb.txt              -> src/data/bible-data.ts   (full NASB tree)
+//   ~/Downloads/tlc_quotes_seed.json  -> src/data/sayings-data.ts (sayings catalog)
+//   ~/Downloads/affirmations/*.docx   -> merged into sayings-data.ts (Morning Affirmations)
 //
 // Browsers block fetch() of sibling files from file://, so this content must be
 // compiled into the single-file build. Run once (or whenever the sources change):
 //   npm run ingest:content
-// Override source paths:  node scripts/ingest-content.mjs --bible <path> --quotes <path>
+// Override source paths:
+//   node scripts/ingest-content.mjs --bible <path> --quotes <path> --affirmations <dir>
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import JSZip from 'jszip';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -25,6 +28,7 @@ function arg(flag, fallback) {
 
 const BIBLE_SRC = arg('--bible', resolve(homedir(), 'Downloads/nasb.txt'));
 const QUOTES_SRC = arg('--quotes', resolve(homedir(), 'Downloads/tlc_quotes_seed.json'));
+const AFFIRM_DIR = arg('--affirmations', resolve(homedir(), 'Downloads/affirmations'));
 
 const SMALL_WORDS = new Set(['of', 'the']);
 function titleCaseBook(name) {
@@ -94,7 +98,82 @@ function ingestBible() {
   return true;
 }
 
-function ingestQuotes() {
+/** Decode the XML entities Word emits (named + numeric decimal/hex). */
+function decodeXmlEntities(s) {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&'); // last, so we don't double-decode
+}
+
+/** Extract a .docx's body paragraphs (one string per <w:p>), trimmed and non-empty. */
+async function docxToParagraphs(filePath) {
+  const buf = readFileSync(filePath);
+  const zip = await JSZip.loadAsync(buf);
+  const xml = await zip.file('word/document.xml')?.async('string');
+  if (!xml) return [];
+  const paras = [];
+  // Each paragraph ends with </w:p>; its visible text is the concatenation of <w:t> runs.
+  for (const chunk of xml.split('</w:p>')) {
+    const runs = [...chunk.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
+    if (runs.length === 0) continue;
+    const text = decodeXmlEntities(runs.join('')).replace(/\s+/g, ' ').trim();
+    if (text) paras.push(text);
+  }
+  return paras;
+}
+
+/** A heading line like "Morning affirmations:" — not an affirmation itself. */
+function isAffirmHeader(line) {
+  return /^morning affirmations:?$/i.test(line.trim());
+}
+
+/**
+ * Load the Morning Affirmations, deduplicated: the base set once, plus only the
+ * lines unique to the Husbands/Wives variants. All carry reference "Morning Affirmation".
+ */
+async function loadAffirmations() {
+  if (!existsSync(AFFIRM_DIR)) {
+    console.warn(`! Affirmations dir not found: ${AFFIRM_DIR} (skipping affirmations)`);
+    return [];
+  }
+  const files = [
+    'Morning Affirmations.docx', // base — establishes the shared set
+    'Morning Affirmations - Husbands.docx',
+    'Morning Affirmations - Wives.docx',
+  ];
+  const seen = new Set();
+  const lines = [];
+  for (const name of files) {
+    const path = resolve(AFFIRM_DIR, name);
+    if (!existsSync(path)) {
+      console.warn(`  ? affirmation file missing, skipped: ${name}`);
+      continue;
+    }
+    const paras = await docxToParagraphs(path);
+    for (const p of paras) {
+      if (isAffirmHeader(p)) continue;
+      const key = p.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (seen.has(key)) continue; // dedupe shared base lines across the three files
+      seen.add(key);
+      lines.push(p);
+    }
+  }
+  const entries = lines.map((text, i) => ({
+    id: `affirm-${String(i + 1).padStart(3, '0')}`,
+    kind: 'saying',
+    text,
+    reference: 'Morning Affirmation',
+  }));
+  console.log(`  · affirmations: ${entries.length} unique lines`);
+  return entries;
+}
+
+async function ingestQuotes() {
   if (!existsSync(QUOTES_SRC)) {
     console.error(`! Quotes source not found: ${QUOTES_SRC} (skipping sayings ingest)`);
     return false;
@@ -102,7 +181,7 @@ function ingestQuotes() {
   const data = JSON.parse(readFileSync(QUOTES_SRC, 'utf8'));
   const author = data?.meta?.subject || 'Unknown';
   const quotes = Array.isArray(data?.quotes) ? data.quotes : [];
-  const entries = quotes
+  const quoteEntries = quotes
     .filter((q) => q && typeof q.quote === 'string' && q.quote.trim())
     .map((q) => ({
       id: String(q.id || ''),
@@ -111,21 +190,25 @@ function ingestQuotes() {
       reference: author,
     }));
 
+  const affirmEntries = await loadAffirmations();
+  const entries = [...quoteEntries, ...affirmEntries];
+
   const out =
     `// GENERATED by scripts/ingest-content.mjs — do not edit by hand.\n` +
-    `// Source: ${QUOTES_SRC}\n` +
-    `// ${entries.length} sayings.\n\n` +
+    `// Sources: ${QUOTES_SRC}\n` +
+    `//          ${AFFIRM_DIR}/*.docx\n` +
+    `// ${entries.length} sayings (${quoteEntries.length} quotes + ${affirmEntries.length} affirmations).\n\n` +
     `import type { FillerEntry } from '../model/types';\n\n` +
     `export const SAYINGS: FillerEntry[] = ${JSON.stringify(entries, null, 2)};\n`;
 
   mkdirSync(DATA_DIR, { recursive: true });
   writeFileSync(resolve(DATA_DIR, 'sayings-data.ts'), out);
-  console.log(`✓ sayings-data.ts: ${entries.length} sayings (author: ${author})`);
+  console.log(`✓ sayings-data.ts: ${entries.length} sayings (${quoteEntries.length} ${author} quotes + ${affirmEntries.length} affirmations)`);
   return true;
 }
 
 const okB = ingestBible();
-const okQ = ingestQuotes();
+const okQ = await ingestQuotes();
 if (!okB || !okQ) {
   console.error('\nContent ingest incomplete — see messages above.');
   process.exit(1);
