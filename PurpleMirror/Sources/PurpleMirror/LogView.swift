@@ -10,23 +10,28 @@ struct LogView: View {
     private let ticker = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(spacing: 0) {
-            toolbar
+        HStack(spacing: 0) {
+            JobSidebar(model: model)
             Divider()
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(displayed)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .id("end")
+            VStack(spacing: 0) {
+                toolbar
+                Divider()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        Text(displayed)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .id("end")
+                    }
+                    .onAppear { proxy.scrollTo("end", anchor: .bottom) }
+                    .onChange(of: text) { _, _ in if liveTail { proxy.scrollTo("end", anchor: .bottom) } }
                 }
-                .onAppear { proxy.scrollTo("end", anchor: .bottom) }
-                .onChange(of: text) { _, _ in if liveTail { proxy.scrollTo("end", anchor: .bottom) } }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 560, minHeight: 320)
+        .frame(minWidth: 760, minHeight: 360)
         .onAppear(perform: reload)
         .onChange(of: model.selectedJobID) { _, _ in reload() }
         .onReceive(ticker) { _ in if liveTail { reload() } }
@@ -34,21 +39,15 @@ struct LogView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            if !model.jobs.isEmpty {
-                Picker("Job", selection: Binding(
-                    get: { model.selectedJobID ?? model.jobs.first?.id },
-                    set: { model.selectedJobID = $0 }
-                )) {
-                    ForEach(model.jobs) { Text($0.displayName).tag(Optional($0.id)) }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 220)
+            if let job = model.selectedJob {
+                Image(systemName: job.health.symbol).foregroundStyle(job.health.color)
+                Text(job.displayName).font(.headline).lineLimit(1)
             }
+            Spacer(minLength: 8)
             Button { reload() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
             Toggle("Live tail", isOn: $liveTail).toggleStyle(.switch)
                 .help("Auto-refresh and follow the end of the log every 1.5s")
             Toggle("Last 200 lines", isOn: $tailOnly).toggleStyle(.checkbox)
-            Spacer()
             Button { model.selectedJob?.revealLogInFinder() } label: {
                 Label("Reveal in Finder", systemImage: "folder")
             }

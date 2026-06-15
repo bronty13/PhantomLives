@@ -21,6 +21,6 @@ struct PurpleMirrorApp: App {
         Window("PurpleMirror — Job Logs", id: "log") {
             LogView(model: model)
         }
-        .defaultSize(width: 760, height: 480)
+        .defaultSize(width: 940, height: 520)
     }
 }
