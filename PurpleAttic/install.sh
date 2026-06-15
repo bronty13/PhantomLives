@@ -23,7 +23,10 @@ fi
 
 BUNDLE="$DST"
 APP_DISPLAY="$(basename "$BUNDLE" .app)"
-PROC="$BUNDLE/Contents/MacOS/"
+# Match ONLY the GUI app binary, NOT the whole MacOS/ dir — the bundle also ships the
+# `pattic` CLI, and a bare ".../MacOS/" pattern would pkill an in-progress `pattic export`
+# archive run (incl. a scheduled hourly run) during a rebuild. (Incident 2026-06-14.)
+PROC="$BUNDLE/Contents/MacOS/$APP_DISPLAY"
 
 # ---- Force-kill any running instance (a graceful quit can be blocked) ----
 echo "Terminating any running ${APP_DISPLAY} (force)..."
