@@ -2,6 +2,16 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.15.1 — 2026-06-15
+
+- **Fix: group headers + the menu-bar glyph could show a stale status after a job recovered.** A
+  job's health lives on its `JobController`; when it changed, only that job's row (which observes the
+  controller) re-rendered — the group header glyph and the aggregate menu-bar glyph (which `MenuView`
+  derives from `JobsModel`) stayed frozen, because `JobsModel` didn't re-publish on a child change.
+  `JobsModel` now forwards each `JobController`'s `objectWillChange`, so the whole menu re-renders
+  when any job's status changes. (Surfaced by the ATW bot's section showing "error" after its run had
+  already gone green.)
+
 ## 1.15.0 — 2026-06-15
 
 - **Obsidian status now shows what changed, and counts toward the 24h tally.** The sync script now

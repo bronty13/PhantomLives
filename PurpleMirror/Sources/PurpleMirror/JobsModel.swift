@@ -15,6 +15,10 @@ final class JobsModel: ObservableObject {
     @Published var selectedJobID: String?
 
     private var timer: AnyCancellable?
+    /// Forwards each child `JobController`'s changes up to this model, so views observing the model
+    /// (the menu's group headers + the menu-bar aggregate glyph) re-render when a job's health/status
+    /// changes — not just the individual row that observes the controller directly.
+    private var jobObservers: [String: AnyCancellable] = [:]
 
     init() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -43,10 +47,19 @@ final class JobsModel: ObservableObject {
             if let existing = jobs.first(where: { $0.id == d.label }) {
                 found.append(existing)
             } else {
-                found.append(JobController(descriptor: d))
+                let jc = JobController(descriptor: d)
+                // Re-publish this model whenever the controller changes, so group headers + the
+                // aggregate glyph stay live (the per-row view already observes the controller).
+                jobObservers[d.label] = jc.objectWillChange.sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                }
+                found.append(jc)
             }
         }
         found.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+
+        // Drop observers for jobs that no longer exist.
+        jobObservers = jobObservers.filter { key, _ in found.contains { $0.id == key } }
 
         // Only reassign (and churn the views) when the set of labels actually changed.
         if found.map(\.id) != jobs.map(\.id) {
