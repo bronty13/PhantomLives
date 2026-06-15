@@ -38,7 +38,7 @@ without the command line. The CLI path still works and is documented as the adva
   new **Off-site** tab instead.
 
 ### Tests
-- +12 (153 total): Keychain argv builders, recovery-passphrase entropy/shape/uniqueness + bounded
+- +12 (141 total): Keychain argv builders, recovery-passphrase entropy/shape/uniqueness + bounded
   uniform index, restic admin argv, snapshots/keys JSON parsing, and the bounded sample-file finder.
 
 ## [0.20.0] — 2026-06-15
