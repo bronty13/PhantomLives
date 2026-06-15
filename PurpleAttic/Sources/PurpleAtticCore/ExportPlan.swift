@@ -72,6 +72,11 @@ public enum ExportPlan {
             // originals. (Does not touch your own iCloud Shared Library; that's --shared-library.)
             args += ["--not-syndicated", "--not-shared"]
         }
+        if profile.includeHidden {
+            // Archive the Hidden album too — a preservation archive shouldn't skip it.
+            // (osxphotos excludes hidden by default.)
+            args += ["--include-hidden"]
+        }
         if pass == .jpeg {
             args += ["--convert-to-jpeg"]
         }

@@ -3,6 +3,19 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.19.0] — 2026-06-14
+
+Archive the Hidden album — a "nothing ever lost" preservation archive shouldn't silently skip it.
+
+### Added
+- **`includeHidden` profile option (default ON).** Wires osxphotos `--include-hidden` into both
+  export passes, so hidden photos are archived too. Toggle in Settings → Profile ("Include the
+  Hidden album"). Hidden ≠ deleted: a photo you actually delete leaves the library and future runs
+  simply don't see it, so this only ever captures photos that are present-and-hidden.
+
+### Tests
+- 115 total (+1: `--include-hidden` follows the profile flag).
+
 ## [0.18.0] — 2026-06-14
 
 Hourly scheduling + drive-resilient runs — set the archive to run every hour and have it

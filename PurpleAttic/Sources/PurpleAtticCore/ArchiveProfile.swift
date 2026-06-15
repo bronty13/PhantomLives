@@ -82,6 +82,13 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// (`~/Downloads/PurpleAttic/NEW PHOTOS TO REVIEW`).
     public var reviewFolderPath: String?
 
+    /// Archive the **Hidden album** too (osxphotos `--include-hidden`). **On by default** —
+    /// a "nothing ever lost" preservation archive shouldn't silently skip hidden photos.
+    /// (Hidden ≠ deleted: a photo the user actually deletes is removed from the source
+    /// library and simply isn't seen by future runs; the append-only archive keeps whatever
+    /// it captured. So only photos that are present-and-hidden get archived by this.)
+    public var includeHidden: Bool
+
     public init(
         id: UUID = UUID(),
         name: String = "Main Photo Archive",
@@ -99,7 +106,8 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         purgeEnabled: Bool = false,
         archiveSubfolder: String = "Photos Archive",
         reviewNewItems: Bool = true,
-        reviewFolderPath: String? = nil
+        reviewFolderPath: String? = nil,
+        includeHidden: Bool = true
     ) {
         self.id = id
         self.name = name
@@ -118,6 +126,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.archiveSubfolder = archiveSubfolder
         self.reviewNewItems = reviewNewItems
         self.reviewFolderPath = reviewFolderPath
+        self.includeHidden = includeHidden
     }
 
     /// Resilient decoding: every key is `decodeIfPresent` with the same default as the
@@ -144,6 +153,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         archiveSubfolder = try c.decodeIfPresent(String.self, forKey: .archiveSubfolder) ?? "Photos Archive"
         reviewNewItems = try c.decodeIfPresent(Bool.self, forKey: .reviewNewItems) ?? true
         reviewFolderPath = try c.decodeIfPresent(String.self, forKey: .reviewFolderPath)
+        includeHidden = try c.decodeIfPresent(Bool.self, forKey: .includeHidden) ?? true
     }
 
     /// Default location for "NEW PHOTOS TO REVIEW" batches (PhantomLives output convention).

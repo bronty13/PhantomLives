@@ -52,6 +52,10 @@ struct ProfileSettingsView: View {
                    isOn: $store.profile.excludeSharedAndSyndicated)
             Text("Photos that others shared with you (via Messages or a shared album) aren’t your originals and have no master to download — without this they linger forever as bogus “missing” items. Leave ON. (Your own iCloud Shared Library photos are unaffected.)")
                 .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            Toggle("Include the Hidden album", isOn: $store.profile.includeHidden)
+            Text("Archive hidden photos too, so a “nothing ever lost” backup doesn’t silently skip them. Hidden ≠ deleted: a photo you actually delete leaves the library and future runs simply don’t see it. Leave ON for a complete archive.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
