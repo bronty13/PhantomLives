@@ -436,4 +436,43 @@ import Foundation
         let log = "\(ts(now.addingTimeInterval(-50 * 3600))) staged 5 NEW file(s) staged for review"
         #expect(SyncStatusParser.itemsLast24h(log, kind: .purpleAtticSync, now: now) == nil)
     }
+
+    @Test func atwRepostSumsSubmittedSlots() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = """
+        \(ts(now.addingTimeInterval(-7200))) Run complete — submitted 8 of 8 slot(s).
+        \(ts(now.addingTimeInterval(-3600))) Nothing to repost — all listings already scheduled.
+        \(ts(now.addingTimeInterval(-1800))) Run complete — submitted 3 of 3 slot(s).
+        """
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .atwRepost, now: now) == 11)
+    }
+}
+
+/// The ATW repost bot log (timestamped "submitted N of M slot(s)" / "Nothing to repost").
+@Suite struct ATWRepostLogTests {
+    private let kind = SyncStatusParser.LogKind.atwRepost
+
+    @Test func reportsRepostedCount() {
+        let log = """
+        2026-06-15 09:00:01 --- Run #1 ---
+        2026-06-15 09:00:42 Run complete — submitted 5 of 5 slot(s).
+        2026-06-15 09:00:42 Run #1 ended (41.0s elapsed).
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Reposted 5 listings")
+        #expect(s?.ok == true)
+    }
+
+    @Test func reportsNothingToRepost() {
+        let log = "2026-06-15 10:00:05 Nothing to repost — all listings already scheduled."
+        #expect(SyncStatusParser.summary(log, kind: kind)?.headline == "Up to date — nothing to repost")
+    }
+
+    @Test func reportsFailure() {
+        let log = "2026-06-15 11:00:05 Run #1 failed: login timed out"
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.ok == false)
+        #expect(s?.headline == "Run failed")
+        #expect(s?.detail == "login timed out")
+    }
 }

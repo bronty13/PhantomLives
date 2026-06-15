@@ -17,6 +17,7 @@ enum SyncStatusParser {
         case obsidian          // "… Mirrored N markdown files → /path"
         case purpleAtticSync   // PurpleAttic sync: "pull exit: N", "staged N NEW", "no new items"
         case purpleAttic       // local Photo Archive run (pattic): phase + per-destination + off-site
+        case atwRepost         // ATW repost bot: "submitted N of M slot(s)" / "Nothing to repost"
         case generic           // unknown job: show the last meaningful line
     }
 
@@ -35,6 +36,7 @@ enum SyncStatusParser {
         case .obsidian:        return obsidianSummary(log)
         case .purpleAtticSync: return purpleAtticSyncSummary(log)
         case .purpleAttic:     return purpleAtticArchiveSummary(log)
+        case .atwRepost:       return atwRepostSummary(log)
         case .generic:         return genericSummary(log)
         }
     }
@@ -233,6 +235,30 @@ enum SyncStatusParser {
         return nil
     }
 
+    // MARK: ATW repost bot log
+
+    /// Parse the ATW repost bot's log (timestamped `yyyy-MM-dd HH:mm:ss msg` lines). Surfaces, by
+    /// recency: a completed pass ("Run complete — submitted N of M slot(s)." → "Reposted N
+    /// listing(s)"), "Nothing to repost — all listings already scheduled.", or a failed run.
+    static func atwRepostSummary(_ log: String) -> LogSummary? {
+        var chosen: LogSummary?
+        for line in log.split(whereSeparator: \.isNewline).map(String.init) {
+            let date = leadingTimestamp(line)
+            if line.contains(" slot"), let r = line.range(of: "submitted ") {
+                let n = Int(line[r.upperBound...].prefix { $0.isNumber }) ?? 0
+                chosen = LogSummary(date: date,
+                                    headline: n == 0 ? "No reposts this run" : "Reposted \(n) listing\(n == 1 ? "" : "s")",
+                                    ok: true, detail: nil)
+            } else if line.contains("Nothing to repost") {
+                chosen = LogSummary(date: date, headline: "Up to date — nothing to repost", ok: true, detail: nil)
+            } else if line.contains("Run #") && line.contains("failed:") {
+                let msg = line.range(of: "failed:").map { String(line[$0.upperBound...]).trimmingCharacters(in: .whitespaces) }
+                chosen = LogSummary(date: date, headline: "Run failed", ok: false, detail: msg)
+            }
+        }
+        return chosen
+    }
+
     // MARK: Generic fallback
 
     /// For unknown jobs: surface the last non-empty log line (minus its leading
@@ -289,6 +315,19 @@ enum SyncStatusParser {
             for line in lines {
                 guard let d = leadingTimestamp(line), d >= cutoff else { continue }
                 if let n = intBefore(" new item", in: line) { total += n; saw = true }
+            }
+            return saw ? total : nil
+
+        case .atwRepost:
+            // Sum reposts submitted per pass: "… submitted N of M slot(s)." ("Nothing to repost" = 0).
+            var total = 0, saw = false
+            for line in lines {
+                guard let d = leadingTimestamp(line), d >= cutoff else { continue }
+                if line.contains(" slot"), let r = line.range(of: "submitted ") {
+                    total += Int(line[r.upperBound...].prefix { $0.isNumber }) ?? 0; saw = true
+                } else if line.contains("Nothing to repost") {
+                    saw = true
+                }
             }
             return saw ? total : nil
 

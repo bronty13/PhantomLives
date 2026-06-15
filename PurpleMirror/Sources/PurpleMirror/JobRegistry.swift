@@ -62,6 +62,15 @@ enum JobRegistry {
                 scheduling: .plist,
                 group: "Photos", shortName: "Photo Archive"
             ),
+            // Hourly ATW listing-repost bot (Node/Playwright). Single-pass per launchd invocation;
+            // its log surfaces "Reposted N listing(s)" + a 24h repost tally.
+            "com.bronty13.atw-repost-bot": JobProfile(
+                displayName: "ATW Repost Bot",
+                logKind: .atwRepost,
+                activityLogPathOverride: home("Library/Logs/atw-repost-bot/atw-repost-bot.log"),
+                scheduling: .plist,
+                group: "Bots", shortName: "ATW Repost"
+            ),
         ]
     }
 

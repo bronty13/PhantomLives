@@ -2,6 +2,15 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.14.0 — 2026-06-15
+
+- **Recognize the ATW repost bot** (`com.bronty13.atw-repost-bot`) as a first-class job: "ATW Repost
+  Bot" under a new **Bots** group, with a tailored `.atwRepost` log parser that surfaces "Reposted N
+  listing(s)" / "Up to date — nothing to repost" / "Run failed", and feeds the 24h tally (sum of
+  reposts submitted per pass). The bot is a Node/Playwright agent that runs hourly via launchd
+  (single-pass per invocation); it's auto-discovered like the rest, this just gives it a proper name
+  + status + tally. Tests +4.
+
 ## 1.13.0 — 2026-06-15
 
 - **24-hour "new items" tally.** Each job now shows how many new items it found/archived in the last
