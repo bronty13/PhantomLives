@@ -507,3 +507,74 @@ import Foundation
         #expect(s?.detail == "login timed out")
     }
 }
+
+/// brew-autoupdate's bracketed-timestamp stdout log (script exits 0 even on brew errors).
+@Suite struct BrewAutoupdateLogTests {
+    private let kind = SyncStatusParser.LogKind.brewAutoupdate
+
+    @Test func bracketTimestampParses() {
+        #expect(SyncStatusParser.bracketTimestamp("[2026-06-15 12:01:24] [INFO] hi") != nil)
+        #expect(SyncStatusParser.bracketTimestamp("2026-06-15 12:01:24 no brackets") == nil)
+    }
+
+    @Test func finishedWithErrorsIsWarning() {
+        let log = """
+        [2026-06-15 12:00:00] [INFO] Brew Auto-Update v1 starting
+        [2026-06-15 12:00:54] [INFO] Package changes:
+        [2026-06-15 12:01:24] [INFO] Brew Auto-Update finished in 77s
+        [2026-06-15 12:01:24] [ERROR] ERRORS (1): brew upgrade had errors
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Updated with 1 error")
+        #expect(s?.ok == false)
+        #expect(s?.detail == "finished in 77s")
+    }
+
+    @Test func cleanRunWithChanges() {
+        let log = """
+        [2026-06-15 06:00:00] [INFO] Brew Auto-Update v1 starting
+        [2026-06-15 06:00:54] [INFO] Package changes:
+        [2026-06-15 06:01:30] [INFO] Brew Auto-Update finished in 90s
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Updated packages")
+        #expect(s?.ok == true)
+    }
+
+    @Test func cleanRunNoChanges() {
+        let log = """
+        [2026-06-15 06:00:00] [INFO] Brew Auto-Update v1 starting
+        [2026-06-15 06:01:30] [INFO] Brew Auto-Update finished in 40s
+        """
+        #expect(SyncStatusParser.summary(log, kind: kind)?.headline == "Up to date")
+    }
+
+    @Test func inProgressRunShowsRunning() {
+        let log = "[2026-06-15 06:00:00] [INFO] Brew Auto-Update v1 starting"
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Running…")
+    }
+
+    @Test func latestRunWins() {
+        let log = """
+        [2026-06-14 06:00:00] [INFO] Brew Auto-Update v1 starting
+        [2026-06-14 06:01:00] [INFO] Brew Auto-Update finished in 60s
+        [2026-06-14 06:01:00] [ERROR] ERRORS (2): stuff
+        [2026-06-15 06:00:00] [INFO] Brew Auto-Update v1 starting
+        [2026-06-15 06:01:00] [INFO] Brew Auto-Update finished in 30s
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Up to date")   // newest run had no errors; prior run's errors don't leak
+        #expect(s?.ok == true)
+    }
+
+    @Test func managedAndProfiled() {
+        #expect(JobRegistry.shouldManage(label: "com.user.brew-autoupdate"))
+        let p = JobRegistry.profile(for: AgentDescriptor(
+            label: "com.user.brew-autoupdate", programArguments: ["/bin/bash", "/x/brew.sh"],
+            startInterval: nil, stdoutPath: nil, stderrPath: nil, runAtLoad: false, environment: [:]))
+        #expect(p.displayName == "Homebrew Auto-Update")
+        #expect(p.logKind == .brewAutoupdate)
+        #expect(p.group == "Maintenance")
+    }
+}

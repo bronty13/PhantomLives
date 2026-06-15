@@ -2,6 +2,18 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.16.0 — 2026-06-15
+
+- **Monitor brew-autoupdate.** PurpleMirror now recognizes `com.user.brew-autoupdate` (the Homebrew
+  auto-update agent) — shown as "Homebrew Auto-Update" under a new **Maintenance** group — with a
+  tailored `.brewAutoupdate` parser for its bracketed-timestamp stdout log. Because the script exits
+  0 even when `brew` reports errors, health is read from the log's "[ERROR] ERRORS (N)" line:
+  status shows "Updated packages" / "Up to date" / "Updated with N error(s)" (the last as a warning)
+  / "Running…", with the run duration as detail. `shouldManage` now also admits any explicitly
+  profiled label, not just the repo namespaces. Tests +7.
+  - Note: brew-autoupdate is **calendar-scheduled** (`StartCalendarInterval`), so its "Run every"
+    interval isn't meaningful — enable/disable, Run Now, and View Log work as normal.
+
 ## 1.15.1 — 2026-06-15
 
 - **Fix: group headers + the menu-bar glyph could show a stale status after a job recovered.** A

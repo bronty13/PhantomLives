@@ -34,7 +34,11 @@ enum JobRegistry {
     /// (Scanning the LaunchAgents *directory* already excludes the runtime
     /// `application.*` GUI jobs that show up in `launchctl list`.)
     static func shouldManage(label: String) -> Bool {
-        label.hasPrefix("com.phantomlives.") || label.hasPrefix("com.bronty13.")
+        // The repo's own namespaces, plus any explicitly-profiled job outside them
+        // (e.g. brew-autoupdate's `com.user.brew-autoupdate`).
+        known[label] != nil
+            || label.hasPrefix("com.phantomlives.")
+            || label.hasPrefix("com.bronty13.")
     }
 
     private static func home(_ rel: String) -> String {
@@ -70,6 +74,16 @@ enum JobRegistry {
                 activityLogPathOverride: home("Library/Logs/atw-repost-bot/atw-repost-bot.log"),
                 scheduling: .plist,
                 group: "Bots", shortName: "ATW Repost"
+            ),
+            // brew-autoupdate (Bash + launchd). Outside the repo namespaces, so explicitly profiled.
+            // Calendar-scheduled (StartCalendarInterval), so its "Run every" interval isn't meaningful —
+            // enable/disable, Run Now, and View Log all work. Stdout log has bracketed timestamps.
+            "com.user.brew-autoupdate": JobProfile(
+                displayName: "Homebrew Auto-Update",
+                logKind: .brewAutoupdate,
+                activityLogPathOverride: home("Library/Logs/brew-autoupdate/launchd-stdout.log"),
+                scheduling: .plist,
+                group: "Maintenance", shortName: "Homebrew"
             ),
         ]
     }

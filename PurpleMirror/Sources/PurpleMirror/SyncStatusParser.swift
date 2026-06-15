@@ -18,6 +18,7 @@ enum SyncStatusParser {
         case purpleAtticSync   // PurpleAttic sync: "pull exit: N", "staged N NEW", "no new items"
         case purpleAttic       // local Photo Archive run (pattic): phase + per-destination + off-site
         case atwRepost         // ATW repost bot: "submitted N of M slot(s)" / "Nothing to repost"
+        case brewAutoupdate    // brew-autoupdate: bracketed "[ts] [LEVEL] …" — finished / ERRORS (N)
         case generic           // unknown job: show the last meaningful line
     }
 
@@ -37,6 +38,7 @@ enum SyncStatusParser {
         case .purpleAtticSync: return purpleAtticSyncSummary(log)
         case .purpleAttic:     return purpleAtticArchiveSummary(log)
         case .atwRepost:       return atwRepostSummary(log)
+        case .brewAutoupdate:  return brewAutoupdateSummary(log)
         case .generic:         return genericSummary(log)
         }
     }
@@ -276,6 +278,54 @@ enum SyncStatusParser {
         return chosen
     }
 
+    // MARK: brew-autoupdate log
+
+    /// A `[yyyy-MM-dd HH:mm:ss]`-bracketed timestamp at the start of a line (brew-autoupdate's
+    /// format, distinct from the bare-timestamp jobs).
+    static func bracketTimestamp(_ line: String) -> Date? {
+        guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { return nil }
+        let inner = String(line[line.index(after: line.startIndex)..<close])
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return fmt.date(from: inner)
+    }
+
+    /// Parse brew-autoupdate's stdout log. The script exits 0 even when `brew` reports errors, so
+    /// health can't come from the exit code — we read the latest run's "[ERROR] ERRORS (N)" line.
+    /// Surfaces the freshest run: "Running…", "Updated with N error(s)" (ok=false), "Updated
+    /// packages", or "Up to date", with "finished in Ns" as the detail.
+    static func brewAutoupdateSummary(_ log: String) -> LogSummary? {
+        var date: Date?, finished = false, hadErrors = false, errorCount = 0, hadChanges = false
+        var secs: String?
+        for line in log.split(whereSeparator: \.isNewline).map(String.init) {
+            let d = bracketTimestamp(line)
+            if line.contains("Brew Auto-Update") && line.contains("starting") {
+                finished = false; hadErrors = false; errorCount = 0; hadChanges = false; secs = nil
+                if let d { date = d }
+            } else if line.contains("Package changes:") {
+                hadChanges = true
+            } else if let r = line.range(of: "finished in ") {
+                finished = true
+                secs = String(line[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+                if let d { date = d }
+            } else if let r = line.range(of: "ERRORS (") {
+                hadErrors = true
+                errorCount = Int(line[r.upperBound...].prefix { $0.isNumber }) ?? 0
+                if let d { date = d }
+            }
+        }
+        guard date != nil else { return nil }
+        if !finished { return LogSummary(date: date, headline: "Running…", ok: nil, detail: nil) }
+        let detail = secs.map { "finished in \($0)" }
+        if hadErrors {
+            return LogSummary(date: date, headline: "Updated with \(errorCount) error\(errorCount == 1 ? "" : "s")",
+                              ok: false, detail: detail)
+        }
+        return LogSummary(date: date, headline: hadChanges ? "Updated packages" : "Up to date",
+                          ok: true, detail: detail)
+    }
+
     // MARK: Generic fallback
 
     /// For unknown jobs: surface the last non-empty log line (minus its leading
@@ -323,7 +373,7 @@ enum SyncStatusParser {
         let lines = log.split(whereSeparator: \.isNewline).map(String.init)
 
         switch kind {
-        case .generic:
+        case .generic, .brewAutoupdate:
             return nil
 
         case .obsidian:
