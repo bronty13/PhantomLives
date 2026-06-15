@@ -2,6 +2,17 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.13.0 — 2026-06-15
+
+- **24-hour "new items" tally.** Each job now shows how many new items it found/archived in the last
+  24 hours, summed across that window's runs: a per-job badge ("… · 12 in 24h"), a per-source total
+  on each group header ("12 new / 24h"), and a grand total in the menu header ("… · 37 new in 24h").
+  Kind-aware so the numbers mean something: pull archives sum their per-run deltas (`staged N NEW`),
+  Tier-1 archivers sum `+N new …`, the photo archive sums `N new items`, and the Obsidian mirror —
+  which re-mirrors the whole set every run — is excluded rather than reported as a misleading sum.
+- Tests: +6 covering the windowing, per-kind summing, the no-new-items-is-zero (not nil) case, and
+  the excluded kinds.
+
 ## 1.12.0 — 2026-06-15
 
 - **Settings and Logs both use a grouped sidebar now, not "tabs across the top."** The old

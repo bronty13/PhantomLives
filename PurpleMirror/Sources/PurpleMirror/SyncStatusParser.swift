@@ -266,6 +266,70 @@ enum SyncStatusParser {
         return f.string(from: NSNumber(value: n)) ?? "\(n)"
     }
 
+    // MARK: 24-hour "new items" tally
+
+    /// Total NEW items a job found/archived in the **last 24 hours**, summed across that window's
+    /// runs — or `nil` when this job type has no per-run "new items" concept to total.
+    ///
+    /// Kind-aware on purpose: pull archives report *deltas* per run (`staged N NEW`, `+N new …`),
+    /// which sum meaningfully; the Obsidian mirror reports the *full* file count every run
+    /// ("Mirrored 456 files"), so summing it would be nonsense → `nil` (no badge). Returns `0`
+    /// (not nil) when runs happened in the window but found nothing, so "0 in 24h" can show.
+    static func itemsLast24h(_ log: String, kind: LogKind, now: Date = Date()) -> Int? {
+        let cutoff = now.addingTimeInterval(-24 * 3600)
+        let lines = log.split(whereSeparator: \.isNewline).map(String.init)
+
+        switch kind {
+        case .obsidian, .generic:
+            return nil
+
+        case .purpleAttic:
+            // Local photo archive: "N new item(s) …" lines (AtticLogger-timestamped).
+            var total = 0, saw = false
+            for line in lines {
+                guard let d = leadingTimestamp(line), d >= cutoff else { continue }
+                if let n = intBefore(" new item", in: line) { total += n; saw = true }
+            }
+            return saw ? total : nil
+
+        case .purpleAtticSync:
+            // photo/messages: "staged N NEW file" / "no new items this run" (timestamped);
+            // Tier-1 archivers: "…: +N new <noun>(s); …" (no timestamp → attributed to the
+            // run's most recent timestamped marker).
+            var total = 0, saw = false, lastDate: Date?
+            for line in lines {
+                if let d = leadingTimestamp(line) { lastDate = d }
+                let within = (lastDate ?? .distantPast) >= cutoff
+                if line.contains(" NEW file"), let r = line.range(of: "staged ") {
+                    if within { total += Int(line[r.upperBound...].prefix { $0.isNumber }) ?? 0; saw = true }
+                } else if line.contains("no new items this run") {
+                    if within { saw = true }
+                } else if let n = plusNewCount(line) {
+                    if within { total += n; saw = true }
+                }
+            }
+            return saw ? total : nil
+        }
+    }
+
+    /// The contiguous integer immediately before `marker`, e.g. "… 137 new item(s)" with
+    /// marker " new item" → 137.
+    static func intBefore(_ marker: String, in line: String) -> Int? {
+        guard let r = line.range(of: marker) else { return nil }
+        let digits = String(line[..<r.lowerBound].reversed().prefix { $0.isNumber }.reversed())
+        return digits.isEmpty ? nil : Int(digits)
+    }
+
+    /// A Tier-1 archiver's "+N new <noun>" delta, e.g. "Mail archive: +4 new message(s); …" → 4.
+    /// Requires the digits to be immediately followed by " new" so unrelated "+" tokens don't match.
+    static func plusNewCount(_ line: String) -> Int? {
+        guard let r = line.range(of: "+") else { return nil }
+        let after = line[r.upperBound...]
+        let digits = after.prefix { $0.isNumber }
+        guard !digits.isEmpty, after.dropFirst(digits.count).hasPrefix(" new") else { return nil }
+        return Int(digits)
+    }
+
     // MARK: launchctl print
 
     struct AgentState: Equatable {

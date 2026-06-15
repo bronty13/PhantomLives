@@ -18,6 +18,8 @@ final class JobController: ObservableObject, Identifiable {
     @Published private(set) var runs: Int?
     @Published private(set) var lastExitCode: Int?
     @Published private(set) var summary: SyncStatusParser.LogSummary?
+    /// New items this job found/archived in the last 24h (nil = no "new items" concept, e.g. mirror).
+    @Published private(set) var itemsLast24h: Int?
     @Published private(set) var intervalSeconds: Int
     @Published private(set) var isRunning = false
     @Published private(set) var lastActionMessage: String?
@@ -72,6 +74,7 @@ final class JobController: ObservableObject, Identifiable {
 
         let logText = (try? String(contentsOfFile: logPath, encoding: .utf8)) ?? ""
         if let sum = SyncStatusParser.summary(logText, kind: profile.logKind) { summary = sum }
+        itemsLast24h = SyncStatusParser.itemsLast24h(logText, kind: profile.logKind)
 
         agentLoaded = agent.loaded
         runs = agent.runs

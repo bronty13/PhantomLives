@@ -89,6 +89,12 @@ final class JobsModel: ObservableObject {
         js.map(\.health).max(by: { $0.severity < $1.severity }) ?? .healthy
     }
 
+    /// New items found across all jobs in the last 24h (jobs without a "new items" concept,
+    /// e.g. the Obsidian mirror, are excluded).
+    var totalItemsLast24h: Int { jobs.compactMap(\.itemsLast24h).reduce(0, +) }
+
+    func groupItemsLast24h(_ js: [JobController]) -> Int { js.compactMap(\.itemsLast24h).reduce(0, +) }
+
     var selectedJob: JobController? {
         jobs.first { $0.id == selectedJobID }
     }

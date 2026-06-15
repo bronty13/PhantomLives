@@ -373,3 +373,67 @@ import Foundation
         #expect(p.group == "Photos")
     }
 }
+
+/// The 24-hour "new items found" tally — summed per-run deltas, kind-aware, windowed.
+@Suite struct ItemsLast24hTests {
+
+    /// Format a date the way the logs/parser expect (local tz, no milliseconds).
+    private func ts(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f.string(from: date)
+    }
+
+    @Test func sumsStagedNewItemsWithin24hExcludingOlder() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = """
+        \(ts(now.addingTimeInterval(-30 * 3600))) staged 100 NEW file(s) staged for review
+        \(ts(now.addingTimeInterval(-7200))) staged 2 NEW file(s) staged for review
+        \(ts(now.addingTimeInterval(-3600))) staged 3 NEW file(s) staged for review
+        \(ts(now)) no new items this run — nothing to stage for review
+        """
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .purpleAtticSync, now: now) == 5)
+    }
+
+    @Test func sumsTier1PlusNewAttributedToRunTimestamp() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = """
+        \(ts(now.addingTimeInterval(-40 * 3600))) === sync start ===
+        Mail archive: +50 new message(s); 100 total; 0 attachment(s); 0 unparseable.
+        \(ts(now.addingTimeInterval(-40 * 3600))) mail exit: 0
+        \(ts(now.addingTimeInterval(-3600))) === sync start ===
+        Mail archive: +4 new message(s); 104 total; 0 attachment(s); 0 unparseable.
+        \(ts(now.addingTimeInterval(-3600))) mail exit: 0
+        """
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .purpleAtticSync, now: now) == 4)
+    }
+
+    @Test func noNewItemsRunCountsAsZeroNotNil() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = "\(ts(now.addingTimeInterval(-600))) no new items this run — nothing to stage for review"
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .purpleAtticSync, now: now) == 0)
+    }
+
+    @Test func photoArchiveSumsNewItemLines() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = """
+        \(ts(now.addingTimeInterval(-3600))).123 [INFO] 9 new items staged for review
+        \(ts(now.addingTimeInterval(-1800))).456 [INFO] 137 new items staged for review
+        """
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .purpleAttic, now: now) == 146)
+    }
+
+    @Test func obsidianAndGenericHaveNoTally() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = "\(ts(now)) Mirrored 456 markdown files → /v"
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .obsidian, now: now) == nil)
+        #expect(SyncStatusParser.itemsLast24h("whatever", kind: .generic, now: now) == nil)
+    }
+
+    @Test func nilWhenNoCountableRunsInWindow() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = "\(ts(now.addingTimeInterval(-50 * 3600))) staged 5 NEW file(s) staged for review"
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .purpleAtticSync, now: now) == nil)
+    }
+}

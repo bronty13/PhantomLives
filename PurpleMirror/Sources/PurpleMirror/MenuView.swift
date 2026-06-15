@@ -58,7 +58,11 @@ struct MenuView: View {
 
     private var subtitle: String {
         let n = model.jobs.count
-        return n == 0 ? "No jobs" : "\(n) job\(n == 1 ? "" : "s") · \(model.aggregateHealth.label)"
+        guard n > 0 else { return "No jobs" }
+        var s = "\(n) job\(n == 1 ? "" : "s") · \(model.aggregateHealth.label)"
+        let t = model.totalItemsLast24h
+        if t > 0 { s += " · \(SyncStatusParser.grouped(t)) new in 24h" }
+        return s
     }
 
     /// Estimated natural height of the grouped job list, capped so very long lists
@@ -115,6 +119,8 @@ private struct GroupSection: View {
     var openLog: (String) -> Void
     @State private var expanded = true
 
+    private var groupTally: Int { jobs.compactMap(\.itemsLast24h).reduce(0, +) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Button { expanded.toggle() } label: {
@@ -125,6 +131,10 @@ private struct GroupSection: View {
                     Text(name).font(.subheadline.weight(.semibold))
                     Text("\(jobs.count)").font(.caption2).foregroundStyle(.secondary)
                     Spacer()
+                    if groupTally > 0 {
+                        Text("\(SyncStatusParser.grouped(groupTally)) new / 24h")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             }
             .buttonStyle(.plain)
@@ -174,6 +184,7 @@ private struct JobRow: View {
         var parts: [String] = [job.lastActivityRelative]
         if let h = job.summary?.headline { parts.append(h) }
         else { parts.append(job.agentLoaded ? "Auto every \(job.intervalHuman)" : "Auto-run off") }
+        if let n = job.itemsLast24h { parts.append("\(SyncStatusParser.grouped(n)) in 24h") }
         return parts.joined(separator: " · ")
     }
 }
