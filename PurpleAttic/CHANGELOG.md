@@ -3,6 +3,16 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.19.1] — 2026-06-14
+
+### Fixed
+- **Scheduled runs no longer hang at startup.** A launchd-spawned `pattic export` runs in a
+  bare environment, and osxphotos froze loading its framework modules there (0% CPU, never
+  progressing) — while the identical command ran fine from a terminal. `SchedulerService` now
+  invokes pattic through a **login shell** (`/bin/zsh -lc 'exec pattic export …'`) so it and its
+  osxphotos child inherit the full user environment (Homebrew PATH, locale, …). Diagnosis was
+  empirical: same command, same drive, same DB — only the execution environment differed.
+
 ## [0.19.0] — 2026-06-14
 
 Make the Hidden-album behavior explicit and controllable (it was already implicitly included).

@@ -56,8 +56,13 @@ enum SchedulerService {
         try fm.createDirectory(at: plistURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try fm.createDirectory(at: logDirectory, withIntermediateDirectories: true)
 
-        var args = [patticPath, "export"]
-        if let p = profilePath, !p.isEmpty { args += ["--profile", p] }
+        // Run pattic through a LOGIN shell so it + its osxphotos child inherit the full
+        // user environment (Homebrew PATH, locale, …). osxphotos hangs at startup under
+        // launchd's bare environment, but runs fine with a login-shell env. (2026-06-14.)
+        func shq(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        var cmd = "exec \(shq(patticPath)) export"
+        if let p = profilePath, !p.isEmpty { cmd += " --profile \(shq(p))" }
+        let args = ["/bin/zsh", "-lc", cmd]
 
         let xml = LaunchAgentPlist.build(label: label, programArguments: args, schedule: schedule,
                                          stdoutPath: stdoutPath, stderrPath: stderrPath)
