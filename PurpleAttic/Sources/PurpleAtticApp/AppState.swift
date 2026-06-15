@@ -7,6 +7,7 @@ enum Pane: String, CaseIterable, Identifiable {
     case run = "Archive"
     case schedule = "Schedule"
     case profile = "Settings"
+    case offsite = "Off-site"
     case backup = "Backup"
     case purge = "Purge"
     var id: String { rawValue }
@@ -15,6 +16,7 @@ enum Pane: String, CaseIterable, Identifiable {
         case .run: return "externaldrive.badge.timemachine"
         case .schedule: return "clock.arrow.2.circlepath"
         case .profile: return "slider.horizontal.3"
+        case .offsite: return "lock.icloud"
         case .backup: return "arrow.clockwise.icloud"
         case .purge: return "trash"
         }

@@ -66,7 +66,7 @@ struct ProfileSettingsView: View {
             TextField("Archive subfolder", text: $store.profile.archiveSubfolder)
                 .textFieldStyle(.roundedBorder).font(.system(.body, design: .monospaced))
             Text("Pick the drive; the archive is nested in this subfolder so the drive root stays tidy. "
-                 + "Applies to the primary + mirrors; the Cryptomator vault is exempt (written at its root).")
+                 + "Applies to the primary + mirrors.")
                 .font(.caption).foregroundStyle(.secondary)
             if !store.profile.primaryDestination.trimmingCharacters(in: .whitespaces).isEmpty {
                 Text("→ originals at  \(store.profile.primaryArchiveRoot)/originals")
@@ -92,33 +92,12 @@ struct ProfileSettingsView: View {
                 Label("Add Mirror", systemImage: "plus")
             }
             Divider()
-            PathField(label: "Cloud — mounted Cryptomator vault (blank = skip)",
-                      path: Binding(get: { store.profile.cloudVaultPath ?? "" },
-                                    set: { store.profile.cloudVaultPath = $0.isEmpty ? nil : $0 }),
-                      placeholder: "/Volumes/PhotoVault (unlocked Cryptomator drive)")
-            vaultStatusLine
-        }
-    }
-
-    @ViewBuilder
-    private var vaultStatusLine: some View {
-        let status = VaultStatus.check(path: store.profile.cloudVaultPath)
-        let (icon, tint): (String, Color) = {
-            switch status {
-            case .ready: return ("lock.open.fill", .green)
-            case .notMounted: return ("lock.fill", .orange)
-            case .notConfigured: return ("minus.circle", .secondary)
-            }
-        }()
-        HStack(spacing: 5) {
-            Image(systemName: icon).foregroundStyle(tint)
-            Text("Vault: \(status.label)").foregroundStyle(.secondary)
-            if status == .notMounted {
-                Text("— unlock it in Cryptomator before a run, or the cloud copy is skipped (and caught up next run).")
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Image(systemName: "lock.icloud").foregroundStyle(.secondary)
+                Text("Off-site (encrypted, Backblaze B2) is configured in the **Off-site** tab — it replaced the old Cryptomator vault.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
-        .font(.caption)
     }
 
     private var formatsCard: some View {

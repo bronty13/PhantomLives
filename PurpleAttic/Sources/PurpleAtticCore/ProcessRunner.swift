@@ -64,14 +64,18 @@ public enum ProcessRunner {
     }
 
     /// Run a process and capture all of stdout (and stderr separately). Use for commands
-    /// whose entire output is the payload (e.g. `osxphotos query --json`).
+    /// whose entire output is the payload (e.g. `osxphotos query --json`, `restic … --json`).
     public static func capture(
         executable: String,
-        arguments: [String]
+        arguments: [String],
+        environment: [String: String]? = nil
     ) throws -> (exitCode: Int32, stdout: Data, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        if let environment {
+            process.environment = environment
+        }
         let outPipe = Pipe()
         let errPipe = Pipe()
         process.standardOutput = outPipe

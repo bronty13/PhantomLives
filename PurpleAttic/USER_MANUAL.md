@@ -254,61 +254,73 @@ The off-site layer is a **pluggable list** of destinations: Backblaze **B2** is
 supported today; an rclone-backed remote (Dropbox / Proton Drive / S3 / rsync.net)
 is config-only to add later — no app change.
 
-### One-time setup (do this once, then it runs itself)
+### Set it up in the app — no Terminal needed (the **Off-site** tab)
 
-1. **Install restic:** `brew install restic`.
-2. **Backblaze B2:** create a **private bucket** and an **application key** (note
-   the keyID, the application key, and the bucket name + endpoint).
-3. **Choose two passphrases:**
-   - a **runtime passphrase** (random, stored in the Keychain — convenience), and
-   - a **recovery passphrase** — 8–10 diceware-style words you **write on paper and
-     put in a physical safe**. This is your guarantee: with true E2EE, if *all* keys
-     are lost the cloud copy is unrecoverable, so the safe copy is what protects you.
-4. **Store the secrets in the macOS Keychain** (replace the bracketed values; the
-   service name must match your destination's `keychainService`):
-   ```sh
-   SVC="PurpleAttic Restic B2"
-   security add-generic-password -U -s "$SVC" -a restic-password -w '[RUNTIME PASSPHRASE]'
-   security add-generic-password -U -s "$SVC" -a b2-account-id   -w '[B2 KEY ID]'
-   security add-generic-password -U -s "$SVC" -a b2-account-key  -w '[B2 APPLICATION KEY]'
-   ```
-5. **Add the destination to your profile** (`profile.json`), in `cloudDestinations`:
-   ```json
-   "cloudDestinations": [
-     {
-       "name": "Backblaze B2",
-       "kind": "resticB2",
-       "enabled": true,
-       "repo": "b2:your-bucket-name:photos",
-       "keychainService": "PurpleAttic Restic B2",
-       "checkAfterBackup": true
-     }
-   ]
-   ```
-6. **Add the recovery key** to the repo (so either passphrase can open it). After the
-   first backup has initialized the repo, run with the runtime env, then:
-   ```sh
-   restic key add        # prompts for the NEW (recovery) passphrase
-   ```
+Everything below is now point-and-click in PurpleAttic's **Off-site** tab. (The
+manual CLI equivalent is kept further down for power users / scripted hosts.)
 
-### Prove the recovery key BEFORE you rely on it (mandatory)
+1. **Install restic:** `brew install restic` (the one prerequisite that isn't in-app).
+2. **Backblaze B2 (web console):** create a **private bucket** and an **application
+   key** scoped to just that bucket. Copy the keyID and application key (the key is
+   shown once).
+3. **Off-site tab → Destination:** if no destination exists, click **Add Backblaze
+   B2 destination**, then fill in the **bucket** name (and optionally the path within
+   it — defaults to `photos`). Turn **Enabled** on.
+4. **Off-site tab → Credentials:** paste the **B2 key ID** and **application key** and
+   click **Save to Keychain**. On a brand-new repository the app also generates and
+   stores the **runtime passphrase** for you (it lives only in the Keychain). The
+   three rows flip to green ✓ when stored. *(Don't regenerate the runtime passphrase
+   for a repo that already has backups — it must match what the repo was created with.)*
+5. **Off-site tab → Repository status:** click **Refresh**. Once your first backup has
+   run it shows the snapshot count, the latest snapshot time, and the key count.
+6. **Off-site tab → Recovery key → Set up recovery key:** a guided sheet **generates**
+   a strong word-based passphrase (or type your own), you **write it on paper for your
+   safe** and tick the confirmation, then **Add recovery key to repository**. The app
+   immediately walks you through the drill (next section).
+
+### Prove the recovery key BEFORE you rely on it (built into the app)
 
 A backup you can't restore is worthless, and a recovery key you've never tested is a
-guess. In a clean shell with the **Keychain bypassed**, restore a sample using **only
-the recovery passphrase** and byte-compare it to the source:
+guess. Right after adding the key, the recovery sheet asks you to **re-type the
+passphrase from your paper** and runs a **Keychain-bypassed restore drill**: it opens
+the repo using *only* the typed passphrase and byte-compares a restored sample to your
+local archive. A green **PASS** proves the paper copy alone can recover everything.
+Re-run this drill (the **Add another recovery key** button leads to the same verify
+step) after any key change, and only decommission an older off-site copy once it
+passes.
+
+### Manual CLI setup (advanced / headless hosts)
+
+The in-app flow above is the recommended path. If you prefer the command line (or are
+configuring a host without the GUI), the equivalents are:
 
 ```sh
+# 1. Store the secrets (service name must match the destination's keychainService):
+SVC="PurpleAttic Restic B2"
+security add-generic-password -U -s "$SVC" -a restic-password -w '[RUNTIME PASSPHRASE]'
+security add-generic-password -U -s "$SVC" -a b2-account-id   -w '[B2 KEY ID]'
+security add-generic-password -U -s "$SVC" -a b2-account-key  -w '[B2 APPLICATION KEY]'
+```
+```json
+// 2. Add the destination to profile.json → cloudDestinations:
+"cloudDestinations": [
+  { "name": "Backblaze B2", "kind": "resticB2", "enabled": true,
+    "repo": "b2:your-bucket-name:photos",
+    "keychainService": "PurpleAttic Restic B2", "checkAfterBackup": true }
+]
+```
+```sh
+# 3. After the first backup initializes the repo, add the recovery key:
+restic key add        # prompts for the NEW (recovery) passphrase
+# 4. Recovery drill — Keychain bypassed, recovery passphrase only:
 export RESTIC_REPOSITORY='b2:your-bucket-name:photos'
 export B2_ACCOUNT_ID='[B2 KEY ID]'  B2_ACCOUNT_KEY='[B2 APPLICATION KEY]'
 export RESTIC_PASSWORD='[RECOVERY PASSPHRASE]'    # NOT the Keychain
-restic snapshots                                  # should list your snapshots
+restic snapshots
 restic restore latest --target /tmp/attic-recovery-test --include '[some subfolder]'
 diff -r "/Volumes/ROG_WHITE/Photos Archive/[same subfolder]" \
         "/tmp/attic-recovery-test/Volumes/ROG_WHITE/Photos Archive/[same subfolder]"
 ```
-
-Re-run this drill after **any** `restic key` change. Only decommission any older
-off-site copy once both the runtime-key and recovery-key restores pass.
 
 ### Day-to-day
 

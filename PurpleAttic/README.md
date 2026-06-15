@@ -77,9 +77,13 @@ Photos library ──osxphotos──▶ Primary archive ──rsync──▶ Mir
 
    The runtime restic passphrase + B2 key live in the **macOS Keychain**
    (non-interactive). A separate **recovery passphrase** (written down for a
-   physical safe) is added via `restic key add` so the archive is recoverable
-   even if the Mac and its Keychain are gone — see USER_MANUAL for the guided
-   setup and the mandatory recovery-key restore drill.
+   physical safe) makes the archive recoverable even if the Mac and its Keychain
+   are gone. All of this is configured **in the app's Off-site tab — no Terminal**:
+   add the B2 destination, save the credentials to the Keychain, and run the
+   guided **Set up recovery key** flow, which generates the passphrase, adds it to
+   the repo, and immediately runs a **Keychain-bypassed restore drill** to prove
+   the paper copy alone can recover the archive. (A CLI path is documented in
+   USER_MANUAL for headless hosts.)
 
 ### Retention (what the future purge will and won't touch)
 

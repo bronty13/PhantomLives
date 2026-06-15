@@ -3,6 +3,44 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.21.0] — 2026-06-15
+
+Make the off-site (restic → Backblaze B2) layer configurable **entirely in the app — no Terminal**.
+0.20.0 shipped the unattended engine but left first-time setup (storing Keychain secrets, adding +
+testing the recovery key) as hand-run `security` / `restic` commands. This adds a dedicated
+**Off-site** tab that does all of it point-and-click, so a brand-new Mac can be set up end to end
+without the command line. The CLI path still works and is documented as the advanced alternative.
+
+### Added
+- **Off-site settings pane** (`OffsiteSettingsView` + `OffsiteModel`) with four cards:
+  - **Destination** — add/enable a Backblaze B2 destination; edit name, bucket, and path (the
+    `b2:<bucket>:<path>` repo string is composed for you); toggle enabled + check-after-backup.
+  - **Credentials** — paste the B2 key ID + application key and **Save to Keychain** (written via
+    the `security` CLI so restic reads them back non-interactively). A green/red checklist shows
+    which of the runtime passphrase / B2 key ID / B2 key are stored. For a brand-new repo the app
+    generates the runtime passphrase itself (kept only in the Keychain).
+  - **Repository status** — live snapshot count + latest-snapshot time + key count, with Refresh.
+  - **Recovery key** — a guided sheet: **generate** a strong word-based passphrase (or type your
+    own) → confirm it's written on paper → **add it to the repo** → **re-type it from paper** and
+    run a **Keychain-bypassed restore drill** that byte-matches a restored sample against the local
+    archive. Proves the paper copy alone can recover the archive before you rely on it.
+- **`KeychainStore`** — reads/writes the off-site secrets via `/usr/bin/security` (chosen over
+  `SecItem*` so CLI-created items are read back by restic's `security` child without an auth prompt —
+  the unattended-read guarantee). Pure argv builders are unit-tested.
+- **`RecoveryPassphrase`** — diceware-style generator using `SecRandomCopyBytes` with rejection
+  sampling (no modulo bias), word count auto-scaled to ≥100 bits from the system wordlist.
+- **`ResticService` admin ops** — `overview` (snapshots + keys for the status panel),
+  `credentialPresence`, `addRecoveryKey` (new-key via a 0600 temp file, never in argv), and
+  `verifyRecoveryKey` (the in-app recovery drill); plus `ProcessRunner.capture(environment:)`.
+
+### Changed
+- **Settings → Destinations** no longer shows the retired Cryptomator vault field; it points to the
+  new **Off-site** tab instead.
+
+### Tests
+- +12 (153 total): Keychain argv builders, recovery-passphrase entropy/shape/uniqueness + bounded
+  uniform index, restic admin argv, snapshots/keys JSON parsing, and the bounded sample-file finder.
+
 ## [0.20.0] — 2026-06-15
 
 Re-architect the **off-site copy**: replace the Cryptomator/macFUSE → iCloud Drive vault with a
