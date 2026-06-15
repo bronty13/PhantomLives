@@ -31,7 +31,7 @@ Output: ~/Downloads/mail-cleaner/<account>_<timestamp>/
 
 from __future__ import annotations
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 import argparse
 import csv
@@ -925,9 +925,13 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--mailbox", default=None,
                    help="mailbox to read unsubscribe links from "
                         "(default INBOX; Gmail: [Gmail]/All Mail)")
-    u.add_argument("--methods", default="one-click,mailto",
+    u.add_argument("--methods", default="one-click",
                    help="comma list of methods to fire: one-click,mailto "
-                        "(http/none are always report-only)")
+                        "(default one-click only). mailto is OPT-IN: it sends "
+                        "email from your account and many unsubscribe mailboxes "
+                        "are dead, so it's low-yield and generates NDR bounce-"
+                        "backs. Pass --methods one-click,mailto to include it. "
+                        "(http/none are always report-only.)")
     u.add_argument("--smtp-host", dest="smtp_host",
                    help="SMTP host for mailto unsubs (overrides preset)")
     u.add_argument("--smtp-port", dest="smtp_port", type=int,

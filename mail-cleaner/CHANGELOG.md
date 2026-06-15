@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.2 — 2026-06-15
+
+`unsubscribe` now defaults to **one-click only**; mailto is opt-in.
+
+- Real-world run data: of 470 mailto unsubscribes, only ~100 were accepted by
+  SMTP and ~half of those bounced — ~50 NDRs ("Undelivered Mail Returned to
+  Sender") landed back in the inbox. one-click, by contrast, succeeded 434/515.
+- mailto sends mail *from the user's account* to often-dead unsubscribe
+  mailboxes, so it's low-yield and noisy. Default `--methods` is now
+  `one-click`; pass `--methods one-click,mailto` to opt back in when you want
+  maximum coverage and accept the bounce-backs. mailto senders are still shown
+  in the dry-run report (just not fired by default).
+
 ## 0.3.1 — 2026-06-14
 
 **Data-loss fix** in `act --action archive|trash` on servers without MOVE (iCloud).
