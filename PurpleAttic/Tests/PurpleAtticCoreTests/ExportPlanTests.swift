@@ -14,14 +14,15 @@ final class ExportPlanTests: XCTestCase {
         )
     }
 
-    func testIncludeHiddenFlagFollowsProfile() {
-        // Default profile → Hidden album IS archived (nothing-lost preservation default).
-        XCTAssertTrue(ExportPlan.arguments(profile: profile(), pass: .originals, dryRun: false)
-                        .contains("--include-hidden"))
-        // Opt out → flag absent.
+    func testIncludeHiddenFollowsProfile() {
+        // osxphotos includes hidden BY DEFAULT, so "include hidden" = no hidden flag at all.
+        let defaultArgs = ExportPlan.arguments(profile: profile(), pass: .originals, dryRun: false)
+        XCTAssertFalse(defaultArgs.contains("--not-hidden"), "default archives the Hidden album")
+        XCTAssertFalse(defaultArgs.contains("--include-hidden"), "no such osxphotos flag")
+        // Opt out → --not-hidden excludes the Hidden album.
         var p = profile(); p.includeHidden = false
-        XCTAssertFalse(ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
-                        .contains("--include-hidden"))
+        XCTAssertTrue(ExportPlan.arguments(profile: p, pass: .originals, dryRun: false)
+                        .contains("--not-hidden"))
     }
 
     func testOriginalsArgsHaveSafetyFlags() {

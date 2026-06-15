@@ -5,16 +5,19 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
 
 ## [0.19.0] — 2026-06-14
 
-Archive the Hidden album — a "nothing ever lost" preservation archive shouldn't silently skip it.
+Make the Hidden-album behavior explicit and controllable (it was already implicitly included).
 
 ### Added
-- **`includeHidden` profile option (default ON).** Wires osxphotos `--include-hidden` into both
-  export passes, so hidden photos are archived too. Toggle in Settings → Profile ("Include the
-  Hidden album"). Hidden ≠ deleted: a photo you actually delete leaves the library and future runs
-  simply don't see it, so this only ever captures photos that are present-and-hidden.
+- **`includeHidden` profile option (default ON).** osxphotos *includes hidden photos by default*
+  (verified: total == not-hidden + hidden), so the archive has always captured the Hidden album.
+  This option makes that explicit and adds the inverse: turning it OFF passes osxphotos
+  `--not-hidden` to EXCLUDE the Hidden album. Toggle in Settings → Profile ("Include the Hidden
+  album"). Hidden ≠ deleted: a photo you actually delete leaves the library and future runs don't
+  see it. (An earlier attempt used a non-existent `--include-hidden` osxphotos flag, which aborted
+  the export with exit 2 — corrected to the real semantics.)
 
 ### Tests
-- 115 total (+1: `--include-hidden` follows the profile flag).
+- 115 total (+1: hidden flag follows the profile — default adds nothing, opt-out adds `--not-hidden`).
 
 ## [0.18.0] — 2026-06-14
 

@@ -82,11 +82,11 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// (`~/Downloads/PurpleAttic/NEW PHOTOS TO REVIEW`).
     public var reviewFolderPath: String?
 
-    /// Archive the **Hidden album** too (osxphotos `--include-hidden`). **On by default** —
-    /// a "nothing ever lost" preservation archive shouldn't silently skip hidden photos.
-    /// (Hidden ≠ deleted: a photo the user actually deletes is removed from the source
-    /// library and simply isn't seen by future runs; the append-only archive keeps whatever
-    /// it captured. So only photos that are present-and-hidden get archived by this.)
+    /// Archive the **Hidden album** too. **On by default** — and note osxphotos already
+    /// *includes* hidden photos by default, so ON adds no flag; turning this OFF passes
+    /// osxphotos `--not-hidden` to EXCLUDE the Hidden album. A "nothing ever lost" archive
+    /// keeps it ON. (Hidden ≠ deleted: a photo the user actually deletes leaves the library
+    /// and future runs simply don't see it; the append-only archive keeps what it captured.)
     public var includeHidden: Bool
 
     public init(
