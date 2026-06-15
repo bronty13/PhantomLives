@@ -183,28 +183,67 @@ public extension ResticService {
             return .failed("the key unlocked the repo but there are no snapshots yet to verify against")
         }
 
-        // 2. Byte proof (best effort): restore one small local file and compare.
-        if let sample = firstSmallFile(under: sourceRoot, maxBytes: 4_000_000, scanLimit: 8000) {
+        // 2. Byte proof: restore one small file **chosen from the snapshot itself** (so the sample
+        //    is guaranteed to exist in `latest`, even mid-seed) and byte-compare it to the local
+        //    archive at the same absolute path. Sampling from the local disk instead would pick a
+        //    file the partial snapshot doesn't contain → an empty restore → a false mismatch.
+        _ = sourceRoot   // retained for API symmetry; the sample now comes from the snapshot
+        if let sample = firstSmallFileInSnapshot(restic: restic, env: env, maxBytes: 4_000_000) {
             let tmpDir = (NSTemporaryDirectory() as NSString)
                 .appendingPathComponent("pattic-drill-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(atPath: tmpDir) }
-            onLine("Restoring a sample file with the recovery key and byte-comparing to the local archive…")
+            let name = (sample as NSString).lastPathComponent
+            onLine("Restoring “\(name)” from the snapshot with the recovery key…")
             let r = try? ProcessRunner.run(executable: restic,
                                            arguments: ["restore", "latest", "--target", tmpDir, "--include", sample],
                                            environment: env, onLine: onLine)
             if let r, r.exitCode == 0 {
                 // restic restores preserving the absolute source path under the target dir.
                 let restored = (tmpDir as NSString).appendingPathComponent(sample)
-                if FileManager.default.contentsEqual(atPath: sample, andPath: restored) {
-                    let name = (sample as NSString).lastPathComponent
-                    return .restored(detail: "PASS — recovery key opened \(summary.count) snapshots; restored & byte-matched “\(name)”")
+                let fm = FileManager.default
+                if fm.fileExists(atPath: sample) {
+                    if fm.contentsEqual(atPath: sample, andPath: restored) {
+                        return .restored(detail: "PASS — recovery key opened \(summary.count) snapshot(s); restored & byte-matched “\(name)”")
+                    }
+                    return .failed("a sample restored with the recovery key did NOT byte-match the local archive")
                 }
-                return .failed("a sample restored with the recovery key did NOT byte-match the local archive")
+                // No local copy to compare against (e.g. a bare recovery host) — prove the restore
+                // produced a non-empty file.
+                if let attrs = try? fm.attributesOfItem(atPath: restored),
+                   let size = (attrs[.size] as? NSNumber)?.intValue, size > 0 {
+                    return .restored(detail: "PASS — recovery key opened \(summary.count) snapshot(s); restored “\(name)” (\(size) bytes; no local copy to byte-compare)")
+                }
+                return .failed("the recovery restore produced no file")
             }
             // Unlock proven, sample restore couldn't run — still a pass on the crypto gate.
-            return .restored(detail: "PASS — recovery key opened \(summary.count) snapshots (sample restore skipped)")
+            return .restored(detail: "PASS — recovery key opened \(summary.count) snapshot(s) (sample restore skipped)")
         }
-        return .restored(detail: "PASS — recovery key opened \(summary.count) snapshots")
+        return .restored(detail: "PASS — recovery key opened \(summary.count) snapshot(s)")
+    }
+
+    /// First small regular file **in the latest snapshot** (via `restic ls latest --json`), as an
+    /// absolute path. Guarantees the recovery drill samples a file the snapshot actually contains.
+    static func firstSmallFileInSnapshot(restic: String, env: [String: String], maxBytes: Int) -> String? {
+        guard let r = try? ProcessRunner.capture(executable: restic,
+                                                 arguments: ["ls", "latest", "--json", "--no-lock"],
+                                                 environment: env), r.exitCode == 0 else { return nil }
+        return parseFirstSmallFilePath(fromLsJSON: r.stdout, maxBytes: maxBytes)
+    }
+
+    /// Pure parser for `restic ls --json` (newline-delimited node objects): the first `type:"file"`
+    /// node with `0 < size <= maxBytes`, skipping dotfiles. Returns its absolute `path`.
+    static func parseFirstSmallFilePath(fromLsJSON data: Data, maxBytes: Int) -> String? {
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n") {
+            guard let d = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  (d["type"] as? String) == "file",
+                  let path = d["path"] as? String else { continue }
+            let size = (d["size"] as? NSNumber)?.intValue ?? 0
+            guard size > 0, size <= maxBytes else { continue }
+            if (path as NSString).lastPathComponent.hasPrefix(".") { continue }
+            return path
+        }
+        return nil
     }
 
     /// First non-hidden regular file under `root` no larger than `maxBytes`, scanning at most

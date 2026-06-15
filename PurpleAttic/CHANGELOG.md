@@ -3,6 +3,30 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.21.1] — 2026-06-15
+
+Fixes found in live use of the 0.21.0 recovery-key flow.
+
+### Fixed
+- **Recovery drill reported a false FAIL.** The Keychain-bypassed restore drill picked its sample
+  file by scanning the **local archive**, but restored it **from the snapshot** — so while a backup
+  is still seeding (only a partial snapshot exists), it would pick a file the snapshot doesn't
+  contain, restore nothing, and report a byte mismatch even though the recovery key was valid. The
+  drill now chooses its sample **from the snapshot itself** (`restic ls latest`), so it's
+  self-consistent at any seed stage; it byte-compares to the local copy when present, else verifies
+  the restored file is non-empty. (`verifyRecoveryKey` + new `firstSmallFileInSnapshot` /
+  `parseFirstSmallFilePath`.)
+- **Recovery-key log box wasn't copyable.** The log is now selectable (`.textSelection`) and has a
+  **Copy log** button, so errors can be copied out.
+
+### Added
+- **"Test recovery key" button** — re-run the restore drill against an existing recovery key without
+  adding another one (opens the flow straight at the verify step).
+
+### Tests
+- +2 (143 total): `parseFirstSmallFilePath` picks the first in-bounds, non-dir, non-dotfile node and
+  returns nil on no-match / garbage.
+
 ## [0.21.0] — 2026-06-15
 
 Make the off-site (restic → Backblaze B2) layer configurable **entirely in the app — no Terminal**.

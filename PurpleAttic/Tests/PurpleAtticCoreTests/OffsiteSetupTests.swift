@@ -120,4 +120,28 @@ final class OffsiteSetupTests: XCTestCase {
     func testFirstSmallFileSkipsOversizeAndMissingDir() {
         XCTAssertNil(ResticService.firstSmallFile(under: "/no/such/dir/here", maxBytes: 10, scanLimit: 10))
     }
+
+    // MARK: parseFirstSmallFilePath (recovery drill samples from the snapshot, not local disk)
+
+    func testParseFirstSmallFilePathPicksSmallFileSkippingDirsBigFilesDotfiles() {
+        // restic ls --json is newline-delimited: a snapshot header line, then one node per line.
+        let ndjson = """
+        {"time":"2026-06-15T09:24:29Z","struct_type":"snapshot"}
+        {"name":"originals","type":"dir","path":"/V/originals","struct_type":"node"}
+        {"name":"big.mov","type":"file","path":"/V/originals/big.mov","size":99999999,"struct_type":"node"}
+        {"name":".DS_Store","type":"file","path":"/V/originals/.DS_Store","size":50,"struct_type":"node"}
+        {"name":"x.jpg","type":"file","path":"/V/originals/1999/x.jpg","size":12345,"struct_type":"node"}
+        {"name":"y.jpg","type":"file","path":"/V/originals/1999/y.jpg","size":222,"struct_type":"node"}
+        """.data(using: .utf8)!
+        let p = ResticService.parseFirstSmallFilePath(fromLsJSON: ndjson, maxBytes: 4_000_000)
+        XCTAssertEqual(p, "/V/originals/1999/x.jpg", "first in-bounds, non-dir, non-dotfile node")
+    }
+
+    func testParseFirstSmallFilePathNoMatch() {
+        let onlyBig = """
+        {"name":"big.mov","type":"file","path":"/V/big.mov","size":99999999,"struct_type":"node"}
+        """.data(using: .utf8)!
+        XCTAssertNil(ResticService.parseFirstSmallFilePath(fromLsJSON: onlyBig, maxBytes: 1000))
+        XCTAssertNil(ResticService.parseFirstSmallFilePath(fromLsJSON: Data("garbage".utf8), maxBytes: 1000))
+    }
 }

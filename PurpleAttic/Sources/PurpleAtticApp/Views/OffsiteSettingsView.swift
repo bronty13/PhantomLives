@@ -9,6 +9,7 @@ struct OffsiteSettingsView: View {
     @ObservedObject var store: SettingsStore
     @StateObject private var model = OffsiteModel()
     @State private var showRecoverySheet = false
+    @State private var recoveryStartAtVerify = false
 
     /// The B2 destination we manage in this pane (first one, or none yet).
     private var b2Index: Int? {
@@ -39,6 +40,7 @@ struct OffsiteSettingsView: View {
                 RecoveryKeySheet(model: model,
                                  dest: store.profile.cloudDestinations[i],
                                  sourceRoot: store.profile.primaryArchiveRoot,
+                                 startAtVerify: recoveryStartAtVerify,
                                  isPresented: $showRecoverySheet)
             }
         }
@@ -203,15 +205,25 @@ struct OffsiteSettingsView: View {
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button {
-                    model.recoveryResult = nil; model.recoveryLog = []
-                    showRecoverySheet = true
-                } label: {
-                    Label(hasRecovery ? "Add another recovery key" : "Set up recovery key",
-                          systemImage: "key.horizontal.fill")
+                if hasRecovery {
+                    Button {
+                        model.recoveryResult = nil; model.recoveryLog = []
+                        recoveryStartAtVerify = false; showRecoverySheet = true
+                    } label: { Label("Add another recovery key", systemImage: "key.horizontal") }
+                        .buttonStyle(.bordered)
+                    Button {
+                        model.recoveryResult = nil; model.recoveryLog = []
+                        recoveryStartAtVerify = true; showRecoverySheet = true
+                    } label: { Label("Test recovery key", systemImage: "checkmark.shield.fill") }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Button {
+                        model.recoveryResult = nil; model.recoveryLog = []
+                        recoveryStartAtVerify = false; showRecoverySheet = true
+                    } label: { Label("Set up recovery key", systemImage: "key.horizontal.fill") }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(keyCount == 0)   // need a reachable repo (runtime key works) first
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(keyCount == 0)   // need a reachable repo (runtime key works) first
             }
         }
     }
@@ -263,6 +275,7 @@ private struct RecoveryKeySheet: View {
     @ObservedObject var model: OffsiteModel
     let dest: CloudDestination
     let sourceRoot: String
+    var startAtVerify: Bool = false
     @Binding var isPresented: Bool
 
     private enum Step { case create, added, verify, done }
@@ -284,6 +297,15 @@ private struct RecoveryKeySheet: View {
             }
 
             if !model.recoveryLog.isEmpty {
+                HStack {
+                    Text("Log").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(model.recoveryLog.joined(separator: "\n"), forType: .string)
+                    } label: { Label("Copy log", systemImage: "doc.on.doc") }
+                        .buttonStyle(.borderless).font(.caption)
+                }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 1) {
                         ForEach(Array(model.recoveryLog.enumerated()), id: \.offset) { _, line in
@@ -291,8 +313,9 @@ private struct RecoveryKeySheet: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    .textSelection(.enabled)   // allow selecting/copying error text directly
                 }
-                .frame(height: 90)
+                .frame(height: 110)
                 .padding(8)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
             }
@@ -304,6 +327,7 @@ private struct RecoveryKeySheet: View {
         }
         .padding(20)
         .frame(width: 560)
+        .onAppear { if startAtVerify { step = .verify } }
         .onChange(of: model.recoveryResult) { _, result in
             switch result {
             case .added: step = .verify
@@ -354,8 +378,12 @@ private struct RecoveryKeySheet: View {
     // Step 2 — re-type from paper, run the drill.
     private var verifyStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Recovery key added. Now prove your paper copy works.", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            if model.recoveryResult == .added {
+                Label("Recovery key added. Now prove your paper copy works.", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Label("Test your recovery key.", systemImage: "checkmark.shield")
+            }
             Text("Type the passphrase **from your paper** (not copy-paste). This runs a restore with the Keychain bypassed — proving the written copy alone can recover the archive.")
                 .font(.callout).foregroundStyle(.secondary)
             SecureField("type it from paper…", text: $typedToVerify)
