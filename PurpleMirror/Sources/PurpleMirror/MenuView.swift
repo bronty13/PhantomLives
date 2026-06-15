@@ -44,7 +44,7 @@ struct MenuView: View {
         HStack(spacing: 10) {
             Image(systemName: model.aggregateHealth.symbol)
                 .font(.title2)
-                .foregroundStyle(healthColor(model.aggregateHealth))
+                .foregroundStyle(model.aggregateHealth.color)
             VStack(alignment: .leading, spacing: 1) {
                 Text("PurpleMirror").font(.headline)
                 Text(subtitle)
@@ -105,15 +105,6 @@ struct MenuView: View {
         openWindow(id: "log")
         NSApp.activate(ignoringOtherApps: true)
     }
-
-    private func healthColor(_ h: SyncStatusParser.Health) -> Color {
-        switch h {
-        case .healthy: return .green
-        case .running: return .accentColor
-        case .warning: return .orange
-        case .error:   return .red
-        }
-    }
 }
 
 /// A collapsible section grouping one source's jobs (e.g. all of "Rachel").
@@ -130,7 +121,7 @@ private struct GroupSection: View {
                 HStack(spacing: 8) {
                     Image(systemName: expanded ? "chevron.down" : "chevron.right")
                         .font(.caption2).foregroundStyle(.secondary)
-                    Image(systemName: health.symbol).foregroundStyle(color(health)).font(.caption)
+                    Image(systemName: health.symbol).foregroundStyle(health.color).font(.caption)
                     Text(name).font(.subheadline.weight(.semibold))
                     Text("\(jobs.count)").font(.caption2).foregroundStyle(.secondary)
                     Spacer()
@@ -145,15 +136,6 @@ private struct GroupSection: View {
             }
         }
     }
-
-    private func color(_ h: SyncStatusParser.Health) -> Color {
-        switch h {
-        case .healthy: return .green
-        case .running: return .accentColor
-        case .warning: return .orange
-        case .error:   return .red
-        }
-    }
 }
 
 /// One job's row: status glyph, name, last-activity digest, and a Run-Now / View-Log pair.
@@ -164,7 +146,7 @@ private struct JobRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: job.health.symbol)
-                .foregroundStyle(color)
+                .foregroundStyle(job.health.color)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 Text(job.shortName).font(.callout.weight(.medium))
@@ -193,14 +175,5 @@ private struct JobRow: View {
         if let h = job.summary?.headline { parts.append(h) }
         else { parts.append(job.agentLoaded ? "Auto every \(job.intervalHuman)" : "Auto-run off") }
         return parts.joined(separator: " · ")
-    }
-
-    private var color: Color {
-        switch job.health {
-        case .healthy: return .green
-        case .running: return .accentColor
-        case .warning: return .orange
-        case .error:   return .red
-        }
     }
 }

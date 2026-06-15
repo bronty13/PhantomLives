@@ -1,10 +1,15 @@
 import SwiftUI
 
+/// Settings window. A fixed-width sidebar lists every managed job **grouped by source**
+/// (the PhantomLives manual-`HStack` pattern — not `NavigationSplitView`), with the selected
+/// job's schedule + locations on the right. This replaces the old segmented "tabs across the
+/// top" picker, which became unreadable once a dozen+ jobs were managed.
 struct SettingsView: View {
     @ObservedObject var model: JobsModel
+    private let sidebarWidth: CGFloat = 210
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if model.jobs.isEmpty {
                 ContentUnavailableView(
                     "No managed jobs",
@@ -12,24 +17,98 @@ struct SettingsView: View {
                     description: Text("PurpleMirror manages PhantomLives launchd agents in ~/Library/LaunchAgents.")
                 )
             } else {
-                Picker("Job", selection: Binding(
-                    get: { model.selectedJobID ?? model.jobs.first?.id },
-                    set: { model.selectedJobID = $0 }
-                )) {
-                    ForEach(model.jobs) { Text($0.displayName).tag(Optional($0.id)) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding([.horizontal, .top])
-
-                if let job = model.selectedJob {
-                    JobSettingsForm(job: job)
-                        .id(job.id)   // fresh @State per job
+                HStack(spacing: 0) {
+                    sidebar
+                        .frame(width: sidebarWidth)
+                        .background(.ultraThinMaterial)
+                    Divider()
+                    detail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
-        .frame(width: 500, height: 480)
+        .frame(width: 680, height: 520)
         .task { await model.refreshAll() }
+    }
+
+    // MARK: Sidebar
+
+    private var sidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(model.groups, id: \.name) { grp in
+                    VStack(alignment: .leading, spacing: 2) {
+                        groupHeader(grp.name, jobs: grp.jobs)
+                        ForEach(grp.jobs) { sidebarRow($0) }
+                    }
+                }
+            }
+            .padding(.vertical, 10)
+        }
+    }
+
+    private func groupHeader(_ name: String, jobs: [JobController]) -> some View {
+        let health = model.groupHealth(jobs)
+        return HStack(spacing: 5) {
+            Text(name.uppercased())
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Image(systemName: health.symbol)
+                .font(.caption2)
+                .foregroundStyle(health.color)
+            Spacer()
+            Text("\(jobs.count)").font(.caption2).foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 2)
+    }
+
+    private func sidebarRow(_ job: JobController) -> some View {
+        Button {
+            model.selectedJobID = job.id
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: job.health.symbol)
+                    .foregroundStyle(job.health.color)
+                    .font(.caption)
+                    .frame(width: 16)
+                Text(job.shortName).lineLimit(1)
+                Spacer(minLength: 0)
+                if job.isRunning { ProgressView().controlSize(.mini) }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(model.selectedJobID == job.id ? Color.accentColor.opacity(0.22) : .clear,
+                        in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+    }
+
+    // MARK: Detail
+
+    @ViewBuilder
+    private var detail: some View {
+        if let job = model.selectedJob {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 9) {
+                    Image(systemName: job.health.symbol)
+                        .font(.title3)
+                        .foregroundStyle(job.health.color)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(job.displayName).font(.headline)
+                        Text(job.health.label).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+                Divider()
+                JobSettingsForm(job: job)
+                    .id(job.id)   // fresh @State per job
+            }
+        } else {
+            ContentUnavailableView("Select a job", systemImage: "sidebar.left")
+        }
     }
 }
 

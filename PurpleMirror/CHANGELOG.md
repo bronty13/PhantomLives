@@ -2,6 +2,18 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.12.0 — 2026-06-15
+
+- **Settings is now a grouped sidebar, not "tabs across the top."** The old segmented job picker
+  became unreadable once a dozen+ jobs were managed (photo archive, messages, notes, reminders,
+  safari, voice memos, calls, calendar, books, podcasts, stickies, landing pages, Obsidian…). The
+  Settings window now has a fixed-width left **sidebar that lists every job grouped by source**
+  (each with a health glyph + count), and the selected job's schedule/locations on the right, under
+  a header showing its name + status. Same manual-`HStack` sidebar pattern the rest of PhantomLives
+  uses (deliberately not `NavigationSplitView`).
+- Internal: the health→color mapping (duplicated 3× in `MenuView`) is now a single
+  `SyncStatusParser.Health.color` extension reused by the menu and the new sidebar.
+
 ## 1.11.0 — 2026-06-15
 
 - **Recognize PurpleAttic's local Photo Archive job** (`com.bronty13.PurpleAttic.archive`)
