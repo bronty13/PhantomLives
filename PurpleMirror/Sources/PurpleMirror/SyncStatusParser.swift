@@ -75,13 +75,30 @@ enum SyncStatusParser {
     }
 
     static func obsidianSummary(_ log: String) -> LogSummary? {
-        guard let e = parseLastLogLine(log) else { return nil }
-        let n = e.fileCount ?? 0
-        let dest = e.destination.map { ($0 as NSString).lastPathComponent }
-        return LogSummary(date: e.date,
-                          headline: "Mirrored \(n) file\(n == 1 ? "" : "s")",
+        // Prefer the per-run delta line ("Updated K of N …" / "No markdown changes …") for the
+        // headline; fall back to the canonical "Mirrored N … → DEST" (older logs have only that).
+        // Destination always comes from the freshest "Mirrored … → DEST" line.
+        var deltaHeadline: String?, deltaDate: Date?
+        var mirroredHeadline: String?, mirroredDate: Date?, dest: String?
+        for line in log.split(whereSeparator: \.isNewline).map(String.init) {
+            let d = leadingTimestamp(line)
+            if line.contains("Updated "), line.contains("markdown file"), let n = intBefore(" of ", in: line) {
+                deltaHeadline = "Updated \(n) file\(n == 1 ? "" : "s")"; deltaDate = d
+            } else if line.contains("No markdown changes") {
+                deltaHeadline = "Up to date"; deltaDate = d
+            } else if let r = line.range(of: "Mirrored ") {
+                let n = Int(line[r.upperBound...].prefix { $0.isNumber }) ?? 0
+                mirroredHeadline = "Mirrored \(n) file\(n == 1 ? "" : "s")"; mirroredDate = d
+                if let arrow = line.range(of: "→") {
+                    dest = line[arrow.upperBound...].trimmingCharacters(in: .whitespaces)
+                }
+            }
+        }
+        guard let headline = deltaHeadline ?? mirroredHeadline else { return nil }
+        return LogSummary(date: deltaDate ?? mirroredDate,
+                          headline: headline,
                           ok: true,
-                          detail: dest)
+                          detail: dest.map { ($0 as NSString).lastPathComponent })
     }
 
     // MARK: PurpleAttic sync log (external-source photo/messages archives)
@@ -306,8 +323,22 @@ enum SyncStatusParser {
         let lines = log.split(whereSeparator: \.isNewline).map(String.init)
 
         switch kind {
-        case .obsidian, .generic:
+        case .generic:
             return nil
+
+        case .obsidian:
+            // Sum per-run "Updated K of N markdown file(s)" deltas ("No markdown changes" = 0).
+            // Older logs (only "Mirrored N", a total) have no delta line → nil (not a false sum).
+            var total = 0, saw = false
+            for line in lines {
+                guard let d = leadingTimestamp(line), d >= cutoff else { continue }
+                if line.contains("Updated "), line.contains("markdown file"), let n = intBefore(" of ", in: line) {
+                    total += n; saw = true
+                } else if line.contains("No markdown changes") {
+                    saw = true
+                }
+            }
+            return saw ? total : nil
 
         case .purpleAttic:
             // Local photo archive: "N new item(s) …" lines (AtticLogger-timestamped).

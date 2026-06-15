@@ -89,6 +89,25 @@ import Foundation
         #expect(s?.headline == "Mirrored 1 file")
     }
 
+    @Test func obsidianSummaryPrefersUpdatedDelta() {
+        let log = """
+        2026-06-13 14:26:22  Updated 3 of 456 markdown file(s):
+        2026-06-13 14:26:22    + docs/foo.md
+        2026-06-13 14:26:22  Mirrored 456 markdown files → /Users/b/Vault/PhantomLives
+        """
+        let s = SyncStatusParser.summary(log, kind: .obsidian)
+        #expect(s?.headline == "Updated 3 files")
+        #expect(s?.detail == "PhantomLives")   // destination still from the Mirrored line
+    }
+
+    @Test func obsidianSummaryNoChanges() {
+        let log = """
+        2026-06-13 15:26:22  No markdown changes — 456 files already up to date
+        2026-06-13 15:26:22  Mirrored 456 markdown files → /a/b
+        """
+        #expect(SyncStatusParser.summary(log, kind: .obsidian)?.headline == "Up to date")
+    }
+
     @Test func purpleAtticStagedWins() {
         // The staged line comes after pull exit 0 in the same run → it wins.
         let log = """
@@ -424,11 +443,23 @@ import Foundation
         #expect(SyncStatusParser.itemsLast24h(log, kind: .purpleAttic, now: now) == 146)
     }
 
-    @Test func obsidianAndGenericHaveNoTally() {
+    @Test func obsidianOldFormatAndGenericHaveNoTally() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
+        // Old log: only the "Mirrored N" total (a count, not a delta) → no meaningful sum.
         let log = "\(ts(now)) Mirrored 456 markdown files → /v"
         #expect(SyncStatusParser.itemsLast24h(log, kind: .obsidian, now: now) == nil)
         #expect(SyncStatusParser.itemsLast24h("whatever", kind: .generic, now: now) == nil)
+    }
+
+    @Test func obsidianSumsUpdatedDeltas() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = """
+        \(ts(now.addingTimeInterval(-7200))) Updated 3 of 456 markdown file(s):
+        \(ts(now.addingTimeInterval(-3600))) No markdown changes — 456 files already up to date
+        \(ts(now.addingTimeInterval(-1800))) Updated 2 of 456 markdown file(s):
+        \(ts(now.addingTimeInterval(-50 * 3600))) Updated 99 of 456 markdown file(s):
+        """
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .obsidian, now: now) == 5)   // 3 + 0 + 2 (99 is >24h)
     }
 
     @Test func nilWhenNoCountableRunsInWindow() {

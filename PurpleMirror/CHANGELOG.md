@@ -2,6 +2,15 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.15.0 — 2026-06-15
+
+- **Obsidian status now shows what changed, and counts toward the 24h tally.** The sync script now
+  logs per-run deltas ("Updated K of N markdown file(s)" / "No markdown changes"); PurpleMirror's
+  Obsidian parser prefers that for the status line ("Updated 3 files" / "Up to date") instead of the
+  static total ("Mirrored 456 files"), and the **24h tally** now sums those deltas for Obsidian
+  (previously excluded). Old logs that only have the "Mirrored N" total still fall back cleanly and
+  are left out of the tally (a total isn't a delta). Tests +3 (52 total).
+
 ## 1.14.0 — 2026-06-15
 
 - **Recognize the ATW repost bot** (`com.bronty13.atw-repost-bot`) as a first-class job: "ATW Repost
