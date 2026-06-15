@@ -86,6 +86,27 @@ public final class ExportEngine {
     public func run(profile: ArchiveProfile, dryRun: Bool, deepVerify: Bool = false) throws -> RunSummary {
         let started = Date()
 
+        // Single-writer lock (real runs only — a dry run touches nothing, so it needn't contend).
+        // If another run already holds it, this run is a clean no-op rather than colliding (the
+        // failure that wedged the old vault) or queuing behind a multi-hour seed. Held by an fd, so
+        // a crashed run can never leave a stale lock. Released by `defer` (and `deinit`) on exit.
+        var lock: RunLock?
+        if !dryRun {
+            lock = RunLock.tryAcquire()
+            if lock == nil {
+                logger.info("=== PurpleAttic run: \(profile.name) ===")
+                logger.warn("Another archive run is already in progress (lock held) — skipping this run.")
+                let now = Date()
+                return RunSummary(
+                    profileName: profile.name, startedAt: started, finishedAt: now,
+                    steps: [StepResult(name: "Archive", success: true,
+                                       detail: "skipped — another run in progress",
+                                       duration: now.timeIntervalSince(started))],
+                    logFile: logger.logFileURL?.path)
+            }
+        }
+        defer { lock?.release() }
+
         // Resilience guard (runs FIRST): if the PRIMARY destination isn't a mounted
         // volume, do nothing this run — don't throw, and never createDirectory under an
         // unmounted /Volumes path (which would silently write to the boot disk). This is
@@ -142,9 +163,15 @@ public final class ExportEngine {
         }
         if !dryRun {
             if !profile.mirrorArchiveRoots.isEmpty { kinds += [.mirror, .verify] }
-            if let v = profile.cloudVaultPath, !v.trimmingCharacters(in: .whitespaces).isEmpty { kinds.append(.cloud) }
+            if profile.cloudDestinations.contains(where: { $0.enabled && $0.isConfigured }) { kinds.append(.cloud) }
         }
         let tracker = RunProgressTracker(kinds: kinds, onProgress: onProgress)
+
+        // 0. Drive-replacement safeguard: if the primary disk was swapped for a blank one but a
+        // populated mirror is attached, re-seed the primary from the mirror BEFORE osxphotos — so a
+        // blank replacement triggers a fast local copy, not a needless full re-export. No-op on a
+        // normal run (primary already full). Both-drives-lost is a manual `restic restore`.
+        if !dryRun { maybeReseedPrimary(profile: profile, steps: &steps) }
 
         // 1. Export passes.
         for pass in profile.enabledPasses {
@@ -293,36 +320,51 @@ public final class ExportEngine {
                                 detail: verifyDiscrepancies > 0 ? "\(verifyDiscrepancies) discrepancies" : "\(verifyMatched) mirror(s) OK")
         }
 
-        // 4. Cloud (Cryptomator vault). Never blocks the run.
-        if let vault = profile.cloudVaultPath, !vault.trimmingCharacters(in: .whitespaces).isEmpty {
-            tracker.startPhase(.cloud, detail: "copying…")
-            var isDir: ObjCBool = false
-            let mounted = FileManager.default.fileExists(atPath: vault, isDirectory: &isDir) && isDir.boolValue
-                && FileManager.default.isWritableFile(atPath: vault)
-            if mounted {
-                // The vault is exempt from archiveSubfolder — copy the archive contents to
-                // the vault root (it's already a dedicated encrypted container). It's also a
-                // Cryptomator/macFUSE volume, so use the vault-safe flag set (--inplace, no
-                // owner/group/perms — that filesystem doesn't implement chown/chmod/temp-rename).
-                let cloudArgs = Self.rsyncCopyArgs(versionBanner: banner, forVault: true)
-                logger.info("→ Cloud (Cryptomator): \(src) ⇒ \(vault) [\(cloudArgs.joined(separator: " "))]")
-                let t0 = Date()
-                let result = try ProcessRunner.run(executable: rsync,
-                                                   arguments: cloudArgs + [src, vault]) { line in
-                    self.logger.debug("[rsync:cloud] \(line)")
-                    if Self.looksLikeRelativePath(line) { tracker.update(currentFile: line) }
-                }
-                let ok = result.exitCode == 0
-                let dur = Date().timeIntervalSince(t0)
-                (ok ? logger.info : logger.warn)("← Cloud exit \(result.exitCode) in \(Self.fmt(dur))")
-                steps.append(.init(name: "Cloud → vault", success: ok,
-                                   detail: "exit \(result.exitCode)", duration: dur))
-                tracker.finishPhase(.cloud, state: ok ? .done : .failed, detail: ok ? "exit 0" : "exit \(result.exitCode)")
+        // 4. Off-site (restic). A pluggable LIST of destinations (restic → B2 today; rclone-backed
+        // Dropbox/Proton/S3/… later, config-only). Each is independent, client-side-E2EE,
+        // resumable, and SKIP-IF-UNAVAILABLE — an offline/undocked laptop run is a clean no-op that
+        // catches up next time. Replaces the old Cryptomator/macFUSE vault phase entirely. Never
+        // blocks the run.
+        let cloudDests = profile.cloudDestinations.filter { $0.enabled && $0.isConfigured }
+        if !cloudDests.isEmpty {
+            tracker.startPhase(.cloud, detail: "backing up off-site…")
+            if Tooling.restic == nil {
+                logger.warn("restic not found — skipping off-site backup. Install with `brew install restic`.")
+                steps.append(.init(name: "Cloud (restic)", success: true,
+                                   detail: "skipped (restic not installed)", duration: 0))
+                tracker.finishPhase(.cloud, state: .skipped, detail: "restic not installed")
             } else {
-                logger.warn("Cryptomator vault not mounted/writable at \(vault) — skipping cloud copy (will catch up next run).")
-                steps.append(.init(name: "Cloud → vault", success: true,
-                                   detail: "skipped (vault not mounted)", duration: 0))
-                tracker.finishPhase(.cloud, state: .skipped, detail: "vault not mounted")
+                // restic backs up the canonical primary archive (ROG_WHITE/<subfolder>); its own
+                // dedup/snapshots mean we always send the full tree and restic stores only deltas.
+                let resticSource = profile.primaryArchiveRoot
+                var okCount = 0, skipCount = 0, failCount = 0
+                for dest in cloudDests {
+                    logger.info("→ Off-site (\(dest.name)) [\(dest.kind.rawValue)]: \(resticSource) ⇒ \(dest.repo)")
+                    let t0 = Date()
+                    let outcome = ResticService.backup(destination: dest, sourcePath: resticSource) { line in
+                        self.logger.debug("[restic:\(dest.name)] \(line)")
+                        if Self.looksLikeRelativePath(line) { tracker.update(currentFile: line) }
+                    }
+                    let dur = Date().timeIntervalSince(t0)
+                    switch outcome {
+                    case .backedUp, .checked, .restored:
+                        okCount += 1
+                        logger.info("← Off-site (\(dest.name)) OK: \(outcome.detail) in \(Self.fmt(dur))")
+                    case .skipped:
+                        skipCount += 1
+                        logger.warn("← Off-site (\(dest.name)) \(outcome.detail) — will catch up next run")
+                    case .failed:
+                        failCount += 1
+                        logger.error("← Off-site (\(dest.name)) FAILED: \(outcome.detail)")
+                    }
+                    // A skip is non-fatal (success = true), exactly like the old "vault not mounted".
+                    steps.append(.init(name: "Cloud → \(dest.name)", success: !outcome.isFailure,
+                                       detail: outcome.detail, duration: dur))
+                }
+                let cState: RunProgress.State = failCount > 0 ? .failed : (okCount == 0 ? .skipped : .done)
+                tracker.finishPhase(.cloud, state: cState,
+                                    detail: "\(okCount) ok, \(skipCount) skipped, \(failCount) failed")
+                logger.info("← Off-site: \(okCount) ok, \(skipCount) skipped, \(failCount) failed")
             }
         }
 
@@ -381,6 +423,63 @@ public final class ExportEngine {
         var c = 0
         for _ in en { c += 1 }
         return c
+    }
+
+    /// File threshold below which the primary archive is treated as "blank" (a freshly-swapped
+    /// drive). A real archive has hundreds of thousands of files, so the bounded count below trips
+    /// the limit instantly; only an essentially-empty volume falls under it.
+    static let reseedThreshold = 50
+
+    /// Count non-dotfile entries under `dir`, stopping at `limit` (so a populated archive returns
+    /// `limit` in O(limit), not O(363k)). Dotfiles are skipped so a blank drive's `.Trashes` /
+    /// `.Spotlight-V100` cruft doesn't read as "populated".
+    static func countFilesBounded(_ dir: String, limit: Int) -> Int {
+        guard let en = FileManager.default.enumerator(atPath: dir) else { return 0 }
+        var c = 0
+        for case let rel as String in en {
+            if (rel as NSString).lastPathComponent.hasPrefix(".") { continue }
+            c += 1
+            if c >= limit { break }
+        }
+        return c
+    }
+
+    /// Drive-replacement safeguard (see call site). Fires only when the primary archive is
+    /// essentially empty AND a mounted mirror is substantially populated — then rsyncs the mirror
+    /// into the primary before export. Conservative by design: a partially-written primary (a run
+    /// that died mid-export) is NOT re-seeded — osxphotos fills the gaps incrementally. Both drives
+    /// lost is a documented manual `restic restore`, never automated here.
+    private func maybeReseedPrimary(profile: ArchiveProfile, steps: inout [StepResult]) {
+        let threshold = Self.reseedThreshold
+        let primaryRoot = profile.primaryArchiveRoot
+        guard Self.countFilesBounded(primaryRoot, limit: threshold) < threshold else { return }
+
+        for (base, mirrorRoot) in zip(profile.mirrorDestinations, profile.mirrorArchiveRoots) {
+            guard VolumeReadiness.destinationReady(base).ready else { continue }
+            guard Self.countFilesBounded(mirrorRoot, limit: threshold) >= threshold else { continue }
+            guard let rsync = Tooling.rsync else {
+                logger.warn("Primary looks blank but rsync not found — skipping re-seed; osxphotos will rebuild it.")
+                return
+            }
+            let banner = Self.rsyncVersionBanner(rsync)
+            let args = Self.rsyncCopyArgs(versionBanner: banner)
+            let s = mirrorRoot.hasSuffix("/") ? mirrorRoot : mirrorRoot + "/"
+            try? FileManager.default.createDirectory(atPath: primaryRoot, withIntermediateDirectories: true)
+            logger.warn("Primary archive looks blank but mirror \(mirrorRoot) is populated — "
+                        + "re-seeding the primary from the mirror before export (replaced-drive safeguard).")
+            let t0 = Date()
+            let result = try? ProcessRunner.run(executable: rsync, arguments: args + [s, primaryRoot]) { line in
+                self.logger.debug("[rsync:reseed] \(line)")
+            }
+            let code = result?.exitCode ?? -1
+            let ok = code == 0
+            let dur = Date().timeIntervalSince(t0)
+            (ok ? logger.info : logger.error)("← Re-seed primary from \(mirrorRoot) exit \(code) in \(Self.fmt(dur))")
+            steps.append(.init(name: "Re-seed primary ← \(mirrorRoot)", success: ok,
+                               detail: ok ? "primary re-seeded from mirror" : "re-seed failed (exit \(code))",
+                               duration: dur))
+            return  // one populated mirror is enough
+        }
     }
 
     /// Heuristic: is this rsync output line a copied file/dir path (vs a summary/error line)?

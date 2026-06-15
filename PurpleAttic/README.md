@@ -51,8 +51,8 @@ in **[HANDOFF.md](HANDOFF.md)**.
 ```
 Photos library ──osxphotos──▶ Primary archive ──rsync──▶ Mirror (2nd disk)
    (originals)                 HEIC + JPEG          │
-                                                    └──rsync──▶ Cryptomator vault
-                                                                (encrypted, iCloud Drive)
+                                                    └──restic──▶ Off-site repo(s)
+                                                                 (E2EE, e.g. Backblaze B2)
 ```
 
 1. **Export** — `osxphotos` writes two trees under the primary archive:
@@ -64,9 +64,22 @@ Photos library ──osxphotos──▶ Primary archive ──rsync──▶ Mir
 3. **Verify** — every mirror is compared against the primary (path + size; deep
    SHA-256 optional). This is the evidence the future purge stage requires
    before it will delete anything.
-4. **Cloud** — the primary is rsynced into a mounted Cryptomator vault (the
-   provider only ever sees ciphertext). Skipped + logged if the vault isn't
-   unlocked — archival never blocks on it.
+4. **Off-site (restic)** — the primary is backed up with **`restic`** to a
+   **pluggable list** of client-side-encrypted destinations (Backblaze **B2**
+   today; an rclone-backed Dropbox/Proton/S3/rsync.net remote is config-only
+   later). The provider only ever sees ciphertext; backups are deduplicated,
+   snapshotted ("nothing ever lost"), resumable, and verified with `restic
+   check`. Each destination is independent and **skips cleanly when offline**
+   (a laptop with no network is a clean no-op that catches up next run) — so
+   archival never blocks on it. No macFUSE, no manual unlock, no iCloud
+   eviction. *(The earlier Cryptomator/macFUSE → iCloud Drive vault is retired;
+   `cloudVaultPath` remains decodable but is ignored.)*
+
+   The runtime restic passphrase + B2 key live in the **macOS Keychain**
+   (non-interactive). A separate **recovery passphrase** (written down for a
+   physical safe) is added via `restic key add` so the archive is recoverable
+   even if the Mac and its Keychain are gone — see USER_MANUAL for the guided
+   setup and the mandatory recovery-key restore drill.
 
 ### Retention (what the future purge will and won't touch)
 

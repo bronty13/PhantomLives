@@ -26,7 +26,9 @@ the way old iPhoto/`.photoslibrary` bundles trap people.
   brew install exiftool
   ```
   (`rsync` already ships with macOS.)
-- *(Optional)* **Cryptomator** + an unlocked vault, for an encrypted cloud copy.
+- *(Optional)* **`restic`** (`brew install restic`) for an encrypted, unattended
+  off-site copy to Backblaze B2 (see "Off-site backup" below). No Cryptomator,
+  no macFUSE, no manual unlock.
 
 ### Grant the three permissions (required — the app blocks runs without them)
 
@@ -67,10 +69,12 @@ new grant sometimes needs the app relaunched to register.)
    - **Mirror drive (disk 2):** add your second drive's root, e.g.
      `/Volumes/Mirror2TB`. The same subfolder is used. *(A mirror is required
      before purge — it's the second copy verification depends on.)*
-   - **Cloud vault (optional):** if you use Cryptomator, unlock the vault and
-     point this at its mounted path; the line below shows **Unlocked — ready** in
-     green when it's set. *The vault is exempt from the subfolder — its copy is
-     written at the vault root.*
+   - **Off-site backup (optional):** the encrypted off-site copy is now driven by
+     **`restic`** to a pluggable list of destinations (Backblaze B2 today). It runs
+     unattended and skips cleanly when you're offline. Setting it up is a one-time
+     guided step (bucket + Keychain creds + a written-down recovery passphrase) —
+     see **"Off-site backup (restic → Backblaze B2)"** further below. *(The old
+     Cryptomator vault is retired.)*
    - Leave **"Download missing originals from iCloud"** OFF on this Mac (you
      already have the originals). Click **Save**.
 
@@ -193,7 +197,9 @@ only on the Mac with the complete archive.
 | Scheduler logs | `~/Library/Logs/PurpleAttic/scheduler.*.log` |
 | Profile + settings | `~/Library/Application Support/PurpleAttic/` |
 | Config backups | `~/Downloads/PurpleAttic backup/` |
-| Your archive | wherever you set Primary / Mirror / Vault |
+| Your archive | wherever you set Primary / Mirror |
+| Off-site (restic) | the restic repo you configure (e.g. a Backblaze B2 bucket) |
+| Off-site secrets | macOS **Keychain** (restic passphrase, B2 key) — never on disk in the clear |
 
 ---
 
@@ -208,7 +214,8 @@ only on the Mac with the complete archive.
 | Log floods with **"AppleScript export failed … restarting Photos app"** or **"AppleScript timed out: retrying killall"**, and Photos keeps getting killed | You're on the **AppleScript** download path. Leave **"Use PhotoKit to download"** ON (Settings → Source, the default) — PhotoKit fetches missing originals without driving or killing Photos. The AppleScript path is unreliable on slow/indeterminate iCloud items. |
 | Orange **"Possible low free space"** warning | Estimate says a destination drive may be tight (or isn't mounted). Advisory only — verify the drive; the archive may still fit. |
 | **osxphotos** shows red in the footer | `brew install pipx && pipx install osxphotos`, then reopen the app. |
-| Cloud step says **"vault not mounted"** | Unlock the Cryptomator vault; the cloud copy catches up next run. Archiving never blocks on it. |
+| Off-site step says **"skipped — offline"** / **"repo unreachable"** | Normal on a laptop with no network — the off-site backup catches up on the next run with internet. Archiving never blocks on it. |
+| Off-site step says **"B2 credentials not in Keychain"** | The restic passphrase / B2 key aren't stored yet. Follow "Off-site backup (restic → Backblaze B2)" below to add them. |
 | Scheduled run didn't happen | The Mac was asleep at the scheduled time, or `pattic` lacks Full Disk Access. Check the scheduler log (Schedule → Reveal Log). |
 | Purge shows lots of **Unverified** | Those photos aren't in both archive copies — usually the archive is incomplete on this Mac. Finish a full archive on the originals Mac first. |
 
@@ -231,3 +238,84 @@ $BIN export --deep          # verify with SHA-256 (slow, thorough)
 
 Profiles live at `~/Library/Application Support/PurpleAttic/profile.json`
 (override with `--profile`).
+
+---
+
+## 9. Off-site backup (restic → Backblaze B2)
+
+The third copy is an **end-to-end-encrypted, unattended** backup made with
+[`restic`](https://restic.net). Your cloud provider only ever stores ciphertext;
+the keys live on your Mac. It is **resumable**, **deduplicated**, **snapshotted**
+(nothing is ever overwritten/lost), and **integrity-checked** (`restic check`).
+Each off-site destination is independent and **skips cleanly when you're offline**,
+so a laptop with no drives/network is a clean no-op that catches up later.
+
+The off-site layer is a **pluggable list** of destinations: Backblaze **B2** is
+supported today; an rclone-backed remote (Dropbox / Proton Drive / S3 / rsync.net)
+is config-only to add later — no app change.
+
+### One-time setup (do this once, then it runs itself)
+
+1. **Install restic:** `brew install restic`.
+2. **Backblaze B2:** create a **private bucket** and an **application key** (note
+   the keyID, the application key, and the bucket name + endpoint).
+3. **Choose two passphrases:**
+   - a **runtime passphrase** (random, stored in the Keychain — convenience), and
+   - a **recovery passphrase** — 8–10 diceware-style words you **write on paper and
+     put in a physical safe**. This is your guarantee: with true E2EE, if *all* keys
+     are lost the cloud copy is unrecoverable, so the safe copy is what protects you.
+4. **Store the secrets in the macOS Keychain** (replace the bracketed values; the
+   service name must match your destination's `keychainService`):
+   ```sh
+   SVC="PurpleAttic Restic B2"
+   security add-generic-password -U -s "$SVC" -a restic-password -w '[RUNTIME PASSPHRASE]'
+   security add-generic-password -U -s "$SVC" -a b2-account-id   -w '[B2 KEY ID]'
+   security add-generic-password -U -s "$SVC" -a b2-account-key  -w '[B2 APPLICATION KEY]'
+   ```
+5. **Add the destination to your profile** (`profile.json`), in `cloudDestinations`:
+   ```json
+   "cloudDestinations": [
+     {
+       "name": "Backblaze B2",
+       "kind": "resticB2",
+       "enabled": true,
+       "repo": "b2:your-bucket-name:photos",
+       "keychainService": "PurpleAttic Restic B2",
+       "checkAfterBackup": true
+     }
+   ]
+   ```
+6. **Add the recovery key** to the repo (so either passphrase can open it). After the
+   first backup has initialized the repo, run with the runtime env, then:
+   ```sh
+   restic key add        # prompts for the NEW (recovery) passphrase
+   ```
+
+### Prove the recovery key BEFORE you rely on it (mandatory)
+
+A backup you can't restore is worthless, and a recovery key you've never tested is a
+guess. In a clean shell with the **Keychain bypassed**, restore a sample using **only
+the recovery passphrase** and byte-compare it to the source:
+
+```sh
+export RESTIC_REPOSITORY='b2:your-bucket-name:photos'
+export B2_ACCOUNT_ID='[B2 KEY ID]'  B2_ACCOUNT_KEY='[B2 APPLICATION KEY]'
+export RESTIC_PASSWORD='[RECOVERY PASSPHRASE]'    # NOT the Keychain
+restic snapshots                                  # should list your snapshots
+restic restore latest --target /tmp/attic-recovery-test --include '[some subfolder]'
+diff -r "/Volumes/ROG_WHITE/Photos Archive/[same subfolder]" \
+        "/tmp/attic-recovery-test/Volumes/ROG_WHITE/Photos Archive/[same subfolder]"
+```
+
+Re-run this drill after **any** `restic key` change. Only decommission any older
+off-site copy once both the runtime-key and recovery-key restores pass.
+
+### Day-to-day
+
+Nothing — the scheduled archive backs up to B2 automatically after the local
+mirror+verify, and **PurpleMirror** shows the "Photo Archive" job's status (off-site
+result included). Manual integrity check any time:
+```sh
+restic -r 'b2:your-bucket-name:photos' check                       # structure
+restic -r 'b2:your-bucket-name:photos' check --read-data-subset 1/20  # sampled data
+```

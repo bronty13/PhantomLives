@@ -45,6 +45,11 @@ public enum Tooling {
     public static var osxphotos: String? { locate("osxphotos") }
     public static var exiftool: String? { locate("exiftool") }
     public static var rsync: String? { locate("rsync") }
+    /// restic drives the encrypted, verifiable off-site copy (replaces the Cryptomator vault).
+    public static var restic: String? { locate("restic") }
+    /// rclone is only needed for rclone-backed restic destinations (Dropbox/Proton/S3/…); a
+    /// B2-only setup doesn't require it. Resolved here so adding such a destination is config-only.
+    public static var rclone: String? { locate("rclone") }
 
     /// A readiness report for the `doctor` subcommand / GUI preflight.
     public struct Readiness: Sendable {

@@ -24,10 +24,17 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// before any purge is permitted.
     public var mirrorDestinations: [String]
 
-    /// Mounted Cryptomator vault directory for the encrypted offsite copy, or nil to skip.
-    /// The vault is **exempt** from `archiveSubfolder` — the archive is written at the vault
-    /// root (a Cryptomator vault is already a dedicated container).
+    /// **DEPRECATED** — the old Cryptomator/macFUSE vault path for the off-site copy. Kept
+    /// decodable for back-compat; superseded by `cloudDestinations` (restic → B2/…). Retired
+    /// from active profiles once a restic destination is seeded + restore-verified. When nil/empty
+    /// the engine skips the legacy vault phase entirely.
     public var cloudVaultPath: String?
+
+    /// The off-site replication targets, as a **pluggable list** (restic → B2 today; rclone-backed
+    /// Dropbox/Proton/S3/rsync.net later, config-only). Each is independent, E2EE, resumable, and
+    /// **skip-if-unavailable** — a run with no network/repo is a clean no-op that catches up. The
+    /// engine loops this list after the local mirror+verify. Empty → no off-site copy.
+    public var cloudDestinations: [CloudDestination]
 
     /// Folder nested under each physical destination *base* (primary + mirrors) to hold the
     /// archive, so a drive root stays tidy and other content on the drive isn't intermixed.
@@ -96,6 +103,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         primaryDestination: String = "",
         mirrorDestinations: [String] = [],
         cloudVaultPath: String? = nil,
+        cloudDestinations: [CloudDestination] = [],
         keepHEIC: Bool = true,
         keepJPEG: Bool = true,
         directoryTemplate: String = "{created.year}/{created.year}-{created.mm}",
@@ -115,6 +123,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.primaryDestination = primaryDestination
         self.mirrorDestinations = mirrorDestinations
         self.cloudVaultPath = cloudVaultPath
+        self.cloudDestinations = cloudDestinations
         self.keepHEIC = keepHEIC
         self.keepJPEG = keepJPEG
         self.directoryTemplate = directoryTemplate
@@ -141,6 +150,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         primaryDestination = try c.decodeIfPresent(String.self, forKey: .primaryDestination) ?? ""
         mirrorDestinations = try c.decodeIfPresent([String].self, forKey: .mirrorDestinations) ?? []
         cloudVaultPath = try c.decodeIfPresent(String.self, forKey: .cloudVaultPath)
+        cloudDestinations = try c.decodeIfPresent([CloudDestination].self, forKey: .cloudDestinations) ?? []
         keepHEIC = try c.decodeIfPresent(Bool.self, forKey: .keepHEIC) ?? true
         keepJPEG = try c.decodeIfPresent(Bool.self, forKey: .keepJPEG) ?? true
         directoryTemplate = try c.decodeIfPresent(String.self, forKey: .directoryTemplate)

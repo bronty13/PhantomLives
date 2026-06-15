@@ -38,7 +38,10 @@ PurpleAtticCore (library)   — pure logic + IO; NO Photos framework, NO deletio
   RetentionPolicy            keep/purge predicate (pure, the highest-stakes code)
   ArchiveProfile/ProfileStore JSON job description shared by CLI + GUI
   ExportPlan                 builds the osxphotos export argv (pure)
-  ExportEngine               export → rsync mirror → verify → vault; RunSummary + report
+  ExportEngine               export → rsync mirror → verify → off-site (restic); RunSummary + report
+  ResticService              non-interactive restic driver (env/args, init/backup/check/restore)
+  CloudDestination           pluggable off-site target (kind: resticB2/resticRclone) in the profile
+  RunLock                    single-writer flock so hourly+manual+on-mount runs never collide
   VerifyService              inventory (path+size) / deep SHA-256 mirror check
   LibraryInspector           Optimize-Storage detection (originals-on-disk vs ZASSET)
   PhotoMetadata              `osxphotos query --json` → OsxphotosRecord
@@ -79,10 +82,14 @@ it is structurally incapable of purging.
 
 ## Data flow
 
-- **Archive (safe):** GUI/CLI → `ExportEngine.run(profile)` → osxphotos export
-  (HEIC originals pass + `--convert-to-jpeg` pass) → rsync mirror (no `--delete`)
-  → `VerifyService` → rsync into mounted Cryptomator vault (skipped if locked) →
-  detailed log (`~/Library/Logs/PurpleAttic/`) + report (`~/Downloads/PurpleAttic/`).
+- **Archive (safe):** GUI/CLI → `ExportEngine.run(profile)` (under a `RunLock`
+  single-writer flock) → osxphotos export (HEIC originals pass + `--convert-to-jpeg`
+  pass) → rsync mirror (no `--delete`) → `VerifyService` → **`ResticService.backup`
+  per enabled `cloudDestination`** (E2EE off-site, e.g. B2; offline = clean skip;
+  `restic check` after) → detailed log (`~/Library/Logs/PurpleAttic/`) + report
+  (`~/Downloads/PurpleAttic/`). A blank replacement primary is re-seeded from a
+  populated mirror before export. Secrets come from the macOS Keychain. *(The old
+  Cryptomator/macFUSE → iCloud vault is retired; `cloudVaultPath` is decode-only.)*
 - **Purge (guarded, GUI-only):** `PurgePlanner.compute` runs `osxphotos query
   --to-date <cutoff> --json` → `RetentionPolicy` filters → `ArchiveIndex` verifies
   each against primary + mirrors → `PurgePlan`. UI previews it; on confirm,

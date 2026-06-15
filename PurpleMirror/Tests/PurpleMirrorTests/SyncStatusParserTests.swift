@@ -288,3 +288,88 @@ import Foundation
                         runAtLoad: false, environment: [:])
     }
 }
+
+/// The local Photo Archive run log (pattic / AtticLogger format), parsed via `.purpleAttic`.
+/// Covers the laptop-resilience states the re-architecture introduced: off-site success/detail,
+/// "waiting for drives", the single-writer skip, mid-run phase, and run failures.
+@Suite struct PurpleAtticArchiveLogTests {
+
+    private let kind = SyncStatusParser.LogKind.purpleAttic
+
+    @Test func successfulRunShowsUpToDateWithOffsiteDetail() {
+        let log = """
+        2026-06-15 08:00:01.001 [INFO] === PurpleAttic run: Vortex — main library ===
+        2026-06-15 08:10:02.002 [INFO] ← Export (HEIC originals) exit 0 in 9m 0s
+        2026-06-15 08:12:03.003 [INFO] ← Mirror: 12 copied, 0 skipped, 0 failed in 2m 0s
+        2026-06-15 08:14:04.004 [INFO] ← Verify OK: 363602 files match
+        2026-06-15 08:30:05.005 [INFO] ← Off-site (Backblaze B2) OK: 12 new; +1.2 GiB; snapshot ab12cd34; check OK in 16m 0s
+        2026-06-15 08:30:06.006 [INFO] ← Off-site: 1 ok, 0 skipped, 0 failed
+        2026-06-15 08:30:07.007 [INFO] === Run finished in 30m 6s — ALL OK ===
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Archive up to date")
+        #expect(s?.ok == true)
+        #expect(s?.detail == "Off-site 1 ok, 0 skipped, 0 failed")
+    }
+
+    @Test func waitingForDrivesWhenPrimaryDetached() {
+        let log = """
+        2026-06-15 09:00:01.001 [INFO] === PurpleAttic run: Vortex — main library ===
+        2026-06-15 09:00:01.050 [WARN] Primary drive not attached — drive not mounted at /Volumes/ROG_WHITE. Nothing to archive this run; will retry at the next scheduled time.
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Waiting for drives")
+        #expect(s?.ok == nil)
+    }
+
+    @Test func singleWriterSkipSurfaces() {
+        let log = """
+        2026-06-15 09:05:00.000 [INFO] === PurpleAttic run: Vortex — main library ===
+        2026-06-15 09:05:00.010 [WARN] Another archive run is already in progress (lock held) — skipping this run.
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Skipped (already running)")
+    }
+
+    @Test func midRunShowsCurrentPhase() {
+        let log = """
+        2026-06-15 10:00:01.001 [INFO] === PurpleAttic run: Vortex — main library ===
+        2026-06-15 10:10:02.002 [INFO] ← Export (HEIC originals) exit 0 in 9m 0s
+        2026-06-15 10:12:03.003 [INFO] → Off-site (Backblaze B2) [resticB2]: /Volumes/ROG_WHITE/Photos Archive ⇒ b2:bucket:photos
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Backing up off-site")
+    }
+
+    @Test func latestRunWins() {
+        // A successful run, THEN a later detached-drive run — the fresher state must win.
+        let log = """
+        2026-06-15 08:30:07.007 [INFO] === Run finished in 30m 6s — ALL OK ===
+        2026-06-15 09:00:01.001 [INFO] === PurpleAttic run: Vortex — main library ===
+        2026-06-15 09:00:01.050 [WARN] Primary drive not attached — drive not mounted at /Volumes/ROG_WHITE.
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Waiting for drives")
+    }
+
+    @Test func failuresAreFlagged() {
+        let log = """
+        2026-06-15 08:00:01.001 [INFO] === PurpleAttic run: Vortex — main library ===
+        2026-06-15 08:30:07.007 [ERROR] === Run finished in 30m 6s — WITH FAILURES ===
+        """
+        let s = SyncStatusParser.summary(log, kind: kind)
+        #expect(s?.headline == "Archive run had failures")
+        #expect(s?.ok == false)
+    }
+
+    @Test func archiveAgentGetsTailoredProfile() {
+        let d = AgentDescriptor(label: "com.bronty13.PurpleAttic.archive",
+                                programArguments: ["/bin/zsh", "-lc", "pattic export"],
+                                startInterval: 3600, stdoutPath: "/x/out.log", stderrPath: nil,
+                                runAtLoad: false, environment: [:])
+        let p = JobRegistry.profile(for: d)
+        #expect(p.displayName == "Photo Archive")
+        #expect(p.logKind == .purpleAttic)
+        #expect(p.group == "Photos")
+    }
+}

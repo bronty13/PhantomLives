@@ -2,6 +2,17 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.11.0 — 2026-06-15
+
+- **Recognize PurpleAttic's local Photo Archive job** (`com.bronty13.PurpleAttic.archive`)
+  with a tailored "Photo Archive" profile (group "Photos") and a new `.purpleAttic` log
+  parser. It reads pattic's run log (`~/Library/Logs/PurpleAttic/scheduler.out.log`) and
+  surfaces live status: **Archive up to date**, **Waiting for drives** (a drive isn't
+  attached — a clean no-op), **Skipped (already running)** (the single-writer lock held),
+  the current phase while a run is mid-flight, the per-destination **off-site tally** (e.g.
+  Backblaze B2), and run failures. This is distinct from the external-source *pull* jobs,
+  which keep the `.purpleAtticSync` parser.
+
 ## 1.10.0 — 2026-06-14
 
 - **Recognize the per-source Landing Page job** (`external-index-sync.<id>` → "External Landing Page Sync — <Id>"), grouped under its source.

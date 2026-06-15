@@ -3,6 +3,61 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.20.0] — 2026-06-15
+
+Re-architect the **off-site copy**: replace the Cryptomator/macFUSE → iCloud Drive vault with a
+purpose-built, client-side-**E2EE**, unattended, resumable, verifiable backup driven by **restic**.
+The off-site layer is now a **pluggable list of destinations** — Backblaze B2 ships today; an
+rclone-backed remote (Dropbox/Proton/S3/rsync.net) is config-only later, no engine change. The two
+proven local copies (osxphotos → ROG_WHITE → rsync → LACIE → verify) are unchanged.
+
+### Why
+The vault was the source of nearly every unattended-run failure: macFUSE **wedged twice** under
+load, it needed a **human to unlock** Cryptomator, it rode a **multi-week iCloud eviction** dance
+(iCloud Drive is a sync product, not a backup target — no API, no resumable upload, no integrity
+proof), and a manual+scheduled **run collision** wedged it. restic talks to the B2 API directly:
+no FUSE, no manual unlock, no eviction, resumable, with a cryptographic `restic check`.
+
+### Added
+- **`ResticService`** — drives restic non-interactively. The repo passphrase is supplied via
+  `RESTIC_PASSWORD_COMMAND` (restic shells out to `/usr/bin/security` itself, so the passphrase
+  never enters PurpleAttic's process); B2 key id/key are read from the Keychain into the child env
+  only. `init` is idempotent, `backup`/`check`/`restoreSample` round out the lifecycle, and an
+  **offline/unreachable repo is a clean `.skipped`, never a failure**.
+- **`CloudDestination`** value type (`kind`: `.resticB2` / `.resticRclone`, `repo`, `keychainService`,
+  `enabled`, `checkAfterBackup`) and **`ArchiveProfile.cloudDestinations: [CloudDestination]`** — the
+  pluggable destination list, resilient-decoded so old profiles default to `[]`.
+- **Single-writer lock (`RunLock`)** — an advisory `flock` (auto-released on crash, unlike a PID
+  file; non-blocking) so the hourly, manual, and drive-connect-triggered runs can never overlap
+  (the collision that wedged the vault). A run that can't take the lock is a clean no-op.
+- **Replaced-primary re-seed safeguard** — if the primary disk was swapped for a blank one but a
+  populated mirror is attached, the primary is re-seeded from the mirror *before* osxphotos, so a
+  blank replacement triggers a fast local copy instead of a needless full re-export.
+- **PurpleMirror integration** — the scheduled archive (`com.bronty13.PurpleAttic.archive`) now has
+  a tailored "Photo Archive" job profile and a `.purpleAttic` log parser surfacing live status:
+  "Archive up to date", "Waiting for drives", "Skipped (already running)", the current phase, the
+  per-destination off-site tally, and run failures.
+
+### Changed
+- The engine's cloud phase loops `cloudDestinations` calling `ResticService.backup` (one
+  `StepResult` per destination; a skip is non-fatal, exactly like the old "vault not mounted").
+- `cloudVaultPath` is **deprecated** — still decodable for back-compat, but ignored by the engine.
+  Retire it from the active profile once a restic destination is seeded and restore-verified.
+- `restic` (+ `rclone`, for future rclone destinations) resolved in `Tooling` like osxphotos/rsync.
+
+### Tests
+- 129 total (+14: ResticService env/arg building for B2 + rclone, password-command quoting, PATH
+  augmentation, backup/check arg shape, Outcome skip-not-failure semantics, missing-creds skip; the
+  single-writer lock's mutual exclusion + reacquire-after-release + pid write). PurpleMirror +6 for
+  the `.purpleAttic` parser states and the tailored job profile.
+
+### Operational (not in code)
+- Live B2 setup is a guided, user-driven step: create a private bucket + application key, store the
+  restic passphrase + B2 key in the Keychain, add a **recovery passphrase** via `restic key add`
+  (written down for a physical safe), and **prove restore with the recovery key alone** before
+  relying on it. The Cryptomator vault is decommissioned only after B2 is seeded + both restore
+  drills pass.
+
 ## [0.19.1] — 2026-06-14
 
 ### Fixed

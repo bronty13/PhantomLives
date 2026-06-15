@@ -16,6 +16,7 @@ enum SyncStatusParser {
     enum LogKind: String, Equatable, Codable {
         case obsidian          // "… Mirrored N markdown files → /path"
         case purpleAtticSync   // PurpleAttic sync: "pull exit: N", "staged N NEW", "no new items"
+        case purpleAttic       // local Photo Archive run (pattic): phase + per-destination + off-site
         case generic           // unknown job: show the last meaningful line
     }
 
@@ -33,6 +34,7 @@ enum SyncStatusParser {
         switch kind {
         case .obsidian:        return obsidianSummary(log)
         case .purpleAtticSync: return purpleAtticSyncSummary(log)
+        case .purpleAttic:     return purpleAtticArchiveSummary(log)
         case .generic:         return genericSummary(log)
         }
     }
@@ -176,6 +178,58 @@ enum SyncStatusParser {
             chosen = (g.date ?? .distantPast) > (s.date ?? .distantPast) ? g : s
         }
         if var c = chosen { c.detail = c.detail ?? lastDetail; return c }
+        return nil
+    }
+
+    // MARK: PurpleAttic local Photo Archive run log (pattic)
+
+    /// Parse the **local** archive run log (pattic → `~/Library/Logs/PurpleAttic/scheduler.out.log`,
+    /// AtticLogger format `yyyy-MM-dd HH:mm:ss.SSS [LEVEL] message`). Surfaces, by recency:
+    ///   • "Archive up to date" / "Archive run had failures"  (terminal `=== Run finished … ===`)
+    ///   • "Waiting for drives"     (primary not attached — a clean no-op)
+    ///   • "Skipped (already running)"  (single-writer lock held)
+    ///   • the current phase ("Backing up off-site", …) when a run is mid-flight
+    /// and carries the latest off-site tally ("Off-site 1 ok, 0 skipped, 0 failed") as the detail.
+    static func purpleAtticArchiveSummary(_ log: String) -> LogSummary? {
+        var chosen: LogSummary?          // freshest terminal/skip state (later lines overwrite)
+        var offsiteDetail: String?       // latest "← Off-site: …" tally
+        var lastStartDate: Date?         // latest "=== PurpleAttic run: …"
+        var lastPhase: String?           // latest "→ <phase>" while a run is in flight
+
+        for line in log.split(whereSeparator: \.isNewline).map(String.init) {
+            let date = leadingTimestamp(line)
+
+            if line.contains("=== PurpleAttic run:") {
+                lastStartDate = date
+                lastPhase = nil
+                continue
+            }
+            if let r = line.range(of: "← Off-site:") {
+                offsiteDetail = "Off-site " + line[r.upperBound...].trimmingCharacters(in: .whitespaces)
+            }
+            // Phase hints (the "→ <phase>" entry lines), used only if the run hasn't finished.
+            if line.contains("→ Export") { lastPhase = "Exporting photos" }
+            else if line.contains("→ Mirror:") { lastPhase = "Mirroring to 2nd drive" }
+            else if line.contains("→ Verify:") { lastPhase = "Verifying copies" }
+            else if line.contains("→ Off-site (") { lastPhase = "Backing up off-site" }
+
+            if line.contains("Run finished") && line.contains("ALL OK") {
+                chosen = LogSummary(date: date, headline: "Archive up to date", ok: true, detail: nil)
+            } else if line.contains("Run finished") && line.contains("WITH FAILURES") {
+                chosen = LogSummary(date: date, headline: "Archive run had failures", ok: false, detail: nil)
+            } else if line.contains("Primary drive not attached") {
+                chosen = LogSummary(date: date, headline: "Waiting for drives", ok: nil, detail: nil)
+            } else if line.contains("lock held") {
+                chosen = LogSummary(date: date, headline: "Skipped (already running)", ok: nil, detail: nil)
+            }
+        }
+
+        // A run started after the last terminal line → it's still in flight; show the phase.
+        if let start = lastStartDate,
+           (chosen?.date ?? .distantPast) < start {
+            return LogSummary(date: start, headline: lastPhase ?? "Running…", ok: nil, detail: offsiteDetail)
+        }
+        if var c = chosen { c.detail = c.detail ?? offsiteDetail; return c }
         return nil
     }
 

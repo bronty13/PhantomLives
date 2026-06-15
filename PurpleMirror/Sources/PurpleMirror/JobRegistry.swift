@@ -52,6 +52,16 @@ enum JobRegistry {
                                     envKeys: ["OBSIDIAN_VAULT"]),
                 group: "Obsidian", shortName: "Markdown Sync"
             ),
+            // PurpleAttic's scheduled LOCAL photo archive (osxphotos → ROG_WHITE → LACIE → verify →
+            // restic/B2). Distinct from the external-source *pull* jobs below: this is the on-Mac
+            // run, parsed from pattic's echoed run log via `.purpleAttic`.
+            "com.bronty13.PurpleAttic.archive": JobProfile(
+                displayName: "Photo Archive",
+                logKind: .purpleAttic,
+                activityLogPathOverride: home("Library/Logs/PurpleAttic/scheduler.out.log"),
+                scheduling: .plist,
+                group: "Photos", shortName: "Photo Archive"
+            ),
         ]
     }
 

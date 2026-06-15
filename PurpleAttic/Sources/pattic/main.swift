@@ -117,8 +117,19 @@ struct Plan: ParsableCommand {
             print("Mirrors: " + zip(profile.mirrorDestinations, profile.mirrorArchiveRoots)
                 .map { "\($0) → \($1)" }.joined(separator: ", "))
         }
-        print("Subfolder: \(profile.archiveSubfolder.isEmpty ? "(none — archive at drive root)" : profile.archiveSubfolder)  (vault exempt)")
-        print("Cloud:   \(profile.cloudVaultPath ?? "(none)")")
+        print("Subfolder: \(profile.archiveSubfolder.isEmpty ? "(none — archive at drive root)" : profile.archiveSubfolder)")
+        if profile.cloudDestinations.isEmpty {
+            print("Off-site: (none)")
+        } else {
+            print("Off-site (restic):")
+            for d in profile.cloudDestinations {
+                let state = !d.enabled ? "disabled" : (d.isConfigured ? "enabled" : "not configured")
+                print("  • \(d.name) [\(d.kind.rawValue)] \(d.repo)  (\(state))")
+            }
+        }
+        if let legacy = profile.cloudVaultPath, !legacy.trimmingCharacters(in: .whitespaces).isEmpty {
+            print("Legacy vault (deprecated, ignored): \(legacy)")
+        }
         print("Review:  \(profile.reviewNewItems ? "new items → \(profile.effectiveReviewRoot)" : "off")  (incremental runs only)")
         print("Formats: \(profile.enabledPasses.map { $0.label }.joined(separator: ", "))")
         print("")
