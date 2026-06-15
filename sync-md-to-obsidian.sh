@@ -120,26 +120,50 @@ run_sync() {
   mkdir -p "$DEST"
   cd "$SRC"
 
+  local stamp; stamp="$(date '+%Y-%m-%d %H:%M:%S')"
+
   # Mirror ONLY git-tracked .md files (skips node_modules/.build/build/ dep
   # checkouts, built .app bundles, .venv, and the nested standalone repos —
   # anything not in the git index). -0 handles paths with spaces safely.
   # rsync (no --delete here) skips unchanged files, so iCloud isn't churned.
-  git ls-files -z '*.md' | rsync -0 -a --files-from=- "$SRC/" "$DEST/"
+  # -i itemizes; we keep just the files rsync actually *received* (created or
+  # updated) — lines starting with ">f" — to log which items changed this run.
+  local changed; changed="$(mktemp)"
+  git ls-files -z '*.md' | rsync -0 -a -i --files-from=- "$SRC/" "$DEST/" \
+    | sed -nE 's/^>f[^ ]* //p' > "$changed"
 
   # Prune: drop any .md in the mirror that's no longer tracked (handles
   # deletes/renames). --files-from can't do this, so reconcile by hand.
-  local tracked existing
-  tracked="$(mktemp)"; existing="$(mktemp)"
+  local tracked existing removed
+  tracked="$(mktemp)"; existing="$(mktemp)"; removed="$(mktemp)"
   git ls-files '*.md' | sort > "$tracked"
   ( cd "$DEST" && find . -name '*.md' -type f -print | sed 's|^\./||' ) | sort > "$existing"
-  comm -13 "$tracked" "$existing" | while IFS= read -r f; do
+  comm -13 "$tracked" "$existing" > "$removed"
+  while IFS= read -r f; do
     [[ -n "$f" ]] && rm -f "$DEST/$f"
-  done
+  done < "$removed"
   find "$DEST" -mindepth 1 -type d -empty -delete 2>/dev/null || true
-  local count; count=$(wc -l < "$tracked" | tr -d ' ')
-  rm -f "$tracked" "$existing"
 
-  echo "$(date '+%Y-%m-%d %H:%M:%S')  Mirrored $count markdown files → $DEST"
+  local count changedCount removedCount
+  count=$(wc -l < "$tracked" | tr -d ' ')
+  changedCount=$(wc -l < "$changed" | tr -d ' ')
+  removedCount=$(wc -l < "$removed" | tr -d ' ')
+
+  # Per-file detail of what actually changed this run (the point of the log).
+  if [[ "$changedCount" -gt 0 ]]; then
+    echo "$stamp  Updated $changedCount of $count markdown file(s):"
+    while IFS= read -r f; do [[ -n "$f" ]] && echo "$stamp    + $f"; done < "$changed"
+  else
+    echo "$stamp  No markdown changes — $count files already up to date"
+  fi
+  if [[ "$removedCount" -gt 0 ]]; then
+    while IFS= read -r f; do [[ -n "$f" ]] && echo "$stamp    - $f (removed)"; done < "$removed"
+  fi
+
+  rm -f "$tracked" "$existing" "$changed" "$removed"
+
+  # Canonical summary line (kept verbatim — PurpleMirror's Obsidian parser keys on it).
+  echo "$stamp  Mirrored $count markdown files → $DEST"
 }
 
 case "${1:-}" in
