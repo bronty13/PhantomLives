@@ -47,6 +47,12 @@ public enum ExportPlan {
         args += ["--filename", "{original_name}"]
         args += ["--sidecar", "XMP"]
         args += ["--exiftool"]
+        // Pass exiftool's ABSOLUTE path so osxphotos doesn't have to find it on PATH —
+        // a launchd/scheduled run has a minimal PATH (no /opt/homebrew/bin), where a bare
+        // `--exiftool` otherwise fails with "Could not find exiftool" and aborts the export.
+        if let exiftool = Tooling.exiftool {
+            args += ["--exiftool-path", exiftool]
+        }
         args += ["--touch-file"]
         args += ["--retry", "3"]
         args += ["--edited-suffix", "_edited"]

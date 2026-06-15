@@ -85,6 +85,27 @@ public final class ExportEngine {
     /// verify, and cloud (so a dry run touches nothing on disk).
     public func run(profile: ArchiveProfile, dryRun: Bool, deepVerify: Bool = false) throws -> RunSummary {
         let started = Date()
+
+        // Resilience guard (runs FIRST): if the PRIMARY destination isn't a mounted
+        // volume, do nothing this run — don't throw, and never createDirectory under an
+        // unmounted /Volumes path (which would silently write to the boot disk). This is
+        // what lets a scheduled (e.g. hourly) run be a clean no-op when the drives are
+        // detached. The mirror + cloud copies already skip-and-catch-up on their own, so
+        // a later run with the drive(s) attached brings every copy current.
+        let primaryReady = VolumeReadiness.destinationReady(profile.primaryDestination)
+        if !dryRun && !primaryReady.ready {
+            logger.info("=== PurpleAttic run: \(profile.name) ===")
+            logger.warn("Primary drive not attached — \(primaryReady.reason ?? "not ready"). "
+                        + "Nothing to archive this run; will retry at the next scheduled time.")
+            let now = Date()
+            return RunSummary(
+                profileName: profile.name, startedAt: started, finishedAt: now,
+                steps: [StepResult(name: "Archive", success: true,
+                                   detail: "skipped — primary drive not attached",
+                                   duration: now.timeIntervalSince(started))],
+                logFile: logger.logFileURL?.path)
+        }
+
         let issues = profile.validationIssues()
         // A missing mirror only blocks purge, not archival; filter that one out for a run.
         let blocking = issues.filter { !$0.contains("Purge is enabled") }

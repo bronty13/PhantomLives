@@ -3,6 +3,29 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.18.0] — 2026-06-14
+
+Hourly scheduling + drive-resilient runs — set the archive to run every hour and have it
+quietly do nothing when the drives aren't attached.
+
+### Added
+- **Hourly schedule cadence.** `ArchiveSchedule` gains `.hourly` (alongside daily/weekly) —
+  a launchd `StartCalendarInterval` with only `Minute`, so it fires at the top of every hour.
+  Selectable in Settings → Schedule.
+
+### Changed
+- **Scheduled runs are now drive-resilient.** If the **primary** archive drive isn't a
+  mounted volume, `ExportEngine.run` now returns a clean, successful *"skipped — primary
+  drive not attached"* result instead of throwing — and, crucially, never `createDirectory`s
+  under an unmounted `/Volumes/…` path (which would silently write to the boot disk). The
+  mirror and cloud copies already skip-and-catch-up when their drive/vault is absent, so a
+  later run with everything attached brings all three copies current. This is what makes an
+  hourly schedule safe: a run with the drives detached is a no-op, not an error.
+
+### Tests
+- 114 total (4 new: hourly calendar-keys / plist / next-run / humanDescription, and the
+  primary-drive skip guard).
+
 ## [0.17.0] — 2026-06-12
 
 Sender mode — capture a *second* Mac's Photos to an SSD and ship them to a PurpleAttic receiver.

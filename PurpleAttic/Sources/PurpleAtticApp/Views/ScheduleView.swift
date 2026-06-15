@@ -34,12 +34,18 @@ struct ScheduleView: View {
             Toggle("Run the archive automatically", isOn: schedule.enabled)
 
             Picker("Frequency", selection: schedule.cadence) {
+                Text("Hourly").tag(ArchiveSchedule.Cadence.hourly)
                 Text("Daily").tag(ArchiveSchedule.Cadence.daily)
                 Text("Weekly").tag(ArchiveSchedule.Cadence.weekly)
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: 240)
+            .frame(maxWidth: 300)
             .disabled(!store.settings.schedule.enabled)
+
+            if store.settings.schedule.cadence == .hourly {
+                Text("Runs every hour. If the archive drives aren't attached, the run does nothing and tries again next hour; the mirror and cloud copies catch up whenever their drive/vault is back.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
 
             if store.settings.schedule.cadence == .weekly {
                 Picker("Day", selection: schedule.weekday) {

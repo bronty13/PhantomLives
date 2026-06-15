@@ -11,6 +11,31 @@ final class SchedulerTests: XCTestCase {
         XCTAssertEqual(keys.first { $0.key == "Minute" }?.value, 30)
     }
 
+    func testHourlyCalendarKeysAreMinuteOnly() {
+        // Only Minute → launchd fires every hour at that minute.
+        let s = ArchiveSchedule(enabled: true, cadence: .hourly, hour: 5, minute: 0)
+        let keys = s.calendarKeys
+        XCTAssertEqual(keys.map { $0.key }, ["Minute"])
+        XCTAssertEqual(keys.first?.value, 0)
+    }
+
+    func testHourlyPlistHasNoHour() {
+        let s = ArchiveSchedule(enabled: true, cadence: .hourly, hour: 9, minute: 0)
+        let xml = LaunchAgentPlist.build(label: "x", programArguments: ["a"], schedule: s,
+                                         stdoutPath: "/tmp/o", stderrPath: "/tmp/e")
+        XCTAssertTrue(xml.contains("<key>Minute</key>"))
+        XCTAssertFalse(xml.contains("<key>Hour</key>"), "hourly fires every hour — no Hour key")
+        XCTAssertFalse(xml.contains("<key>Weekday</key>"))
+    }
+
+    func testNextRunHourlyMatchesMinute() {
+        let s = ArchiveSchedule(enabled: true, cadence: .hourly, hour: 0, minute: 0)
+        let next = s.nextRun(after: Date())
+        XCTAssertNotNil(next)
+        XCTAssertGreaterThan(next!, Date())
+        XCTAssertEqual(Calendar.current.component(.minute, from: next!), 0)
+    }
+
     func testWeeklyCalendarKeysIncludeWeekday() {
         let s = ArchiveSchedule(enabled: true, cadence: .weekly, hour: 9, minute: 0, weekday: 3)
         let keys = s.calendarKeys
@@ -64,6 +89,8 @@ final class SchedulerTests: XCTestCase {
     }
 
     func testHumanDescription() {
+        XCTAssertEqual(ArchiveSchedule(cadence: .hourly, hour: 0, minute: 0).humanDescription,
+                       "Every hour at :00")
         XCTAssertEqual(ArchiveSchedule(cadence: .daily, hour: 2, minute: 5).humanDescription,
                        "Every day at 02:05")
         XCTAssertEqual(ArchiveSchedule(cadence: .weekly, hour: 9, minute: 0, weekday: 1).humanDescription,

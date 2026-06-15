@@ -23,6 +23,13 @@ final class ExportPlanTests: XCTestCase {
         XCTAssertTrue(args.contains("--sidecar"))
         XCTAssertTrue(args.contains("XMP"))
         XCTAssertTrue(args.contains("--exiftool"))
+        // When exiftool is resolvable, its ABSOLUTE path must be passed so a launchd/
+        // scheduled run (minimal PATH) doesn't fail with "Could not find exiftool".
+        if let exiftool = Tooling.exiftool {
+            let i = args.firstIndex(of: "--exiftool-path")
+            XCTAssertNotNil(i, "--exiftool-path must accompany --exiftool")
+            if let i { XCTAssertEqual(args[i + 1], exiftool) }
+        }
         XCTAssertFalse(args.contains("--convert-to-jpeg"), "originals pass must not convert")
         XCTAssertFalse(args.contains("--dry-run"))
     }
