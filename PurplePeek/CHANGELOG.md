@@ -2,6 +2,22 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Phase 4: Preview mode (in progress)
+
+- `PreviewModeView` — full-screen one-by-one triage: large viewer + EXIF panel + decision
+  bar. Walks the undecided queue by default; "Show all" revisits decided items.
+- Keyboard-driven: **Y** keep, **N** skip, **F** favorite, **←/→** navigate, **Space**
+  Quick Look — via an `NSEvent` local monitor guarded by `firstResponder is NSText` so the
+  keys never fire while a title/caption field is being edited.
+- `MediaViewerView` — fit-to-frame image (photos), inline `AVPlayerView` (video, rebuilt
+  only on URL change), waveform backdrop + audio transport (audio).
+- `EXIFService` + `EXIFPanelView` — ImageIO for photos (dimensions, camera/lens, aperture/
+  shutter/ISO, GPS, color profile), AVFoundation for video/audio (duration, dimensions,
+  creation date), grouped File / Camera / Exposure / Location.
+- `QuickLookCoordinator` — drives the shared `QLPreviewPanel` for the current file.
+- Decisions advance the queue (undecided items drop out; show-all advances explicitly);
+  title/caption commit on focus-loss to the right row.
+
 ## [1.0] — Phase 3: Decision UI (in progress)
 
 - `MediaDetailPanel` (320pt right column) — large preview + file facts and every decision

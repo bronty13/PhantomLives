@@ -120,6 +120,64 @@ final class AppState: ObservableObject {
         return showAllInPreview ? active : active.filter { $0.keep == nil }
     }
 
+    /// The file currently shown in Preview mode (index clamped into the queue).
+    var currentPreviewFile: MediaFile? {
+        let q = previewQueue
+        guard !q.isEmpty else { return nil }
+        return q[min(max(previewIndex, 0), q.count - 1)]
+    }
+
+    // MARK: - Preview navigation
+
+    func startPreview() {
+        previewIndex = 0
+        syncSelectionToPreview()
+    }
+
+    func nextPreview() {
+        let count = previewQueue.count
+        guard count > 0 else { return }
+        previewIndex = min(previewIndex + 1, count - 1)
+        syncSelectionToPreview()
+    }
+
+    func prevPreview() {
+        previewIndex = max(previewIndex - 1, 0)
+        syncSelectionToPreview()
+    }
+
+    private func clampPreviewIndex() {
+        let count = previewQueue.count
+        previewIndex = count == 0 ? 0 : min(max(previewIndex, 0), count - 1)
+    }
+
+    /// Keep the shared selection (used by the keyword/album popovers) pointed at the current
+    /// preview file, loading its keyword/album metadata.
+    private func syncSelectionToPreview() {
+        selectFile(currentPreviewFile?.id)
+    }
+
+    /// Apply a keep/skip decision to the current preview item and advance. In undecided
+    /// mode the decided item drops out of the queue (so clamping lands on the next one); in
+    /// show-all mode we advance explicitly.
+    func decidePreview(keep: Bool) {
+        guard let file = currentPreviewFile else { return }
+        let showAll = showAllInPreview
+        setKeep(file.id, keep)
+        if showAll {
+            nextPreview()
+        } else {
+            clampPreviewIndex()
+            syncSelectionToPreview()
+        }
+    }
+
+    /// Toggle favorite on the current preview item (does not advance).
+    func toggleFavoritePreview() {
+        guard let file = currentPreviewFile else { return }
+        setFavorite(file.id, !file.isFavorite)
+    }
+
     // MARK: - Scanning
 
     /// Discover media under `url` (recursively) and persist it. Discovery runs off the main
