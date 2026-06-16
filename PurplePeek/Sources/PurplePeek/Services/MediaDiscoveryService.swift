@@ -18,11 +18,20 @@ struct ScannedFile: Sendable, Equatable {
 enum MediaDiscoveryService {
 
     private static let resourceKeys: Set<URLResourceKey> = [
-        .isRegularFileKey, .fileSizeKey, .contentModificationDateKey, .contentTypeKey
+        .isRegularFileKey, .isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .contentTypeKey
     ]
 
-    static func scan(root: URL) -> [ScannedFile] {
+    /// Recursively discover media under `root`. When `excludeTopLevelName` is non-empty, a
+    /// directory of that name sitting **directly under the root** (and its whole subtree) is
+    /// skipped — same-named folders nested deeper are still scanned.
+    static func scan(root: URL, excludeTopLevelName: String? = nil) -> [ScannedFile] {
         let fm = FileManager.default
+        let rootPath = root.standardizedFileURL.path
+        let exclude = excludeTopLevelName?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/ ").union(.whitespaces))
+            .lowercased()
+        let excludeName = (exclude?.isEmpty ?? true) ? nil : exclude
+
         guard let enumerator = fm.enumerator(
             at: root,
             includingPropertiesForKeys: Array(resourceKeys),
@@ -31,9 +40,19 @@ enum MediaDiscoveryService {
 
         var results: [ScannedFile] = []
         for case let url as URL in enumerator {
-            guard let rv = try? url.resourceValues(forKeys: resourceKeys),
-                  rv.isRegularFile == true,
-                  let type = classify(contentType: rv.contentType)
+            guard let rv = try? url.resourceValues(forKeys: resourceKeys) else { continue }
+
+            if rv.isDirectory == true {
+                // Top-level exclude: prune a matching directory directly under the root.
+                if let excludeName,
+                   url.lastPathComponent.lowercased() == excludeName,
+                   url.deletingLastPathComponent().standardizedFileURL.path == rootPath {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+
+            guard rv.isRegularFile == true, let type = classify(contentType: rv.contentType)
             else { continue }
 
             results.append(ScannedFile(

@@ -2,6 +2,16 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Top-level exclude folder
+
+- New General setting **Exclude (top level only)** (default `originals`): a folder with this
+  name is skipped — along with its whole subtree — **only when it sits directly under the
+  scanned folder**. Same-named folders nested deeper are still scanned (e.g. `/ALASKA/
+  originals` is scanned; a root-level `/originals` is not). Empty ⇒ exclude nothing.
+- Implemented in `MediaDiscoveryService.scan(root:excludeTopLevelName:)` via the directory
+  enumerator's `skipDescendants()` gated on a parent-path-equals-root check (case-insensitive,
+  tolerates a leading slash). Tests: +3 (top-level skip vs nested keep, case/slash, no-exclude).
+
 ## [1.0] — Import keywords from Photos
 
 - Keyword Manager gains **Import from Photos** — pulls the Photos library's keyword

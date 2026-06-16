@@ -58,6 +58,32 @@ final class MediaDiscoveryTests: XCTestCase {
         XCTAssertTrue(found.contains { $0.name == "nested.mp4" && $0.type == .video })
     }
 
+    func testTopLevelExcludeSkipsRootChildOnly() throws {
+        // /originals (top-level) → excluded; /ALASKA/originals (nested) → kept.
+        try write("a.jpg")
+        try write("skip.jpg", in: tempRoot.appendingPathComponent("originals", isDirectory: true))
+        try write("keep.jpg", in: tempRoot.appendingPathComponent("ALASKA/originals", isDirectory: true))
+
+        let found = MediaDiscoveryService.scan(root: tempRoot, excludeTopLevelName: "originals")
+        let names = Set(found.map { $0.name })
+        XCTAssertTrue(names.contains("a.jpg"))
+        XCTAssertTrue(names.contains("keep.jpg"))     // nested originals kept
+        XCTAssertFalse(names.contains("skip.jpg"))    // top-level originals skipped
+        XCTAssertEqual(found.count, 2)
+    }
+
+    func testTopLevelExcludeIsCaseInsensitiveAndToleratesSlash() throws {
+        try write("x.jpg", in: tempRoot.appendingPathComponent("Originals", isDirectory: true))
+        let found = MediaDiscoveryService.scan(root: tempRoot, excludeTopLevelName: "/originals")
+        XCTAssertTrue(found.isEmpty)
+    }
+
+    func testNoExcludeScansEverything() throws {
+        try write("skip.jpg", in: tempRoot.appendingPathComponent("originals", isDirectory: true))
+        let found = MediaDiscoveryService.scan(root: tempRoot, excludeTopLevelName: nil)
+        XCTAssertEqual(found.count, 1)
+    }
+
     func testCapturesSizeAndPath() throws {
         try write("a.jpg")
         let found = MediaDiscoveryService.scan(root: tempRoot)

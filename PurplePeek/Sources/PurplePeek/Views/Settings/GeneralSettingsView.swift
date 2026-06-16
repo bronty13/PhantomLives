@@ -28,6 +28,16 @@ struct GeneralSettingsView: View {
 
             Divider()
 
+            LabeledContent("Exclude (top level only)") {
+                VStack(alignment: .trailing, spacing: 2) {
+                    TextField("originals", text: $store.settings.topLevelExcludeName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 160)
+                    Text("Skipped only directly under the scanned folder")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             LabeledContent("Kept Audio Export") {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(appState.settingsStore.resolvedKeptAudioPath.path)

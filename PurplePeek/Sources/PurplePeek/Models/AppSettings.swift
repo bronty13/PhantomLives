@@ -11,6 +11,11 @@ struct AppSettings: Codable, Equatable {
     // Output locations (empty string ⇒ use the computed default under ~/Downloads/PurplePeek)
     var keptAudioExportPath: String = ""
 
+    /// Name of a folder to skip when it sits directly under the scan root (and only there).
+    /// Default "originals" — its whole subtree is ignored, but same-named folders nested
+    /// deeper are still scanned. Empty ⇒ exclude nothing.
+    var topLevelExcludeName: String = "originals"
+
     // Scan-root cleanup
     var scanRootAutoCleanupEnabled: Bool = false
     var scanRootAutoCleanupDays: Int = 180

@@ -259,9 +259,10 @@ final class AppState: ObservableObject {
         scanMessage = "Scanning \(dir.lastPathComponent)…"
         errorMessage = nil
 
+        let excludeName = settings.topLevelExcludeName
         Task {
             let scanned = await Task.detached(priority: .userInitiated) {
-                MediaDiscoveryService.scan(root: dir)
+                MediaDiscoveryService.scan(root: dir, excludeTopLevelName: excludeName)
             }.value
             await self.persistScan(rootPath: rootPath, files: scanned)
         }
