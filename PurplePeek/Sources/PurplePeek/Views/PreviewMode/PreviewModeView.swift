@@ -15,6 +15,11 @@ struct PreviewModeView: View {
 
     @State private var title = ""
     @State private var caption = ""
+    // Baselines = what we last loaded for `editingFileId`. Write-through only fires when the
+    // text genuinely differs from the baseline, so a programmatic load never writes back to
+    // the wrong file during a navigation transition.
+    @State private var loadedTitle = ""
+    @State private var loadedCaption = ""
     @State private var editingFileId: String?
     @FocusState private var focus: Field?
     private enum Field { case title, caption }
@@ -42,9 +47,20 @@ struct PreviewModeView: View {
         .task(id: appState.currentPreviewFile?.id) {
             if let file = appState.currentPreviewFile { await onFileChange(file) }
         }
-        .onChange(of: focus) { _, _ in commitText() }
+        // Write-through: persist on every edit, independent of focus/navigation timing
+        // (the old commit-on-focus-loss missed edits when the field was torn down on nav).
+        .onChange(of: title) { _, newValue in
+            guard let id = editingFileId, newValue != loadedTitle else { return }
+            loadedTitle = newValue
+            appState.setTitle(id, newValue)
+        }
+        .onChange(of: caption) { _, newValue in
+            guard let id = editingFileId, newValue != loadedCaption else { return }
+            loadedCaption = newValue
+            appState.setCaption(id, newValue)
+        }
         .onAppear { appState.startPreview(); installMonitor() }
-        .onDisappear { commitText(); removeMonitor() }
+        .onDisappear { removeMonitor() }
     }
 
     // MARK: - Top bar
@@ -107,13 +123,13 @@ struct PreviewModeView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 180)
                 .focused($focus, equals: .title)
-                .onSubmit { commitText() }
+                .onSubmit { focus = nil }   // Return exits the field so ←/→ navigate again
 
             TextField("Caption", text: $caption)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: .infinity)
                 .focused($focus, equals: .caption)
-                .onSubmit { commitText() }
+                .onSubmit { focus = nil }
 
             Button { showKeywordPicker = true } label: { Image(systemName: "tag") }
                 .help("Keywords")
@@ -166,18 +182,15 @@ struct PreviewModeView: View {
     // MARK: - Selection sync
 
     private func onFileChange(_ file: MediaFile) async {
-        commitText()
+        // Set the id first, then the baselines, then the text — so the write-through
+        // onChange sees text == baseline and skips (no write back to this file on load).
         editingFileId = file.id
-        title = file.title ?? ""
-        caption = file.caption ?? ""
+        loadedTitle = file.title ?? ""
+        loadedCaption = file.caption ?? ""
+        title = loadedTitle
+        caption = loadedCaption
         exif = nil
         exif = await EXIFService.load(for: file)
-    }
-
-    private func commitText() {
-        guard let id = editingFileId else { return }
-        appState.setTitle(id, title)
-        appState.setCaption(id, caption)
     }
 
     // MARK: - Keyboard

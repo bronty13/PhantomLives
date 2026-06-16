@@ -180,8 +180,17 @@ final class AppState: ObservableObject {
         }
         do { mediaFiles = try db.fetchMediaFiles(scanRoot: root) }
         catch { errorMessage = error.localizedDescription }
+        rebuildIndex()
         rebuildFolderTree()
         recomputeDerived()
+    }
+
+    /// id → position in `mediaFiles`, so `patchLocal` is O(1) even on huge roots. Valid
+    /// between reloads because `patchLocal` mutates in place and never reorders.
+    private var indexById: [String: Int] = [:]
+    private func rebuildIndex() {
+        indexById = Dictionary(mediaFiles.enumerated().map { ($0.element.id, $0.offset) },
+                               uniquingKeysWith: { first, _ in first })
     }
 
     // MARK: - Derived views (cached; recomputed only when inputs change)
@@ -378,8 +387,19 @@ final class AppState: ObservableObject {
     /// Mutate one row in `mediaFiles` in place — republishes for the grid badge without a
     /// full refetch (which would disturb a focused text field in the detail panel).
     private func patchLocal(_ id: String, _ transform: (inout MediaFile) -> Void) {
-        guard let idx = mediaFiles.firstIndex(where: { $0.id == id }) else { return }
-        transform(&mediaFiles[idx])
+        // Update the master array (O(1) via the index) …
+        if let i = indexById[id], i < mediaFiles.count, mediaFiles[i].id == id {
+            transform(&mediaFiles[i])
+        } else if let i = mediaFiles.firstIndex(where: { $0.id == id }) {
+            transform(&mediaFiles[i])
+        } else {
+            return
+        }
+        // … and the cached derived copies, so currentPreviewFile / the grid reflect
+        // field changes (title/caption/favorite/hidden) without a full recompute. Without
+        // this, the cached previewQueue stays stale and navigating back shows old text.
+        if let i = previewQueue.firstIndex(where: { $0.id == id }) { transform(&previewQueue[i]) }
+        if let i = visibleMediaFiles.firstIndex(where: { $0.id == id }) { transform(&visibleMediaFiles[i]) }
     }
 
     func setKeep(_ id: String, _ keep: Bool?) {
@@ -632,23 +652,26 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Stage (photos only) + import one file. Returns the asset id or an error message.
+    /// Stage (photos) + import one file, then apply title/caption/keywords to the created
+    /// asset via AppleScript for videos (and as a fallback when photo-embedding didn't run).
+    /// Returns the asset id or an error message.
     private func importOneFile(_ file: MediaFile, exiftoolPath: String?) async -> Result<String, ImportFailure> {
         let type: PHAssetResourceType = (file.mediaType == .photo) ? .photo : .video
         let albums = (try? db.albums(forFile: file.id)) ?? []
+        let keywords = (try? db.keywordNames(forFile: file.id)) ?? []
+        let hasMetadata = (file.title?.isEmpty == false) || (file.caption?.isEmpty == false) || !keywords.isEmpty
 
+        // Photos: embed title/caption/keywords into a staged copy so Photos ingests them.
         var importURL = file.fileURL
         var stagedURL: URL?
-        if file.mediaType == .photo, let ep = exiftoolPath {
-            let keywords = (try? db.keywordNames(forFile: file.id)) ?? []
+        var embedded = false
+        if file.mediaType == .photo, let ep = exiftoolPath, hasMetadata {
             let meta = MetadataStagingService.Metadata(title: file.title, caption: file.caption, keywords: keywords)
-            if !meta.isEmpty {
-                let original = file.fileURL
-                stagedURL = try? await Task.detached(priority: .userInitiated) {
-                    try MetadataStagingService.stage(original: original, metadata: meta, exiftoolPath: ep)
-                }.value
-                if let stagedURL { importURL = stagedURL }
-            }
+            let original = file.fileURL
+            stagedURL = try? await Task.detached(priority: .userInitiated) {
+                try MetadataStagingService.stage(original: original, metadata: meta, exiftoolPath: ep)
+            }.value
+            if let stagedURL { importURL = stagedURL; embedded = true }
         }
 
         do {
@@ -656,6 +679,17 @@ final class AppState: ObservableObject {
                 url: importURL, type: type, isFavorite: file.isFavorite, isHidden: file.isHidden, albums: albums
             )
             if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
+
+            // Videos (and photos whose embedding didn't run) get metadata via AppleScript —
+            // the only path that reaches videos and non-embeddable formats.
+            if hasMetadata, file.mediaType == .video || !embedded {
+                let r = PhotosAppleScriptService.applyMetadata(
+                    localIdentifier: assetId, title: file.title, caption: file.caption, keywords: keywords
+                )
+                if !r.titleCaptionOK {
+                    NSLog("PurplePeek: AppleScript metadata failed for \(file.fileName): \(r.error ?? "unknown")")
+                }
+            }
             return .success(assetId)
         } catch {
             if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }

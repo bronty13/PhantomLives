@@ -11,8 +11,10 @@ struct MediaDetailPanel: View {
     @State private var preview: NSImage?
     @State private var title: String = ""
     @State private var caption: String = ""
-    /// The file the title/caption text currently belongs to — so a commit triggered by a
-    /// focus change always targets the right row even mid-selection-switch.
+    /// Baselines for write-through: the values last loaded for `editingFileId`. A change is
+    /// persisted only when it differs from the baseline, so loading a file never writes back.
+    @State private var loadedTitle: String = ""
+    @State private var loadedCaption: String = ""
     @State private var editingFileId: String?
     @State private var showKeywordPicker = false
     @State private var showAlbumPicker = false
@@ -45,19 +47,21 @@ struct MediaDetailPanel: View {
             }
             .background(.ultraThinMaterial)
             .task(id: file.id) { await loadForSelection(file) }
-            .onChange(of: focus) { _, _ in commitText() }
-            .onDisappear { commitText() }
+            // Write-through: persist each edit immediately, keyed to the file it belongs to,
+            // so a decision/selection change can never drop an in-flight title/caption.
+            .onChange(of: title) { _, newValue in
+                guard let id = editingFileId, newValue != loadedTitle else { return }
+                loadedTitle = newValue
+                appState.setTitle(id, newValue)
+            }
+            .onChange(of: caption) { _, newValue in
+                guard let id = editingFileId, newValue != loadedCaption else { return }
+                loadedCaption = newValue
+                appState.setCaption(id, newValue)
+            }
         } else {
             EmptyView()
         }
-    }
-
-    /// Persist the in-flight title/caption to the row they belong to (`editingFileId`),
-    /// not necessarily the currently selected file.
-    private func commitText() {
-        guard let id = editingFileId else { return }
-        appState.setTitle(id, title)
-        appState.setCaption(id, caption)
     }
 
     // MARK: - Preview + facts
@@ -161,7 +165,6 @@ struct MediaDetailPanel: View {
             TextField("Title", text: $title)
                 .textFieldStyle(.roundedBorder)
                 .focused($focus, equals: .title)
-                .onSubmit { appState.setTitle(file.id, title) }
         }
     }
 
@@ -264,11 +267,13 @@ struct MediaDetailPanel: View {
     // MARK: - Selection sync
 
     private func loadForSelection(_ file: MediaFile) async {
-        // Commit any pending edits from the previously-shown file before swapping text.
-        commitText()
+        // Set id + baselines first so the write-through onChange treats this load as a
+        // no-op (text == baseline) rather than writing back to the file.
         editingFileId = file.id
-        title = file.title ?? ""
-        caption = file.caption ?? ""
+        loadedTitle = file.title ?? ""
+        loadedCaption = file.caption ?? ""
+        title = loadedTitle
+        caption = loadedCaption
         preview = nil
         preview = await ThumbnailService.shared.thumbnail(for: file.fileURL, size: previewSize)
     }

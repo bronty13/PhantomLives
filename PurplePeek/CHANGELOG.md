@@ -2,6 +2,31 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Metadata reaches imported videos (AppleScript)
+
+- Title/caption/keywords now reach **imported videos** (and serve as a fallback for photos
+  whose embedding didn't run). Root cause: exiftool embedding is photo-only, so metadata on
+  videos never had a path into Photos — and most real imports are videos.
+- New `PhotosAppleScriptService`: after import, sets the asset's `name` (title) +
+  `description` (caption) via AppleScript, and `keywords` as a separate best-effort script
+  (Photos' keyword-settability varies by macOS). In-process `NSAppleScript` so the Automation
+  consent is attributed to PurplePeek. Photos still use exiftool embedding; AppleScript runs
+  for videos and any photo where embedding was skipped.
+- First import now also triggers a one-time "PurplePeek controls Photos" Automation prompt.
+- (See also the title-save fix below — titles were additionally never persisted before.)
+
+## [1.0] — Fix: title/caption sometimes not saving between items
+
+- Title and caption now **write through on every edit** instead of committing on focus loss.
+  The old approach relied on `onChange(of: focus)` firing when navigating — but when the
+  focused `TextField` is torn down as you move to the next item, that didn't always fire, so
+  the last edit was lost. Write-through persists each change immediately, before any
+  navigation.
+- A loaded-baseline guard means a programmatic load (showing the next item) never writes the
+  value back to the wrong file, avoiding any cross-item corruption during the transition.
+- `patchLocal` is now O(1) (id→index map) so per-keystroke persistence stays fast even on
+  tens-of-thousands-of-item roots.
+
 ## [1.0] — Album picker enumerates Photos albums
 
 - The album picker now lists your **Photos library albums** (read via PhotoKit
