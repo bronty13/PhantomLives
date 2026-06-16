@@ -2,6 +2,25 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Phase 6: Delete functions + full Settings (in progress)
+
+- `DeleteService` — delete files from disk to Trash or permanently (idempotent: an
+  already-gone file counts as succeeded). `AppState.performDelete` marks only the rows that
+  actually succeeded and clears the selection if it was deleted.
+- Clean Up toolbar menu → **Delete Imported Files** / **Delete Skipped Files**, each opening
+  a confirmation sheet (count + sample filenames + Trash-vs-permanent choice, with a warning
+  for permanent).
+- Settings window (⌘,) with three tabs:
+  - **General** — default mode, appearance (Light/Dark/System), color theme (10), and the
+    Kept Audio Export folder.
+  - **Scan Roots** — per-root rename/forget (DB only, never touches disk), plus auto-forget
+    after N days (default 180) + Clean Up Now. Forgetting cascades to the root's media +
+    keyword/album junctions.
+  - **Backup** — toggle, location, retention, Back Up Now, recent-backups list.
+- `AppState` bridges nested `SettingsStore` changes via Combine so theme/appearance apply
+  live; auto-cleanup runs on launch when enabled. DB gains `markDeleted`, `deleteScanRoot`,
+  `updateScanRootLabel`, `deleteScanRootsOlderThan`.
+
 ## [1.0] — Phase 5: PhotoKit import + metadata staging + audio keep-export (in progress)
 
 - `PhotoKitService` (actor) — imports photos/videos via `PHAssetCreationRequest.forAsset()`

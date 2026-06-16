@@ -200,6 +200,42 @@ final class DatabaseService {
         }
     }
 
+    func markDeleted(id: String, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET deleted_at = ?, updated_at = ? WHERE id = ?",
+                           arguments: [now, now, id])
+        }
+    }
+
+    // MARK: - Scan-root management (Settings → Scan Roots)
+
+    /// Forget a scanned path entirely. The `ON DELETE CASCADE` chain removes its
+    /// media_files and their keyword/album junction rows. Does NOT touch files on disk.
+    func deleteScanRoot(path: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM scan_roots WHERE path = ?", arguments: [path])
+        }
+    }
+
+    func updateScanRootLabel(path: String, label: String?) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE scan_roots SET label = ? WHERE path = ?", arguments: [label, path])
+        }
+    }
+
+    /// Remove scan roots not scanned since `cutoff` (ISO string). Returns the count removed.
+    @discardableResult
+    func deleteScanRootsOlderThan(cutoff: String) throws -> Int {
+        try dbPool.write { db in
+            let stale = try String.fetchAll(db, sql: "SELECT path FROM scan_roots WHERE last_scanned_at < ?",
+                                            arguments: [cutoff])
+            for path in stale {
+                try db.execute(sql: "DELETE FROM scan_roots WHERE path = ?", arguments: [path])
+            }
+            return stale.count
+        }
+    }
+
     // MARK: - Keyword CRUD
 
     /// Create a keyword (or return the existing one with the same case-insensitive name).

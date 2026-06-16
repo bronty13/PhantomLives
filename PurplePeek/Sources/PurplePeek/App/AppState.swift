@@ -17,6 +17,19 @@ enum ImportFilter: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which on-disk files a bulk delete targets.
+enum DeleteKind: Identifiable {
+    case imported
+    case skipped
+    var id: String { self == .imported ? "imported" : "skipped" }
+    var title: String { self == .imported ? "Delete Imported Files" : "Delete Skipped Files" }
+    var blurb: String {
+        self == .imported
+            ? "These files have been imported to Photos. Deleting removes the on-disk copies."
+            : "These files were marked Skip. Deleting removes them from disk."
+    }
+}
+
 /// Live progress of an import run, published for the wizard.
 struct ImportProgress {
     var total: Int
@@ -76,6 +89,7 @@ final class AppState: ObservableObject {
     // MARK: - Sub-stores / services
     let settingsStore = SettingsStore()
     private let db = DatabaseService.shared
+    private var settingsObserver: AnyCancellable?
 
     // MARK: - Settings convenience
     var settings: AppSettings {
@@ -97,10 +111,16 @@ final class AppState: ObservableObject {
 
     init() {
         exiftoolPath = MetadataStagingService.locateExiftool()
+        // Bubble nested settings changes up so views observing AppState (theme, appearance,
+        // default mode) re-render live.
+        settingsObserver = settingsStore.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         // PhantomLives auto-backup-on-launch standard — runs first, never throws.
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
         // Honor the user's default mode for a fresh launch.
         appMode = settings.defaultMode
+        if settings.scanRootAutoCleanupEnabled { cleanupOldScanRoots(announce: false) }
         reloadAll()
     }
 
@@ -533,6 +553,98 @@ final class AppState: ObservableObject {
             if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
             return .failure(ImportFailure(message: error.localizedDescription))
         }
+    }
+
+    // MARK: - Delete on disk
+
+    /// Files eligible for a bulk delete of `kind` (not already deleted), within the loaded
+    /// root.
+    func deletionCandidates(_ kind: DeleteKind) -> [MediaFile] {
+        mediaFiles.filter { f in
+            guard f.deletedAt == nil else { return false }
+            switch kind {
+            case .imported: return f.importedAt != nil
+            case .skipped:  return f.keepDecision == false
+            }
+        }
+    }
+
+    /// Delete the given files from disk (Trash or permanent) and mark the succeeded ones.
+    func performDelete(_ files: [MediaFile], permanently: Bool) {
+        let urlToId = Dictionary(uniqueKeysWithValues: files.map { ($0.fileURL, $0.id) })
+        let urls = files.map { $0.fileURL }
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                DeleteService.deleteFiles(urls, permanently: permanently)
+            }.value
+            let now = BackupService.isoNow()
+            for url in outcome.succeeded {
+                if let id = urlToId[url] {
+                    try? db.markDeleted(id: id, now: now)
+                    patchLocal(id) { $0.deletedAt = now }
+                }
+            }
+            if outcome.failed.isEmpty {
+                statusMessage = "Deleted \(outcome.succeeded.count) file\(outcome.succeeded.count == 1 ? "" : "s")."
+            } else {
+                errorMessage = "Deleted \(outcome.succeeded.count); \(outcome.failed.count) failed."
+            }
+            if selectedFile?.deletedAt != nil { selectedFileId = nil }
+            reloadMediaFiles()
+        }
+    }
+
+    // MARK: - Scan-root management
+
+    func deleteScanRoot(_ path: String) {
+        do {
+            try db.deleteScanRoot(path: path)
+            if selectedRootPath == path { selectedRootPath = nil; selectedFolderPath = nil; selectedFileId = nil; mediaFiles = [] }
+            reloadScanRoots()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func renameScanRoot(_ path: String, label: String?) {
+        let clean = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try db.updateScanRootLabel(path: path, label: (clean?.isEmpty ?? true) ? nil : clean)
+            reloadScanRoots()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func cleanupOldScanRoots(announce: Bool = true) {
+        let days = max(settings.scanRootAutoCleanupDays, 1)
+        let cutoff = Self.isoString(Date().addingTimeInterval(-Double(days) * 86400))
+        do {
+            let removed = try db.deleteScanRootsOlderThan(cutoff: cutoff)
+            reloadScanRoots()
+            if let root = selectedRootPath, !scanRoots.contains(where: { $0.path == root }) {
+                selectedRootPath = nil; mediaFiles = []
+            }
+            if announce { statusMessage = "Removed \(removed) scan root\(removed == 1 ? "" : "s") older than \(days) days." }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    // MARK: - Backup
+
+    func backupNow() {
+        do {
+            let url = try BackupService.doBackup(settingsStore: settingsStore)
+            statusMessage = "Backup written: \(url.lastPathComponent)"
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func recentBackups() -> [(url: URL, modified: Date, size: Int)] {
+        BackupService.listBackups(in: settingsStore.resolvedBackupPath)
+    }
+
+    // MARK: - Helpers
+
+    private static func isoString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f.string(from: date)
     }
 }
 

@@ -15,5 +15,13 @@ struct PurplePeekApp: App {
                 .frame(minWidth: 900, minHeight: 600)
         }
         .windowToolbarStyle(.unified)
+
+        Settings {
+            SettingsView()
+                .environmentObject(appState)
+                .environment(\.appTheme, appState.currentTheme)
+                .preferredColorScheme(appState.preferredColorScheme)
+                .tint(appState.currentTheme.accentColor)
+        }
     }
 }

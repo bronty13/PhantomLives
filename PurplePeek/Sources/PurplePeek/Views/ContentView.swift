@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var isDropTargeted = false
     @State private var showKeywordManager = false
     @State private var showImportWizard = false
+    @State private var deleteKind: DeleteKind?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -41,6 +42,9 @@ struct ContentView: View {
         .sheet(isPresented: $showImportWizard) {
             ImportWizardView().environmentObject(appState)
         }
+        .sheet(item: $deleteKind) { kind in
+            DeleteConfirmationView(kind: kind).environmentObject(appState)
+        }
     }
 
     // MARK: - Toolbar
@@ -66,6 +70,16 @@ struct ContentView: View {
                 showImportWizard = true
             } label: { Label("Import to Photos", systemImage: "photo.badge.plus") }
                 .help("Import photos & videos to the Photos library")
+                .disabled(appState.selectedRootPath == nil)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button("Delete Imported Files…") { deleteKind = .imported }
+                    .disabled(appState.deletionCandidates(.imported).isEmpty)
+                Button("Delete Skipped Files…") { deleteKind = .skipped }
+                    .disabled(appState.deletionCandidates(.skipped).isEmpty)
+            } label: { Label("Clean Up", systemImage: "trash") }
+                .help("Delete imported or skipped files from disk")
                 .disabled(appState.selectedRootPath == nil)
         }
         ToolbarItem(placement: .primaryAction) {
