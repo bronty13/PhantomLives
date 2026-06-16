@@ -2,6 +2,16 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Album picker enumerates Photos albums
+
+- The album picker now lists your **Photos library albums** (read via PhotoKit
+  `PHAssetCollection`, regular albums only — those the importer can actually add to) merged
+  with albums already used in PurplePeek, de-duplicated; a photo glyph marks the ones from
+  Photos. Loaded on demand when the picker opens (cached).
+- `PhotoKitService.fetchAlbumNames()`, `AppState.loadPhotosAlbumsIfNeeded` +
+  `photosAlbumNames` / `isLoadingPhotosAlbums`.
+- Verified live: picker surfaced the library's "PurplePeek Test" and "Save" albums.
+
 ## [1.0] — Review decided items (decision filter)
 
 - New `DecisionFilter` lens (All / Undecided / Decided / Kept / Skipped) so you can revisit

@@ -73,6 +73,11 @@ final class AppState: ObservableObject {
     @Published var selectedKeywordIds: Set<String> = []
     @Published var selectedAlbums: [String] = []
 
+    // Album names read from the Photos library (for the album picker). Loaded on demand.
+    @Published var photosAlbumNames: [String] = []
+    @Published var isLoadingPhotosAlbums = false
+    private var loadedPhotosAlbums = false
+
     // MARK: - Selection
     @Published var selectedRootPath: String?
     @Published var selectedFolderPath: String? {  // nil ⇒ show the whole root
@@ -493,6 +498,19 @@ final class AppState: ObservableObject {
 
     func distinctAlbumNames() -> [String] {
         (try? db.distinctAlbumNames()) ?? []
+    }
+
+    /// Fetch the Photos library's album names once (the album picker calls this on open).
+    /// First load may prompt for Photos access.
+    func loadPhotosAlbumsIfNeeded(force: Bool = false) {
+        guard force || (!loadedPhotosAlbums && !isLoadingPhotosAlbums) else { return }
+        isLoadingPhotosAlbums = true
+        Task {
+            let names = await PhotoKitService.shared.fetchAlbumNames()
+            photosAlbumNames = names
+            loadedPhotosAlbums = true
+            isLoadingPhotosAlbums = false
+        }
     }
 
     func addAlbum(_ name: String) {

@@ -45,6 +45,18 @@ actor PhotoKitService {
     /// Reset the per-run album cache (call at the start of an import run).
     func beginRun() { albumCache.removeAll() }
 
+    /// All user album titles currently in the Photos library (for the album picker). Needs
+    /// read access; returns [] if not authorized.
+    func fetchAlbumNames() async -> [String] {
+        guard await requestAuthorization() else { return [] }
+        var names: Set<String> = []
+        let albums = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
+        albums.enumerateObjects { collection, _, _ in
+            if let title = collection.localizedTitle, !title.isEmpty { names.insert(title) }
+        }
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
     // MARK: - Import one file
 
     /// Import a single photo/video. Returns the created asset's local identifier.
