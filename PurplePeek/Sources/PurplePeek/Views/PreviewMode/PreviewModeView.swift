@@ -20,29 +20,29 @@ struct PreviewModeView: View {
     private enum Field { case title, caption }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            topBar    // always visible — so the Review filter is reachable even when the queue is empty
+            Divider().opacity(0.3)
             if let file = appState.currentPreviewFile {
-                VStack(spacing: 0) {
-                    topBar
-                    Divider().opacity(0.3)
-                    HStack(spacing: 0) {
-                        MediaViewerView(file: file)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .padding(16)
-                        Divider()
-                        EXIFPanelView(exif: exif)
-                            .frame(width: 300)
-                            .background(.ultraThinMaterial)
-                    }
+                HStack(spacing: 0) {
+                    MediaViewerView(file: file)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(16)
                     Divider()
-                    decisionBar(file)
+                    EXIFPanelView(exif: exif)
+                        .frame(width: 300)
+                        .background(.ultraThinMaterial)
                 }
-                .task(id: file.id) { await onFileChange(file) }
-                .onChange(of: focus) { _, _ in commitText() }
+                Divider()
+                decisionBar(file)
             } else {
                 emptyQueue
             }
         }
+        .task(id: appState.currentPreviewFile?.id) {
+            if let file = appState.currentPreviewFile { await onFileChange(file) }
+        }
+        .onChange(of: focus) { _, _ in commitText() }
         .onAppear { appState.startPreview(); installMonitor() }
         .onDisappear { commitText(); removeMonitor() }
     }
@@ -57,7 +57,7 @@ struct PreviewModeView: View {
                 .disabled(appState.previewIndex <= 0)
             VStack(spacing: 1) {
                 Text("Item \(pos) of \(queue.count)").font(.headline)
-                Text(appState.showAllInPreview ? "all items" : "undecided only")
+                Text(appState.previewDecisionFilter.label.lowercased())
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Button { appState.nextPreview() } label: { Image(systemName: "chevron.right") }
@@ -65,11 +65,15 @@ struct PreviewModeView: View {
 
             Spacer()
 
-            Toggle("Show all", isOn: Binding(
-                get: { appState.showAllInPreview },
-                set: { appState.showAllInPreview = $0; appState.startPreview() }
-            ))
-            .toggleStyle(.switch)
+            Picker("Review", selection: Binding(
+                get: { appState.previewDecisionFilter },
+                set: { appState.previewDecisionFilter = $0; appState.startPreview() }
+            )) {
+                ForEach(DecisionFilter.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 150)
+            .help("Choose which items to step through — including ones you've already decided")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -152,7 +156,7 @@ struct PreviewModeView: View {
                 .font(.title3.weight(.semibold))
             Text(appState.selectedRootPath == nil
                  ? "Scan a folder, then switch to Preview."
-                 : "No undecided items left. Toggle “Show all” to revisit decided ones.")
+                 : "Nothing matches this filter. Use the Review menu to step through Decided, Kept, Skipped, or All items.")
                 .font(.callout).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: 420)
         }

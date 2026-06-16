@@ -80,8 +80,14 @@ final class AppState: ObservableObject {
     }
     @Published var selectedFileId: String?
     @Published var previewIndex: Int = 0
-    @Published var showAllInPreview: Bool = false {
-        didSet { if showAllInPreview != oldValue { recomputeDerived() } }
+    /// Decision lens for the Folder grid (default: show everything).
+    @Published var gridDecisionFilter: DecisionFilter = .all {
+        didSet { if gridDecisionFilter != oldValue { recomputeDerived() } }
+    }
+    /// Decision lens for Preview mode (default: triage the undecided; switch to Decided/Kept/
+    /// Skipped to review items you've already decided).
+    @Published var previewDecisionFilter: DecisionFilter = .undecided {
+        didSet { if previewDecisionFilter != oldValue { recomputeDerived() } }
     }
 
     // MARK: - Scan progress
@@ -186,25 +192,32 @@ final class AppState: ObservableObject {
     /// `mediaFiles`. Call after any change to the file set, folder selection, or show-all.
     private func recomputeDerived() {
         let folder = selectedFolderPath
+        let gridFilter = gridDecisionFilter
+        let previewFilter = previewDecisionFilter
         var visible: [MediaFile] = []
-        var active: [MediaFile] = []
-        var undecided: [MediaFile] = []
+        var preview: [MediaFile] = []
         var deletableImported = false
         var deletableSkipped = false
 
         for file in mediaFiles where file.deletedAt == nil {
-            active.append(file)
-            if file.keep == nil { undecided.append(file) }
             if file.importedAt != nil { deletableImported = true }
             if file.keepDecision == false { deletableSkipped = true }
-            if let folder {
-                let dir = (file.filePath as NSString).deletingLastPathComponent
-                if dir == folder || file.filePath.hasPrefix(folder + "/") { visible.append(file) }
+
+            // Grid: optional folder narrowing + the grid's decision lens.
+            if gridFilter.matches(file) {
+                if let folder {
+                    let dir = (file.filePath as NSString).deletingLastPathComponent
+                    if dir == folder || file.filePath.hasPrefix(folder + "/") { visible.append(file) }
+                } else {
+                    visible.append(file)
+                }
             }
+            // Preview: whole-root, the preview's decision lens.
+            if previewFilter.matches(file) { preview.append(file) }
         }
 
-        visibleMediaFiles = (folder == nil) ? active : visible
-        previewQueue = showAllInPreview ? active : undecided
+        visibleMediaFiles = visible
+        previewQueue = preview
         hasDeletableImported = deletableImported
         hasDeletableSkipped = deletableSkipped
         clampPreviewIndex()
@@ -246,18 +259,18 @@ final class AppState: ObservableObject {
         selectFile(currentPreviewFile?.id)
     }
 
-    /// Apply a keep/skip decision to the current preview item and advance. In undecided
-    /// mode the decided item drops out of the queue (so clamping lands on the next one); in
-    /// show-all mode we advance explicitly.
+    /// Apply a keep/skip decision to the current preview item and advance. `setKeep`
+    /// recomputes the queue: if the decision dropped the item out of the current filter
+    /// (e.g. Undecided), clamping already lands us on the next one; if the item stays in the
+    /// queue (e.g. Decided/All/Kept/Skipped review), we advance explicitly.
     func decidePreview(keep: Bool) {
         guard let file = currentPreviewFile else { return }
-        let showAll = showAllInPreview
-        setKeep(file.id, keep)
-        if showAll {
-            nextPreview()
+        let id = file.id
+        setKeep(id, keep)   // recomputes previewQueue + clamps index
+        if currentPreviewFile?.id == id {
+            nextPreview()           // still in queue → step forward
         } else {
-            clampPreviewIndex()
-            syncSelectionToPreview()
+            syncSelectionToPreview() // dropped out → clamp already advanced; load new current
         }
     }
 

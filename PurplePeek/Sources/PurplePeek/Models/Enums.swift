@@ -31,6 +31,37 @@ enum AppAppearance: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// A lens over decision state, used to filter the grid and the Preview queue — including
+/// reviewing items you've already decided.
+enum DecisionFilter: String, CaseIterable, Identifiable {
+    case all
+    case undecided
+    case decided
+    case kept
+    case skipped
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all:       return "All"
+        case .undecided: return "Undecided"
+        case .decided:   return "Decided"
+        case .kept:      return "Kept"
+        case .skipped:   return "Skipped"
+        }
+    }
+
+    func matches(_ file: MediaFile) -> Bool {
+        switch self {
+        case .all:       return true
+        case .undecided: return file.keep == nil
+        case .decided:   return file.keep != nil
+        case .kept:      return file.keepDecision == true
+        case .skipped:   return file.keepDecision == false
+        }
+    }
+}
+
 /// The three media kinds PurplePeek discovers. Stored as the raw string in the
 /// `media_files.file_type` column.
 enum MediaType: String, Codable, CaseIterable, Identifiable {

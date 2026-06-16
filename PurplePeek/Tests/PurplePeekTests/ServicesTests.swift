@@ -67,6 +67,29 @@ final class ServicesTests: XCTestCase {
         XCTAssertFalse(MetadataStagingService.Metadata(title: nil, caption: nil, keywords: ["k"]).isEmpty)
     }
 
+    // MARK: - DecisionFilter
+
+    private func file(keep: Int?) -> MediaFile {
+        MediaFile(id: "x", scanRoot: "/r", filePath: "/r/x", fileName: "x", fileType: "photo",
+                  fileSize: nil, fileModifiedAt: nil, keep: keep, isFavorite: false, title: nil,
+                  caption: nil, importedAt: nil, exportedAt: nil, deletedAt: nil,
+                  photosAssetId: nil, createdAt: "", updatedAt: "")
+    }
+
+    func testDecisionFilterMatches() {
+        let undecided = file(keep: nil), kept = file(keep: 1), skipped = file(keep: 0)
+        XCTAssertTrue(DecisionFilter.all.matches(undecided))
+        XCTAssertTrue(DecisionFilter.undecided.matches(undecided))
+        XCTAssertFalse(DecisionFilter.undecided.matches(kept))
+        XCTAssertTrue(DecisionFilter.decided.matches(kept))
+        XCTAssertTrue(DecisionFilter.decided.matches(skipped))
+        XCTAssertFalse(DecisionFilter.decided.matches(undecided))
+        XCTAssertTrue(DecisionFilter.kept.matches(kept))
+        XCTAssertFalse(DecisionFilter.kept.matches(skipped))
+        XCTAssertTrue(DecisionFilter.skipped.matches(skipped))
+        XCTAssertFalse(DecisionFilter.skipped.matches(kept))
+    }
+
     // MARK: - Array.chunked
 
     func testChunked() {

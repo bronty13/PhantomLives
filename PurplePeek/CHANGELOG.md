@@ -2,6 +2,20 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Review decided items (decision filter)
+
+- New `DecisionFilter` lens (All / Undecided / Decided / Kept / Skipped) so you can revisit
+  choices you've already made — not just triage undecided ones.
+- **Folder grid**: a "Show" menu in the header filters the grid by decision.
+- **Preview mode**: the old "Show all" toggle is now a **Review** menu — step one-by-one
+  through Decided / Kept / Skipped / All items and change any decision in place. Deciding an
+  item advances correctly whether it stays in the filtered queue or drops out of it.
+- The Preview top bar (with the Review menu) now stays visible even when the queue is empty,
+  so when everything's decided you can still switch the filter to review your decisions
+  (previously the menu was hidden behind the "All caught up" state).
+- Grid and Preview keep independent filters (grid defaults All, Preview defaults Undecided).
+  Test: +`testDecisionFilterMatches` (26 total).
+
 ## [1.0] — Performance on large libraries
 
 - Derived collections (`visibleMediaFiles`, `previewQueue`, `folderTree`) are now **cached

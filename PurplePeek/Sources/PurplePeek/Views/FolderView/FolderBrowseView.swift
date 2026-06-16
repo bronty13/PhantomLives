@@ -28,6 +28,12 @@ struct FolderBrowseView: View {
                 Text(countSummary).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            Picker("Show", selection: $appState.gridDecisionFilter) {
+                ForEach(DecisionFilter.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 130)
+            .help("Filter by decision — pick Decided / Kept / Skipped to review choices you've made")
             Picker("Layout", selection: $isGrid) {
                 Image(systemName: "square.grid.2x2").tag(true)
                 Image(systemName: "list.bullet").tag(false)
