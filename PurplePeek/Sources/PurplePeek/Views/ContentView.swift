@@ -11,6 +11,7 @@ struct ContentView: View {
     @Environment(\.appTheme) private var theme
     @AppStorage("sidebarVisible") private var sidebarVisible: Bool = true
     @State private var isDropTargeted = false
+    @State private var showKeywordManager = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -22,11 +23,20 @@ struct ContentView: View {
             }
             mainArea
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if appState.appMode == .folderBrowse && appState.selectedFileId != nil {
+                Divider()
+                MediaDetailPanel()
+                    .frame(width: 320)
+            }
         }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
         .toolbar { toolbarContent }
+        .sheet(isPresented: $showKeywordManager) {
+            KeywordManagerSheet().environmentObject(appState)
+        }
     }
 
     // MARK: - Toolbar
@@ -49,6 +59,12 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
+                showKeywordManager = true
+            } label: { Label("Keywords", systemImage: "tag") }
+                .help("Manage keywords")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
                 openFolderPanel()
             } label: { Label("Open Folder", systemImage: "folder.badge.plus") }
                 .keyboardShortcut("o", modifiers: [.command])
@@ -67,7 +83,9 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
 
-            if appState.selectedRootPath == nil && !appState.isScanning {
+            if appState.appMode == .preview {
+                previewPlaceholder
+            } else if appState.selectedRootPath == nil && !appState.isScanning {
                 emptyState
             } else {
                 FolderBrowseView()
@@ -93,6 +111,20 @@ struct ContentView: View {
             Button("Open Folder…") { openFolderPanel() }
                 .controlSize(.large)
                 .padding(.top, 4)
+        }
+        .padding(40)
+    }
+
+    private var previewPlaceholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "rectangle.portrait.on.rectangle.portrait.angled")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(theme.accentColor)
+            Text("Preview mode arrives in Phase 4")
+                .font(.title3.weight(.semibold))
+            Text("It will walk undecided items one by one with a large viewer and full EXIF metadata.")
+                .font(.callout).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center).frame(maxWidth: 420)
         }
         .padding(40)
     }

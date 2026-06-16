@@ -19,6 +19,10 @@ final class AppState: ObservableObject {
     @Published var mediaFiles: [MediaFile] = []
     @Published var keywords: [Keyword] = []
 
+    // Metadata for the currently selected file (loaded on selection).
+    @Published var selectedKeywordIds: Set<String> = []
+    @Published var selectedAlbums: [String] = []
+
     // MARK: - Selection
     @Published var selectedRootPath: String?
     @Published var selectedFolderPath: String?   // nil ⇒ show the whole root
@@ -175,6 +179,129 @@ final class AppState: ObservableObject {
         selectedRootPath = path
         selectedFolderPath = nil
         selectedFileId = nil
+        selectedKeywordIds = []
+        selectedAlbums = []
         reloadMediaFiles()
+    }
+
+    // MARK: - File selection + decisions
+
+    var selectedFile: MediaFile? {
+        guard let id = selectedFileId else { return nil }
+        return mediaFiles.first { $0.id == id }
+    }
+
+    /// Select a file and load its keyword/album metadata for the detail panel.
+    func selectFile(_ id: String?) {
+        selectedFileId = id
+        guard let id else { selectedKeywordIds = []; selectedAlbums = []; return }
+        do {
+            selectedKeywordIds = Set(try db.keywordIds(forFile: id))
+            selectedAlbums = try db.albums(forFile: id)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Mutate one row in `mediaFiles` in place — republishes for the grid badge without a
+    /// full refetch (which would disturb a focused text field in the detail panel).
+    private func patchLocal(_ id: String, _ transform: (inout MediaFile) -> Void) {
+        guard let idx = mediaFiles.firstIndex(where: { $0.id == id }) else { return }
+        transform(&mediaFiles[idx])
+    }
+
+    func setKeep(_ id: String, _ keep: Bool?) {
+        let now = BackupService.isoNow()
+        do {
+            try db.updateKeep(id: id, keep: keep.map { $0 ? 1 : 0 }, now: now)
+            patchLocal(id) { $0.keepDecision = keep }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func setFavorite(_ id: String, _ value: Bool) {
+        let now = BackupService.isoNow()
+        do {
+            try db.updateFavorite(id: id, isFavorite: value, now: now)
+            patchLocal(id) { $0.isFavorite = value }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func setTitle(_ id: String, _ value: String?) {
+        let now = BackupService.isoNow()
+        let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stored = (clean?.isEmpty ?? true) ? nil : clean
+        do {
+            try db.updateTitle(id: id, title: stored, now: now)
+            patchLocal(id) { $0.title = stored }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func setCaption(_ id: String, _ value: String?) {
+        let now = BackupService.isoNow()
+        let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stored = (clean?.isEmpty ?? true) ? nil : clean
+        do {
+            try db.updateCaption(id: id, caption: stored, now: now)
+            patchLocal(id) { $0.caption = stored }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    // MARK: - Keywords
+
+    @discardableResult
+    func createKeyword(name: String) -> Keyword? {
+        let now = BackupService.isoNow()
+        do {
+            let kw = try db.createKeyword(name: name, now: now)
+            reloadKeywords()
+            return kw
+        } catch { errorMessage = error.localizedDescription; return nil }
+    }
+
+    func deleteKeyword(_ id: String) {
+        do {
+            try db.deleteKeyword(id: id)
+            selectedKeywordIds.remove(id)
+            reloadKeywords()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func usageCount(forKeyword id: String) -> Int {
+        (try? db.keywordUsageCount(keywordId: id)) ?? 0
+    }
+
+    /// Toggle a keyword on the selected file and persist.
+    func toggleKeyword(_ keywordId: String) {
+        guard let fileId = selectedFileId else { return }
+        if selectedKeywordIds.contains(keywordId) {
+            selectedKeywordIds.remove(keywordId)
+        } else {
+            selectedKeywordIds.insert(keywordId)
+        }
+        do { try db.setKeywords(fileId: fileId, keywordIds: Array(selectedKeywordIds)) }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    // MARK: - Albums
+
+    func distinctAlbumNames() -> [String] {
+        (try? db.distinctAlbumNames()) ?? []
+    }
+
+    func addAlbum(_ name: String) {
+        guard let fileId = selectedFileId else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !selectedAlbums.contains(trimmed) else { return }
+        selectedAlbums.append(trimmed)
+        selectedAlbums.sort()
+        do { try db.setAlbums(fileId: fileId, albumNames: selectedAlbums) }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    func removeAlbum(_ name: String) {
+        guard let fileId = selectedFileId else { return }
+        selectedAlbums.removeAll { $0 == name }
+        do { try db.setAlbums(fileId: fileId, albumNames: selectedAlbums) }
+        catch { errorMessage = error.localizedDescription }
     }
 }

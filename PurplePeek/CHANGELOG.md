@@ -2,6 +2,25 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Phase 3: Decision UI (in progress)
+
+- `MediaDetailPanel` (320pt right column) — large preview + file facts and every decision
+  control: **Keep/Skip** (toggle to undecided), **Favorite**, **Title**, **Caption**,
+  **Keywords**, **Albums**. Each persists immediately.
+- Title/caption commit on focus-loss against the file the text belongs to (`editingFileId`),
+  and the single-column write + in-place array patch means a decision never refetches the
+  list or steals the text cursor.
+- `KeywordPickerView` (popover) — search, toggle keywords on the file, create-and-apply new
+  ones. `AlbumPickerView` (popover) — add/remove albums, quick-add from existing names.
+- `KeywordManagerSheet` (⌥ toolbar) — every keyword with its in-use count; create new,
+  delete unused (blocked while applied, with the count shown).
+- Grid/list cells are now `Button`s (keyboard-focusable + accessible) and load keyword/album
+  metadata on selection via `AppState.selectFile`.
+- `DatabaseService` gains targeted decision updates + keyword/album CRUD (junction replace,
+  usage count, distinct album names).
+- Mode picker now shows a Preview-mode placeholder (Phase 4). Single-item Import to Photos
+  is deferred to Phase 5 (where `PhotoKitService` lands) rather than shipping a dead button.
+
 ## [1.0] — Phase 2: Media discovery + grid (in progress)
 
 - `MediaDiscoveryService` — recursive scan classifying photos/videos/audio by **UTType

@@ -14,7 +14,7 @@ struct MediaGridView: View {
                     MediaThumbnailCell(
                         file: file,
                         isSelected: appState.selectedFileId == file.id,
-                        onTap: { appState.selectedFileId = file.id }
+                        onTap: { appState.selectFile(file.id) }
                     )
                 }
             }

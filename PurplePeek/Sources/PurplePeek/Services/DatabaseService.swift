@@ -156,6 +156,112 @@ final class DatabaseService {
         }
     }
 
+    // MARK: - MediaFile decision updates
+
+    func updateKeep(id: String, keep: Int?, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET keep = ?, updated_at = ? WHERE id = ?",
+                           arguments: [keep, now, id])
+        }
+    }
+
+    func updateFavorite(id: String, isFavorite: Bool, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET is_favorite = ?, updated_at = ? WHERE id = ?",
+                           arguments: [isFavorite ? 1 : 0, now, id])
+        }
+    }
+
+    func updateTitle(id: String, title: String?, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET title = ?, updated_at = ? WHERE id = ?",
+                           arguments: [title, now, id])
+        }
+    }
+
+    func updateCaption(id: String, caption: String?, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET caption = ?, updated_at = ? WHERE id = ?",
+                           arguments: [caption, now, id])
+        }
+    }
+
+    // MARK: - Keyword CRUD
+
+    /// Create a keyword (or return the existing one with the same case-insensitive name).
+    @discardableResult
+    func createKeyword(name: String, source: String = "local", now: String) throws -> Keyword {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try dbPool.write { db in
+            if let existing = try Keyword.filter(Column("name") == trimmed).fetchOne(db) {
+                return existing
+            }
+            var kw = Keyword(id: UUID().uuidString, name: trimmed, source: source, createdAt: now)
+            try kw.insert(db)
+            return kw
+        }
+    }
+
+    func deleteKeyword(id: String) throws {
+        try dbPool.write { db in
+            _ = try Keyword.deleteOne(db, key: id)   // cascade removes file_keywords rows
+        }
+    }
+
+    func keywordUsageCount(keywordId: String) throws -> Int {
+        try dbPool.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM file_keywords WHERE keyword_id = ?",
+                             arguments: [keywordId]) ?? 0
+        }
+    }
+
+    // MARK: - File ⇄ Keyword junction
+
+    func keywordIds(forFile fileId: String) throws -> [String] {
+        try dbPool.read { db in
+            try String.fetchAll(db, sql: "SELECT keyword_id FROM file_keywords WHERE file_id = ?",
+                                arguments: [fileId])
+        }
+    }
+
+    /// Replace a file's keyword set.
+    func setKeywords(fileId: String, keywordIds: [String]) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM file_keywords WHERE file_id = ?", arguments: [fileId])
+            for kid in keywordIds {
+                try db.execute(sql: "INSERT OR IGNORE INTO file_keywords (file_id, keyword_id) VALUES (?, ?)",
+                               arguments: [fileId, kid])
+            }
+        }
+    }
+
+    // MARK: - File ⇄ Album junction
+
+    func albums(forFile fileId: String) throws -> [String] {
+        try dbPool.read { db in
+            try String.fetchAll(db, sql: "SELECT album_name FROM file_albums WHERE file_id = ? ORDER BY album_name",
+                                arguments: [fileId])
+        }
+    }
+
+    /// Replace a file's album set.
+    func setAlbums(fileId: String, albumNames: [String]) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM file_albums WHERE file_id = ?", arguments: [fileId])
+            for name in albumNames {
+                try db.execute(sql: "INSERT OR IGNORE INTO file_albums (file_id, album_name) VALUES (?, ?)",
+                               arguments: [fileId, name])
+            }
+        }
+    }
+
+    /// All distinct album names used across PurplePeek (for the album picker's quick-add list).
+    func distinctAlbumNames() throws -> [String] {
+        try dbPool.read { db in
+            try String.fetchAll(db, sql: "SELECT DISTINCT album_name FROM file_albums ORDER BY album_name")
+        }
+    }
+
     /// Upsert a batch of discovered files. On a `file_path` conflict (a re-scan), only the
     /// file's on-disk metadata is refreshed — `scan_root`, `keep`, `is_favorite`, `title`,
     /// `caption`, import/delete state, and `id` are all preserved. This is what lets a user

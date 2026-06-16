@@ -15,26 +15,29 @@ struct MediaThumbnailCell: View {
     private let thumbSize = CGSize(width: 160, height: 160)
 
     var body: some View {
-        VStack(spacing: 6) {
-            thumbnail
-                .frame(width: 160, height: 160)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(badges, alignment: .topLeading)
-                .overlay(favoriteBadge, alignment: .topTrailing)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(isSelected ? theme.accentColor : Color.clear, lineWidth: 3)
-                )
+        Button(action: onTap) {
+            VStack(spacing: 6) {
+                thumbnail
+                    .frame(width: 160, height: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(badges, alignment: .topLeading)
+                    .overlay(favoriteBadge, alignment: .topTrailing)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(isSelected ? theme.accentColor : Color.clear, lineWidth: 3)
+                    )
 
-            Text(file.fileName)
-                .font(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(width: 160)
-                .foregroundStyle(.primary)
+                Text(file.fileName)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(width: 160)
+                    .foregroundStyle(.primary)
+            }
+            .contentShape(Rectangle())
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+        .buttonStyle(.plain)
+        .help(file.fileName)
         .task(id: file.id) {
             guard !didLoad else { return }
             didLoad = true

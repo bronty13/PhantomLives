@@ -73,7 +73,7 @@ struct FolderBrowseView: View {
                         MediaListRow(
                             file: file,
                             isSelected: appState.selectedFileId == file.id,
-                            onTap: { appState.selectedFileId = file.id }
+                            onTap: { appState.selectFile(file.id) }
                         )
                         Divider().opacity(0.15)
                     }

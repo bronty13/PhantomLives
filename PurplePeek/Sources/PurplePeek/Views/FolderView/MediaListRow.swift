@@ -14,28 +14,30 @@ struct MediaListRow: View {
     private let thumbSize = CGSize(width: 48, height: 48)
 
     var body: some View {
-        HStack(spacing: 10) {
-            thumbnail
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                thumbnail
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(file.fileName).lineLimit(1)
-                Text(file.mediaType.label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(file.fileName).lineLimit(1)
+                    Text(file.mediaType.label)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if file.isFavorite {
+                    Image(systemName: "heart.fill").foregroundStyle(.pink)
+                }
+                decisionGlyph
             }
-            Spacer()
-            if file.isFavorite {
-                Image(systemName: "heart.fill").foregroundStyle(.pink)
-            }
-            decisionGlyph
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(isSelected ? theme.accentColor.opacity(0.18) : Color.clear)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(isSelected ? theme.accentColor.opacity(0.18) : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+        .buttonStyle(.plain)
         .task(id: file.id) {
             guard !didLoad else { return }
             didLoad = true
