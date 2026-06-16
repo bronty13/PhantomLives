@@ -1,8 +1,15 @@
 # Changelog
 
-All notable changes to PurplePeek are documented here.
+All notable changes to PurplePeek are documented here. Versions are git-derived
+(the build number is the commit count); **1.0 is the first feature-complete release**.
 
-## [1.0] — Re-apply metadata to imported items + status feedback
+## [1.0] — 2026-06-16
+
+First feature-complete release — scan → browse / preview → decide → import to Photos
+(with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
+The sections below are the increments that make up 1.0, newest first.
+
+### Re-apply metadata to imported items + status feedback
 
 - **Photos menu → "Re-apply Metadata to Imported Items"**: pushes each already-imported
   item's current title/caption/keywords to its Photos asset via AppleScript — fixes items
@@ -13,7 +20,7 @@ All notable changes to PurplePeek are documented here.
 - Verified live: re-applied to a real import — the imported videos' captions appeared in
   Photos (`description` set on `.MOV` assets).
 
-## [1.0] — Metadata reaches imported videos (AppleScript)
+### Metadata reaches imported videos (AppleScript)
 
 - Title/caption/keywords now reach **imported videos** (and serve as a fallback for photos
   whose embedding didn't run). Root cause: exiftool embedding is photo-only, so metadata on
@@ -26,7 +33,7 @@ All notable changes to PurplePeek are documented here.
 - First import now also triggers a one-time "PurplePeek controls Photos" Automation prompt.
 - (See also the title-save fix below — titles were additionally never persisted before.)
 
-## [1.0] — Fix: title/caption sometimes not saving between items
+### Fix: title/caption sometimes not saving between items
 
 - Title and caption now **write through on every edit** instead of committing on focus loss.
   The old approach relied on `onChange(of: focus)` firing when navigating — but when the
@@ -38,7 +45,7 @@ All notable changes to PurplePeek are documented here.
 - `patchLocal` is now O(1) (id→index map) so per-keystroke persistence stays fast even on
   tens-of-thousands-of-item roots.
 
-## [1.0] — Album picker enumerates Photos albums
+### Album picker enumerates Photos albums
 
 - The album picker now lists your **Photos library albums** (read via PhotoKit
   `PHAssetCollection`, regular albums only — those the importer can actually add to) merged
@@ -48,7 +55,7 @@ All notable changes to PurplePeek are documented here.
   `photosAlbumNames` / `isLoadingPhotosAlbums`.
 - Verified live: picker surfaced the library's "PurplePeek Test" and "Save" albums.
 
-## [1.0] — Review decided items (decision filter)
+### Review decided items (decision filter)
 
 - New `DecisionFilter` lens (All / Undecided / Decided / Kept / Skipped) so you can revisit
   choices you've already made — not just triage undecided ones.
@@ -62,7 +69,7 @@ All notable changes to PurplePeek are documented here.
 - Grid and Preview keep independent filters (grid defaults All, Preview defaults Undecided).
   Test: +`testDecisionFilterMatches` (26 total).
 
-## [1.0] — Performance on large libraries
+### Performance on large libraries
 
 - Derived collections (`visibleMediaFiles`, `previewQueue`, `folderTree`) are now **cached
   stored properties recomputed only when their inputs change**, instead of computed
@@ -76,7 +83,7 @@ All notable changes to PurplePeek are documented here.
   re-parse) — a 6,000-file scan persists in well under a second.
 - Thumbnail cache raised 500 → 1000 so fast scrolling re-decodes less.
 
-## [1.0] — Top-level exclude folder
+### Top-level exclude folder
 
 - New General setting **Exclude (top level only)** (default `originals`): a folder with this
   name is skipped — along with its whole subtree — **only when it sits directly under the
@@ -86,7 +93,7 @@ All notable changes to PurplePeek are documented here.
   enumerator's `skipDescendants()` gated on a parent-path-equals-root check (case-insensitive,
   tolerates a leading slash). Tests: +3 (top-level skip vs nested keep, case/slash, no-exclude).
 
-## [1.0] — Import keywords from Photos
+### Import keywords from Photos
 
 - Keyword Manager gains **Import from Photos** — pulls the Photos library's keyword
   vocabulary via `osxphotos keywords --json` (PhotoKit can't read keywords) and adds any new
@@ -98,7 +105,7 @@ All notable changes to PurplePeek are documented here.
 - Verified live: imported Laura/Maddy/Rachel/Sallie/Save (source=photos) while the existing
   local "Summer" was de-duplicated.
 
-## [1.0] — Hidden attribute
+### Hidden attribute
 
 - New per-item **Hidden** decision (mirrors `PHAsset.isHidden`, one of the four properties
   PhotoKit *can* write — so it goes straight through PhotoKit, no exiftool staging).
@@ -112,7 +119,7 @@ All notable changes to PurplePeek are documented here.
   (best-effort, alongside favorite). Test suite now 22 (added `testHiddenColumnRoundTrips`;
   the migration-ledger guard updated to `["v1_initial","v2_add_is_hidden"]`).
 
-## [1.0] — Phase 7: Tests + polish (feature-complete)
+### Phase 7: Tests + polish (feature-complete)
 
 - Test suite (21 XCTest cases): `DatabaseTests` (migration creates all tables, frozen
   migration ledger, `MediaFile` round-trip, keep tri-state, **re-scan upsert preserves
@@ -129,8 +136,7 @@ All notable changes to PurplePeek are documented here.
 PurplePeek is now feature-complete end to end: scan → browse/preview → decide → import to
 Photos (with staged metadata) / keep-export audio → delete → manage in Settings.
 
-## [1.0] — Phase 6: Delete functions + full Settings (in progress)
-
+### Phase 6: Delete functions + full Settings
 - `DeleteService` — delete files from disk to Trash or permanently (idempotent: an
   already-gone file counts as succeeded). `AppState.performDelete` marks only the rows that
   actually succeeded and clears the selection if it was deleted.
@@ -148,8 +154,7 @@ Photos (with staged metadata) / keep-export audio → delete → manage in Setti
   live; auto-cleanup runs on launch when enabled. DB gains `markDeleted`, `deleteScanRoot`,
   `updateScanRootLabel`, `deleteScanRootsOlderThan`.
 
-## [1.0] — Phase 5: PhotoKit import + metadata staging + audio keep-export (in progress)
-
+### Phase 5: PhotoKit import + metadata staging + audio keep-export
 - `PhotoKitService` (actor) — imports photos/videos via `PHAssetCreationRequest.forAsset()`
   (copy, never move), adds each asset to its per-file albums (find-or-create, cached) and
   sets favorite via `PHAssetChangeRequest`. Adapted from PurpleDedup's proven importer.
@@ -170,8 +175,7 @@ Photos (with staged metadata) / keep-export audio → delete → manage in Setti
   `photos_asset_id` matching the library UUID. exiftool staging + audio keep-export also
   verified independently.
 
-## [1.0] — Phase 4: Preview mode (in progress)
-
+### Phase 4: Preview mode
 - `PreviewModeView` — full-screen one-by-one triage: large viewer + EXIF panel + decision
   bar. Walks the undecided queue by default; "Show all" revisits decided items.
 - Keyboard-driven: **Y** keep, **N** skip, **F** favorite, **←/→** navigate, **Space**
@@ -186,8 +190,7 @@ Photos (with staged metadata) / keep-export audio → delete → manage in Setti
 - Decisions advance the queue (undecided items drop out; show-all advances explicitly);
   title/caption commit on focus-loss to the right row.
 
-## [1.0] — Phase 3: Decision UI (in progress)
-
+### Phase 3: Decision UI
 - `MediaDetailPanel` (320pt right column) — large preview + file facts and every decision
   control: **Keep/Skip** (toggle to undecided), **Favorite**, **Title**, **Caption**,
   **Keywords**, **Albums**. Each persists immediately.
@@ -205,8 +208,7 @@ Photos (with staged metadata) / keep-export audio → delete → manage in Setti
 - Mode picker now shows a Preview-mode placeholder (Phase 4). Single-item Import to Photos
   is deferred to Phase 5 (where `PhotoKitService` lands) rather than shipping a dead button.
 
-## [1.0] — Phase 2: Media discovery + grid (in progress)
-
+### Phase 2: Media discovery + grid
 - `MediaDiscoveryService` — recursive scan classifying photos/videos/audio by **UTType
   conformance** (not extension); skips hidden files and package contents.
 - `ThumbnailService` — an `actor` over `QLThumbnailGenerator` with a 500-entry `NSCache`;
@@ -223,8 +225,7 @@ Photos (with staged metadata) / keep-export audio → delete → manage in Setti
   counts (total · undecided · keep), and an empty state. `MediaThumbnailCell` shows type,
   decision (✓/✗), and favorite badges.
 
-## [1.0] — Phase 1: Foundation (in progress)
-
+### Phase 1: Foundation
 Initial scaffolding — a buildable, launchable shell.
 
 - SwiftPM package (`swift-tools-version:5.10`, macOS 14+) with GRDB 6.x; Photos /
