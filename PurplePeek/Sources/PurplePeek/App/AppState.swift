@@ -1,5 +1,32 @@
 import SwiftUI
 import Combine
+import Photos
+
+/// Which files an import run targets.
+enum ImportFilter: String, CaseIterable, Identifiable {
+    case all
+    case keepOnly
+    case undecided
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all:       return "All photos & videos"
+        case .keepOnly:  return "Keep only"
+        case .undecided: return "Undecided only"
+        }
+    }
+}
+
+/// Live progress of an import run, published for the wizard.
+struct ImportProgress {
+    var total: Int
+    var done: Int = 0
+    var succeeded: Int = 0
+    var failed: Int = 0
+    var current: String = ""
+    var finished: Bool = false
+    var failures: [(name: String, reason: String)] = []
+}
 
 /// Single source of truth for the UI. All data mutations funnel through here (views never
 /// touch `DatabaseService` directly), and every mutation is followed by a `reloadX()` that
@@ -35,6 +62,12 @@ final class AppState: ObservableObject {
     @Published var scanProgress: Double = 0
     @Published var scanMessage: String = ""
 
+    // MARK: - Import
+    @Published var importProgress: ImportProgress?
+
+    /// Path to exiftool if installed (enables embedding title/caption/keywords into imports).
+    let exiftoolPath: String?
+
     // MARK: - Status / errors
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
@@ -63,6 +96,7 @@ final class AppState: ObservableObject {
     // MARK: - Lifecycle
 
     init() {
+        exiftoolPath = MetadataStagingService.locateExiftool()
         // PhantomLives auto-backup-on-launch standard — runs first, never throws.
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
         // Honor the user's default mode for a fresh launch.
@@ -274,6 +308,12 @@ final class AppState: ObservableObject {
             try db.updateKeep(id: id, keep: keep.map { $0 ? 1 : 0 }, now: now)
             patchLocal(id) { $0.keepDecision = keep }
         } catch { errorMessage = error.localizedDescription }
+
+        // Keeping an audio file copies it to the Kept Audio Export folder (once).
+        if keep == true, let f = mediaFiles.first(where: { $0.id == id }),
+           f.mediaType == .audio, f.exportedAt == nil {
+            exportAudio(id)
+        }
     }
 
     func setFavorite(_ id: String, _ value: Bool) {
@@ -362,4 +402,139 @@ final class AppState: ObservableObject {
         do { try db.setAlbums(fileId: fileId, albumNames: selectedAlbums) }
         catch { errorMessage = error.localizedDescription }
     }
+
+    // MARK: - Audio keep-export
+
+    /// Copy a kept audio file into the Kept Audio Export folder (idempotent via exported_at).
+    func exportAudio(_ id: String) {
+        guard let f = mediaFiles.first(where: { $0.id == id }), f.mediaType == .audio else { return }
+        let dir = settingsStore.resolvedKeptAudioPath
+        let src = f.fileURL
+        let name = f.fileName
+        Task {
+            do {
+                _ = try await Task.detached(priority: .userInitiated) {
+                    try AudioKeepService.export(source: src, to: dir)
+                }.value
+                let now = BackupService.isoNow()
+                try db.markExported(id: id, now: now)
+                patchLocal(id) { $0.exportedAt = now }
+                statusMessage = "Exported \(name) to Kept Audio."
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    // MARK: - Photos import
+
+    /// Files eligible for a Photos import under `filter` (photos/videos only, not yet
+    /// imported, not deleted).
+    func importCandidates(_ filter: ImportFilter) -> [MediaFile] {
+        mediaFiles.filter { f in
+            guard f.deletedAt == nil, f.importedAt == nil, f.mediaType.isImportableToPhotos else { return false }
+            switch filter {
+            case .all:       return true
+            case .keepOnly:  return f.keepDecision == true
+            case .undecided: return f.keep == nil
+            }
+        }
+    }
+
+    /// Run a batched import. Photos are exiftool-staged (title/caption/keywords) when
+    /// possible; videos import as-is. Favorite + albums are applied via PhotoKit.
+    func runImport(filter: ImportFilter) {
+        let candidates = importCandidates(filter)
+        var prog = ImportProgress(total: candidates.count)
+        importProgress = prog
+        guard !candidates.isEmpty else { prog.finished = true; importProgress = prog; return }
+
+        let exif = exiftoolPath
+        Task {
+            let authorized = await PhotoKitService.shared.requestAuthorization()
+            guard authorized else {
+                prog.done = candidates.count
+                prog.failed = candidates.count
+                prog.failures = candidates.map { ($0.fileName, "Photos access not granted") }
+                prog.finished = true
+                importProgress = prog
+                return
+            }
+            await PhotoKitService.shared.beginRun()
+            for file in candidates {
+                prog.current = file.fileName
+                importProgress = prog
+                switch await importOneFile(file, exiftoolPath: exif) {
+                case .success(let assetId):
+                    let now = BackupService.isoNow()
+                    try? db.markImported(id: file.id, assetId: assetId, now: now)
+                    patchLocal(file.id) { $0.importedAt = now; $0.photosAssetId = assetId }
+                    prog.succeeded += 1
+                case .failure(let err):
+                    prog.failed += 1
+                    prog.failures.append((file.fileName, err.message))
+                }
+                prog.done += 1
+                importProgress = prog
+            }
+            prog.finished = true
+            importProgress = prog
+            reloadMediaFiles()
+        }
+    }
+
+    /// Import a single file (detail-panel button).
+    func importSingle(_ id: String) {
+        guard let file = mediaFiles.first(where: { $0.id == id }),
+              file.mediaType.isImportableToPhotos, file.importedAt == nil else { return }
+        let exif = exiftoolPath
+        Task {
+            let authorized = await PhotoKitService.shared.requestAuthorization()
+            guard authorized else { errorMessage = "Photos access not granted."; return }
+            await PhotoKitService.shared.beginRun()
+            switch await importOneFile(file, exiftoolPath: exif) {
+            case .success(let assetId):
+                let now = BackupService.isoNow()
+                try? db.markImported(id: id, assetId: assetId, now: now)
+                patchLocal(id) { $0.importedAt = now; $0.photosAssetId = assetId }
+                statusMessage = "Imported \(file.fileName) to Photos."
+            case .failure(let err):
+                errorMessage = "Import failed: \(err.message)"
+            }
+        }
+    }
+
+    /// Stage (photos only) + import one file. Returns the asset id or an error message.
+    private func importOneFile(_ file: MediaFile, exiftoolPath: String?) async -> Result<String, ImportFailure> {
+        let type: PHAssetResourceType = (file.mediaType == .photo) ? .photo : .video
+        let albums = (try? db.albums(forFile: file.id)) ?? []
+
+        var importURL = file.fileURL
+        var stagedURL: URL?
+        if file.mediaType == .photo, let ep = exiftoolPath {
+            let keywords = (try? db.keywordNames(forFile: file.id)) ?? []
+            let meta = MetadataStagingService.Metadata(title: file.title, caption: file.caption, keywords: keywords)
+            if !meta.isEmpty {
+                let original = file.fileURL
+                stagedURL = try? await Task.detached(priority: .userInitiated) {
+                    try MetadataStagingService.stage(original: original, metadata: meta, exiftoolPath: ep)
+                }.value
+                if let stagedURL { importURL = stagedURL }
+            }
+        }
+
+        do {
+            let assetId = try await PhotoKitService.shared.importOne(
+                url: importURL, type: type, isFavorite: file.isFavorite, albums: albums
+            )
+            if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
+            return .success(assetId)
+        } catch {
+            if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
+            return .failure(ImportFailure(message: error.localizedDescription))
+        }
+    }
 }
+
+/// Lightweight error wrapper so `importOneFile` can return a `Result` carrying a message.
+struct ImportFailure: Error { let message: String }

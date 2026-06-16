@@ -38,7 +38,7 @@ struct MediaDetailPanel: View {
                     keywordsSection(for: file)
                     albumsSection(for: file)
                     Divider()
-                    importNote
+                    actionButton(for: file)
                 }
                 .padding(16)
             }
@@ -211,10 +211,35 @@ struct MediaDetailPanel: View {
         }
     }
 
-    private var importNote: some View {
-        Label("Import to Photos arrives in Phase 5", systemImage: "photo.badge.plus")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    @ViewBuilder
+    private func actionButton(for file: MediaFile) -> some View {
+        if file.mediaType == .audio {
+            if file.exportedAt != nil {
+                Label("Exported to Kept Audio", systemImage: "checkmark.circle.fill")
+                    .font(.callout).foregroundStyle(.green)
+            } else {
+                Button {
+                    appState.exportAudio(file.id)
+                } label: {
+                    Label("Copy to Kept Audio", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.large)
+            }
+        } else {
+            if file.isImported {
+                Label("Imported to Photos", systemImage: "checkmark.circle.fill")
+                    .font(.callout).foregroundStyle(.green)
+            } else {
+                Button {
+                    appState.importSingle(file.id)
+                } label: {
+                    Label("Import to Photos", systemImage: "photo.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.large)
+            }
+        }
     }
 
     // MARK: - Selection sync

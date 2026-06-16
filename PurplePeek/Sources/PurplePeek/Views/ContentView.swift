@@ -12,6 +12,7 @@ struct ContentView: View {
     @AppStorage("sidebarVisible") private var sidebarVisible: Bool = true
     @State private var isDropTargeted = false
     @State private var showKeywordManager = false
+    @State private var showImportWizard = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -37,6 +38,9 @@ struct ContentView: View {
         .sheet(isPresented: $showKeywordManager) {
             KeywordManagerSheet().environmentObject(appState)
         }
+        .sheet(isPresented: $showImportWizard) {
+            ImportWizardView().environmentObject(appState)
+        }
     }
 
     // MARK: - Toolbar
@@ -56,6 +60,13 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 180)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showImportWizard = true
+            } label: { Label("Import to Photos", systemImage: "photo.badge.plus") }
+                .help("Import photos & videos to the Photos library")
+                .disabled(appState.selectedRootPath == nil)
         }
         ToolbarItem(placement: .primaryAction) {
             Button {

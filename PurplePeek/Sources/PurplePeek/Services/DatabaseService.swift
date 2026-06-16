@@ -186,6 +186,20 @@ final class DatabaseService {
         }
     }
 
+    func markImported(id: String, assetId: String?, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET imported_at = ?, photos_asset_id = ?, updated_at = ? WHERE id = ?",
+                           arguments: [now, assetId, now, id])
+        }
+    }
+
+    func markExported(id: String, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET exported_at = ?, updated_at = ? WHERE id = ?",
+                           arguments: [now, now, id])
+        }
+    }
+
     // MARK: - Keyword CRUD
 
     /// Create a keyword (or return the existing one with the same case-insensitive name).
@@ -221,6 +235,17 @@ final class DatabaseService {
         try dbPool.read { db in
             try String.fetchAll(db, sql: "SELECT keyword_id FROM file_keywords WHERE file_id = ?",
                                 arguments: [fileId])
+        }
+    }
+
+    /// Keyword *names* for a file (for embedding into Photos imports).
+    func keywordNames(forFile fileId: String) throws -> [String] {
+        try dbPool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT k.name FROM file_keywords fk
+                JOIN keywords k ON k.id = fk.keyword_id
+                WHERE fk.file_id = ? ORDER BY k.name
+                """, arguments: [fileId])
         }
     }
 

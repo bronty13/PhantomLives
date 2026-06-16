@@ -2,6 +2,28 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Phase 5: PhotoKit import + metadata staging + audio keep-export (in progress)
+
+- `PhotoKitService` (actor) — imports photos/videos via `PHAssetCreationRequest.forAsset()`
+  (copy, never move), adds each asset to its per-file albums (find-or-create, cached) and
+  sets favorite via `PHAssetChangeRequest`. Adapted from PurpleDedup's proven importer.
+- `MetadataStagingService` — embeds title/caption/keywords into a **staged copy** of a photo
+  via `exiftool` (XMP:Title, IPTC:Caption-Abstract/XMP-dc:Description, IPTC:Keywords/
+  XMP-dc:Subject) so Photos ingests them on import. Photos only; videos import as-is.
+  Falls back gracefully when exiftool is absent.
+- `AudioKeepService` — keeping an audio file copies it into the **Kept Audio Export** folder
+  (default `~/Downloads/PurplePeek/Kept Audio/`, de-duped names); tracked by `exported_at`.
+  Audio is never imported to Photos.
+- `ImportWizardView` — 3-step sheet (filter All/Keep-only/Undecided → progress → report with
+  succeeded/failed + Open Photos). Detail panel gains a context-aware action button
+  (Import to Photos / Copy to Kept Audio, or a done state).
+- `AppState`: `runImport`/`importSingle`/`exportAudio`, `importCandidates`, exiftool
+  discovery at launch; DB `markImported`/`markExported`/`keywordNames(forFile:)`.
+- Verified live in the real Photos library: an imported asset carried title, caption,
+  keywords (via exiftool staging), favorite + album (via PhotoKit), with the stored
+  `photos_asset_id` matching the library UUID. exiftool staging + audio keep-export also
+  verified independently.
+
 ## [1.0] — Phase 4: Preview mode (in progress)
 
 - `PreviewModeView` — full-screen one-by-one triage: large viewer + EXIF panel + decision
