@@ -364,24 +364,26 @@ final class DatabaseService {
     /// keeps the root it was first discovered under).
     func upsertScannedFiles(_ files: [ScannedFile], scanRoot: String, now: String) throws {
         try dbPool.write { db in
+            // Prepare the statement once and reuse it for every row — re-parsing the SQL per
+            // row was a real cost on large (tens of thousands of files) scans.
+            let stmt = try db.makeStatement(sql: """
+                INSERT INTO media_files
+                    (id, scan_root, file_path, file_name, file_type, file_size,
+                     file_modified_at, is_favorite, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT(file_path) DO UPDATE SET
+                    file_name = excluded.file_name,
+                    file_type = excluded.file_type,
+                    file_size = excluded.file_size,
+                    file_modified_at = excluded.file_modified_at,
+                    updated_at = excluded.updated_at
+                """)
             for f in files {
-                try db.execute(sql: """
-                    INSERT INTO media_files
-                        (id, scan_root, file_path, file_name, file_type, file_size,
-                         file_modified_at, is_favorite, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-                    ON CONFLICT(file_path) DO UPDATE SET
-                        file_name = excluded.file_name,
-                        file_type = excluded.file_type,
-                        file_size = excluded.file_size,
-                        file_modified_at = excluded.file_modified_at,
-                        updated_at = excluded.updated_at
-                    """,
-                    arguments: [
-                        UUID().uuidString, scanRoot, f.path, f.name, f.type.rawValue,
-                        f.size, f.modifiedAt, now, now
-                    ]
-                )
+                stmt.arguments = [
+                    UUID().uuidString, scanRoot, f.path, f.name, f.type.rawValue,
+                    f.size, f.modifiedAt, now, now
+                ]
+                try stmt.execute()
             }
         }
     }

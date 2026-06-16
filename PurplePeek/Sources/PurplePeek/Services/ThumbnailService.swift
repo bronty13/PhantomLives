@@ -11,7 +11,7 @@ actor ThumbnailService {
     private let cache = NSCache<NSURL, NSImage>()
 
     private init() {
-        cache.countLimit = 500
+        cache.countLimit = 1000   // larger window so fast scrolling a big grid re-decodes less
     }
 
     /// Best available thumbnail for `url` at `size` points. Returns nil if the file is gone

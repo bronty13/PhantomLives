@@ -75,9 +75,9 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button("Delete Imported Files…") { deleteKind = .imported }
-                    .disabled(appState.deletionCandidates(.imported).isEmpty)
+                    .disabled(!appState.hasDeletableImported)
                 Button("Delete Skipped Files…") { deleteKind = .skipped }
-                    .disabled(appState.deletionCandidates(.skipped).isEmpty)
+                    .disabled(!appState.hasDeletableSkipped)
             } label: { Label("Clean Up", systemImage: "trash") }
                 .help("Delete imported or skipped files from disk")
                 .disabled(appState.selectedRootPath == nil)

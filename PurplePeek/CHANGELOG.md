@@ -2,6 +2,20 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Performance on large libraries
+
+- Derived collections (`visibleMediaFiles`, `previewQueue`, `folderTree`) are now **cached
+  stored properties recomputed only when their inputs change**, instead of computed
+  properties re-evaluated on every SwiftUI render. On a 65k-item root these were O(n) /
+  O(n·depth) each and ran many times per second while scrolling/typing/navigating — the main
+  source of large-library lag. `visibleMediaFiles` + `previewQueue` + toolbar
+  enable-flags are built in one O(n) pass; the folder tree rebuilds only on scan/select/delete.
+- Toolbar Clean Up enable-state uses cached `hasDeletableImported`/`hasDeletableSkipped`
+  flags instead of filtering all rows per render.
+- Scan persistence uses a **reusable prepared statement** for the upsert (no per-row SQL
+  re-parse) — a 6,000-file scan persists in well under a second.
+- Thumbnail cache raised 500 → 1000 so fast scrolling re-decodes less.
+
 ## [1.0] — Top-level exclude folder
 
 - New General setting **Exclude (top level only)** (default `originals`): a folder with this

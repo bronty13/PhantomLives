@@ -59,16 +59,30 @@ final class AppState: ObservableObject {
     @Published var mediaFiles: [MediaFile] = []
     @Published var keywords: [Keyword] = []
 
+    // Derived views, cached (recomputed only when inputs change — not per render). For a
+    // 65k-item root these are O(n)/O(n·depth) to build, so recomputing them on every
+    // SwiftUI body evaluation was the main source of large-library lag.
+    @Published private(set) var visibleMediaFiles: [MediaFile] = []
+    @Published private(set) var previewQueue: [MediaFile] = []
+    @Published private(set) var folderTree: FolderTreeNode?
+    // Cheap flags for toolbar enable-state (so the Clean Up menu doesn't filter 65k per render).
+    @Published private(set) var hasDeletableImported = false
+    @Published private(set) var hasDeletableSkipped = false
+
     // Metadata for the currently selected file (loaded on selection).
     @Published var selectedKeywordIds: Set<String> = []
     @Published var selectedAlbums: [String] = []
 
     // MARK: - Selection
     @Published var selectedRootPath: String?
-    @Published var selectedFolderPath: String?   // nil ⇒ show the whole root
+    @Published var selectedFolderPath: String? {  // nil ⇒ show the whole root
+        didSet { if selectedFolderPath != oldValue { recomputeDerived() } }
+    }
     @Published var selectedFileId: String?
     @Published var previewIndex: Int = 0
-    @Published var showAllInPreview: Bool = false
+    @Published var showAllInPreview: Bool = false {
+        didSet { if showAllInPreview != oldValue { recomputeDerived() } }
+    }
 
     // MARK: - Scan progress
     @Published var isScanning: Bool = false
@@ -147,42 +161,59 @@ final class AppState: ObservableObject {
     }
 
     func reloadMediaFiles() {
-        guard let root = selectedRootPath else { mediaFiles = []; return }
+        guard let root = selectedRootPath else {
+            mediaFiles = []
+            folderTree = nil
+            recomputeDerived()
+            return
+        }
         do { mediaFiles = try db.fetchMediaFiles(scanRoot: root) }
         catch { errorMessage = error.localizedDescription }
+        rebuildFolderTree()
+        recomputeDerived()
     }
 
-    // MARK: - Derived views of the data
+    // MARK: - Derived views (cached; recomputed only when inputs change)
 
-    /// Files shown in the grid: active (non-deleted) files for the selected root, optionally
-    /// narrowed to the selected folder subtree.
-    var visibleMediaFiles: [MediaFile] {
-        let active = mediaFiles.filter { $0.deletedAt == nil }
-        guard let folder = selectedFolderPath else { return active }
-        return active.filter { file in
-            let dir = (file.filePath as NSString).deletingLastPathComponent
-            return dir == folder || file.filePath.hasPrefix(folder + "/")
+    /// Rebuild the sidebar folder tree. O(n·depth) — only call when the file set or paths
+    /// change (scan, root select, delete), NOT on per-item decisions.
+    private func rebuildFolderTree() {
+        guard let root = selectedRootPath else { folderTree = nil; return }
+        folderTree = FolderTree.build(rootPath: root, files: mediaFiles)
+    }
+
+    /// Recompute the cached derived collections + toolbar flags in a single O(n) pass over
+    /// `mediaFiles`. Call after any change to the file set, folder selection, or show-all.
+    private func recomputeDerived() {
+        let folder = selectedFolderPath
+        var visible: [MediaFile] = []
+        var active: [MediaFile] = []
+        var undecided: [MediaFile] = []
+        var deletableImported = false
+        var deletableSkipped = false
+
+        for file in mediaFiles where file.deletedAt == nil {
+            active.append(file)
+            if file.keep == nil { undecided.append(file) }
+            if file.importedAt != nil { deletableImported = true }
+            if file.keepDecision == false { deletableSkipped = true }
+            if let folder {
+                let dir = (file.filePath as NSString).deletingLastPathComponent
+                if dir == folder || file.filePath.hasPrefix(folder + "/") { visible.append(file) }
+            }
         }
+
+        visibleMediaFiles = (folder == nil) ? active : visible
+        previewQueue = showAllInPreview ? active : undecided
+        hasDeletableImported = deletableImported
+        hasDeletableSkipped = deletableSkipped
+        clampPreviewIndex()
     }
 
-    /// The folder tree for the selected root, rebuilt from the current media files.
-    var folderTree: FolderTreeNode? {
-        guard let root = selectedRootPath else { return nil }
-        return FolderTree.build(rootPath: root, files: mediaFiles)
-    }
-
-    /// Items shown in Preview mode: active (non-deleted) files, optionally filtered to the
-    /// still-undecided ones. Audio is included — Preview can play and decide it too.
-    var previewQueue: [MediaFile] {
-        let active = mediaFiles.filter { $0.deletedAt == nil }
-        return showAllInPreview ? active : active.filter { $0.keep == nil }
-    }
-
-    /// The file currently shown in Preview mode (index clamped into the queue).
+    /// The file currently shown in Preview mode (index clamped into the cached queue).
     var currentPreviewFile: MediaFile? {
-        let q = previewQueue
-        guard !q.isEmpty else { return nil }
-        return q[min(max(previewIndex, 0), q.count - 1)]
+        guard !previewQueue.isEmpty else { return nil }
+        return previewQueue[min(max(previewIndex, 0), previewQueue.count - 1)]
     }
 
     // MARK: - Preview navigation
@@ -338,6 +369,7 @@ final class AppState: ObservableObject {
         do {
             try db.updateKeep(id: id, keep: keep.map { $0 ? 1 : 0 }, now: now)
             patchLocal(id) { $0.keepDecision = keep }
+            recomputeDerived()   // keep affects the undecided queue + grid badge
         } catch { errorMessage = error.localizedDescription }
 
         // Keeping an audio file copies it to the Kept Audio Export folder (once).
@@ -352,6 +384,7 @@ final class AppState: ObservableObject {
         do {
             try db.updateFavorite(id: id, isFavorite: value, now: now)
             patchLocal(id) { $0.isFavorite = value }
+            recomputeDerived()   // refresh the cached copy so the grid heart badge updates
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -360,6 +393,7 @@ final class AppState: ObservableObject {
         do {
             try db.updateHidden(id: id, isHidden: value, now: now)
             patchLocal(id) { $0.isHidden = value }
+            recomputeDerived()   // refresh the cached copy so the grid hidden badge updates
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -559,6 +593,7 @@ final class AppState: ObservableObject {
                 let now = BackupService.isoNow()
                 try? db.markImported(id: id, assetId: assetId, now: now)
                 patchLocal(id) { $0.importedAt = now; $0.photosAssetId = assetId }
+                recomputeDerived()
                 statusMessage = "Imported \(file.fileName) to Photos."
             case .failure(let err):
                 errorMessage = "Import failed: \(err.message)"
