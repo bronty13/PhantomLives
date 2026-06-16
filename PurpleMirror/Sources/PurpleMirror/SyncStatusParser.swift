@@ -507,7 +507,8 @@ enum SyncStatusParser {
     enum Health {
         case healthy        // agent loaded, last run succeeded
         case running        // a run is in progress
-        case warning        // agent not installed / no recent run / a non-fatal hiccup
+        case paused         // agent intentionally not loaded (auto-run off) — a deliberate state, not a problem
+        case warning        // a non-fatal hiccup worth attention (e.g. a swallowed pull-exit error)
         case error          // last run failed
 
         /// SF Symbol shown in the menu bar (menu bar renders it as a template).
@@ -515,6 +516,7 @@ enum SyncStatusParser {
             switch self {
             case .healthy: return "checkmark.icloud"
             case .running: return "arrow.triangle.2.circlepath"
+            case .paused:  return "pause.circle"
             case .warning: return "exclamationmark.icloud"
             case .error:   return "xmark.icloud"
             }
@@ -524,26 +526,35 @@ enum SyncStatusParser {
             switch self {
             case .healthy: return "Up to date"
             case .running: return "Running…"
+            case .paused:  return "Auto-run off"
             case .warning: return "Attention"
             case .error:   return "Last run failed"
             }
         }
 
         /// Severity for picking the worst job's health to drive the menu-bar glyph.
+        /// `paused` ranks below `warning`/`error` so a deliberately-disabled job never
+        /// drags the menu-bar glyph into an alarm state, but still above `healthy`/`running`
+        /// so an all-paused set surfaces the pause glyph rather than a misleading checkmark.
         var severity: Int {
             switch self {
             case .healthy: return 0
             case .running: return 1
-            case .warning: return 2
-            case .error:   return 3
+            case .paused:  return 2
+            case .warning: return 3
+            case .error:   return 4
             }
         }
     }
 
+    /// An agent that isn't loaded is **paused** (auto-run off) — a state the user controls
+    /// deliberately via enable/disable — not a `warning`. Genuine attention states come from a
+    /// loaded agent whose last run failed (`error`) or whose log shows a swallowed failure
+    /// (handled by the caller via the log summary).
     static func health(agentLoaded: Bool, lastExitCode: Int?, isSyncing: Bool) -> Health {
         if isSyncing { return .running }
         if let code = lastExitCode, code != 0 { return .error }
-        if !agentLoaded { return .warning }
+        if !agentLoaded { return .paused }
         return .healthy
     }
 }

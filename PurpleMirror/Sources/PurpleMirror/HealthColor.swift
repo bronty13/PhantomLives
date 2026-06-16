@@ -8,6 +8,7 @@ extension SyncStatusParser.Health {
         switch self {
         case .healthy: return .green
         case .running: return .accentColor
+        case .paused:  return .secondary   // calm/neutral — a deliberate off state, not an alarm
         case .warning: return .orange
         case .error:   return .red
         }

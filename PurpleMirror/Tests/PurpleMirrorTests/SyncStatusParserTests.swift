@@ -62,13 +62,20 @@ import Foundation
     @Test func healthClassification() {
         #expect(SyncStatusParser.health(agentLoaded: true, lastExitCode: 0, isSyncing: false) == .healthy)
         #expect(SyncStatusParser.health(agentLoaded: true, lastExitCode: 1, isSyncing: false) == .error)
-        #expect(SyncStatusParser.health(agentLoaded: false, lastExitCode: 0, isSyncing: false) == .warning)
+        // An unloaded agent is a deliberate "auto-run off" state — paused, not a warning.
+        #expect(SyncStatusParser.health(agentLoaded: false, lastExitCode: 0, isSyncing: false) == .paused)
         #expect(SyncStatusParser.health(agentLoaded: true, lastExitCode: 0, isSyncing: true) == .running)
+        // A loaded agent whose last run failed is still an error even if a run is not in progress.
+        #expect(SyncStatusParser.health(agentLoaded: false, lastExitCode: 12, isSyncing: false) == .error)
     }
 
     @Test func healthSeverityOrder() {
+        // error worst, then warning, then paused — paused must rank below the attention states
+        // so a deliberately-disabled job never drives the menu-bar glyph into an alarm…
         #expect(SyncStatusParser.Health.error.severity > SyncStatusParser.Health.warning.severity)
-        #expect(SyncStatusParser.Health.warning.severity > SyncStatusParser.Health.running.severity)
+        #expect(SyncStatusParser.Health.warning.severity > SyncStatusParser.Health.paused.severity)
+        // …but above healthy/running so an all-paused set surfaces the pause glyph, not a checkmark.
+        #expect(SyncStatusParser.Health.paused.severity > SyncStatusParser.Health.running.severity)
         #expect(SyncStatusParser.Health.running.severity > SyncStatusParser.Health.healthy.severity)
     }
 }

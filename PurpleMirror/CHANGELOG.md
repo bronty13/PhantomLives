@@ -2,6 +2,19 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## 1.17.0 — 2026-06-16
+
+- **A paused job no longer looks like a problem.** An agent that's intentionally unloaded
+  (auto-run off — e.g. the Photo Archive while the off-site B2 seed runs) was rendered with the
+  orange "Attention" warning glyph, identical to a job that actually needs looking at. It now has
+  its own calm **`.paused` health state** ("Auto-run off", neutral `pause.circle` glyph in a
+  secondary tint). `health()` maps an unloaded agent to `.paused` instead of `.warning`; a genuine
+  attention state still comes only from a loaded agent whose last run failed (`.error`) or whose
+  log shows a swallowed failure. `.paused` severity ranks below `.warning`/`.error` (so a
+  deliberately-disabled job never drags the menu-bar glyph into an alarm) but above
+  `.healthy`/`.running` (so an all-paused set still surfaces the pause glyph rather than a
+  misleading checkmark). Tests updated (+1 case each in classification and severity ordering).
+
 ## 1.16.0 — 2026-06-15
 
 - **Monitor brew-autoupdate.** PurpleMirror now recognizes `com.user.brew-autoupdate` (the Homebrew
