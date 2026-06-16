@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+*.xcodeproj
+PurplePeek.app/
+DerivedData/
+.DS_Store
