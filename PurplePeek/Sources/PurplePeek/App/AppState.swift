@@ -21,6 +21,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Selection
     @Published var selectedRootPath: String?
+    @Published var selectedFolderPath: String?   // nil ⇒ show the whole root
     @Published var selectedFileId: String?
     @Published var previewIndex: Int = 0
     @Published var showAllInPreview: Bool = false
@@ -89,12 +90,91 @@ final class AppState: ObservableObject {
         catch { errorMessage = error.localizedDescription }
     }
 
-    // MARK: - Preview queue (derived)
+    // MARK: - Derived views of the data
+
+    /// Files shown in the grid: active (non-deleted) files for the selected root, optionally
+    /// narrowed to the selected folder subtree.
+    var visibleMediaFiles: [MediaFile] {
+        let active = mediaFiles.filter { $0.deletedAt == nil }
+        guard let folder = selectedFolderPath else { return active }
+        return active.filter { file in
+            let dir = (file.filePath as NSString).deletingLastPathComponent
+            return dir == folder || file.filePath.hasPrefix(folder + "/")
+        }
+    }
+
+    /// The folder tree for the selected root, rebuilt from the current media files.
+    var folderTree: FolderTreeNode? {
+        guard let root = selectedRootPath else { return nil }
+        return FolderTree.build(rootPath: root, files: mediaFiles)
+    }
 
     /// Items shown in Preview mode: active (non-deleted) files, optionally filtered to the
     /// still-undecided ones. Audio is included — Preview can play and decide it too.
     var previewQueue: [MediaFile] {
         let active = mediaFiles.filter { $0.deletedAt == nil }
         return showAllInPreview ? active : active.filter { $0.keep == nil }
+    }
+
+    // MARK: - Scanning
+
+    /// Discover media under `url` (recursively) and persist it. Discovery runs off the main
+    /// actor; persistence happens here on the main actor in 500-row batches so the UI stays
+    /// responsive. If `url` is a file, its parent directory is scanned.
+    func scanFolder(_ url: URL) {
+        guard !isScanning else { return }
+
+        let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        let dir = isDir ? url : url.deletingLastPathComponent()
+        let rootPath = dir.standardizedFileURL.path
+
+        isScanning = true
+        scanProgress = 0
+        scanMessage = "Scanning \(dir.lastPathComponent)…"
+        errorMessage = nil
+
+        Task {
+            let scanned = await Task.detached(priority: .userInitiated) {
+                MediaDiscoveryService.scan(root: dir)
+            }.value
+            await self.persistScan(rootPath: rootPath, files: scanned)
+        }
+    }
+
+    private func persistScan(rootPath: String, files: [ScannedFile]) async {
+        let now = BackupService.isoNow()
+        do {
+            try db.ensureScanRoot(path: rootPath, now: now)
+            var done = 0
+            let total = max(files.count, 1)
+            for chunk in files.chunked(into: 500) {
+                try db.upsertScannedFiles(chunk, scanRoot: rootPath, now: now)
+                done += chunk.count
+                scanProgress = Double(done) / Double(total)
+                scanMessage = "Saving \(done)/\(files.count)…"
+                await Task.yield()
+            }
+            try db.updateScanRootStats(path: rootPath, totalFiles: files.count, now: now)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        selectedRootPath = rootPath
+        selectedFolderPath = nil
+        selectedFileId = nil
+        reloadScanRoots()
+        reloadMediaFiles()
+
+        isScanning = false
+        scanProgress = 1
+        statusMessage = "Scanned \(files.count) item\(files.count == 1 ? "" : "s") in \((rootPath as NSString).lastPathComponent)."
+    }
+
+    /// Select a scan root (from the sidebar) and load its files.
+    func selectRoot(_ path: String) {
+        selectedRootPath = path
+        selectedFolderPath = nil
+        selectedFileId = nil
+        reloadMediaFiles()
     }
 }

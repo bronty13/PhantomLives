@@ -134,4 +134,54 @@ final class DatabaseService {
             try Keyword.order(Column("name")).fetchAll(db)
         }
     }
+
+    // MARK: - Scan writes
+
+    /// Create the scan-root row if it doesn't exist (so media_files' FK is satisfied).
+    func ensureScanRoot(path: String, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO scan_roots (path, last_scanned_at, total_files) VALUES (?, ?, 0)",
+                arguments: [path, now]
+            )
+        }
+    }
+
+    func updateScanRootStats(path: String, totalFiles: Int, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(
+                sql: "UPDATE scan_roots SET total_files = ?, last_scanned_at = ? WHERE path = ?",
+                arguments: [totalFiles, now, path]
+            )
+        }
+    }
+
+    /// Upsert a batch of discovered files. On a `file_path` conflict (a re-scan), only the
+    /// file's on-disk metadata is refreshed — `scan_root`, `keep`, `is_favorite`, `title`,
+    /// `caption`, import/delete state, and `id` are all preserved. This is what lets a user
+    /// revisit a folder without losing decisions, and honors the nested-root rule (a file
+    /// keeps the root it was first discovered under).
+    func upsertScannedFiles(_ files: [ScannedFile], scanRoot: String, now: String) throws {
+        try dbPool.write { db in
+            for f in files {
+                try db.execute(sql: """
+                    INSERT INTO media_files
+                        (id, scan_root, file_path, file_name, file_type, file_size,
+                         file_modified_at, is_favorite, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                    ON CONFLICT(file_path) DO UPDATE SET
+                        file_name = excluded.file_name,
+                        file_type = excluded.file_type,
+                        file_size = excluded.file_size,
+                        file_modified_at = excluded.file_modified_at,
+                        updated_at = excluded.updated_at
+                    """,
+                    arguments: [
+                        UUID().uuidString, scanRoot, f.path, f.name, f.type.rawValue,
+                        f.size, f.modifiedAt, now, now
+                    ]
+                )
+            }
+        }
+    }
 }
