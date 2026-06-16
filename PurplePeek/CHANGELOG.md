@@ -2,6 +2,17 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Re-apply metadata to imported items + status feedback
+
+- **Photos menu → "Re-apply Metadata to Imported Items"**: pushes each already-imported
+  item's current title/caption/keywords to its Photos asset via AppleScript — fixes items
+  imported before metadata support (or after editing metadata) without re-importing.
+- Status/error feedback: a bottom **status toast** (auto-dismissing) now surfaces
+  `statusMessage` (scan/import/delete/backup/re-apply results), and errors show an alert —
+  previously these were set but never displayed.
+- Verified live: re-applied to a real import — the imported videos' captions appeared in
+  Photos (`description` set on `.MOV` assets).
+
 ## [1.0] — Metadata reaches imported videos (AppleScript)
 
 - Title/caption/keywords now reach **imported videos** (and serve as a fallback for photos

@@ -45,6 +45,39 @@ struct ContentView: View {
         .sheet(item: $deleteKind) { kind in
             DeleteConfirmationView(kind: kind).environmentObject(appState)
         }
+        .overlay(alignment: .bottom) { statusToast }
+        .alert("Something went wrong",
+               isPresented: Binding(get: { appState.errorMessage != nil },
+                                    set: { if !$0 { appState.errorMessage = nil } })) {
+            Button("OK") { appState.errorMessage = nil }
+        } message: {
+            Text(appState.errorMessage ?? "")
+        }
+    }
+
+    // MARK: - Status toast
+
+    @ViewBuilder
+    private var statusToast: some View {
+        if let status = appState.statusMessage {
+            HStack(spacing: 8) {
+                if appState.isReapplyingMetadata || appState.isImportingKeywords {
+                    ProgressView().controlSize(.small)
+                }
+                Text(status).font(.callout)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(theme.accentColor.opacity(0.4)))
+            .padding(.bottom, 16)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .task(id: status) {
+                // Auto-dismiss a finished message after a few seconds (not while working).
+                guard !appState.isReapplyingMetadata, !appState.isImportingKeywords else { return }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if appState.statusMessage == status { appState.statusMessage = nil }
+            }
+        }
     }
 
     // MARK: - Toolbar
@@ -66,11 +99,14 @@ struct ContentView: View {
             .frame(width: 180)
         }
         ToolbarItem(placement: .primaryAction) {
-            Button {
-                showImportWizard = true
-            } label: { Label("Import to Photos", systemImage: "photo.badge.plus") }
-                .help("Import photos & videos to the Photos library")
-                .disabled(appState.selectedRootPath == nil)
+            Menu {
+                Button("Import to Photos…") { showImportWizard = true }
+                    .disabled(appState.selectedRootPath == nil)
+                Divider()
+                Button("Re-apply Metadata to Imported Items") { appState.reapplyMetadataToImported() }
+                    .disabled(appState.reapplyCandidateCount == 0 || appState.isReapplyingMetadata)
+            } label: { Label("Photos", systemImage: "photo.badge.plus") }
+                .help("Import to Photos, or re-push title/caption/keywords to already-imported items")
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {

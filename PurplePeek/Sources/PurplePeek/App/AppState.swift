@@ -630,6 +630,43 @@ final class AppState: ObservableObject {
         }
     }
 
+    @Published var isReapplyingMetadata = false
+
+    /// Items already imported to Photos that we can re-push metadata to.
+    var reapplyCandidateCount: Int {
+        mediaFiles.filter { $0.deletedAt == nil && $0.importedAt != nil && ($0.photosAssetId?.isEmpty == false) }.count
+    }
+
+    /// Re-push title/caption/keywords to Photos (via AppleScript) for every already-imported
+    /// item — fixes items imported before metadata support, without re-importing.
+    func reapplyMetadataToImported() {
+        guard !isReapplyingMetadata else { return }
+        let targets = mediaFiles.filter { $0.deletedAt == nil && $0.importedAt != nil && ($0.photosAssetId?.isEmpty == false) }
+        guard !targets.isEmpty else { statusMessage = "No imported items to update."; return }
+
+        isReapplyingMetadata = true
+        statusMessage = "Re-applying metadata to \(targets.count) item\(targets.count == 1 ? "" : "s")…"
+        Task {
+            var applied = 0, failed = 0, done = 0
+            for file in targets {
+                let keywords = (try? db.keywordNames(forFile: file.id)) ?? []
+                let hasMetadata = (file.title?.isEmpty == false) || (file.caption?.isEmpty == false) || !keywords.isEmpty
+                if hasMetadata, let assetId = file.photosAssetId {
+                    let r = PhotosAppleScriptService.applyMetadata(
+                        localIdentifier: assetId, title: file.title, caption: file.caption, keywords: keywords
+                    )
+                    if r.titleCaptionOK { applied += 1 } else { failed += 1 }
+                }
+                done += 1
+                if done % 5 == 0 { statusMessage = "Re-applying metadata… \(done)/\(targets.count)" }
+                await Task.yield()
+            }
+            isReapplyingMetadata = false
+            statusMessage = "Re-applied metadata to \(applied) item\(applied == 1 ? "" : "s")"
+                + (failed > 0 ? " · \(failed) failed (Photos control allowed?)" : "")
+        }
+    }
+
     /// Import a single file (detail-panel button).
     func importSingle(_ id: String) {
         guard let file = mediaFiles.first(where: { $0.id == id }),
