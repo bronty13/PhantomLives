@@ -31,6 +31,7 @@ struct MediaDetailPanel: View {
                     Divider()
                     keepSkip(for: file)
                     favoriteRow(for: file)
+                    hiddenRow(for: file)
                     Divider()
                     titleField(for: file)
                     captionField(for: file)
@@ -130,6 +131,24 @@ struct MediaDetailPanel: View {
                     .foregroundStyle(file.isFavorite ? .pink : .secondary)
                 Text("Favorite")
                 Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func hiddenRow(for file: MediaFile) -> some View {
+        Button {
+            appState.setHidden(file.id, !file.isHidden)
+        } label: {
+            HStack {
+                Image(systemName: file.isHidden ? "eye.slash.fill" : "eye.slash")
+                    .foregroundStyle(file.isHidden ? theme.accentColor : .secondary)
+                Text("Hidden")
+                Spacer()
+                if file.isHidden {
+                    Text("hidden in Photos on import").font(.caption2).foregroundStyle(.secondary)
+                }
             }
             .contentShape(Rectangle())
         }

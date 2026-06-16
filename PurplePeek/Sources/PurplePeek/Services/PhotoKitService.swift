@@ -48,7 +48,7 @@ actor PhotoKitService {
     // MARK: - Import one file
 
     /// Import a single photo/video. Returns the created asset's local identifier.
-    func importOne(url: URL, type: PHAssetResourceType, isFavorite: Bool, albums: [String]) async throws -> String {
+    func importOne(url: URL, type: PHAssetResourceType, isFavorite: Bool, isHidden: Bool, albums: [String]) async throws -> String {
         // Resolve target albums (create on demand), cached.
         var collections: [PHAssetCollection] = []
         for name in albums {
@@ -78,9 +78,11 @@ actor PhotoKitService {
               let asset = PHAsset.fetchAssets(withLocalIdentifiers: [pid], options: nil).firstObject
         else { throw ImportError.notCreated }
 
-        if isFavorite {
+        if isFavorite || isHidden {
             try? await PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest(for: asset).isFavorite = true
+                let req = PHAssetChangeRequest(for: asset)
+                if isFavorite { req.isFavorite = true }
+                if isHidden { req.isHidden = true }
             }
         }
         return asset.localIdentifier

@@ -112,13 +112,22 @@ struct MediaThumbnailCell: View {
 
     @ViewBuilder
     private var favoriteBadge: some View {
-        if file.isFavorite {
-            Image(systemName: "heart.fill")
-                .font(.caption2)
-                .padding(5)
-                .background(.black.opacity(0.45), in: Circle())
-                .foregroundStyle(.pink)
-                .padding(6)
+        HStack(spacing: 4) {
+            if file.isHidden {
+                Image(systemName: "eye.slash.fill")
+                    .font(.caption2)
+                    .padding(5)
+                    .background(.black.opacity(0.45), in: Circle())
+                    .foregroundStyle(.white)
+            }
+            if file.isFavorite {
+                Image(systemName: "heart.fill")
+                    .font(.caption2)
+                    .padding(5)
+                    .background(.black.opacity(0.45), in: Circle())
+                    .foregroundStyle(.pink)
+            }
         }
+        .padding(6)
     }
 }

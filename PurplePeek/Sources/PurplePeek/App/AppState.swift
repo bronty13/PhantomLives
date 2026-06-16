@@ -232,6 +232,12 @@ final class AppState: ObservableObject {
         setFavorite(file.id, !file.isFavorite)
     }
 
+    /// Toggle hidden on the current preview item (does not advance).
+    func toggleHiddenPreview() {
+        guard let file = currentPreviewFile else { return }
+        setHidden(file.id, !file.isHidden)
+    }
+
     // MARK: - Scanning
 
     /// Discover media under `url` (recursively) and persist it. Discovery runs off the main
@@ -341,6 +347,14 @@ final class AppState: ObservableObject {
         do {
             try db.updateFavorite(id: id, isFavorite: value, now: now)
             patchLocal(id) { $0.isFavorite = value }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func setHidden(_ id: String, _ value: Bool) {
+        let now = BackupService.isoNow()
+        do {
+            try db.updateHidden(id: id, isHidden: value, now: now)
+            patchLocal(id) { $0.isHidden = value }
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -545,7 +559,7 @@ final class AppState: ObservableObject {
 
         do {
             let assetId = try await PhotoKitService.shared.importOne(
-                url: importURL, type: type, isFavorite: file.isFavorite, albums: albums
+                url: importURL, type: type, isFavorite: file.isFavorite, isHidden: file.isHidden, albums: albums
             )
             if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
             return .success(assetId)

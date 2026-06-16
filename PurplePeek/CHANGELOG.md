@@ -2,6 +2,20 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Hidden attribute
+
+- New per-item **Hidden** decision (mirrors `PHAsset.isHidden`, one of the four properties
+  PhotoKit *can* write — so it goes straight through PhotoKit, no exiftool staging).
+- Added via a **new migration `v2_add_is_hidden`** (`ALTER TABLE media_files ADD COLUMN
+  is_hidden`) — `v1_initial` is shipped and stays untouched (immutable-migration rule). An
+  existing install runs only v2 and matches a fresh install's schema (verified live).
+- UI: Hidden toggle in the detail panel, a Hidden button + **H** key in Preview mode (the
+  text-field focus guard means H types normally while editing a title/caption), and an
+  eye.slash grid badge.
+- On import, a hidden item is hidden in Photos via `PHAssetChangeRequest.isHidden`
+  (best-effort, alongside favorite). Test suite now 22 (added `testHiddenColumnRoundTrips`;
+  the migration-ledger guard updated to `["v1_initial","v2_add_is_hidden"]`).
+
 ## [1.0] — Phase 7: Tests + polish (feature-complete)
 
 - Test suite (21 XCTest cases): `DatabaseTests` (migration creates all tables, frozen

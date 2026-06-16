@@ -18,7 +18,7 @@ and a report), and **delete** tools clean up imported / skipped files from disk.
 ## "Mirror Photos" design principle
 
 PurplePeek only offers decisions that macOS Photos can actually hold: **title, caption,
-keywords, favorite, album**. Photos has no star rating, so PurplePeek has none either.
+keywords, favorite, album, hidden**. Photos has no star rating, so PurplePeek has none either.
 Title/caption/keywords are embedded into a staged copy of each file (via `exiftool`) so
 Photos ingests them on import; favorite and album are applied through PhotoKit. **Audio is
 never imported to Photos** (Photos holds images + videos only) — kept audio is copied to a

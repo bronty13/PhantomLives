@@ -29,7 +29,21 @@ final class DatabaseTests: XCTestCase {
         let ids = try queue.read { db in
             try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY identifier")
         }
-        XCTAssertEqual(ids, ["v1_initial"])
+        XCTAssertEqual(ids, ["v1_initial", "v2_add_is_hidden"])
+    }
+
+    func testHiddenColumnRoundTrips() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files) VALUES('/r','t',0)")
+            try db.execute(sql: """
+                INSERT INTO media_files(id,scan_root,file_path,file_name,file_type,is_favorite,is_hidden,created_at,updated_at)
+                VALUES('h1','/r','/r/a.jpg','a.jpg','photo',0,1,'t','t')
+                """)
+        }
+        let f = try queue.read { db in try MediaFile.fetchOne(db, key: "h1") }
+        XCTAssertEqual(f?.isHidden, true)
+        XCTAssertEqual(f?.isFavorite, false)
     }
 
     func testMediaFileRoundTrip() throws {

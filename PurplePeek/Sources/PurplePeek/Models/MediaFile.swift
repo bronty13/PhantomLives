@@ -17,6 +17,7 @@ struct MediaFile: Codable, FetchableRecord, MutablePersistableRecord, Identifiab
     var fileModifiedAt: String?
     var keep: Int?                 // NULL = undecided, 1 = keep, 0 = skip
     var isFavorite: Bool
+    var isHidden: Bool = false     // mirrors PHAsset.isHidden (added in migration v2)
     var title: String?
     var caption: String?
     var importedAt: String?        // photos/videos imported to Photos
@@ -38,6 +39,7 @@ struct MediaFile: Codable, FetchableRecord, MutablePersistableRecord, Identifiab
         case fileModifiedAt = "file_modified_at"
         case keep
         case isFavorite = "is_favorite"
+        case isHidden = "is_hidden"
         case title
         case caption
         case importedAt = "imported_at"

@@ -93,6 +93,12 @@ struct PreviewModeView: View {
             }
             .help("Favorite (F)")
 
+            Button { appState.toggleHiddenPreview() } label: {
+                Image(systemName: file.isHidden ? "eye.slash.fill" : "eye.slash")
+                    .foregroundStyle(file.isHidden ? theme.accentColor : .secondary)
+            }
+            .help("Hidden (H)")
+
             TextField("Title", text: $title)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 180)
@@ -183,6 +189,7 @@ struct PreviewModeView: View {
             case "y": appState.decidePreview(keep: true); return nil
             case "n": appState.decidePreview(keep: false); return nil
             case "f": appState.toggleFavoritePreview(); return nil
+            case "h": appState.toggleHiddenPreview(); return nil
             default: break
             }
             switch event.keyCode {

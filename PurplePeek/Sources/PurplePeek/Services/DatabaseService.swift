@@ -105,6 +105,14 @@ final class DatabaseService {
             try db.create(index: "idx_file_albums_album", on: "file_albums", columns: ["album_name"])
         }
 
+        // v2: per-item "hidden" decision (mirrors PHAsset.isHidden). Added as a new
+        // migration — v1_initial is shipped and must never be edited (CLAUDE.md).
+        migrator.registerMigration("v2_add_is_hidden") { db in
+            try db.alter(table: "media_files") { t in
+                t.add(column: "is_hidden", .integer).notNull().defaults(to: 0)
+            }
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -169,6 +177,13 @@ final class DatabaseService {
         try dbPool.write { db in
             try db.execute(sql: "UPDATE media_files SET is_favorite = ?, updated_at = ? WHERE id = ?",
                            arguments: [isFavorite ? 1 : 0, now, id])
+        }
+    }
+
+    func updateHidden(id: String, isHidden: Bool, now: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE media_files SET is_hidden = ?, updated_at = ? WHERE id = ?",
+                           arguments: [isHidden ? 1 : 0, now, id])
         }
     }
 
