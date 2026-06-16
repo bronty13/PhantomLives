@@ -2,6 +2,18 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Import keywords from Photos
+
+- Keyword Manager gains **Import from Photos** — pulls the Photos library's keyword
+  vocabulary via `osxphotos keywords --json` (PhotoKit can't read keywords) and adds any new
+  ones to the local store tagged `source = photos`; existing names are skipped
+  (case-insensitive dedup). Button is disabled with guidance when osxphotos isn't installed.
+- `PhotosKeywordImporter` service (locate + fetch/parse), `DatabaseService.importKeywords`,
+  `AppState.importKeywordsFromPhotos` (+ `isImportingKeywords` progress). osxphotos path is
+  discovered at launch.
+- Verified live: imported Laura/Maddy/Rachel/Sallie/Save (source=photos) while the existing
+  local "Summer" was de-duplicated.
+
 ## [1.0] — Hidden attribute
 
 - New per-item **Hidden** decision (mirrors `PHAsset.isHidden`, one of the four properties

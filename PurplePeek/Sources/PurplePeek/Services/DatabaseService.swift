@@ -267,6 +267,25 @@ final class DatabaseService {
         }
     }
 
+    /// Bulk-add keyword names (skipping ones that already exist, case-insensitively).
+    /// Returns the number newly inserted.
+    @discardableResult
+    func importKeywords(names: [String], source: String, now: String) throws -> Int {
+        try dbPool.write { db in
+            var added = 0
+            for raw in names {
+                let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { continue }
+                if try Keyword.filter(Column("name") == name).fetchCount(db) == 0 {
+                    try db.execute(sql: "INSERT INTO keywords (id,name,source,created_at) VALUES (?,?,?,?)",
+                                   arguments: [UUID().uuidString, name, source, now])
+                    added += 1
+                }
+            }
+            return added
+        }
+    }
+
     func deleteKeyword(id: String) throws {
         try dbPool.write { db in
             _ = try Keyword.deleteOne(db, key: id)   // cascade removes file_keywords rows

@@ -80,6 +80,9 @@ final class AppState: ObservableObject {
 
     /// Path to exiftool if installed (enables embedding title/caption/keywords into imports).
     let exiftoolPath: String?
+    /// Path to osxphotos if installed (enables importing the Photos keyword vocabulary).
+    let osxphotosPath: String?
+    @Published var isImportingKeywords = false
 
     // MARK: - Status / errors
     @Published var isLoading: Bool = false
@@ -111,6 +114,7 @@ final class AppState: ObservableObject {
 
     init() {
         exiftoolPath = MetadataStagingService.locateExiftool()
+        osxphotosPath = PhotosKeywordImporter.locate()
         // Bubble nested settings changes up so views observing AppState (theme, appearance,
         // default mode) re-render live.
         settingsObserver = settingsStore.objectWillChange.sink { [weak self] _ in
@@ -388,6 +392,29 @@ final class AppState: ObservableObject {
             reloadKeywords()
             return kw
         } catch { errorMessage = error.localizedDescription; return nil }
+    }
+
+    /// Seed the local keyword store from the Photos library via osxphotos.
+    func importKeywordsFromPhotos() {
+        guard let path = osxphotosPath else {
+            errorMessage = "osxphotos isn't installed (pipx install osxphotos)."
+            return
+        }
+        guard !isImportingKeywords else { return }
+        isImportingKeywords = true
+        Task {
+            do {
+                let names = try await Task.detached(priority: .userInitiated) {
+                    try PhotosKeywordImporter.fetchKeywords(osxphotosPath: path)
+                }.value
+                let added = try db.importKeywords(names: names, source: "photos", now: BackupService.isoNow())
+                reloadKeywords()
+                statusMessage = "Imported \(added) new keyword\(added == 1 ? "" : "s") from Photos (\(names.count) found)."
+            } catch {
+                errorMessage = "Couldn't read Photos keywords: \(error.localizedDescription)"
+            }
+            isImportingKeywords = false
+        }
     }
 
     func deleteKeyword(_ id: String) {

@@ -25,6 +25,23 @@ struct KeywordManagerSheet: View {
                     .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
+            HStack(spacing: 8) {
+                Button {
+                    appState.importKeywordsFromPhotos()
+                } label: {
+                    Label("Import from Photos", systemImage: "photo.on.rectangle.angled")
+                }
+                .disabled(appState.osxphotosPath == nil || appState.isImportingKeywords)
+                if appState.isImportingKeywords {
+                    ProgressView().controlSize(.small)
+                }
+                Spacer()
+            }
+            if appState.osxphotosPath == nil {
+                Text("Install osxphotos (pipx install osxphotos) to pull keywords from your Photos library.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+
             Divider()
 
             if appState.keywords.isEmpty {
