@@ -50,14 +50,23 @@ archive_messages.py --db <chat.db> --archive <dir> \
   `~/Library/Messages/Attachments/`).
 - **Human-browsable views (regenerated from the manifest each run):**
   - `conversations/<Name>/transcript.txt` — readable, header + **contact names**.
-  - `conversations/<Name>/index.html` — Messages-style bubbles + inline media.
+  - `conversations/<Name>/index.html` — Messages-style bubbles + inline media,
+    with an **in-page search bar**: filter/highlight this thread by message text
+    or attachment filename, plain substring or **regex**. Every message has a
+    deep-link anchor (`#m<n>`) so search results can jump straight to it.
   - `conversations/<Name>/media/` — that thread's media as **real copies**,
     date-prefixed (`YYYYMMDD_HHMMSS_origname`).
+  - `search.html` + `search-index.js` — **cross-conversation search** over the
+    whole archive: message text or attachment filename, substring or **regex**,
+    with highlighted matches; each result links to the exact message in its
+    thread. Loads the index via `<script src>` (not `fetch`), so it works opened
+    straight from disk (`file://`) with no web server.
   - `_index.csv` — name / folder / #messages / date-range / #media.
   - `contacts.html` / `contacts.json` — **all** AddressBook fields per contact
     (name parts, org/title, birthday + dates, phones/emails/addresses/URLs/
     social/IM/related — each labelled, plus notes), exported **contact photos**
-    (`contacts/photos/`), searchable, with a **"→ conversation"** link.
+    (`contacts/photos/`), searchable, with a **"→ conversation"** link and a
+    link to the archive-wide **"↗ Search all messages"** page.
 - **Contact names** via `--addressbook-dir` (a pulled AddressBook `Sources` dir):
   folders + senders become real names; unknown handles stay raw. **iMessage + SMS
   with the same person merge into one folder**; group chats stay separate.

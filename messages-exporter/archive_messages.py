@@ -4,7 +4,7 @@
 #   MESSAGES ARCHIVER  (companion to export_messages.py)
 #
 #   File:     archive_messages.py
-#   Version:  1.7.1
+#   Version:  1.8.0
 #   License:  MIT
 #   Requires: Python 3.9+ (standard library only — NO Pillow/ffmpeg/exiftool)
 #
@@ -52,7 +52,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from export_messages import get_body, mts, knd, san, slug, norm  # noqa: E402
 
-__version__ = '1.7.1'
+__version__ = '1.8.0'
 
 ATTACH_MARKER = '/Attachments/'
 
@@ -404,23 +404,77 @@ h1{{font-size:20px}} .meta{{color:#666;font-size:13px;margin-bottom:18px}}
 .who{{font-size:11px;color:#888;margin:8px 4px 0}} .ts{{font-size:10px;color:#aaa;margin:2px 4px}}
 img,video{{max-width:280px;max-height:280px;border-radius:12px;display:block;margin:3px 0}}
 a.file{{color:inherit}}
+.searchbar{{position:sticky;top:0;background:#f2f2f7;padding:10px 0;margin-bottom:10px;display:flex;
+  gap:8px;align-items:center;flex-wrap:wrap;z-index:5;border-bottom:1px solid #ddd}}
+.searchbar input#q{{font-size:14px;padding:6px 10px;border:1px solid #ccc;border-radius:8px;min-width:220px}}
+.searchbar select{{font-size:13px;padding:6px;border:1px solid #ccc;border-radius:8px}}
+.searchbar label{{font-size:13px;color:#444}} .cnt{{color:#666;font-size:12px}}
+.gs{{margin-left:auto;color:#1982fc;text-decoration:none;font-size:13px}}
+mark{{background:#ffe27a;color:inherit;border-radius:3px;padding:0 1px}}
+.msg{{scroll-margin-top:64px}} .msg:target .b{{outline:3px solid #ffd60a;outline-offset:2px}}
 </style></head><body><h1>{title}</h1><div class="meta">{meta}</div>
 """
+
+# In-page search bar + client-side filter/highlight (static; injected into every conversation page).
+# Searches this conversation's message text or attachment filenames, substring or /regex/, and
+# highlights matches. `../../search.html` is the cross-conversation search at the archive root.
+INPAGE_SEARCH_BAR = """<div class="searchbar">
+<input id="q" placeholder="Search this conversation…" autocomplete="off">
+<select id="mode"><option value="text">Message text</option><option value="files">Attachment filename</option></select>
+<label><input type="checkbox" id="rx"> Regex</label>
+<span id="cnt" class="cnt"></span>
+<a class="gs" href="../../search.html">↗ Search all conversations</a>
+</div>
+"""
+
+INPAGE_SEARCH_JS = """<script>
+(function(){
+  var q=document.getElementById('q'),mode=document.getElementById('mode'),
+      rx=document.getElementById('rx'),cnt=document.getElementById('cnt');
+  var msgs=[].slice.call(document.querySelectorAll('.msg'));
+  function esc(s){return s.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function clear(m){var t=m.querySelector('.t'); if(t) t.innerHTML=esc(m.dataset.text||'');}
+  function build(){
+    var term=q.value;
+    if(!term){msgs.forEach(function(m){m.style.display='';clear(m);});cnt.textContent='';return;}
+    var re;
+    try{re=rx.checked?new RegExp(term,'ig'):new RegExp(term.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&'),'ig');}
+    catch(e){cnt.textContent='⚠ bad regex';return;}
+    var n=0;
+    msgs.forEach(function(m){
+      var hay=mode.value==='files'?(m.dataset.files||''):(m.dataset.text||'');
+      re.lastIndex=0; var hit=hay&&re.test(hay);
+      m.style.display=hit?'':'none';
+      if(hit){n++;
+        var t=m.querySelector('.t');
+        if(t){ if(mode.value==='files'){t.innerHTML=esc(m.dataset.text||'');}
+               else{re.lastIndex=0;t.innerHTML=esc(m.dataset.text||'').replace(re,function(x){return '<mark>'+x+'</mark>';});} }
+      } else clear(m);
+    });
+    cnt.textContent=n+' match'+(n===1?'':'es');
+  }
+  q.addEventListener('input',build);mode.addEventListener('change',build);rx.addEventListener('change',build);
+})();
+</script>"""
 
 
 def render_html(label, entries, folder_dir):
     rows = []
     last_who = None
-    for e in entries:
+    for idx, e in enumerate(entries):
         me = e.get('from_me')
         who = 'Me' if me else (e.get('_sender_name') or e.get('sender_handle') or '?')
         side = 'me' if me else 'them'
+        who_html = ''
         if who != last_who and not me:
-            rows.append(f'<div class="who">{html.escape(str(who))}</div>')
+            who_html = f'<div class="who">{html.escape(str(who))}</div>'
         last_who = who
-        body = html.escape(e.get('text') or '')
+        raw_text = e.get('text') or ''
+        body = html.escape(raw_text)
         media_html = ''
+        files = []
         for at in e.get('attachments', []):
+            files.append(at.get('orig') or 'file')
             mp = at.get('_media_rel')
             if not mp:
                 continue
@@ -431,18 +485,29 @@ def render_html(label, entries, folder_dir):
                 media_html += f'<video src="{html.escape(mp)}" controls preload="none"></video>'
             else:
                 media_html += f'<a class="file" href="{html.escape(mp)}">📎 {html.escape(at.get("orig") or "file")}</a><br>'
-        inner = body
+        bubble = f'<span class="t">{body}</span>'
         if media_html:
-            inner = (body + '<br>' if body else '') + media_html
-        if not inner:
-            inner = '<i>(no content)</i>'
+            bubble += ('<br>' if body else '') + media_html
+        if not body and not media_html:
+            bubble = '<i>(no content)</i>'
         ts = (e.get('ts') or '')[:19].replace('T', ' ')
-        rows.append(f'<div class="row {side}"><div class="b">{inner}</div></div>'
-                    f'<div class="ts {side}" style="text-align:{"right" if me else "left"}">{ts}</div>')
+        # data-* carry the raw text + filenames so the in-page search can match/highlight client-side.
+        text_attr = html.escape(raw_text, quote=True)
+        files_attr = html.escape(' '.join(files), quote=True)
+        rows.append(
+            f'<div class="msg {side}" id="m{idx}" data-text="{text_attr}" data-files="{files_attr}">'
+            f'{who_html}'
+            f'<div class="row {side}"><div class="b">{bubble}</div></div>'
+            f'<div class="ts {side}" style="text-align:{"right" if me else "left"}">{ts}</div>'
+            f'</div>'
+        )
     meta = f'{len(entries)} messages'
     if entries:
         meta += f' · {entries[0]["ts"][:10]} → {entries[-1]["ts"][:10]}'
-    doc = HTML_HEAD.format(title=html.escape(label), meta=html.escape(meta)) + '\n'.join(rows) + '</body></html>'
+    doc = (HTML_HEAD.format(title=html.escape(label), meta=html.escape(meta))
+           + INPAGE_SEARCH_BAR
+           + '<div id="msgs">' + '\n'.join(rows) + '</div>'
+           + INPAGE_SEARCH_JS + '</body></html>')
     (folder_dir / 'index.html').write_text(doc, encoding='utf-8')
 
 
@@ -456,7 +521,7 @@ h1{{font-size:20px}} input{{font-size:15px;padding:8px 12px;width:300px;border:1
 .f{{color:#333;font-size:13px;margin-top:4px}} .lbl{{color:#999;font-size:11px;text-transform:uppercase;margin-right:6px}}
 a{{color:#1982fc;text-decoration:none}} .note{{color:#555;font-size:13px;margin-top:6px;white-space:pre-wrap}}
 </style></head><body><h1>Contacts ({n})</h1>
-<input id="q" placeholder="Filter contacts…" oninput="f()"><div id="list">
+<input id="q" placeholder="Filter contacts…" oninput="f()"><a href="search.html" style="margin-left:12px;color:#1982fc;text-decoration:none">↗ Search all messages</a><div id="list">
 """
 
 CONTACTS_HTML_TAIL = """</div><script>
@@ -464,6 +529,86 @@ function f(){var q=document.getElementById('q').value.toLowerCase();
 document.querySelectorAll('.c').forEach(function(e){
 e.style.display=e.textContent.toLowerCase().indexOf(q)<0?'none':''});}
 </script></body></html>"""
+
+
+# Cross-conversation search page (archive root). Loads the generated `search-index.js` via a
+# <script src> — NOT fetch() — so it works when the archive is opened straight from disk
+# (file:// blocks fetch of sibling files, but allows <script src>). Searches every message's
+# text or attachment filenames, substring or /regex/, highlights matches, and each result links
+# to the exact message (conversations/<folder>/index.html#m<seq>, which the page scrolls to).
+SEARCH_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Search all messages</title>
+<style>
+body{font:15px -apple-system,Helvetica,Arial,sans-serif;background:#f2f2f7;margin:0;padding:24px;color:#000}
+h1{font-size:20px} .bar{position:sticky;top:0;background:#f2f2f7;padding:10px 0;display:flex;gap:8px;
+  align-items:center;flex-wrap:wrap;border-bottom:1px solid #ddd;margin-bottom:14px}
+input#q{font-size:15px;padding:8px 12px;border:1px solid #ccc;border-radius:8px;min-width:300px}
+select{font-size:13px;padding:7px;border:1px solid #ccc;border-radius:8px} label{font-size:13px;color:#444}
+#cnt{color:#666;font-size:12px} mark{background:#ffe27a;border-radius:3px;padding:0 1px}
+a.r{display:block;background:#fff;border-radius:12px;padding:12px 14px;margin:8px 0;max-width:760px;
+  text-decoration:none;color:#000} a.r:hover{background:#eef3ff}
+.rh{font-size:12px;color:#666;margin-bottom:4px} .rb{white-space:pre-wrap;word-wrap:break-word}
+.hint{color:#888;font-size:13px}
+</style></head><body><h1>Search all conversations</h1>
+<div class="bar">
+<input id="q" placeholder="Search messages…" autocomplete="off" autofocus>
+<select id="mode"><option value="text">Message text</option><option value="files">Attachment filename</option></select>
+<label><input type="checkbox" id="rx"> Regex</label>
+<span id="cnt"></span>
+</div>
+<div id="results"><p class="hint">Type to search every message across all conversations.</p></div>
+<script src="search-index.js"></script>
+<script>
+(function(){
+  var IDX=window.MSGIDX||[],LIMIT=500;
+  var q=document.getElementById('q'),mode=document.getElementById('mode'),
+      rx=document.getElementById('rx'),cnt=document.getElementById('cnt'),res=document.getElementById('results');
+  function esc(s){return s.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function snippet(text,reg){
+    reg.lastIndex=0; var m=reg.exec(text); var start=m?Math.max(0,m.index-50):0;
+    var frag=text.slice(start,start+220); reg.lastIndex=0;
+    return (start>0?'…':'')+esc(frag).replace(reg,function(x){return '<mark>'+x+'</mark>';})
+           +(text.length>start+220?'…':'');
+  }
+  function run(){
+    var term=q.value;
+    if(!term){res.innerHTML='<p class="hint">Type to search every message across all conversations.</p>';
+      cnt.textContent='';return;}
+    var re,reg;
+    try{var src=rx.checked?term:term.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&');
+        re=new RegExp(src,'i'); reg=new RegExp(src,'ig');}
+    catch(e){cnt.textContent='⚠ bad regex';return;}
+    var out=[],n=0,files=mode.value==='files';
+    for(var j=0;j<IDX.length;j++){
+      var r=IDX[j], hay=files?((r.a||[]).join(' ')):(r.x||'');
+      if(!hay) continue;
+      re.lastIndex=0;
+      if(re.test(hay)){
+        n++;
+        if(out.length<LIMIT){
+          var link='conversations/'+encodeURIComponent(r.f)+'/index.html#m'+r.i;
+          var body=files
+            ?(r.a||[]).map(function(fn){reg.lastIndex=0;return esc(fn).replace(reg,function(x){return '<mark>'+x+'</mark>';});}).join(', ')
+            :snippet(r.x||'',reg);
+          out.push('<a class="r" href="'+link+'"><div class="rh"><b>'+esc(r.c)+'</b> · '+esc(r.s)+' · '+esc(r.t)+'</div><div class="rb">'+body+'</div></a>');
+        }
+      }
+    }
+    res.innerHTML=out.length?out.join(''):'<p class="hint">No matches.</p>';
+    cnt.textContent=n+' match'+(n===1?'':'es')+(n>LIMIT?(' (showing first '+LIMIT+')'):'');
+  }
+  q.addEventListener('input',run);mode.addEventListener('change',run);rx.addEventListener('change',run);
+})();
+</script></body></html>"""
+
+
+def write_search(archive, records):
+    """Write the cross-conversation search index (`search-index.js`, a `window.MSGIDX=[…]`
+    assignment) + the static `search.html`. Each record: c=conversation label, f=folder,
+    i=message anchor index, s=sender, t=timestamp, x=text, a=[attachment filenames]."""
+    archive = Path(archive)
+    payload = json.dumps(records, ensure_ascii=False, separators=(',', ':'))
+    (archive / 'search-index.js').write_text('window.MSGIDX=' + payload + ';\n', encoding='utf-8')
+    (archive / 'search.html').write_text(SEARCH_HTML, encoding='utf-8')
 
 
 def _conv_link(rec, handle_to_folder):
@@ -592,6 +737,7 @@ def build_views(archive, attach_subdir, contacts, addressbook_dir=None):
     index_rows = []
     handle_to_folder = {}        # 1:1 identity tail -> conversation folder (for contacts.html)
     media_copied = 0
+    search_records = []          # cross-conversation search index (→ search-index.js / search.html)
     for key, msgs in groups.items():
         msgs.sort(key=lambda x: x.get('date_raw', 0))
         members = sorted({m.get('sender_handle') for m in msgs if m.get('sender_handle')})
@@ -610,7 +756,7 @@ def build_views(archive, attach_subdir, contacts, addressbook_dir=None):
             tx.append(f'Range: {msgs[0]["ts"][:10]} → {msgs[-1]["ts"][:10]}')
         tx.append('=' * 60)
         n_media = 0
-        for e in msgs:
+        for idx, e in enumerate(msgs):
             e['_sender_name'] = 'Me' if e.get('from_me') else resolve(e.get('sender_handle'), contacts)
             ts = (e.get('ts') or '')[:19].replace('T', ' ')
             line = f'[{ts}] {e["_sender_name"]}:'
@@ -635,6 +781,14 @@ def build_views(archive, attach_subdir, contacts, addressbook_dir=None):
                     tx.append(f'    [{at.get("kind")}] {at.get("orig") or "?"} -> media/{dest_name}')
                 else:
                     tx.append(f'    [{at.get("kind")}] {at.get("orig") or "?"} -> (not in archive yet)')
+            # Record this message for the cross-conversation search index (skip empty rows).
+            txt = e.get('text') or ''
+            atfiles = [a.get('orig') or 'file' for a in e.get('attachments', [])]
+            if txt or atfiles:
+                search_records.append({'c': label, 'f': folder, 'i': idx,
+                                       's': e.get('_sender_name') or '?',
+                                       't': (e.get('ts') or '')[:19].replace('T', ' '),
+                                       'x': txt, 'a': atfiles})
         (d / 'transcript.txt').write_text('\n'.join(tx) + '\n', encoding='utf-8')
         render_html(label, msgs, d)
         index_rows.append({
@@ -648,6 +802,9 @@ def build_views(archive, attach_subdir, contacts, addressbook_dir=None):
         w = csv.DictWriter(fh, fieldnames=['name', 'folder', 'messages', 'first', 'last', 'media'])
         w.writeheader()
         w.writerows(index_rows)
+
+    # Cross-conversation search page + index at the archive root.
+    write_search(archive, search_records)
 
     # Preserve the resolved contact map + render a browsable contacts.html.
     if contacts:

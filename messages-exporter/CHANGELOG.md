@@ -2,6 +2,28 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.8.0 — 2026-06-16
+
+### Added — search the archive (`archive_messages.py`)
+- **Cross-conversation search page** (`search.html` + `search-index.js` at the
+  archive root). Search **every** message across all conversations by **text**
+  (substring or **regex**) or by **attachment filename** (substring or regex),
+  with highlighted matches. Each result links to the **exact message** in its
+  thread and the page scrolls to it. The index is loaded via `<script src>`
+  (not `fetch`), so the page works opened straight from disk (`file://`) with no
+  web server — results are capped at the first 500 shown (full match count still
+  reported) so a broad query can't blow up the DOM.
+- **In-page search on every conversation page** (`conversations/<Name>/index.html`):
+  a sticky search bar that filters + highlights that thread by message text or
+  attachment filename, substring or regex, plus a link to the global search.
+- **Per-message deep-link anchors.** Every message row now has `id="m<n>"` (and
+  carries its text + attachment filenames in `data-*` for client-side
+  search/highlight), so global results can jump to the precise message; the
+  jumped-to bubble is briefly outlined via `:target`.
+- `contacts.html` gains an **"↗ Search all messages"** link.
+- Tests: +3 (anchors + in-page search UI, global page wiring, search-index
+  records incl. attachment filenames) → 15 in `test_archive_messages.py`.
+
 ## 1.7.1 — 2026-06-14
 
 ### Fixed

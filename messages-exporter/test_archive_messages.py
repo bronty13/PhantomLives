@@ -257,6 +257,57 @@ class ArchiveMessagesTests(unittest.TestCase):
         self.assertIn('first message', htmls)
         self.assertIn('hello', htmls)
 
+    def test_inpage_search_anchors_and_data(self):
+        """Each conversation page has per-message anchors, data-* for client-side
+        search/highlight, and the in-page search bar (text/filename + regex)."""
+        am.run_archive(self.db, self.archive, full=True)
+        pages = list((Path(self.archive) / 'conversations').glob('*/index.html'))
+        self.assertTrue(pages)
+        doc = next(p.read_text() for p in pages if 'first message' in p.read_text())
+        # Per-message anchor (deep-link target) + searchable data attributes.
+        self.assertIn('class="msg', doc)
+        self.assertIn('id="m0"', doc)
+        self.assertIn('data-text=', doc)
+        self.assertIn('data-files=', doc)
+        # In-page search bar: query box, both modes, regex toggle, link to global search.
+        self.assertIn('id="q"', doc)
+        self.assertIn('Attachment filename', doc)
+        self.assertIn('id="rx"', doc)
+        self.assertIn('../../search.html', doc)
+        # The photo attachment's filename is searchable on the page hosting it.
+        with_att = next((p.read_text() for p in pages if 'IMG_1.HEIC' in p.read_text()), '')
+        self.assertIn('IMG_1.HEIC', with_att)
+
+    def test_global_search_page_built(self):
+        """search.html exists at the archive root, loads the index via <script src>
+        (file://-safe, not fetch), and offers text/filename + regex search."""
+        am.run_archive(self.db, self.archive, full=True)
+        sh = Path(self.archive) / 'search.html'
+        self.assertTrue(sh.exists())
+        doc = sh.read_text()
+        self.assertIn('<script src="search-index.js">', doc)   # not fetch() — works from disk
+        self.assertIn('Attachment filename', doc)
+        self.assertIn('id="rx"', doc)
+        self.assertIn('index.html#m', doc)                     # results jump to the exact message
+
+    def test_search_index_records(self):
+        """search-index.js is a parseable window.MSGIDX with message text and
+        attachment filenames, each carrying a folder + anchor for deep-linking."""
+        am.run_archive(self.db, self.archive, full=True)
+        js = (Path(self.archive) / 'search-index.js').read_text()
+        self.assertTrue(js.startswith('window.MSGIDX='))
+        records = json.loads(js[len('window.MSGIDX='):].rstrip().rstrip(';'))
+        self.assertTrue(records)
+        # Every record can deep-link: folder + integer anchor index.
+        for r in records:
+            self.assertIn('f', r)
+            self.assertIsInstance(r['i'], int)
+        texts = [r.get('x', '') for r in records]
+        self.assertTrue(any('first message' in t for t in texts))
+        # The photo attachment is indexed by its filename for filename search.
+        allfiles = [fn for r in records for fn in r.get('a', [])]
+        self.assertIn('IMG_1.HEIC', allfiles)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
