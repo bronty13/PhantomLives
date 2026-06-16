@@ -35,6 +35,15 @@ Requires macOS 14+. Optional runtime tool: `exiftool` (`brew install exiftool`) 
 title/caption/keywords into Photos imports — without it, originals import with no embedded
 metadata.
 
+## Tests
+
+```sh
+./run-tests.sh    # XCTest (21 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
+```
+
+Covers migrations + decision-preserving re-scan upsert + cascade delete, media discovery
+classification, backup retention, and the audio/delete/staging services.
+
 ## Default output location
 
 - Kept audio: `~/Downloads/PurplePeek/Kept Audio/`
@@ -44,4 +53,5 @@ Both are configurable in Settings.
 
 ## Status
 
-In active development. See `CHANGELOG.md` for per-phase progress.
+Feature-complete: scan → browse/preview → decide → import to Photos (with staged metadata) /
+keep-export audio → delete → manage in Settings. See `CHANGELOG.md` for per-phase detail.

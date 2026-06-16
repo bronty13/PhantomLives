@@ -2,6 +2,23 @@
 
 All notable changes to PurplePeek are documented here.
 
+## [1.0] — Phase 7: Tests + polish (feature-complete)
+
+- Test suite (21 XCTest cases): `DatabaseTests` (migration creates all tables, frozen
+  migration ledger, `MediaFile` round-trip, keep tri-state, **re-scan upsert preserves
+  decisions**, scan-root cascade delete), `MediaDiscoveryTests` (UTType classification,
+  skips hidden, recurses, captures size/path), `BackupTests` (zip creation, retention trim
+  of only our prefixed archives, newest-first listing, retention-0 keeps all),
+  `ServicesTests` (audio export copy + de-dup + missing-source, delete permanent + missing,
+  staging-metadata emptiness, `chunked`).
+- `run-tests.sh` — points `DEVELOPER_DIR` at full Xcode so XCTest resolves even though the
+  app build uses the active Command Line Tools toolchain. All 21 pass.
+- The migration-ledger test doubles as the immutability guard (per CLAUDE.md): editing or
+  removing `v1_initial` fails the suite; adding a migration updates the expected list.
+
+PurplePeek is now feature-complete end to end: scan → browse/preview → decide → import to
+Photos (with staged metadata) / keep-export audio → delete → manage in Settings.
+
 ## [1.0] — Phase 6: Delete functions + full Settings (in progress)
 
 - `DeleteService` — delete files from disk to Trash or permanently (idempotent: an
