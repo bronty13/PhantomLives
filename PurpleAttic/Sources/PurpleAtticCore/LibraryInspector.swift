@@ -109,9 +109,19 @@ public enum LibraryInspector {
         return (count, bytes, true)
     }
 
-    /// Best-effort `SELECT COUNT(*) FROM ZASSET` against the live Photos database, opened
-    /// read-only + immutable (so an open Photos.app / WAL doesn't block us). Returns nil on
-    /// any failure (missing file, permission, schema change).
+    /// Count of the user's **own, archivable** library assets — the right denominator for the
+    /// originals-on-disk completeness check. A plain `COUNT(*) FROM ZASSET` overcounts: it
+    /// includes trashed rows and, crucially, **"Shared with You" / syndicated** assets
+    /// (`ZVISIBILITYSTATE != 0`) that aren't your originals, are excluded from the archive
+    /// (`excludeSharedAndSyndicated`), and legitimately have no local master because
+    /// "Download Originals to this Mac" never fetches them. Counting those guaranteed a false
+    /// "Optimize Storage likely — archiving would be INCOMPLETE" on any Mac with shared content.
+    /// We therefore count only **visible, non-trashed** assets (`ZVISIBILITYSTATE = 0 AND
+    /// ZTRASHEDSTATE = 0`), which matches osxphotos' `--not-shared` set within a row.
+    ///
+    /// Opened read-only + immutable (so an open Photos.app / WAL doesn't block us). Returns nil
+    /// on any failure (missing file, permission). If the visibility/trashed columns are absent
+    /// (older/newer schema), falls back to a plain `COUNT(*)` rather than giving up.
     static func readAssetCount(_ dbPath: String) -> Int? {
         guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
         var db: OpaquePointer?
@@ -121,10 +131,17 @@ public enum LibraryInspector {
             return nil
         }
         defer { sqlite3_close(db) }
+        // Preferred: the user's own visible, non-trashed library. Fall back to a raw count if
+        // those columns don't exist on this Photos schema version.
+        return scalarCount(db, "SELECT COUNT(*) FROM ZASSET WHERE ZVISIBILITYSTATE = 0 AND ZTRASHEDSTATE = 0")
+            ?? scalarCount(db, "SELECT COUNT(*) FROM ZASSET")
+    }
+
+    /// Run a single `SELECT COUNT(...)` and return the integer, or nil if the statement won't
+    /// prepare (e.g. a referenced column is missing on this schema).
+    private static func scalarCount(_ db: OpaquePointer?, _ sql: String) -> Int? {
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM ZASSET", -1, &stmt, nil) == SQLITE_OK else {
-            return nil
-        }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
         return sqlite3_step(stmt) == SQLITE_ROW ? Int(sqlite3_column_int64(stmt, 0)) : nil
     }

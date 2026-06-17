@@ -3,6 +3,29 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.21.3] — 2026-06-17
+
+Kill a false "Optimize Storage likely — archiving would be INCOMPLETE" warning on
+fully-downloaded libraries.
+
+### Fixed
+- **Completeness guard false-positived on any Mac with "Shared with You" content.** The
+  Optimize-Storage check compared the `originals/` file count against
+  `SELECT COUNT(*) FROM ZASSET` — which counts **syndicated / "Shared with You"** assets
+  (`ZVISIBILITYSTATE != 0`) that aren't your originals, are excluded from the archive
+  (`excludeSharedAndSyndicated`), and have no local master because "Download Originals to
+  this Mac" never fetches them. On a real 8317-row library that's 2288 phantom assets,
+  dragging 7016/8317 = 84% under the 90% line and falsely reporting "Archiving now would be
+  INCOMPLETE" even with every own-library original on disk. `readAssetCount` now counts only
+  **visible, non-trashed** assets (`ZVISIBILITYSTATE = 0 AND ZTRASHEDSTATE = 0`), matching
+  osxphotos' `--not-shared` set to the row (6028 vs 6028 on the reference library), so the
+  guard fires only on genuine Optimize-Mac-Storage libraries. Falls back to a raw `COUNT(*)`
+  if those columns are ever absent on a future schema.
+
+### Tests
+- +2 (145 total): `readAssetCount` excludes syndicated + trashed rows, and falls back to a
+  plain count when the visibility/trashed columns don't exist.
+
 ## [0.21.2] — 2026-06-17
 
 Close an onboarding gap that let the scheduled run ambush users with a recurring

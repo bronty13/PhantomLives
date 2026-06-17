@@ -1,7 +1,48 @@
 import XCTest
+import SQLite3
 @testable import PurpleAtticCore
 
 final class LibraryGuardTests: XCTestCase {
+
+    // MARK: readAssetCount — denominator excludes syndicated/trashed (regression)
+
+    /// Build a throwaway Photos-shaped SQLite at `path`, running `ddl` then each row in `rows`.
+    private func makeDB(_ ddl: String, _ rows: [String]) throws -> String {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pa-assets-\(UUID().uuidString).sqlite").path
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
+        defer { sqlite3_close(db) }
+        XCTAssertEqual(sqlite3_exec(db, ddl, nil, nil, nil), SQLITE_OK)
+        for r in rows { XCTAssertEqual(sqlite3_exec(db, r, nil, nil, nil), SQLITE_OK, r) }
+        return path
+    }
+
+    func testAssetCountExcludesSyndicatedAndTrashed() throws {
+        // 3 own visible assets, 2 "Shared with You" (ZVISIBILITYSTATE=2), 1 trashed.
+        let path = try makeDB(
+            "CREATE TABLE ZASSET (ZVISIBILITYSTATE INTEGER, ZTRASHEDSTATE INTEGER);",
+            [
+                "INSERT INTO ZASSET VALUES (0,0);",
+                "INSERT INTO ZASSET VALUES (0,0);",
+                "INSERT INTO ZASSET VALUES (0,0);",
+                "INSERT INTO ZASSET VALUES (2,0);",   // syndicated — excluded
+                "INSERT INTO ZASSET VALUES (2,0);",   // syndicated — excluded
+                "INSERT INTO ZASSET VALUES (0,1);",   // trashed — excluded
+            ])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        // Only the 3 own visible, non-trashed assets count — not the raw 6.
+        XCTAssertEqual(LibraryInspector.readAssetCount(path), 3)
+    }
+
+    func testAssetCountFallsBackWhenColumnsAbsent() throws {
+        // Older/newer schema without the visibility/trashed columns → plain COUNT(*).
+        let path = try makeDB(
+            "CREATE TABLE ZASSET (Z_PK INTEGER);",
+            ["INSERT INTO ZASSET VALUES (1);", "INSERT INTO ZASSET VALUES (2);"])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        XCTAssertEqual(LibraryInspector.readAssetCount(path), 2)
+    }
 
     // MARK: LibraryInspector threshold
 
