@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The Browse-mode main area: a header (current scope + counts + grid/list toggle) over
 /// either the thumbnail grid or a compact list. Shows a scan progress overlay while a scan
@@ -7,6 +8,9 @@ struct FolderBrowseView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.appTheme) private var theme
     @AppStorage("browseLayoutIsGrid") private var isGrid: Bool = true
+
+    /// Local key monitor for the Space → Quick Look "peek" (Finder-style).
+    @State private var keyMonitor: Any?
 
     private var files: [MediaFile] { appState.visibleMediaFiles }
 
@@ -17,6 +21,32 @@ struct FolderBrowseView: View {
             content
         }
         .overlay { if appState.isScanning { scanOverlay } }
+        .onAppear { installMonitor() }
+        .onDisappear { removeMonitor() }
+        // Keep an open peek in step as the selection moves (click another thumbnail).
+        .onChange(of: appState.selectedFileId) { _, _ in
+            if let f = appState.selectedFile { QuickLookCoordinator.shared.refreshIfVisible(f.fileURL) }
+        }
+    }
+
+    // MARK: - Keyboard (Space → peek)
+
+    private func installMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard appState.appMode == .folderBrowse else { return event }
+            // Don't steal Space while a title/caption field (detail panel) is being edited.
+            if NSApp.keyWindow?.firstResponder is NSText { return event }
+            guard event.keyCode == 49 else { return event }   // 49 = space
+            guard let file = appState.selectedFile else { return event }
+            QuickLookCoordinator.shared.toggle(file.fileURL)
+            return nil
+        }
+    }
+
+    private func removeMonitor() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
     }
 
     // MARK: - Header

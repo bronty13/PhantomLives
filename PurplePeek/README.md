@@ -16,7 +16,9 @@ Two views:
 
 - **Browse** — a Finder-like folder tree + thumbnail grid with a per-item detail panel. A
   **Show** menu filters the grid by decision (All / Undecided / Decided / Kept / Skipped), so
-  you can revisit choices, not just triage new items.
+  you can revisit choices, not just triage new items. Press **Space** on a selected item to
+  **peek** it full-size in Quick Look (press Space again to close); clicking through items
+  while the peek is open updates it live.
 - **Preview** — a one-by-one walkthrough in a large viewer with full EXIF metadata. Keyboard-
   driven: **Y** keep · **N** skip · **F** favorite · **H** hidden · **←/→** navigate ·
   **Space** Quick Look. A **Review** menu picks which queue you step through (Undecided by

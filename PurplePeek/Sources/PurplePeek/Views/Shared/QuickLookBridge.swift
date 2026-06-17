@@ -29,6 +29,16 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
         }
     }
 
+    /// True while the shared Quick Look panel is on screen.
+    var isVisible: Bool { QLPreviewPanel.shared()?.isVisible ?? false }
+
+    /// Update the peek to a new file only if the panel is already open — used to keep the
+    /// peek in step as the grid selection changes (no-op when nothing is being previewed).
+    func refreshIfVisible(_ url: URL) {
+        guard isVisible else { return }
+        preview(url)
+    }
+
     // MARK: QLPreviewPanelDataSource
 
     func numberOfPreviewItems(in panel: QLPreviewPanel) -> Int { url == nil ? 0 : 1 }

@@ -9,6 +9,15 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Browse: Space to peek
+
+- In **Browse** mode, pressing **Space** on the selected item opens it full-size in Quick Look
+  (a "peek") — and Space again closes it, matching Finder. Works in both grid and list layouts.
+- Clicking through items while the peek is open **refreshes it live** to the new selection.
+- Space is suppressed while a title/caption field in the detail panel has focus, so you can
+  still type spaces. Mirrors Preview mode's existing Space → Quick Look behavior; reuses the
+  shared `QuickLookCoordinator` (gains `isVisible` + `refreshIfVisible`).
+
 ### Refresh: pick up filesystem changes (manual + auto-watch)
 
 - **Manual refresh**: a toolbar **Refresh** button (and **⌘R**) re-scans the selected root in
