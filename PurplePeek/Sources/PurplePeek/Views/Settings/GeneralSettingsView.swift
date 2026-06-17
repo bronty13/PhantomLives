@@ -38,6 +38,15 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            LabeledContent("Watch folder for changes") {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Toggle("", isOn: $store.settings.autoRescanEnabled)
+                        .labelsHidden()
+                    Text("Auto-refresh when files are added, removed, or moved on disk")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             LabeledContent("Kept Audio Export") {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(appState.settingsStore.resolvedKeptAudioPath.path)

@@ -29,7 +29,7 @@ final class DatabaseTests: XCTestCase {
         let ids = try queue.read { db in
             try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY identifier")
         }
-        XCTAssertEqual(ids, ["v1_initial", "v2_add_is_hidden"])
+        XCTAssertEqual(ids, ["v1_initial", "v2_add_is_hidden", "v3_add_missing_at"])
     }
 
     func testHiddenColumnRoundTrips() throws {
@@ -109,6 +109,73 @@ final class DatabaseTests: XCTestCase {
         XCTAssertTrue(f?.isFavorite ?? false)
         XCTAssertEqual(f?.title, "Keep me")
         XCTAssertEqual(f?.fileSize, 999)        // metadata refreshed
+    }
+
+    /// The shared upsert SQL used by the re-scan tests below — mirrors
+    /// `DatabaseService.upsertScannedFiles` (incl. the `missing_at = NULL` reappear clear).
+    private func upsert(_ db: Database, id: String, path: String, size: Int, at ts: String) throws {
+        try db.execute(sql: """
+            INSERT INTO media_files(id,scan_root,file_path,file_name,file_type,file_size,is_favorite,created_at,updated_at)
+            VALUES(?, '/r', ?, 'a.jpg', 'photo', ?, 0, ?, ?)
+            ON CONFLICT(file_path) DO UPDATE SET
+              file_name=excluded.file_name, file_type=excluded.file_type,
+              file_size=excluded.file_size, updated_at=excluded.updated_at, missing_at=NULL
+            """, arguments: [id, path, size, ts, ts])
+    }
+
+    /// The missing-files watermark sweep — mirrors `DatabaseService.markMissingFiles`.
+    private func sweepMissing(_ db: Database, now: String) throws {
+        try db.execute(sql: """
+            UPDATE media_files SET missing_at = ?, updated_at = ?
+            WHERE scan_root = '/r' AND deleted_at IS NULL AND missing_at IS NULL AND updated_at < ?
+            """, arguments: [now, now, now])
+    }
+
+    /// A re-scan that no longer finds a file flags it missing; files still present aren't touched.
+    func testRescanMarksMissingFiles() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files) VALUES('/r','t1',0)")
+            try upsert(db, id: "a", path: "/r/a.jpg", size: 1, at: "t1")
+            try upsert(db, id: "b", path: "/r/b.jpg", size: 1, at: "t1")
+            // Re-scan at t2 finds only A; B is gone.
+            try upsert(db, id: "a2", path: "/r/a.jpg", size: 2, at: "t2")
+            try sweepMissing(db, now: "t2")
+        }
+        try queue.read { db in
+            let a = try MediaFile.filter(Column("file_path") == "/r/a.jpg").fetchOne(db)
+            let b = try MediaFile.filter(Column("file_path") == "/r/b.jpg").fetchOne(db)
+            XCTAssertNil(a?.missingAt, "present file should not be marked missing")
+            XCTAssertEqual(b?.missingAt, "t2", "absent file should be marked missing")
+        }
+    }
+
+    /// A file that reappears in a later scan clears its missing flag (the ON CONFLICT clause).
+    func testReappearedFileClearsMissing() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files) VALUES('/r','t1',0)")
+            try upsert(db, id: "b", path: "/r/b.jpg", size: 1, at: "t1")
+            try sweepMissing(db, now: "t2")                 // B not seen at t2 → missing
+            XCTAssertEqual(try MediaFile.filter(Column("file_path") == "/r/b.jpg").fetchOne(db)?.missingAt, "t2")
+            try upsert(db, id: "b2", path: "/r/b.jpg", size: 9, at: "t3")  // B reappears
+        }
+        let b = try queue.read { db in try MediaFile.filter(Column("file_path") == "/r/b.jpg").fetchOne(db) }
+        XCTAssertNil(b?.missingAt, "reappeared file should clear its missing flag")
+        XCTAssertEqual(b?.fileSize, 9)
+    }
+
+    /// A user-deleted file (deleted_at set) is never reclassified as merely "missing".
+    func testDeletedFileNotMarkedMissing() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files) VALUES('/r','t1',0)")
+            try upsert(db, id: "d", path: "/r/d.jpg", size: 1, at: "t1")
+            try db.execute(sql: "UPDATE media_files SET deleted_at='t1' WHERE id='d'")
+            try sweepMissing(db, now: "t2")
+        }
+        let d = try queue.read { db in try MediaFile.fetchOne(db, key: "d") }
+        XCTAssertNil(d?.missingAt, "a deleted file stays deleted, not missing")
     }
 
     func testCascadeDeleteOfScanRoot() throws {

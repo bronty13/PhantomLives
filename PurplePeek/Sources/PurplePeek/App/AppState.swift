@@ -79,7 +79,9 @@ final class AppState: ObservableObject {
     private var loadedPhotosAlbums = false
 
     // MARK: - Selection
-    @Published var selectedRootPath: String?
+    @Published var selectedRootPath: String? {
+        didSet { if selectedRootPath != oldValue { updateFolderWatch() } }
+    }
     @Published var selectedFolderPath: String? {  // nil ⇒ show the whole root
         didSet { if selectedFolderPath != oldValue { recomputeDerived() } }
     }
@@ -119,6 +121,12 @@ final class AppState: ObservableObject {
     private let db = DatabaseService.shared
     private var settingsObserver: AnyCancellable?
 
+    /// FSEvents watcher for the selected scan root (auto-rescan). Created lazily; only active
+    /// while `autoRescanEnabled` is on and a root is selected (see `updateFolderWatch`).
+    private lazy var folderWatch = FolderWatchService { [weak self] in
+        Task { @MainActor in self?.handleFolderChange() }
+    }
+
     // MARK: - Settings convenience
     var settings: AppSettings {
         get { settingsStore.settings }
@@ -144,6 +152,8 @@ final class AppState: ObservableObject {
         // default mode) re-render live.
         settingsObserver = settingsStore.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
+            // Honor a live toggle of "watch folder for changes".
+            self?.updateFolderWatch()
         }
         // PhantomLives auto-backup-on-launch standard — runs first, never throws.
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
@@ -326,8 +336,33 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Re-scan the currently selected root in place. Same machinery as a fresh scan, so the
+    /// upsert preserves every decision and the missing-files sweep reconciles deletions.
+    func rescanSelectedRoot() {
+        guard let root = selectedRootPath else { return }
+        scanFolder(URL(fileURLWithPath: root))
+    }
+
+    /// FSEvents callback target: auto-rescan the selected root when its contents change on
+    /// disk. Guarded so an in-flight scan (or the scan's own writes, which the export folders
+    /// can trigger) doesn't kick off a re-entrant pass.
+    private func handleFolderChange() {
+        guard settings.autoRescanEnabled, !isScanning, selectedRootPath != nil else { return }
+        rescanSelectedRoot()
+    }
+
+    /// Start/stop the FSEvents watcher to match the current setting + selection.
+    private func updateFolderWatch() {
+        if settings.autoRescanEnabled, let root = selectedRootPath {
+            folderWatch.start(path: root)
+        } else {
+            folderWatch.stop()
+        }
+    }
+
     private func persistScan(rootPath: String, files: [ScannedFile]) async {
         let now = BackupService.isoNow()
+        var missingCount = 0
         do {
             try db.ensureScanRoot(path: rootPath, now: now)
             var done = 0
@@ -339,6 +374,8 @@ final class AppState: ObservableObject {
                 scanMessage = "Saving \(done)/\(files.count)…"
                 await Task.yield()
             }
+            // Reconcile deletions: anything not seen this pass (older watermark) is now missing.
+            missingCount = try db.markMissingFiles(scanRoot: rootPath, now: now)
             try db.updateScanRootStats(path: rootPath, totalFiles: files.count, now: now)
         } catch {
             errorMessage = error.localizedDescription
@@ -352,7 +389,10 @@ final class AppState: ObservableObject {
 
         isScanning = false
         scanProgress = 1
-        statusMessage = "Scanned \(files.count) item\(files.count == 1 ? "" : "s") in \((rootPath as NSString).lastPathComponent)."
+        let base = "Scanned \(files.count) item\(files.count == 1 ? "" : "s") in \((rootPath as NSString).lastPathComponent)."
+        statusMessage = missingCount > 0
+            ? base + " \(missingCount) now missing from disk."
+            : base
     }
 
     /// Select a scan root (from the sidebar) and load its files.

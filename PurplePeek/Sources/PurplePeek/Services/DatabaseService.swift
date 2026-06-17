@@ -113,6 +113,17 @@ final class DatabaseService {
             }
         }
 
+        // v3: "missing on disk" timestamp. Set by a re-scan when a previously-discovered
+        // file is no longer found under its scan root; cleared when the file reappears. Lets
+        // a refresh reconcile deletions/moves without losing the user's decisions on a file
+        // that may yet return (NULL = present, ISO string = first noticed gone).
+        migrator.registerMigration("v3_add_missing_at") { db in
+            try db.alter(table: "media_files") { t in
+                t.add(column: "missing_at", .text)
+            }
+            try db.create(index: "idx_media_files_missing_at", on: "media_files", columns: ["missing_at"])
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -376,7 +387,8 @@ final class DatabaseService {
                     file_type = excluded.file_type,
                     file_size = excluded.file_size,
                     file_modified_at = excluded.file_modified_at,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    missing_at = NULL
                 """)
             for f in files {
                 stmt.arguments = [
@@ -385,6 +397,28 @@ final class DatabaseService {
                 ]
                 try stmt.execute()
             }
+        }
+    }
+
+    /// Reconcile on-disk deletions after a re-scan: flag every non-deleted, not-already-missing
+    /// row under `scanRoot` whose `updated_at` is older than this scan's timestamp as missing.
+    ///
+    /// `upsertScannedFiles` stamps every file *found this scan* with `updated_at = now` (and
+    /// clears its `missing_at`), so any surviving row with `updated_at < now` is precisely the
+    /// set that wasn't found — i.e. removed or moved out from under the root. This watermark
+    /// approach scales to tens of thousands of files without materializing a path set. Pass the
+    /// **same `now`** used for the upsert batches. Returns the number of rows newly marked.
+    @discardableResult
+    func markMissingFiles(scanRoot: String, now: String) throws -> Int {
+        try dbPool.write { db in
+            try db.execute(sql: """
+                UPDATE media_files SET missing_at = ?, updated_at = ?
+                WHERE scan_root = ?
+                  AND deleted_at IS NULL
+                  AND missing_at IS NULL
+                  AND updated_at < ?
+                """, arguments: [now, now, scanRoot, now])
+            return db.changesCount
         }
     }
 }

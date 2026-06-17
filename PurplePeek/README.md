@@ -6,6 +6,12 @@ favorite, title, caption, keywords, albums — before importing the keepers into
 library. Decisions persist in a local database keyed by file path, so you can revisit a
 folder and only re-review the items you haven't decided yet.
 
+To keep the view in step with disk, **Refresh** (toolbar button / **⌘R**) re-scans the
+selected folder — picking up newly added files and flagging any that were removed or moved as
+**missing** (an orange grid badge; they reappear normally if the file comes back), all without
+disturbing your decisions. Turn on **Settings → General → "Watch folder for changes"** to have
+PurplePeek auto-refresh whenever the folder changes on disk.
+
 Two views:
 
 - **Browse** — a Finder-like folder tree + thumbnail grid with a per-item detail panel. A
@@ -64,13 +70,14 @@ photo whose embedding was skipped) title/caption/keywords are set afterward via 
 ## Tests
 
 ```sh
-./run-tests.sh    # XCTest (26 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
+./run-tests.sh    # XCTest (29 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
 ```
 
 Covers migrations (incl. the `v1_initial` immutability ledger + the `v2_add_is_hidden`
-round-trip), decision-preserving re-scan upsert + cascade delete, media-discovery
-classification + top-level exclude, the decision-filter lens, backup retention, and the
-audio / delete / staging services.
+round-trip), decision-preserving re-scan upsert + cascade delete, the re-scan
+missing-file reconciliation (mark-missing / reappear-clears / deleted-stays-deleted),
+media-discovery classification + top-level exclude, the decision-filter lens, backup
+retention, and the audio / delete / staging services.
 
 ## Default output location
 

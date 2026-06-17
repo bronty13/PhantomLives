@@ -16,6 +16,10 @@ struct AppSettings: Codable, Equatable {
     /// deeper are still scanned. Empty ⇒ exclude nothing.
     var topLevelExcludeName: String = "originals"
 
+    /// Watch the selected scan root with FSEvents and auto-rescan when files change on disk.
+    /// Off by default — a refresh is otherwise on-demand (toolbar button / ⌘R).
+    var autoRescanEnabled: Bool = false
+
     // Scan-root cleanup
     var scanRootAutoCleanupEnabled: Bool = false
     var scanRootAutoCleanupDays: Int = 180

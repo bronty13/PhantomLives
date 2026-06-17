@@ -9,6 +9,26 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Refresh: pick up filesystem changes (manual + auto-watch)
+
+- **Manual refresh**: a toolbar **Refresh** button (and **⌘R**) re-scans the selected root in
+  place. The re-scan still preserves every decision (keep/skip, favorite, title, caption,
+  albums) via the `file_path` upsert.
+- **Auto-watch** (Settings → General → "Watch folder for changes", off by default): an
+  FSEvents watcher on the selected root auto-rescans when files are added, removed, or moved
+  on disk. FSEvents' own latency window coalesces save-storms, so a burst of changes triggers
+  one refresh.
+- **Removal reconciliation**: a re-scan now flags files that vanished from disk as **missing**
+  (new `missing_at` column, migration `v3_add_missing_at`) instead of silently leaving stale
+  rows. Missing items show an orange badge in the grid; a file that reappears clears the flag
+  automatically. User-deleted files stay "deleted", never reclassified as missing. The scan
+  status toast reports the missing count.
+- Detection uses an `updated_at` watermark (every file seen this scan is stamped with the
+  scan's timestamp; survivors with an older stamp are the ones that disappeared) — O(1) memory
+  regardless of library size, no in-memory path set.
+- Tests: +3 DB tests (mark-missing on re-scan, reappear-clears-missing, deleted-not-missing);
+  migration ledger guard updated to include `v3_add_missing_at`.
+
 ### Re-apply metadata to imported items + status feedback
 
 - **Photos menu → "Re-apply Metadata to Imported Items"**: pushes each already-imported

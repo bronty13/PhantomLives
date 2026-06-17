@@ -76,8 +76,20 @@ struct MediaThumbnailCell: View {
         HStack(spacing: 4) {
             typeBadge
             decisionBadge
+            if file.isMissing { missingBadge }
         }
         .padding(6)
+    }
+
+    /// Shown when a re-scan found the file gone from disk (it may still reappear).
+    private var missingBadge: some View {
+        Image(systemName: "questionmark.folder")
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background(.orange.opacity(0.9), in: Capsule())
+            .foregroundStyle(.white)
+            .help("This file is missing from disk")
     }
 
     private var typeBadge: some View {

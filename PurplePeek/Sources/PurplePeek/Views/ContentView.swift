@@ -126,6 +126,14 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
+                appState.rescanSelectedRoot()
+            } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                .keyboardShortcut("r", modifiers: [.command])
+                .help("Re-scan this folder to pick up added, removed, or moved files")
+                .disabled(appState.selectedRootPath == nil || appState.isScanning)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
                 openFolderPanel()
             } label: { Label("Open Folder", systemImage: "folder.badge.plus") }
                 .keyboardShortcut("o", modifiers: [.command])
