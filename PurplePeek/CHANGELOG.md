@@ -9,6 +9,13 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Fix: Preview text field no longer "sticks" focus across items
+
+- In Preview, after typing a **title/caption**, moving to another item now **releases the
+  field**, so **Y/N/U/F/H/Space** act on the new item instead of typing into the box left
+  focused from the previous one. (Focus is cleared whenever the previewed item changes; Return
+  still commits-and-leaves a field as before.)
+
 ### Exact-duplicate detection (decide once, import once)
 
 - After each scan, PurplePeek finds **byte-for-byte identical** files and collapses each set to

@@ -101,7 +101,8 @@ A full-size, one-at-a-time walkthrough with an **EXIF panel** — best for fast 
 - The **Review menu** picks which queue you walk: *Undecided* (default), or *Decided / Kept /
   Skipped / All* to revisit.
 - All keys are suspended while a title or caption field has focus, so you can type freely;
-  press Return to leave the field and resume keyboard navigation.
+  press Return to leave the field and resume keyboard navigation. Moving to another item also
+  releases the field automatically, so Y/N work right away on the next item.
 
 **Undo a keep/skip.** Made a wrong call? The **Undo** button (curved-arrow) in the toolbar
 reverts your most recent keep/skip — press it repeatedly to step back through several. In

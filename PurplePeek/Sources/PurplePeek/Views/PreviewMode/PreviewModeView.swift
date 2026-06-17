@@ -194,6 +194,10 @@ struct PreviewModeView: View {
     // MARK: - Selection sync
 
     private func onFileChange(_ file: MediaFile) async {
+        // Release any focused title/caption field when the item changes, so the keyboard
+        // (Y/N/U/F/H/Space/arrows) works immediately on the new item instead of typing into a
+        // field left focused from the previous one.
+        focus = nil
         // Set the id first, then the baselines, then the text — so the write-through
         // onChange sees text == baseline and skips (no write back to this file on load).
         editingFileId = file.id
