@@ -177,25 +177,41 @@ struct RunView: View {
     @ViewBuilder
     private func permissionRow(_ kind: PermissionKind) -> some View {
         let state = grantState(kind)
-        HStack(spacing: 8) {
-            Image(systemName: state == .granted ? "checkmark.circle.fill" : "exclamationmark.circle")
-                .foregroundStyle(state == .granted ? .green : .orange)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(kind.title).font(.callout.weight(.medium))
-                Text(kind.why).font(.caption2).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if state != .granted {
-                switch kind {
-                case .photosAutomation:
-                    Button("Grant…") { appState.requestPhotosAutomation() }
-                case .photosLibrary:
-                    Button("Grant…") { appState.requestPhotosLibrary() }
-                case .fullDiskAccess:
-                    EmptyView()
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                Image(systemName: state == .granted ? "checkmark.circle.fill" : "exclamationmark.circle")
+                    .foregroundStyle(state == .granted ? .green : .orange)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(kind.title).font(.callout.weight(.medium))
+                    Text(kind.why).font(.caption2).foregroundStyle(.secondary)
                 }
-                Button("Settings…") { appState.openPermissionSettings(kind) }
-                    .buttonStyle(.link).font(.caption)
+                Spacer()
+                if state != .granted {
+                    switch kind {
+                    case .photosAutomation:
+                        Button("Grant…") { appState.requestPhotosAutomation() }
+                    case .photosLibrary:
+                        Button("Grant…") { appState.requestPhotosLibrary() }
+                    case .fullDiskAccess:
+                        EmptyView()
+                    }
+                    Button("Settings…") { appState.openPermissionSettings(kind) }
+                        .buttonStyle(.link).font(.caption)
+                }
+            }
+            // Full Disk Access is granted per-binary: the GUI's grant does NOT cover the
+            // bundled `pattic` helper that the scheduler runs headless. Without this note a
+            // user grants FDA to the app, sees all-green here, then gets ambushed by the
+            // macOS "access data from other apps" prompt every time the hourly agent fires.
+            if kind == .fullDiskAccess {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                    Text("Scheduling automatic archives? The background run also needs the bundled **pattic** helper added to Full Disk Access — the Schedule pane has a one-click reveal.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                }
+                .padding(.leading, 24)
             }
         }
     }

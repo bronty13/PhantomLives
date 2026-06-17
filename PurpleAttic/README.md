@@ -162,7 +162,12 @@ receiver.
 The app **blocks Dry Run and Archive until three macOS grants are in place**, with
 inline *Grant…* / *Settings…* buttons in the Archive pane:
 
-- **Full Disk Access** — so osxphotos can read the `.photoslibrary` bundle.
+- **Full Disk Access** — so osxphotos can read the `.photoslibrary` bundle. FDA
+  is granted **per-binary**: the scheduler runs the bundled `pattic` helper
+  headless, so it needs its *own* FDA entry — the app's grant doesn't cover it.
+  The Schedule pane's *Reveal pattic in Finder* button drops you onto the binary
+  to drag into the list. Miss this and macOS shows *"PurpleAttic would like to
+  access data from other apps"* on every scheduled run.
 - **Photos Automation** (Apple Events → Photos) — so download-missing / edited
   exports can drive Photos. *Without it osxphotos thrashes ("AppleScript export
   failed 10 consecutive times, restarting Photos app").*

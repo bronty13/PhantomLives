@@ -98,10 +98,21 @@ struct ScheduleView: View {
     private var notesCard: some View {
         Card(title: "Before you rely on it") {
             note("This runs only on this Mac, and only while it's awake — schedule it on the Mac that holds your originals (set to “Download Originals”).")
-            note("Grant Full Disk Access to the bundled pattic tool so the background run can read Photos: System Settings → Privacy & Security → Full Disk Access. The tool is at:")
+            note("Grant Full Disk Access to the bundled pattic tool so the background run can read Photos — the app's own grant does NOT cover it. Reveal it below, then drag it into System Settings → Privacy & Security → Full Disk Access:")
             Text(SchedulerService.patticPath)
                 .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
                 .textSelection(.enabled)
+            HStack {
+                Button("Reveal pattic in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting(
+                        [URL(fileURLWithPath: SchedulerService.patticPath)])
+                }
+                Button("Open Full Disk Access…") {
+                    NSWorkspace.shared.open(
+                        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+                }
+            }
+            .controlSize(.small)
             note("Purge is never run automatically — open the Purge pane monthly to review and delete.")
         }
     }

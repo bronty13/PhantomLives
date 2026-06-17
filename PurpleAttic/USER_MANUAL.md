@@ -38,8 +38,13 @@ in place. The **Archive pane shows a Permissions panel** with a row per grant an
 
 1. **Full Disk Access** — so osxphotos can read inside the protected Photos
    library. Add **PurpleAttic** in **System Settings → Privacy & Security → Full
-   Disk Access** (the panel's *Settings…* button opens it). If you'll use the
-   scheduler, also add the bundled tool at `PurpleAttic.app/Contents/MacOS/pattic`.
+   Disk Access** (the panel's *Settings…* button opens it). **This grant is
+   per-binary:** if you'll use the scheduler, you must *also* add the bundled tool
+   at `PurpleAttic.app/Contents/MacOS/pattic` — the app's own grant does not cover
+   it. The **Schedule pane** has *Reveal pattic in Finder* + *Open Full Disk
+   Access…* buttons so you can drag it straight into the list. Skip this and macOS
+   pops *"PurpleAttic would like to access data from other apps"* every time the
+   scheduled run fires.
 2. **Photos Automation** — lets the archive drive Photos.app to download/export
    images. Click **Grant…** and approve *"PurpleAttic wants to control Photos."*
    *Skip this and osxphotos thrashes — "AppleScript export failed 10 consecutive

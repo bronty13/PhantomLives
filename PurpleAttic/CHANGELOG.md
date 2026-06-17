@@ -3,6 +3,29 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.21.2] — 2026-06-17
+
+Close an onboarding gap that let the scheduled run ambush users with a recurring
+macOS privacy prompt.
+
+### Fixed
+- **Scheduled archive popped *"PurpleAttic would like to access data from other apps"*
+  on every run.** Full Disk Access is granted **per-binary**, but the launchd agent runs
+  the bundled `pattic` helper headless — so the app's own FDA grant never covered it, and
+  macOS Sequoia re-prompted (`kTCCServiceSystemPolicyAppData`) hourly. The Archive-pane
+  preflight made this worse by showing all-green once the *app* had FDA, hiding the fact
+  that the helper still needed its own grant.
+
+### Changed
+- **Archive-pane permissions preflight** now carries a note under the Full Disk Access row:
+  scheduling automatic archives also requires the bundled `pattic` helper in Full Disk
+  Access, and points at the Schedule pane's one-click reveal. (`RunView.permissionRow`)
+- **Schedule pane** gained *Reveal pattic in Finder* and *Open Full Disk Access…* buttons,
+  so adding the helper to FDA is a single drag instead of a manual `⌘⇧G` path hunt.
+  (`ScheduleView.notesCard`)
+- Reworded the helper-FDA guidance in `README.md` and `USER_MANUAL.md` to state plainly
+  that FDA is per-binary and the app grant does not cover the scheduler's helper.
+
 ## [0.21.1] — 2026-06-15
 
 Fixes found in live use of the 0.21.0 recovery-key flow.
