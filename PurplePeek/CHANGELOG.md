@@ -9,6 +9,34 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Sidebar: reorder, custom sections, totals + a toolbar gear
+
+- **Reorder folders** in the sidebar by dragging (within a group).
+- **Custom sections**: a **+** in the sidebar header creates a section; right-click a folder →
+  **Move to Section ▸** files it (or "New Section…" creates one and moves it in a single step).
+  Section headers have a **⋯** menu (and context menu) to **Rename** / **Delete** — deleting a
+  section falls its folders back to the default **Folders** group, never deleting anything.
+- Right-click a folder also offers **Forget Folder**.
+- **Footer total**: the bottom of the sidebar shows e.g. *"12,431 items · 7 folders"*.
+- **Toolbar gear** (`SettingsLink`) opens Settings from the UI (still ⌘, too).
+- Persisted in the DB (migration `v4_add_sidebar_sections`: `sidebar_sections` table +
+  `scan_roots.section_id` / `sort_order`), so organization survives restarts and is backed up.
+  The default group is implicit (`section_id = NULL`) — zero-config "everything in one group".
+- Implemented with a sidebar-styled `List` (for native `.onMove` + `Section` headers) inside
+  the existing fixed-width pane; the top-level split stays a manual `HStack`.
+- Tests: +3 DB tests (section columns round-trip, delete-section fallback, reorder sort_order);
+  migration ledger guard updated. 32/32 passing.
+
+### Documentation: USER_MANUAL, DESIGN, HANDOFF
+
+- Added **`USER_MANUAL.md`** (task-by-task usage, incl. refresh/watch, Space-to-peek, the
+  import metadata paths, audio keep-export, troubleshooting), **`DESIGN.md`** (the *why* —
+  decisions-as-data, Mirror Photos, three metadata paths, missing-vs-deleted watermark, cached
+  derived state), and **`HANDOFF.md`** (architecture snapshot + full module map, migration
+  ledger, dependency notes). `README.md` now links all four docs.
+- No code change — documentation polish to capture the recently shipped Refresh/auto-watch and
+  Space-to-peek behavior alongside pre-existing design decisions that were undocumented.
+
 ### Browse: Space to peek
 
 - In **Browse** mode, pressing **Space** on the selected item opens it full-size in Quick Look

@@ -72,14 +72,15 @@ photo whose embedding was skipped) title/caption/keywords are set afterward via 
 ## Tests
 
 ```sh
-./run-tests.sh    # XCTest (29 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
+./run-tests.sh    # XCTest (32 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
 ```
 
 Covers migrations (incl. the `v1_initial` immutability ledger + the `v2_add_is_hidden`
 round-trip), decision-preserving re-scan upsert + cascade delete, the re-scan
-missing-file reconciliation (mark-missing / reappear-clears / deleted-stays-deleted),
-media-discovery classification + top-level exclude, the decision-filter lens, backup
-retention, and the audio / delete / staging services.
+missing-file reconciliation (mark-missing / reappear-clears / deleted-stays-deleted), the
+sidebar section columns + delete-fallback + reorder, media-discovery classification +
+top-level exclude, the decision-filter lens, backup retention, and the audio / delete /
+staging services.
 
 ## Default output location
 
@@ -87,6 +88,14 @@ retention, and the audio / delete / staging services.
 - Auto-backups: `~/Downloads/PurplePeek backup/`
 
 Both are configurable in Settings.
+
+## Documentation
+
+- **`USER_MANUAL.md`** — how to use PurplePeek, task by task (also the place to point a new user).
+- **`DESIGN.md`** — the *why* behind the non-obvious decisions (Mirror Photos, the three
+  metadata paths, missing-vs-deleted, the cached-derived performance layer).
+- **`HANDOFF.md`** — architecture snapshot + module map; read before non-trivial changes.
+- **`CHANGELOG.md`** — what changed when.
 
 ## Status
 

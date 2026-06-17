@@ -139,6 +139,12 @@ struct ContentView: View {
                 .keyboardShortcut("o", modifiers: [.command])
                 .help("Open a folder to scan")
         }
+        ToolbarItem(placement: .primaryAction) {
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .help("Settings (⌘,)")
+        }
     }
 
     // MARK: - Main area

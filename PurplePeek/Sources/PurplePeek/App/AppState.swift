@@ -30,6 +30,14 @@ enum DeleteKind: Identifiable {
     }
 }
 
+/// One rendered sidebar group: the implicit default group (`id == nil`, "Folders") or a
+/// user-defined section, with its roots already in display order.
+struct SidebarGroup: Identifiable, Equatable {
+    let id: String?          // nil = the default "Folders" group
+    let name: String
+    let roots: [ScanRoot]
+}
+
 /// Live progress of an import run, published for the wizard.
 struct ImportProgress {
     var total: Int
@@ -56,6 +64,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Data slices
     @Published var scanRoots: [ScanRoot] = []
+    @Published var sidebarSections: [SidebarSection] = []
     @Published var mediaFiles: [MediaFile] = []
     @Published var keywords: [Keyword] = []
 
@@ -167,12 +176,18 @@ final class AppState: ObservableObject {
 
     func reloadAll() {
         reloadScanRoots()
+        reloadSections()
         reloadKeywords()
         reloadMediaFiles()
     }
 
     func reloadScanRoots() {
         do { scanRoots = try db.fetchAllScanRoots() }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    func reloadSections() {
+        do { sidebarSections = try db.fetchAllSections() }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -829,6 +844,69 @@ final class AppState: ObservableObject {
             try db.updateScanRootLabel(path: path, label: (clean?.isEmpty ?? true) ? nil : clean)
             reloadScanRoots()
         } catch { errorMessage = error.localizedDescription }
+    }
+
+    // MARK: - Sidebar grouping + ordering
+
+    /// Total media items across all scan roots (the sidebar footer count).
+    var totalItemCount: Int { scanRoots.reduce(0) { $0 + $1.totalFiles } }
+
+    /// The sidebar's groups in display order: the default "Folders" group first, then each
+    /// user-defined section. Roots within a group are ordered by `sortOrder` (recency breaks
+    /// ties). Built from the already-loaded `scanRoots` + `sidebarSections` — no DB hit.
+    var sidebarGroups: [SidebarGroup] {
+        let bySection = Dictionary(grouping: scanRoots) { $0.sectionId }
+        func ordered(_ roots: [ScanRoot]) -> [ScanRoot] {
+            roots.sorted { a, b in
+                a.sortOrder != b.sortOrder ? a.sortOrder < b.sortOrder : a.lastScannedAt > b.lastScannedAt
+            }
+        }
+        var groups = [SidebarGroup(id: nil, name: "Folders", roots: ordered(bySection[nil] ?? []))]
+        for section in sidebarSections {
+            groups.append(SidebarGroup(id: section.id, name: section.name, roots: ordered(bySection[section.id] ?? [])))
+        }
+        return groups
+    }
+
+    @discardableResult
+    func createSection(name: String) -> SidebarSection? {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = clean.isEmpty ? "New Section" : clean
+        do {
+            let section = try db.createSection(name: title, now: BackupService.isoNow())
+            reloadSections()
+            return section
+        } catch { errorMessage = error.localizedDescription; return nil }
+    }
+
+    func renameSection(_ id: String, name: String) {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        do { try db.renameSection(id: id, name: clean); reloadSections() }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    func deleteSection(_ id: String) {
+        do {
+            try db.deleteSection(id: id)
+            reloadSections()
+            reloadScanRoots()   // its roots fell back to the default group
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Move a root into a section (nil = default group), appending it to that group's end.
+    func assignRoot(_ path: String, toSection sectionId: String?) {
+        do { try db.setScanRootSection(path: path, sectionId: sectionId); reloadScanRoots() }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Apply a drag-reorder within `sectionId`'s group and persist the new order.
+    func reorderRoots(inSection sectionId: String?, from: IndexSet, to: Int) {
+        guard let group = sidebarGroups.first(where: { $0.id == sectionId }) else { return }
+        var paths = group.roots.map(\.path)
+        paths.move(fromOffsets: from, toOffset: to)
+        do { try db.reorderScanRoots(orderedPaths: paths); reloadScanRoots() }
+        catch { errorMessage = error.localizedDescription }
     }
 
     func cleanupOldScanRoots(announce: Bool = true) {

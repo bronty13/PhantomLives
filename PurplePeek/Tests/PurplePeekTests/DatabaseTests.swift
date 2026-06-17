@@ -29,7 +29,56 @@ final class DatabaseTests: XCTestCase {
         let ids = try queue.read { db in
             try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY identifier")
         }
-        XCTAssertEqual(ids, ["v1_initial", "v2_add_is_hidden", "v3_add_missing_at"])
+        XCTAssertEqual(ids, ["v1_initial", "v2_add_is_hidden", "v3_add_missing_at", "v4_add_sidebar_sections"])
+    }
+
+    /// A root keeps its section + position columns through a round-trip (migration v4).
+    func testScanRootSectionColumnsRoundTrip() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO sidebar_sections(id,name,sort_order,created_at) VALUES('s1','Trips',0,'t')")
+            try db.execute(sql: """
+                INSERT INTO scan_roots(path,last_scanned_at,total_files,section_id,sort_order)
+                VALUES('/r','t',0,'s1',3)
+                """)
+        }
+        let root = try queue.read { db in try ScanRoot.fetchOne(db, key: "/r") }
+        XCTAssertEqual(root?.sectionId, "s1")
+        XCTAssertEqual(root?.sortOrder, 3)
+    }
+
+    /// Deleting a section falls its roots back to the default group (section_id ← NULL).
+    func testDeleteSectionFallsRootsBackToDefault() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO sidebar_sections(id,name,sort_order,created_at) VALUES('s1','Trips',0,'t')")
+            try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files,section_id) VALUES('/r','t',0,'s1')")
+            // Mirrors DatabaseService.deleteSection: reparent, then delete.
+            try db.execute(sql: "UPDATE scan_roots SET section_id=NULL WHERE section_id='s1'")
+            try db.execute(sql: "DELETE FROM sidebar_sections WHERE id='s1'")
+        }
+        try queue.read { db in
+            XCTAssertNil(try ScanRoot.fetchOne(db, key: "/r")?.sectionId, "root should fall back to default group")
+            XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sidebar_sections"), 0)
+        }
+    }
+
+    /// A reorder assigns sequential sort_order matching the new path order.
+    func testReorderAssignsSequentialSortOrder() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            for (i, p) in ["/a", "/b", "/c"].enumerated() {
+                try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files,sort_order) VALUES(?,?,0,?)",
+                               arguments: [p, "t", i])
+            }
+            // Mirrors DatabaseService.reorderScanRoots for the new order c, a, b.
+            for (i, p) in ["/c", "/a", "/b"].enumerated() {
+                try db.execute(sql: "UPDATE scan_roots SET sort_order=? WHERE path=?", arguments: [i, p])
+            }
+        }
+        let roots = try queue.read { db in try ScanRoot.order(Column("sort_order")).fetchAll(db) }
+        XCTAssertEqual(roots.map(\.path), ["/c", "/a", "/b"])
+        XCTAssertEqual(roots.map(\.sortOrder), [0, 1, 2])
     }
 
     func testHiddenColumnRoundTrips() throws {

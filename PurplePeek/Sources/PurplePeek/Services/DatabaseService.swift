@@ -124,6 +124,24 @@ final class DatabaseService {
             try db.create(index: "idx_media_files_missing_at", on: "media_files", columns: ["missing_at"])
         }
 
+        // v4: user-defined sidebar sections + per-root ordering. A root's `section_id` is NULL
+        // when it lives in the implicit default ("Folders") group; `sort_order` orders roots
+        // within their group. No DB-level FK on section_id — deleting a section falls its roots
+        // back to the default group in app code (see `deleteSection`).
+        migrator.registerMigration("v4_add_sidebar_sections") { db in
+            try db.create(table: "sidebar_sections") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .text).notNull()
+            }
+            try db.alter(table: "scan_roots") { t in
+                t.add(column: "section_id", .text)
+                t.add(column: "sort_order", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(index: "idx_scan_roots_section", on: "scan_roots", columns: ["section_id"])
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -131,7 +149,19 @@ final class DatabaseService {
 
     func fetchAllScanRoots() throws -> [ScanRoot] {
         try dbPool.read { db in
-            try ScanRoot.order(Column("last_scanned_at").desc).fetchAll(db)
+            // Manual order is primary; recency is the tiebreak for roots that share a slot
+            // (e.g. freshly scanned roots that haven't been reordered yet).
+            try ScanRoot
+                .order(Column("sort_order"), Column("last_scanned_at").desc)
+                .fetchAll(db)
+        }
+    }
+
+    // MARK: - Sidebar section reads
+
+    func fetchAllSections() throws -> [SidebarSection] {
+        try dbPool.read { db in
+            try SidebarSection.order(Column("sort_order"), Column("name")).fetchAll(db)
         }
     }
 
@@ -156,11 +186,16 @@ final class DatabaseService {
 
     // MARK: - Scan writes
 
-    /// Create the scan-root row if it doesn't exist (so media_files' FK is satisfied).
+    /// Create the scan-root row if it doesn't exist (so media_files' FK is satisfied). A new
+    /// root appends to the end of the default group (one past the current max `sort_order`);
+    /// an existing root is left untouched (its group + position are preserved).
     func ensureScanRoot(path: String, now: String) throws {
         try dbPool.write { db in
             try db.execute(
-                sql: "INSERT OR IGNORE INTO scan_roots (path, last_scanned_at, total_files) VALUES (?, ?, 0)",
+                sql: """
+                INSERT OR IGNORE INTO scan_roots (path, last_scanned_at, total_files, sort_order)
+                VALUES (?, ?, 0, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM scan_roots))
+                """,
                 arguments: [path, now]
             )
         }
@@ -246,6 +281,58 @@ final class DatabaseService {
     func updateScanRootLabel(path: String, label: String?) throws {
         try dbPool.write { db in
             try db.execute(sql: "UPDATE scan_roots SET label = ? WHERE path = ?", arguments: [label, path])
+        }
+    }
+
+    // MARK: - Sidebar sections + ordering
+
+    /// Create a section, appended after existing ones. Returns the new row.
+    @discardableResult
+    func createSection(name: String, now: String) throws -> SidebarSection {
+        try dbPool.write { db in
+            let order = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM sidebar_sections") ?? 0
+            var section = SidebarSection(id: UUID().uuidString, name: name, sortOrder: order, createdAt: now)
+            try section.insert(db)
+            return section
+        }
+    }
+
+    func renameSection(id: String, name: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE sidebar_sections SET name = ? WHERE id = ?", arguments: [name, id])
+        }
+    }
+
+    /// Delete a section; its roots fall back to the default group (section_id ← NULL).
+    func deleteSection(id: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE scan_roots SET section_id = NULL WHERE section_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM sidebar_sections WHERE id = ?", arguments: [id])
+        }
+    }
+
+    /// Assign a root to a section (NULL = default group), placing it at the end of that group.
+    /// `section_id IS ?` matches the NULL group when `sectionId` is nil.
+    func setScanRootSection(path: String, sectionId: String?) throws {
+        try dbPool.write { db in
+            let order = try Int.fetchOne(
+                db,
+                sql: "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM scan_roots WHERE section_id IS ?",
+                arguments: [sectionId]
+            ) ?? 0
+            try db.execute(
+                sql: "UPDATE scan_roots SET section_id = ?, sort_order = ? WHERE path = ?",
+                arguments: [sectionId, order, path]
+            )
+        }
+    }
+
+    /// Persist a new within-group order: assign 0…n-1 to the given paths in order.
+    func reorderScanRoots(orderedPaths: [String]) throws {
+        try dbPool.write { db in
+            for (i, path) in orderedPaths.enumerated() {
+                try db.execute(sql: "UPDATE scan_roots SET sort_order = ? WHERE path = ?", arguments: [i, path])
+            }
         }
     }
 
