@@ -17,7 +17,7 @@ and installed via `./build-app.sh`.
 ```sh
 ./build-app.sh                 # build + install to /Applications + relaunch (the default "done")
 ./build-app.sh --no-install    # build only   (also: --no-open, BUILD_ONLY=1)
-./run-tests.sh                 # XCTest, 32 tests — sets DEVELOPER_DIR to full Xcode
+./run-tests.sh                 # XCTest, 33 tests — sets DEVELOPER_DIR to full Xcode
 ```
 
 `run-tests.sh` points `DEVELOPER_DIR` at full Xcode so XCTest resolves under Command Line
@@ -106,7 +106,7 @@ Sources/PurplePeek/
     Import/ImportWizardView.swift  filtered batched import + progress/report
     Settings/                SettingsView (tabs) → General / ScanRoots / Backup
     Shared/                  QuickLookBridge (QuickLookCoordinator), ThemeEnvironment
-Tests/PurplePeekTests/       DatabaseTests, MediaDiscoveryTests, BackupTests, ServicesTests (32)
+Tests/PurplePeekTests/       DatabaseTests, MediaDiscoveryTests, BackupTests, ServicesTests (33)
 ```
 
 ## Database & migrations

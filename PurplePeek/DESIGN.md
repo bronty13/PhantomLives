@@ -94,12 +94,16 @@ Scan roots can be drag-reordered and filed into user-defined sections. Two desig
   `section_id` (no DB-level FK; handled in `deleteSection`), so folders are never lost with the
   section.
 - **A `List`, not the top-level split.** The sidebar renders its rows in a styled `List` so
-  `.onMove` drag-reordering and `Section` headers come for free. This doesn't conflict with the
-  monorepo's no-`NavigationSplitView` rule — that rule is about the top-level split view, which
-  is still a manual fixed-width `HStack`. `.onMove` reorders *within* a group; moving *between*
-  sections is the right-click "Move to Section" action (cross-section drag in SwiftUI lists is
-  unreliable). The active root's folder tree is a manual recursive outline (so expansion state
-  is ours) rendered inside the root's row, keeping the move indices aligned with the roots.
+  `Section` headers come for free. This doesn't conflict with the monorepo's
+  no-`NavigationSplitView` rule — that rule is about the top-level split view, which is still a
+  manual fixed-width `HStack`. The active root's folder tree is a manual recursive outline (so
+  expansion state is ours) rendered inside the root's row.
+- **Drag-and-drop via `.draggable`/`.dropDestination`, not `.onMove`.** `.onMove` only reorders
+  within a single `ForEach`, so it can't move a root across a `Section`. Instead each row is
+  draggable (payload = the folder path) and a drop target ("insert before me, in my group");
+  section headers are drop targets too ("append to this group"). `AppState.moveRoot` resolves a
+  drop by setting the root's `section_id` then renumbering the target group's `sort_order`. The
+  right-click "Move to Section" menu stays as a non-drag alternative.
 
 ## Performance: cache the derived views
 

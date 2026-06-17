@@ -227,6 +227,34 @@ final class DatabaseTests: XCTestCase {
         XCTAssertNil(d?.missingAt, "a deleted file stays deleted, not missing")
     }
 
+    /// A drag-move across sections: set section_id, then renumber the target group — the moved
+    /// root lands in the new section and the others keep their order. Mirrors AppState.moveRoot.
+    func testDragMoveAcrossSections() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO sidebar_sections(id,name,sort_order,created_at) VALUES('s1','Trips',0,'t')")
+            for (i, p) in ["/a", "/b", "/c"].enumerated() {
+                try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files,sort_order) VALUES(?,?,0,?)",
+                               arguments: [p, "t", i])
+            }
+            // Move /b into section s1 (target group becomes just ["/b"] → sort_order 0).
+            try db.execute(sql: "UPDATE scan_roots SET section_id='s1' WHERE path='/b'")
+            try db.execute(sql: "UPDATE scan_roots SET sort_order=0 WHERE path='/b'")
+        }
+        try queue.read { db in
+            let b = try ScanRoot.fetchOne(db, key: "/b")
+            XCTAssertEqual(b?.sectionId, "s1")
+            XCTAssertEqual(b?.sortOrder, 0)
+            // The default group keeps /a then /c, in order.
+            let defaults = try ScanRoot
+                .filter(Column("section_id") == nil)
+                .order(Column("sort_order"))
+                .fetchAll(db)
+                .map(\.path)
+            XCTAssertEqual(defaults, ["/a", "/c"])
+        }
+    }
+
     func testCascadeDeleteOfScanRoot() throws {
         let queue = try migratedQueue()
         try queue.write { db in

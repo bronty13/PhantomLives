@@ -327,6 +327,15 @@ final class DatabaseService {
         }
     }
 
+    /// Set just a root's section (NULL = default group), leaving `sort_order` to a follow-up
+    /// `reorderScanRoots` that renumbers the whole target group. Used by drag-and-drop, where
+    /// the drop position is computed in app code.
+    func setScanRootSectionId(path: String, sectionId: String?) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE scan_roots SET section_id = ? WHERE path = ?", arguments: [sectionId, path])
+        }
+    }
+
     /// Persist a new within-group order: assign 0…n-1 to the given paths in order.
     func reorderScanRoots(orderedPaths: [String]) throws {
         try dbPool.write { db in

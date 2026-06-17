@@ -43,11 +43,15 @@ correctly. Hidden files and the insides of packages (`.app`, `.photoslibrary`) a
 
 By default every scanned folder lives in one **Folders** group. You can reorder and group them:
 
-- **Reorder**: drag a folder up or down within its group to set the order you want.
+- **Reorder**: drag a folder up or down to set the order you want — drop it on another folder
+  to place it just above that one.
+- **Move between sections by dragging**: drag a folder onto another section's **header** (or
+  onto any folder already in that section) to move it there. Drag it onto the **Folders**
+  header to move it back to the default group.
 - **Custom sections**: click the **+** at the top of the sidebar to create a section (e.g.
-  "Trips", "To sort"). Right-click any folder → **Move to Section ▸** to file it under a
-  section (or back to **Folders (default)**); "New Section…" there creates one and moves the
-  folder into it in a single step.
+  "Trips", "To sort"). You can also right-click any folder → **Move to Section ▸** to file it
+  (or back to **Folders (default)**); "New Section…" there creates one and moves the folder
+  into it in a single step.
 - **Manage a section**: use the **⋯** button on a section header (or right-click it) to
   **Rename** or **Delete** it. Deleting a section never touches its folders — they simply fall
   back to the default **Folders** group.

@@ -117,8 +117,18 @@ struct SidebarView: View {
             rootRow(root)
                 .listRowInsets(EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 6))
                 .listRowSeparator(.hidden)
+                // Drag the folder by its path; drop onto another row inserts before it (and
+                // moves it into that row's group when dragged across sections).
+                .draggable(root.path) {
+                    Label(root.displayName, systemImage: "folder.fill")
+                        .padding(6)
+                }
+                .dropDestination(for: String.self) { items, _ in
+                    guard let dragged = items.first else { return false }
+                    appState.moveRoot(dragged, toSection: group.id, before: root.path)
+                    return true
+                }
         }
-        .onMove { from, to in appState.reorderRoots(inSection: group.id, from: from, to: to) }
     }
 
     @ViewBuilder
@@ -139,11 +149,18 @@ struct SidebarView: View {
                 .help("Manage section")
             }
         }
+        .contentShape(Rectangle())
         .contextMenu {
             if let id = group.id {
                 Button("Rename…") { startRenameSection(id: id, current: group.name) }
                 Button("Delete Section", role: .destructive) { appState.deleteSection(id) }
             }
+        }
+        // Drop a folder onto a section header to move it into that section (appended).
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first else { return false }
+            appState.moveRoot(dragged, toSection: group.id, before: nil)
+            return true
         }
     }
 

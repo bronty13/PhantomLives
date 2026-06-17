@@ -72,7 +72,7 @@ photo whose embedding was skipped) title/caption/keywords are set afterward via 
 ## Tests
 
 ```sh
-./run-tests.sh    # XCTest (32 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
+./run-tests.sh    # XCTest (33 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
 ```
 
 Covers migrations (incl. the `v1_initial` immutability ledger + the `v2_add_is_hidden`

@@ -938,13 +938,27 @@ final class AppState: ObservableObject {
         catch { errorMessage = error.localizedDescription }
     }
 
-    /// Apply a drag-reorder within `sectionId`'s group and persist the new order.
-    func reorderRoots(inSection sectionId: String?, from: IndexSet, to: Int) {
-        guard let group = sidebarGroups.first(where: { $0.id == sectionId }) else { return }
-        var paths = group.roots.map(\.path)
-        paths.move(fromOffsets: from, toOffset: to)
-        do { try db.reorderScanRoots(orderedPaths: paths); reloadScanRoots() }
-        catch { errorMessage = error.localizedDescription }
+    /// Drag-and-drop a root into `sectionId`'s group, positioned just before `beforePath`
+    /// (or appended when `beforePath` is nil / not found). Handles both reordering within a
+    /// group and moving between groups: the root's `section_id` is set, then the target group
+    /// is renumbered so the dropped order sticks. A no-op if the drop wouldn't change anything.
+    func moveRoot(_ path: String, toSection sectionId: String?, before beforePath: String?) {
+        guard path != beforePath else { return }
+        // Target group's current order, minus the dragged root (it may already live here).
+        var paths = (sidebarGroups.first { $0.id == sectionId }?.roots.map(\.path) ?? []).filter { $0 != path }
+        let insertAt = beforePath.flatMap { paths.firstIndex(of: $0) } ?? paths.count
+        paths.insert(path, at: min(insertAt, paths.count))
+
+        // Skip the write if nothing actually changes (same group, same position).
+        let current = sidebarGroups.first { $0.id == sectionId }?.roots.map(\.path)
+        let movedRoot = scanRoots.first { $0.path == path }
+        if movedRoot?.sectionId == sectionId, current == paths { return }
+
+        do {
+            try db.setScanRootSectionId(path: path, sectionId: sectionId)
+            try db.reorderScanRoots(orderedPaths: paths)
+            reloadScanRoots()
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func cleanupOldScanRoots(announce: Bool = true) {
