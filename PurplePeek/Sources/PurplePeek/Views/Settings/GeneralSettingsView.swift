@@ -47,6 +47,15 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            LabeledContent("Group exact duplicates") {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Toggle("", isOn: $store.settings.dedupeEnabled)
+                        .labelsHidden()
+                    Text("Show identical files once; decide & import a duplicate set just once")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             LabeledContent("Kept Audio Export") {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(appState.settingsStore.resolvedKeptAudioPath.path)

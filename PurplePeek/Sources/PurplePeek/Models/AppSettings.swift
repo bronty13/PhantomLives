@@ -20,6 +20,10 @@ struct AppSettings: Codable, Equatable {
     /// Off by default — a refresh is otherwise on-demand (toolbar button / ⌘R).
     var autoRescanEnabled: Bool = false
 
+    /// Detect exact (byte-identical) duplicates after a scan and collapse each set to one item,
+    /// so a duplicate is decided once and imports once. On by default.
+    var dedupeEnabled: Bool = true
+
     // Scan-root cleanup
     var scanRootAutoCleanupEnabled: Bool = false
     var scanRootAutoCleanupDays: Int = 180

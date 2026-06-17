@@ -6,6 +6,7 @@ import SwiftUI
 struct MediaThumbnailCell: View {
     let file: MediaFile
     let isSelected: Bool
+    var duplicateCount: Int = 1
     let onTap: () -> Void
 
     @Environment(\.appTheme) private var theme
@@ -77,8 +78,23 @@ struct MediaThumbnailCell: View {
             typeBadge
             decisionBadge
             if file.isMissing { missingBadge }
+            if duplicateCount > 1 { duplicateBadge }
         }
         .padding(6)
+    }
+
+    /// Shown on the one representative of a set of exact duplicates (×N copies).
+    private var duplicateBadge: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "doc.on.doc.fill")
+            Text("\(duplicateCount)")
+        }
+        .font(.caption2.weight(.bold))
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(.blue.opacity(0.85), in: Capsule())
+        .foregroundStyle(.white)
+        .help("\(duplicateCount) identical copies — one decision applies to all")
     }
 
     /// Shown when a re-scan found the file gone from disk (it may still reappear).

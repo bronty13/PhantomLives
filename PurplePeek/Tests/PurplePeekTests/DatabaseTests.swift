@@ -29,7 +29,58 @@ final class DatabaseTests: XCTestCase {
         let ids = try queue.read { db in
             try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY identifier")
         }
-        XCTAssertEqual(ids, ["v1_initial", "v2_add_is_hidden", "v3_add_missing_at", "v4_add_sidebar_sections"])
+        XCTAssertEqual(ids, ["v1_initial", "v2_add_is_hidden", "v3_add_missing_at",
+                             "v4_add_sidebar_sections", "v5_add_content_hash"])
+    }
+
+    /// Re-scan clears a stored content hash only when size/mtime changed (so unchanged files
+    /// aren't needlessly re-hashed). Mirrors the `content_hash` CASE in upsertScannedFiles.
+    func testUpsertClearsHashOnContentChange() throws {
+        let queue = try migratedQueue()
+        func upsert(size: Int, modified: String) throws {
+            try queue.write { db in
+                try db.execute(sql: """
+                    INSERT INTO media_files(id,scan_root,file_path,file_name,file_type,file_size,file_modified_at,is_favorite,created_at,updated_at)
+                    VALUES('id1','/r','/r/a.jpg','a.jpg','photo',?,?,0,'t','t')
+                    ON CONFLICT(file_path) DO UPDATE SET
+                      file_size=excluded.file_size, file_modified_at=excluded.file_modified_at,
+                      content_hash = CASE
+                        WHEN file_size IS NOT excluded.file_size OR file_modified_at IS NOT excluded.file_modified_at
+                        THEN NULL ELSE content_hash END
+                    """, arguments: [size, modified])
+            }
+        }
+        try queue.write { db in try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files) VALUES('/r','t',0)") }
+        try upsert(size: 100, modified: "m1")
+        try queue.write { db in try db.execute(sql: "UPDATE media_files SET content_hash='abc' WHERE id='id1'") }
+
+        try upsert(size: 100, modified: "m1")   // unchanged → hash preserved
+        XCTAssertEqual(try queue.read { try MediaFile.fetchOne($0, key: "id1")?.contentHash }, "abc")
+
+        try upsert(size: 200, modified: "m1")   // size changed → hash cleared
+        XCTAssertNil(try queue.read { try MediaFile.fetchOne($0, key: "id1")?.contentHash })
+    }
+
+    /// The hash-candidate query returns only files that share a byte-size (the size pre-filter);
+    /// a uniquely-sized file is never hashed. Mirrors DatabaseService.pathsNeedingHash.
+    func testPathsNeedingHashSizePreFilter() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files) VALUES('/r','t',0)")
+            for (id, path, size) in [("a", "/r/a", 100), ("b", "/r/b", 100), ("c", "/r/c", 200)] {
+                try db.execute(sql: "INSERT INTO media_files(id,scan_root,file_path,file_name,file_type,file_size,is_favorite,created_at,updated_at) VALUES(?,'/r',?,?,'photo',?,0,'t','t')",
+                               arguments: [id, path, path, size])
+            }
+        }
+        let candidates = try queue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT file_path FROM media_files
+                WHERE scan_root='/r' AND deleted_at IS NULL AND content_hash IS NULL AND file_size IS NOT NULL
+                  AND file_size IN (SELECT file_size FROM media_files WHERE scan_root='/r' AND deleted_at IS NULL AND file_size IS NOT NULL GROUP BY file_size HAVING COUNT(*) > 1)
+                ORDER BY file_path
+                """)
+        }
+        XCTAssertEqual(candidates, ["/r/a", "/r/b"])   // the unique-size /r/c is excluded
     }
 
     /// A root keeps its section + position columns through a round-trip (migration v4).

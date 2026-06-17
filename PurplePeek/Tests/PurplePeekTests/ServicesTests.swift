@@ -67,6 +67,26 @@ final class ServicesTests: XCTestCase {
         XCTAssertFalse(MetadataStagingService.Metadata(title: nil, caption: nil, keywords: ["k"]).isEmpty)
     }
 
+    // MARK: - FileHashService
+
+    func testFileHashIdenticalContentMatches() throws {
+        let a = temp.appendingPathComponent("a.bin")
+        let b = temp.appendingPathComponent("b.bin")   // same bytes, different name
+        let c = temp.appendingPathComponent("c.bin")   // different bytes
+        try Data("the same exact bytes".utf8).write(to: a)
+        try Data("the same exact bytes".utf8).write(to: b)
+        try Data("totally different bytes".utf8).write(to: c)
+
+        let ha = FileHashService.sha256(of: a)
+        XCTAssertNotNil(ha)
+        XCTAssertEqual(ha, FileHashService.sha256(of: b))      // identical content → same hash
+        XCTAssertNotEqual(ha, FileHashService.sha256(of: c))   // different content → different hash
+    }
+
+    func testFileHashMissingFileIsNil() {
+        XCTAssertNil(FileHashService.sha256(of: temp.appendingPathComponent("nope.bin")))
+    }
+
     // MARK: - DecisionFilter
 
     private func file(keep: Int?) -> MediaFile {

@@ -14,6 +14,7 @@ struct MediaGridView: View {
                     MediaThumbnailCell(
                         file: file,
                         isSelected: appState.selectedFileId == file.id,
+                        duplicateCount: appState.duplicateCount(for: file.id),
                         onTap: { appState.selectFile(file.id) }
                     )
                 }

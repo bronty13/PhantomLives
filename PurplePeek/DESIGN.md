@@ -109,6 +109,32 @@ Scan roots can be drag-reordered and filed into user-defined sections. Two desig
   then renumbering the target group's `sort_order`. The right-click "Move to Section" menu
   stays as a non-drag alternative.
 
+## Exact-duplicate detection
+
+PurplePeek collapses byte-identical files into one decision. Key choices:
+
+- **Content hash, size-pre-filtered.** "Exact" means identical bytes, so the match key is a
+  SHA-256 (`content_hash`, migration v5). The cost is contained by only hashing files that
+  **share a byte-size** with another — a unique size can't have a duplicate (`pathsNeedingHash`
+  is one `GROUP BY file_size HAVING COUNT(*) > 1` subquery). In a real photo library almost
+  every file is uniquely sized, so hashing touches only true collision candidates. Hashing
+  runs after each scan (when enabled) on a detached task; `FileHashService` streams the file in
+  1 MB chunks so a large video never loads whole into memory.
+- **Re-hash only on change.** The upsert clears `content_hash` *only* when a file's size or
+  mtime changed (`content_hash = CASE WHEN … THEN NULL ELSE content_hash END`), so unchanged
+  files keep their hash across re-scans and aren't re-read.
+- **Decide once, recorded for all.** The duplicate index (`dupMembersByRep` / `dupRepByMember`
+  / `hiddenDuplicateIds`, rebuilt in `rebuildDuplicateIndex`) picks one representative per group
+  (an already-imported copy if any, else the first path) and hides the rest from the grid and
+  Preview queue. A keep/skip on any member propagates to the whole group in `setKeep`, and the
+  undo entry captures every member's prior value so it reverts atomically.
+- **De-dup-aware import.** Only the representative is an import candidate, so a kept group lands
+  in Photos once rather than N identical assets. The hidden copies still exist for bulk delete
+  (the delete candidate scan walks all rows, not just visible ones), so "Delete Skipped/Imported"
+  still reaches them.
+- **A pure-preference toggle.** `dedupeEnabled` (default on) only affects the in-memory index
+  and propagation — turning it off instantly un-collapses without touching stored hashes.
+
 ## Performance: cache the derived views
 
 For a 65k-item root, recomputing the filtered grid, the Preview queue, and the folder tree on
@@ -130,7 +156,7 @@ actor in 500-row batches so the UI stays responsive during a large scan.
 ## Conventions inherited from the monorepo
 
 - **Migrations are immutable once shipped.** New schema = a new migration
-  (`v4_add_sidebar_sections` is the latest); a frozen-ledger test
+  (`v5_add_content_hash` is the latest); a frozen-ledger test
   (`testMigrationLedgerIsFrozen`) fails if a shipped one is edited. See the repo `CLAUDE.md`.
 - **Auto-backup-on-launch** of the decision database (zip, 14-day retention) + full Settings →
   Backup UI — the PhantomLives standard for apps that own user data.

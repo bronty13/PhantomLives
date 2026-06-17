@@ -6,6 +6,11 @@ favorite, title, caption, keywords, albums — before importing the keepers into
 library. Decisions persist in a local database keyed by file path, so you can revisit a
 folder and only re-review the items you haven't decided yet.
 
+**Exact duplicates are decided once.** After each scan PurplePeek finds byte-for-byte identical
+files (content hash, with a size pre-filter so it's fast), shows each set as one item with a
+**×N** badge, applies your keep/skip to every copy, and imports only one copy of a kept set.
+Toggle it off in Settings → General.
+
 To keep the view in step with disk, **Refresh** (toolbar button / **⌘R**) re-scans the
 selected folder — picking up newly added files and flagging any that were removed or moved as
 **missing** (an orange grid badge; they reappear normally if the file comes back), all without
@@ -72,15 +77,15 @@ photo whose embedding was skipped) title/caption/keywords are set afterward via 
 ## Tests
 
 ```sh
-./run-tests.sh    # XCTest (33 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
+./run-tests.sh    # XCTest (37 tests) — uses full Xcode's XCTest via DEVELOPER_DIR
 ```
 
 Covers migrations (incl. the `v1_initial` immutability ledger + the `v2_add_is_hidden`
 round-trip), decision-preserving re-scan upsert + cascade delete, the re-scan
 missing-file reconciliation (mark-missing / reappear-clears / deleted-stays-deleted), the
-sidebar section columns + delete-fallback + reorder, media-discovery classification +
-top-level exclude, the decision-filter lens, backup retention, and the audio / delete /
-staging services.
+sidebar section columns + delete-fallback + reorder, the duplicate hash pre-filter +
+re-hash-on-change + content hashing, media-discovery classification + top-level exclude, the
+decision-filter lens, backup retention, and the audio / delete / staging services.
 
 ## Default output location
 

@@ -142,6 +142,16 @@ final class DatabaseService {
             try db.create(index: "idx_scan_roots_section", on: "scan_roots", columns: ["section_id"])
         }
 
+        // v5: exact-duplicate detection. `content_hash` is a SHA-256 hex digest, populated
+        // only for files that share a byte-size with another (the size pre-filter — unique
+        // sizes can't be duplicates). NULL = not yet hashed / not a duplicate candidate.
+        migrator.registerMigration("v5_add_content_hash") { db in
+            try db.alter(table: "media_files") { t in
+                t.add(column: "content_hash", .text)
+            }
+            try db.create(index: "idx_media_files_hash", on: "media_files", columns: ["scan_root", "content_hash"])
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -484,7 +494,11 @@ final class DatabaseService {
                     file_size = excluded.file_size,
                     file_modified_at = excluded.file_modified_at,
                     updated_at = excluded.updated_at,
-                    missing_at = NULL
+                    missing_at = NULL,
+                    content_hash = CASE
+                        WHEN file_size IS NOT excluded.file_size
+                          OR file_modified_at IS NOT excluded.file_modified_at
+                        THEN NULL ELSE content_hash END
                 """)
             for f in files {
                 stmt.arguments = [
@@ -515,6 +529,39 @@ final class DatabaseService {
                   AND updated_at < ?
                 """, arguments: [now, now, scanRoot, now])
             return db.changesCount
+        }
+    }
+
+    // MARK: - Duplicate detection (content hashing)
+
+    /// File paths under `scanRoot` that still need a content hash: not deleted, not yet hashed,
+    /// and sharing their byte-size with at least one other file. The size pre-filter is the
+    /// whole optimization — a file with a unique size cannot be a byte-for-byte duplicate, so
+    /// it never needs hashing.
+    func pathsNeedingHash(scanRoot: String) throws -> [String] {
+        try dbPool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT file_path FROM media_files
+                WHERE scan_root = ? AND deleted_at IS NULL AND content_hash IS NULL AND file_size IS NOT NULL
+                  AND file_size IN (
+                      SELECT file_size FROM media_files
+                      WHERE scan_root = ? AND deleted_at IS NULL AND file_size IS NOT NULL
+                      GROUP BY file_size HAVING COUNT(*) > 1
+                  )
+                """, arguments: [scanRoot, scanRoot])
+        }
+    }
+
+    /// Store computed content hashes by file path. Does not touch `updated_at` (a hash is a
+    /// derived value, not a content change — and bumping it would disturb the missing-file
+    /// watermark).
+    func setContentHashes(_ hashes: [(path: String, hash: String)]) throws {
+        try dbPool.write { db in
+            let stmt = try db.makeStatement(sql: "UPDATE media_files SET content_hash = ? WHERE file_path = ?")
+            for h in hashes {
+                stmt.arguments = [h.hash, h.path]
+                try stmt.execute()
+            }
         }
     }
 }

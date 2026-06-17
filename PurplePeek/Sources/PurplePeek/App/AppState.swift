@@ -30,11 +30,12 @@ enum DeleteKind: Identifiable {
     }
 }
 
-/// One undoable keep/skip change: the file and its keep value *before* the change.
+/// One undoable keep/skip action: the prior keep value of every file it touched (more than
+/// one when the file is part of a duplicate group, since the decision propagates to all copies).
 struct DecisionUndo: Equatable {
-    let id: String
+    struct Change: Equatable { let id: String; let previousKeep: Int? }
     let fileName: String
-    let previousKeep: Int?
+    let changes: [Change]
 }
 
 /// One rendered sidebar group: the implicit default group (`id == nil`, "Folders") or a
@@ -174,9 +175,15 @@ final class AppState: ObservableObject {
         // Bubble nested settings changes up so views observing AppState (theme, appearance,
         // default mode) re-render live.
         settingsObserver = settingsStore.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-            // Honor a live toggle of "watch folder for changes".
-            self?.updateFolderWatch()
+            guard let self else { return }
+            self.objectWillChange.send()
+            // `objectWillChange` fires in willSet (before `settings` is assigned), so react on
+            // the next tick to read the new values — honors live folder-watch and de-dup toggles.
+            Task { @MainActor in
+                self.updateFolderWatch()
+                self.rebuildDuplicateIndex()
+                self.recomputeDerived()
+            }
         }
         // PhantomLives auto-backup-on-launch standard — runs first, never throws.
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
@@ -220,8 +227,53 @@ final class AppState: ObservableObject {
         do { mediaFiles = try db.fetchMediaFiles(scanRoot: root) }
         catch { errorMessage = error.localizedDescription }
         rebuildIndex()
+        rebuildDuplicateIndex()
         rebuildFolderTree()
         recomputeDerived()
+    }
+
+    // MARK: - Duplicate index (exact-content groups)
+
+    /// repId → all member ids (including the representative); built from `contentHash`.
+    private var dupMembersByRep: [String: [String]] = [:]
+    /// any member id → its group's representative id.
+    private var dupRepByMember: [String: String] = [:]
+    /// non-representative members — collapsed out of the grid/preview so a group shows once.
+    private var hiddenDuplicateIds: Set<String> = []
+
+    /// Number of copies in `id`'s duplicate group (1 if it isn't a duplicate). Only the
+    /// representative is shown, so the grid reads this off the representative for its badge.
+    func duplicateCount(for id: String) -> Int { dupMembersByRep[id]?.count ?? 1 }
+
+    /// Every file id sharing `id`'s exact content (just `[id]` when it has no duplicates or
+    /// de-dup is off) — the set a keep/skip decision propagates across.
+    private func duplicateGroupMembers(_ id: String) -> [String] {
+        guard let rep = dupRepByMember[id], let members = dupMembersByRep[rep] else { return [id] }
+        return members
+    }
+
+    /// Group non-deleted files by content hash; for each group of 2+, pick a representative
+    /// (an already-imported copy if any, else the lexicographically-first path) and collapse
+    /// the rest. No-op when de-dup is disabled — every file then stands alone.
+    private func rebuildDuplicateIndex() {
+        dupMembersByRep = [:]
+        dupRepByMember = [:]
+        hiddenDuplicateIds = []
+        guard settings.dedupeEnabled else { return }
+
+        let hashed = mediaFiles.filter { $0.deletedAt == nil && ($0.contentHash?.isEmpty == false) }
+        for (_, group) in Dictionary(grouping: hashed, by: { $0.contentHash! }) where group.count > 1 {
+            let rep = group.sorted { a, b in
+                let ai = a.importedAt != nil, bi = b.importedAt != nil
+                return ai != bi ? ai : a.filePath < b.filePath
+            }.first!
+            let ids = group.map(\.id)
+            dupMembersByRep[rep.id] = ids
+            for m in group {
+                dupRepByMember[m.id] = rep.id
+                if m.id != rep.id { hiddenDuplicateIds.insert(m.id) }
+            }
+        }
     }
 
     /// id → position in `mediaFiles`, so `patchLocal` is O(1) even on huge roots. Valid
@@ -255,6 +307,10 @@ final class AppState: ObservableObject {
         for file in mediaFiles where file.deletedAt == nil {
             if file.importedAt != nil { deletableImported = true }
             if file.keepDecision == false { deletableSkipped = true }
+
+            // Collapse exact duplicates: only the representative appears in the grid/preview
+            // (the flags above still counted the hidden copies, so bulk delete reaches them).
+            if hiddenDuplicateIds.contains(file.id) { continue }
 
             // Grid: optional folder narrowing + the grid's decision lens.
             if gridFilter.matches(file) {
@@ -406,6 +462,20 @@ final class AppState: ObservableObject {
             // Reconcile deletions: anything not seen this pass (older watermark) is now missing.
             missingCount = try db.markMissingFiles(scanRoot: rootPath, now: now)
             try db.updateScanRootStats(path: rootPath, totalFiles: files.count, now: now)
+
+            // Exact-duplicate detection: hash only same-size collision candidates (cheap), store.
+            if settings.dedupeEnabled {
+                let toHash = try db.pathsNeedingHash(scanRoot: rootPath)
+                if !toHash.isEmpty {
+                    scanMessage = "Checking \(toHash.count) file\(toHash.count == 1 ? "" : "s") for duplicates…"
+                    let hashed = await Task.detached(priority: .userInitiated) {
+                        toHash.compactMap { path in
+                            FileHashService.sha256(of: URL(fileURLWithPath: path)).map { (path: path, hash: $0) }
+                        }
+                    }.value
+                    try db.setContentHashes(hashed)
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -415,14 +485,15 @@ final class AppState: ObservableObject {
         selectedFileId = nil
         decisionUndoStack = []
         reloadScanRoots()
-        reloadMediaFiles()
+        reloadMediaFiles()   // rebuilds the duplicate index from the fresh hashes
 
         isScanning = false
         scanProgress = 1
-        let base = "Scanned \(files.count) item\(files.count == 1 ? "" : "s") in \((rootPath as NSString).lastPathComponent)."
-        statusMessage = missingCount > 0
-            ? base + " \(missingCount) now missing from disk."
-            : base
+        let dupSets = dupMembersByRep.count
+        var base = "Scanned \(files.count) item\(files.count == 1 ? "" : "s") in \((rootPath as NSString).lastPathComponent)."
+        if missingCount > 0 { base += " \(missingCount) now missing from disk." }
+        if dupSets > 0 { base += " \(dupSets) duplicate set\(dupSets == 1 ? "" : "s") found." }
+        statusMessage = base
     }
 
     /// Select a scan root (from the sidebar) and load its files.
@@ -475,14 +546,24 @@ final class AppState: ObservableObject {
 
     func setKeep(_ id: String, _ keep: Bool?) {
         let now = BackupService.isoNow()
-        // Record the prior value so this change can be undone (newest last; capped).
-        if let f = mediaFiles.first(where: { $0.id == id }) {
-            decisionUndoStack.append(DecisionUndo(id: id, fileName: f.fileName, previousKeep: f.keep))
+        // A decision on one copy applies to every exact duplicate — decide once, recorded for all.
+        let members = duplicateGroupMembers(id)
+        let value = keep.map { $0 ? 1 : 0 }
+
+        // Record the prior values of every affected member so the action undoes as a unit.
+        let changes = members.compactMap { mid in
+            mediaFiles.first(where: { $0.id == mid }).map { DecisionUndo.Change(id: mid, previousKeep: $0.keep) }
+        }
+        if let name = mediaFiles.first(where: { $0.id == id })?.fileName, !changes.isEmpty {
+            decisionUndoStack.append(DecisionUndo(fileName: name, changes: changes))
             if decisionUndoStack.count > 50 { decisionUndoStack.removeFirst() }
         }
+
         do {
-            try db.updateKeep(id: id, keep: keep.map { $0 ? 1 : 0 }, now: now)
-            patchLocal(id) { $0.keepDecision = keep }
+            for mid in members {
+                try db.updateKeep(id: mid, keep: value, now: now)
+                patchLocal(mid) { $0.keepDecision = keep }
+            }
             recomputeDerived()   // keep affects the undecided queue + grid badge
         } catch { errorMessage = error.localizedDescription }
 
@@ -499,12 +580,16 @@ final class AppState: ObservableObject {
         guard let last = decisionUndoStack.popLast() else { return }
         let now = BackupService.isoNow()
         do {
-            try db.updateKeep(id: last.id, keep: last.previousKeep, now: now)
-            patchLocal(last.id) { $0.keep = last.previousKeep }   // does not re-push (bypasses setKeep)
+            for change in last.changes {                          // restore every affected copy
+                try db.updateKeep(id: change.id, keep: change.previousKeep, now: now)
+                patchLocal(change.id) { $0.keep = change.previousKeep }   // bypasses setKeep → no re-push
+            }
             recomputeDerived()
-            selectFile(last.id)
-            if appMode == .preview, let idx = previewQueue.firstIndex(where: { $0.id == last.id }) {
-                previewIndex = idx
+            if let firstId = last.changes.first?.id {
+                selectFile(firstId)
+                if appMode == .preview, let idx = previewQueue.firstIndex(where: { $0.id == firstId }) {
+                    previewIndex = idx
+                }
             }
             statusMessage = "Undid decision for \(last.fileName)."
         } catch { errorMessage = error.localizedDescription }
@@ -673,6 +758,9 @@ final class AppState: ObservableObject {
     func importCandidates(_ filter: ImportFilter) -> [MediaFile] {
         mediaFiles.filter { f in
             guard f.deletedAt == nil, f.importedAt == nil, f.mediaType.isImportableToPhotos else { return false }
+            // De-dup-aware: only the representative of a duplicate group imports, so a kept
+            // group lands in Photos once instead of N identical copies.
+            if hiddenDuplicateIds.contains(f.id) { return false }
             switch filter {
             case .all:       return true
             case .keepOnly:  return f.keepDecision == true

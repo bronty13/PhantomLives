@@ -108,6 +108,24 @@ reverts your most recent keep/skip — press it repeatedly to step back through 
 Preview mode you can also press **U** or use the Undo button in the decision bar. (Undo covers
 keep/skip; it resets when you switch folders or re-scan.)
 
+## Exact duplicates (decide once)
+
+PurplePeek automatically finds **byte-for-byte identical** files after each scan and groups
+them, so you only triage the content once:
+
+- Each set of duplicates shows as a **single item** with a blue **×N** badge (N = number of
+  copies). In Preview mode the header shows "N copies".
+- Your **keep/skip decision applies to every copy** in the set — decide the one you see, and
+  all of them are recorded the same way.
+- On **import to Photos, only one copy** of a kept set is imported, so you don't end up with
+  duplicates in your library. (The other copies stay on disk with the same decision; use
+  **Clean Up → Delete** if you want to remove the redundant files.)
+- Detection is by content, so renamed copies are caught and filenames are ignored. It's fast:
+  PurplePeek only hashes files that share an exact byte-size with another (a unique size can't
+  have a duplicate).
+- Turn it off in **Settings → General → "Group exact duplicates"** to see and decide every
+  file individually.
+
 ## Refreshing (picking up changes on disk)
 
 PurplePeek shows what it found at scan time. If files change on disk afterward:

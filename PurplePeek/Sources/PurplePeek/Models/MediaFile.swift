@@ -24,6 +24,7 @@ struct MediaFile: Codable, FetchableRecord, MutablePersistableRecord, Identifiab
     var exportedAt: String?        // audio copied to the Kept Audio Export folder
     var deletedAt: String?
     var missingAt: String? = nil   // set by a re-scan when the file vanished from disk (migration v3)
+    var contentHash: String? = nil // SHA-256 hex for exact-duplicate detection (migration v5)
     var photosAssetId: String?
     var createdAt: String
     var updatedAt: String
@@ -47,6 +48,7 @@ struct MediaFile: Codable, FetchableRecord, MutablePersistableRecord, Identifiab
         case exportedAt = "exported_at"
         case deletedAt = "deleted_at"
         case missingAt = "missing_at"
+        case contentHash = "content_hash"
         case photosAssetId = "photos_asset_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"

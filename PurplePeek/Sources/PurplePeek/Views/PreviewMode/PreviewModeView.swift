@@ -73,8 +73,14 @@ struct PreviewModeView: View {
                 .disabled(appState.previewIndex <= 0)
             VStack(spacing: 1) {
                 Text("Item \(pos) of \(queue.count)").font(.headline)
-                Text(appState.previewDecisionFilter.label.lowercased())
-                    .font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(appState.previewDecisionFilter.label.lowercased())
+                    if let f = appState.currentPreviewFile, appState.duplicateCount(for: f.id) > 1 {
+                        Label("\(appState.duplicateCount(for: f.id)) copies", systemImage: "doc.on.doc.fill")
+                            .foregroundStyle(.blue)
+                    }
+                }
+                .font(.caption2).foregroundStyle(.secondary)
             }
             Button { appState.nextPreview() } label: { Image(systemName: "chevron.right") }
                 .disabled(appState.previewIndex >= queue.count - 1)

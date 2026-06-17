@@ -9,6 +9,23 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Exact-duplicate detection (decide once, import once)
+
+- After each scan, PurplePeek finds **byte-for-byte identical** files and collapses each set to
+  a single item with a **×N** badge (and "N copies" in Preview). A keep/skip decision applies
+  to **every copy** in the set; **only one copy imports** to Photos, so a kept duplicate set
+  doesn't create duplicates in your library.
+- Detection is by content hash (SHA-256), so renamed copies match and filenames are ignored.
+  It's kept cheap by a **size pre-filter** — only files that share a byte-size with another are
+  ever hashed (a unique size can't be a duplicate). Hashing streams files in 1 MB chunks on a
+  background task and runs only when "Group exact duplicates" is on (default).
+- Re-scan clears a stored hash **only when a file's size/mtime changed**, so unchanged files
+  aren't re-hashed. Hidden copies still exist for bulk **Clean Up** delete.
+- New: `media_files.content_hash` (migration `v5_add_content_hash`), `FileHashService`,
+  Settings → General → **Group exact duplicates** toggle. Undo restores a whole group atomically.
+- Tests: +4 (content-hash identical/different + missing-file, re-hash-on-change CASE, size
+  pre-filter query). 37/37 passing.
+
 ### Sidebar: full drag-and-drop (reorder + move between sections)
 
 - Drag a folder onto another folder to drop it just above (reorder); drag it across to another

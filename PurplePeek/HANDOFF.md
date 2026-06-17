@@ -17,7 +17,7 @@ and installed via `./build-app.sh`.
 ```sh
 ./build-app.sh                 # build + install to /Applications + relaunch (the default "done")
 ./build-app.sh --no-install    # build only   (also: --no-open, BUILD_ONLY=1)
-./run-tests.sh                 # XCTest, 33 tests — sets DEVELOPER_DIR to full Xcode
+./run-tests.sh                 # XCTest, 37 tests — sets DEVELOPER_DIR to full Xcode
 ```
 
 `run-tests.sh` points `DEVELOPER_DIR` at full Xcode so XCTest resolves under Command Line
@@ -33,6 +33,8 @@ Two lifecycle columns matter:
 - `keep` — tri-state (`NULL`/`1`/`0` = undecided/keep/skip), bridged via `MediaFile.keepDecision`.
 - `deleted_at` (user deleted in-app, terminal) vs `missing_at` (re-scan found it gone,
   reversible). Don't conflate them — see `DESIGN.md` → *Missing vs deleted*.
+- `content_hash` — SHA-256 for exact-duplicate grouping; a decision on one copy propagates to
+  all, and only one copy imports. See `DESIGN.md` → *Exact-duplicate detection*.
 
 ## State flow
 
@@ -66,7 +68,7 @@ Sources/PurplePeek/
                                cached-derived, FSEvents auto-watch wiring, Preview navigation
     Version.swift            reads git-derived CFBundleShortVersionString back from the bundle
   Models/
-    MediaFile.swift          the row record (GRDB), tri-state keep, isMissing/isDeleted helpers
+    MediaFile.swift          the row record (GRDB), tri-state keep, isMissing/isDeleted, content_hash
     ScanRoot.swift           one scanned folder (path PK, total, label, section_id, sort_order)
     SidebarSection.swift     user-defined sidebar group (id, name, sort_order)
     Keyword.swift            local keyword vocabulary record
@@ -79,6 +81,7 @@ Sources/PurplePeek/
     DatabaseService.swift    ★ owns the DatabasePool; migrations v1→v3 (immutable!); CRUD;
                                upsertScannedFiles + markMissingFiles (the watermark sweep)
     MediaDiscoveryService.swift  recursive scan by UTType → [ScannedFile] (pure, off-main)
+    FileHashService.swift    streaming SHA-256 of a file (exact-duplicate detection; pure, off-main)
     FolderWatchService.swift FSEvents watcher → debounced onChange (auto-refresh)
     PhotoKitService.swift    import to Photos; favorite/hidden/album; authorization
     MetadataStagingService.swift  exiftool: embed title/caption/keywords into a staged photo copy
@@ -106,7 +109,7 @@ Sources/PurplePeek/
     Import/ImportWizardView.swift  filtered batched import + progress/report
     Settings/                SettingsView (tabs) → General / ScanRoots / Backup
     Shared/                  QuickLookBridge (QuickLookCoordinator), ThemeEnvironment
-Tests/PurplePeekTests/       DatabaseTests, MediaDiscoveryTests, BackupTests, ServicesTests (33)
+Tests/PurplePeekTests/       DatabaseTests, MediaDiscoveryTests, BackupTests, ServicesTests (37)
 ```
 
 ## Database & migrations
@@ -120,6 +123,8 @@ Tests/PurplePeekTests/       DatabaseTests, MediaDiscoveryTests, BackupTests, Se
 - `v3_add_missing_at` — `media_files.missing_at` (+ index).
 - `v4_add_sidebar_sections` — `sidebar_sections` table + `scan_roots.section_id` /
   `sort_order` (+ index). Sidebar groups and per-root ordering.
+- `v5_add_content_hash` — `media_files.content_hash` (+ `(scan_root, content_hash)` index).
+  Exact-duplicate detection.
 
 **Migrations are immutable once shipped** (repo `CLAUDE.md`). To change shipped schema/data,
 add a new migration — never edit an existing one. `testMigrationLedgerIsFrozen` guards this
