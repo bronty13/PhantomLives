@@ -118,8 +118,10 @@ PurplePeek collapses byte-identical files into one decision. Key choices:
   **share a byte-size** with another — a unique size can't have a duplicate (`pathsNeedingHash`
   is one `GROUP BY file_size HAVING COUNT(*) > 1` subquery). In a real photo library almost
   every file is uniquely sized, so hashing touches only true collision candidates. Hashing
-  runs after each scan (when enabled) on a detached task; `FileHashService` streams the file in
-  1 MB chunks so a large video never loads whole into memory.
+  runs after each scan **and on root selection** (so libraries scanned before de-dup existed
+  still get grouped — `computeAndStoreHashes`, guarded against concurrent passes) on a detached
+  task; `FileHashService` streams the file in 1 MB chunks so a large video never loads whole
+  into memory.
 - **Re-hash only on change.** The upsert clears `content_hash` *only* when a file's size or
   mtime changed (`content_hash = CASE WHEN … THEN NULL ELSE content_hash END`), so unchanged
   files keep their hash across re-scans and aren't re-read.

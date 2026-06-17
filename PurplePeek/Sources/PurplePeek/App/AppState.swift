@@ -462,22 +462,14 @@ final class AppState: ObservableObject {
             // Reconcile deletions: anything not seen this pass (older watermark) is now missing.
             missingCount = try db.markMissingFiles(scanRoot: rootPath, now: now)
             try db.updateScanRootStats(path: rootPath, totalFiles: files.count, now: now)
-
-            // Exact-duplicate detection: hash only same-size collision candidates (cheap), store.
-            if settings.dedupeEnabled {
-                let toHash = try db.pathsNeedingHash(scanRoot: rootPath)
-                if !toHash.isEmpty {
-                    scanMessage = "Checking \(toHash.count) file\(toHash.count == 1 ? "" : "s") for duplicates…"
-                    let hashed = await Task.detached(priority: .userInitiated) {
-                        toHash.compactMap { path in
-                            FileHashService.sha256(of: URL(fileURLWithPath: path)).map { (path: path, hash: $0) }
-                        }
-                    }.value
-                    try db.setContentHashes(hashed)
-                }
-            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+
+        // Exact-duplicate detection (size-prefiltered content hashing), if enabled.
+        if settings.dedupeEnabled {
+            scanMessage = "Checking for duplicates…"
+            await computeAndStoreHashes(for: rootPath)
         }
 
         selectedRootPath = rootPath
@@ -505,6 +497,39 @@ final class AppState: ObservableObject {
         selectedAlbums = []
         decisionUndoStack = []   // undo is scoped to the loaded root
         reloadMediaFiles()
+        hashSelectedRootIfNeeded(path)
+    }
+
+    private var hashingInProgress: Set<String> = []
+
+    /// Hash a root's not-yet-hashed, size-collision candidates and store the results. Cheap
+    /// when nothing's outstanding (the size pre-filter + the NULL-hash filter make repeat calls
+    /// near-free). Reads file bytes off the main actor. Does not reload — the caller does.
+    private func computeAndStoreHashes(for root: String) async {
+        guard settings.dedupeEnabled, !hashingInProgress.contains(root) else { return }
+        let toHash = (try? db.pathsNeedingHash(scanRoot: root)) ?? []
+        guard !toHash.isEmpty else { return }
+        hashingInProgress.insert(root)
+        defer { hashingInProgress.remove(root) }
+        let hashed = await Task.detached(priority: .userInitiated) {
+            toHash.compactMap { path in
+                FileHashService.sha256(of: URL(fileURLWithPath: path)).map { (path: path, hash: $0) }
+            }
+        }.value
+        try? db.setContentHashes(hashed)
+    }
+
+    /// Hash a freshly-selected root in the background (covers libraries scanned before de-dup
+    /// existed, or after the toggle is turned on), then reload to surface the groups.
+    private func hashSelectedRootIfNeeded(_ path: String) {
+        guard settings.dedupeEnabled else { return }
+        Task {
+            await computeAndStoreHashes(for: path)
+            guard selectedRootPath == path else { return }   // user moved on; don't clobber
+            reloadMediaFiles()
+            let sets = dupMembersByRep.count
+            if sets > 0 { statusMessage = "\(sets) duplicate set\(sets == 1 ? "" : "s") found." }
+        }
     }
 
     // MARK: - File selection + decisions

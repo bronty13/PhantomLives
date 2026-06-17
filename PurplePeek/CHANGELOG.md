@@ -18,7 +18,9 @@ The sections below are the increments that make up 1.0, newest first.
 - Detection is by content hash (SHA-256), so renamed copies match and filenames are ignored.
   It's kept cheap by a **size pre-filter** — only files that share a byte-size with another are
   ever hashed (a unique size can't be a duplicate). Hashing streams files in 1 MB chunks on a
-  background task and runs only when "Group exact duplicates" is on (default).
+  background task and runs only when "Group exact duplicates" is on (default). It runs after
+  each scan **and when a root is selected**, so libraries scanned before de-dup existed (or
+  after the toggle is turned on) get grouped without a manual re-scan.
 - Re-scan clears a stored hash **only when a file's size/mtime changed**, so unchanged files
   aren't re-hashed. Hidden copies still exist for bulk **Clean Up** delete.
 - New: `media_files.content_hash` (migration `v5_add_content_hash`), `FileHashService`,
