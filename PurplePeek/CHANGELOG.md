@@ -9,6 +9,15 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Undo keep/skip + fix: Move to Section now works
+
+- **Undo decisions**: a toolbar **Undo** button reverts the most recent keep/skip (repeatable,
+  up to 50 deep); in Preview mode press **U** or use the decision-bar Undo button. The undo
+  history resets when you switch folders or re-scan, so it never reaches across contexts.
+- **Fix**: "Move to Section" did nothing — it was a nested `Menu` inside a `.contextMenu`, and
+  those submenu buttons don't reliably fire on macOS. Flattened to a titled context-menu
+  section so assignment works.
+
 ### Sidebar: reorder, custom sections, totals + a toolbar gear
 
 - **Reorder folders** in the sidebar by dragging (within a group).

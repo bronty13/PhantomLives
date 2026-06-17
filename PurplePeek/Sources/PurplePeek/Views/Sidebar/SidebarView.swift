@@ -182,21 +182,21 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func rootMenu(_ root: ScanRoot) -> some View {
-        Menu("Move to Section") {
+        // Flat, titled section rather than a nested `Menu` — submenu buttons inside a
+        // `.contextMenu` don't reliably fire their actions on macOS.
+        Section("Move to Section") {
             Button("Folders (default)") { appState.assignRoot(root.path, toSection: nil) }
                 .disabled(root.sectionId == nil)
             ForEach(appState.sidebarSections) { section in
                 Button(section.name) { appState.assignRoot(root.path, toSection: section.id) }
                     .disabled(root.sectionId == section.id)
             }
-            Divider()
             Button("New Section…") {
                 pendingAssignRoot = root.path
                 newSectionName = ""
                 showNewSection = true
             }
         }
-        Divider()
         Button("Forget Folder", role: .destructive) { appState.deleteScanRoot(root.path) }
     }
 

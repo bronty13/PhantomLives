@@ -30,6 +30,13 @@ enum DeleteKind: Identifiable {
     }
 }
 
+/// One undoable keep/skip change: the file and its keep value *before* the change.
+struct DecisionUndo: Equatable {
+    let id: String
+    let fileName: String
+    let previousKeep: Int?
+}
+
 /// One rendered sidebar group: the implicit default group (`id == nil`, "Folders") or a
 /// user-defined section, with its roots already in display order.
 struct SidebarGroup: Identifiable, Equatable {
@@ -105,6 +112,13 @@ final class AppState: ObservableObject {
     @Published var previewDecisionFilter: DecisionFilter = .undecided {
         didSet { if previewDecisionFilter != oldValue { recomputeDerived() } }
     }
+
+    // MARK: - Decision undo
+    /// Recent keep/skip changes, newest last. The Undo control reverts the most recent one.
+    @Published private(set) var decisionUndoStack: [DecisionUndo] = []
+    var canUndoDecision: Bool { !decisionUndoStack.isEmpty }
+    /// Filename of the change Undo would revert (for the button tooltip).
+    var lastDecisionName: String? { decisionUndoStack.last?.fileName }
 
     // MARK: - Scan progress
     @Published var isScanning: Bool = false
@@ -399,6 +413,7 @@ final class AppState: ObservableObject {
         selectedRootPath = rootPath
         selectedFolderPath = nil
         selectedFileId = nil
+        decisionUndoStack = []
         reloadScanRoots()
         reloadMediaFiles()
 
@@ -417,6 +432,7 @@ final class AppState: ObservableObject {
         selectedFileId = nil
         selectedKeywordIds = []
         selectedAlbums = []
+        decisionUndoStack = []   // undo is scoped to the loaded root
         reloadMediaFiles()
     }
 
@@ -459,6 +475,11 @@ final class AppState: ObservableObject {
 
     func setKeep(_ id: String, _ keep: Bool?) {
         let now = BackupService.isoNow()
+        // Record the prior value so this change can be undone (newest last; capped).
+        if let f = mediaFiles.first(where: { $0.id == id }) {
+            decisionUndoStack.append(DecisionUndo(id: id, fileName: f.fileName, previousKeep: f.keep))
+            if decisionUndoStack.count > 50 { decisionUndoStack.removeFirst() }
+        }
         do {
             try db.updateKeep(id: id, keep: keep.map { $0 ? 1 : 0 }, now: now)
             patchLocal(id) { $0.keepDecision = keep }
@@ -470,6 +491,23 @@ final class AppState: ObservableObject {
            f.mediaType == .audio, f.exportedAt == nil {
             exportAudio(id)
         }
+    }
+
+    /// Revert the most recent keep/skip change, restoring that file's prior decision. In
+    /// Preview mode it also jumps back to the affected item when it's in the current queue.
+    func undoLastDecision() {
+        guard let last = decisionUndoStack.popLast() else { return }
+        let now = BackupService.isoNow()
+        do {
+            try db.updateKeep(id: last.id, keep: last.previousKeep, now: now)
+            patchLocal(last.id) { $0.keep = last.previousKeep }   // does not re-push (bypasses setKeep)
+            recomputeDerived()
+            selectFile(last.id)
+            if appMode == .preview, let idx = previewQueue.firstIndex(where: { $0.id == last.id }) {
+                previewIndex = idx
+            }
+            statusMessage = "Undid decision for \(last.fileName)."
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func setFavorite(_ id: String, _ value: Bool) {

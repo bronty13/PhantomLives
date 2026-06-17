@@ -107,6 +107,12 @@ struct PreviewModeView: View {
                            tint: .red, active: file.keepDecision == false) {
                 appState.decidePreview(keep: false)
             }
+            Button { appState.undoLastDecision() } label: {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .disabled(!appState.canUndoDecision)
+            .help(appState.lastDecisionName.map { "Undo keep/skip for \($0) (U)" } ?? "Undo last keep/skip (U)")
+
             Button { appState.toggleFavoritePreview() } label: {
                 Image(systemName: file.isFavorite ? "heart.fill" : "heart")
                     .foregroundStyle(file.isFavorite ? .pink : .secondary)
@@ -205,6 +211,7 @@ struct PreviewModeView: View {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "y": appState.decidePreview(keep: true); return nil
             case "n": appState.decidePreview(keep: false); return nil
+            case "u": appState.undoLastDecision(); return nil
             case "f": appState.toggleFavoritePreview(); return nil
             case "h": appState.toggleHiddenPreview(); return nil
             default: break

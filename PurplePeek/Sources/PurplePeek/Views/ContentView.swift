@@ -126,6 +126,13 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
+                appState.undoLastDecision()
+            } label: { Label("Undo Decision", systemImage: "arrow.uturn.backward") }
+                .disabled(!appState.canUndoDecision)
+                .help(appState.lastDecisionName.map { "Undo keep/skip for \($0)" } ?? "Undo last keep/skip")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
                 appState.rescanSelectedRoot()
             } label: { Label("Refresh", systemImage: "arrow.clockwise") }
                 .keyboardShortcut("r", modifiers: [.command])

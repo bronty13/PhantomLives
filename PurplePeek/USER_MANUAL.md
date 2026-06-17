@@ -88,6 +88,7 @@ A full-size, one-at-a-time walkthrough with an **EXIF panel** — best for fast 
 |-----|--------|
 | **Y** | Keep, advance |
 | **N** | Skip, advance |
+| **U** | Undo last keep/skip |
 | **F** | Toggle favorite |
 | **H** | Toggle hidden |
 | **←/→** | Previous / next |
@@ -97,6 +98,11 @@ A full-size, one-at-a-time walkthrough with an **EXIF panel** — best for fast 
   Skipped / All* to revisit.
 - All keys are suspended while a title or caption field has focus, so you can type freely;
   press Return to leave the field and resume keyboard navigation.
+
+**Undo a keep/skip.** Made a wrong call? The **Undo** button (curved-arrow) in the toolbar
+reverts your most recent keep/skip — press it repeatedly to step back through several. In
+Preview mode you can also press **U** or use the Undo button in the decision bar. (Undo covers
+keep/skip; it resets when you switch folders or re-scan.)
 
 ## Refreshing (picking up changes on disk)
 
