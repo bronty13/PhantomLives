@@ -98,12 +98,16 @@ Scan roots can be drag-reordered and filed into user-defined sections. Two desig
   no-`NavigationSplitView` rule — that rule is about the top-level split view, which is still a
   manual fixed-width `HStack`. The active root's folder tree is a manual recursive outline (so
   expansion state is ours) rendered inside the root's row.
-- **Drag-and-drop via `.draggable`/`.dropDestination`, not `.onMove`.** `.onMove` only reorders
-  within a single `ForEach`, so it can't move a root across a `Section`. Instead each row is
-  draggable (payload = the folder path) and a drop target ("insert before me, in my group");
-  section headers are drop targets too ("append to this group"). `AppState.moveRoot` resolves a
-  drop by setting the root's `section_id` then renumbering the target group's `sort_order`. The
-  right-click "Move to Section" menu stays as a non-drag alternative.
+- **Drag-and-drop via `.onDrag`/`.onDrop`, not `.onMove` (or `.draggable`).** `.onMove` only
+  reorders within a single `ForEach`, so it can't move a root across a `Section`. The modern
+  `.draggable`/`.dropDestination` pair proved unreliable inside a macOS `List`, so we use the
+  older NSItemProvider-based `.onDrag`/`.onDrop` (payload = the folder path as `NSString`).
+  Each row is draggable and a drop target ("insert before me, in my group"); section headers
+  are drop targets too ("append to this group"). **The row must be a plain tappable view, not a
+  `Button`** — a `Button` swallows the press-drag gesture so the drag never starts (selection is
+  an `.onTapGesture`). `AppState.moveRoot` resolves a drop by setting the root's `section_id`
+  then renumbering the target group's `sort_order`. The right-click "Move to Section" menu
+  stays as a non-drag alternative.
 
 ## Performance: cache the derived views
 

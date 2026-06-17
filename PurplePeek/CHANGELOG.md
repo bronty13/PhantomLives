@@ -14,11 +14,14 @@ The sections below are the increments that make up 1.0, newest first.
 - Drag a folder onto another folder to drop it just above (reorder); drag it across to another
   section's **header** (or onto any folder in that section) to move it there — drag onto the
   **Folders** header to return it to the default group.
-- Replaces the within-section-only `.onMove` with SwiftUI `.draggable`/`.dropDestination`
-  (Transferable on the folder path): one mechanism for both reordering and cross-section moves,
-  since `.onMove` can't cross a `Section`. Drops resolve to "before this row, in this group"
-  (rows) or "append to this group" (headers); a drop is written via
-  `setScanRootSectionId` + a target-group renumber, and is a no-op when nothing changes.
+- Replaces the within-section-only `.onMove` (which can't cross a `Section`) with drag-and-drop.
+  Drops resolve to "before this row, in this group" (rows) or "append to this group" (headers);
+  a drop is written via `setScanRootSectionId` + a target-group renumber, and is a no-op when
+  nothing changes.
+- **Fix (drag didn't start):** the first cut used `.draggable`/`.dropDestination`, which is
+  unreliable inside a macOS `List`, and the rows were `Button`s — a `Button` swallows the
+  press-drag so no drag began. Switched to the NSItemProvider-based `.onDrag`/`.onDrop` and made
+  rows plain tappable views (selection via `.onTapGesture`).
 - The right-click **Move to Section** menu remains as a non-drag alternative.
 - Tests: +1 DB test (cross-section drag-move keeps the others' order).
 

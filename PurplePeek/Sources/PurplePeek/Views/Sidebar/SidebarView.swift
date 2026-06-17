@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Left sidebar: scanned roots grouped into the default "Folders" group plus any user-defined
 /// sections, with the active root's folder outline beneath it. Roots can be drag-reordered
@@ -117,18 +118,30 @@ struct SidebarView: View {
             rootRow(root)
                 .listRowInsets(EdgeInsets(top: 1, leading: 6, bottom: 1, trailing: 6))
                 .listRowSeparator(.hidden)
-                // Drag the folder by its path; drop onto another row inserts before it (and
-                // moves it into that row's group when dragged across sections).
-                .draggable(root.path) {
-                    Label(root.displayName, systemImage: "folder.fill")
-                        .padding(6)
-                }
-                .dropDestination(for: String.self) { items, _ in
-                    guard let dragged = items.first else { return false }
-                    appState.moveRoot(dragged, toSection: group.id, before: root.path)
-                    return true
+                // Drag the folder by its path (older NSItemProvider API — reliable in a macOS
+                // List, where `.draggable` is flaky). Dropping onto a row inserts before it,
+                // moving the folder into that row's group when dragged across sections.
+                .onDrag { NSItemProvider(object: root.path as NSString) }
+                .onDrop(of: dropTypes, isTargeted: nil) { providers in
+                    loadDroppedPath(providers) { dragged in
+                        appState.moveRoot(dragged, toSection: group.id, before: root.path)
+                    }
                 }
         }
+    }
+
+    /// UTI types accepted for a folder-row drag (an NSString path, in conformance order).
+    private var dropTypes: [UTType] { [.text, .plainText, .utf8PlainText] }
+
+    /// Pull the dragged folder path off the providers and run `perform` on the main actor.
+    /// Returns whether a usable provider was found (so `.onDrop` reports acceptance).
+    private func loadDroppedPath(_ providers: [NSItemProvider], perform: @escaping (String) -> Void) -> Bool {
+        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let path = object as? String else { return }
+            Task { @MainActor in perform(path) }
+        }
+        return true
     }
 
     @ViewBuilder
@@ -157,10 +170,10 @@ struct SidebarView: View {
             }
         }
         // Drop a folder onto a section header to move it into that section (appended).
-        .dropDestination(for: String.self) { items, _ in
-            guard let dragged = items.first else { return false }
-            appState.moveRoot(dragged, toSection: group.id, before: nil)
-            return true
+        .onDrop(of: dropTypes, isTargeted: nil) { providers in
+            loadDroppedPath(providers) { dragged in
+                appState.moveRoot(dragged, toSection: group.id, before: nil)
+            }
         }
     }
 
@@ -171,24 +184,22 @@ struct SidebarView: View {
         let isActiveRoot = appState.selectedRootPath == root.path
 
         VStack(alignment: .leading, spacing: 2) {
-            Button {
-                appState.selectRoot(root.path)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "folder.fill").foregroundStyle(theme.accentColor)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(root.displayName).lineLimit(1)
-                        Text("\(root.totalFiles) items").font(.caption2).foregroundStyle(.secondary)
-                    }
-                    Spacer()
+            // A plain tappable row (not a Button) so `.onDrag` can claim the press-drag — a
+            // Button would swallow the gesture and the drag would never start.
+            HStack(spacing: 8) {
+                Image(systemName: "folder.fill").foregroundStyle(theme.accentColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(root.displayName).lineLimit(1)
+                    Text("\(root.totalFiles) items").font(.caption2).foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background((isActiveRoot && appState.selectedFolderPath == nil) ? theme.accentColor.opacity(0.18) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background((isActiveRoot && appState.selectedFolderPath == nil) ? theme.accentColor.opacity(0.18) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+            .onTapGesture { appState.selectRoot(root.path) }
             .contextMenu { rootMenu(root) }
 
             if isActiveRoot, let tree = appState.folderTree, !tree.children.isEmpty {
