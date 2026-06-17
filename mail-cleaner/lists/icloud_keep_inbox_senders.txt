@@ -14,6 +14,8 @@
 mail.anthropic.com
 anthropic.com
 claude.ai
+claude.com
+email.claude.com
 invoice+statements@mail.anthropic.com
 failed-payments@mail.anthropic.com
 #
@@ -43,3 +45,8 @@ fedexdeliverymanagermail@fedex.com
 # ups@emails.ups.com, marketingresearch@ups.com, cx@ups.com (surveys/shop)
 # fedex@message.fedex.com (Walgreens rewards), noreply@email-special.usps.com,
 # email@customer.usps.com, uspsinformeddelivery@feedback.usps.com (survey)
+#
+# ===== Account security (never fold/sweep) =====
+accounts.google.com
+account-security
+accountprotection.microsoft

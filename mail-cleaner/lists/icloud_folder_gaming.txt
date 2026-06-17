@@ -56,3 +56,4 @@ email@email.riotgames.com
 email@em.blizzard.com
 no_reply@verify.snapchat.com
 fortnite@epicgames.com
+nintendo-noreply@nintendo.net
