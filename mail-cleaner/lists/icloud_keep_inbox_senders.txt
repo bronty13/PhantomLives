@@ -1,0 +1,45 @@
+# mail-cleaner — KEEP IN INBOX (never fold, never unsubscribe, never delete)
+# Robert wants these to always land in / stay in the INBOX. Treat as PROTECT in
+# every sweep: do NOT archive to a folder, do NOT add to a marketing/delete
+# list, do NOT unsubscribe. (Created 2026-06-16.)
+#
+# IMPORTANT for the categorizer: REMOVE usps / ups.com / fedex from the Shopping
+# bucket rules. Match these as PROTECT (by substring) BEFORE any folder/marketing
+# rule. Carrier *marketing* (no delivery value) may still be swept — but only the
+# senders NOT listed here; when in doubt on a carrier sender, keep it in inbox.
+#
+# ===== Anthropic / Claude (match the whole domains) =====
+# (login links + gift/welcome come from random no-reply-<token>@mail.anthropic.com,
+#  so protect by DOMAIN substring, not exact address)
+mail.anthropic.com
+anthropic.com
+claude.ai
+invoice+statements@mail.anthropic.com
+failed-payments@mail.anthropic.com
+#
+# ===== USPS Informed Delivery + tracking/delivery =====
+informeddelivery            # the daily Informed Delivery digest (email.informeddelivery.usps.com)
+auto-reply@tracking.usps.com
+uspsidservices@usps.gov
+usps_shipping_services@usps.com
+donotreply@ereceipt.usps.gov
+addresschange@usps.gov
+changemyaddress@usps.gov
+uspscustomersupport@usps.gov
+#
+# ===== UPS delivery/tracking (Quantum View) =====
+pkginfo@ups.com
+auto-notify@ups.com
+mcinfo@ups.com
+customer-notification@ups.com
+#
+# ===== FedEx delivery/tracking =====
+trackingupdates@fedex.com
+notifications@fedex.com
+noreply@fedex.com
+fedexdeliverymanagermail@fedex.com
+#
+# ----- deliberately NOT protected (carrier MARKETING — sweepable) -----
+# ups@emails.ups.com, marketingresearch@ups.com, cx@ups.com (surveys/shop)
+# fedex@message.fedex.com (Walgreens rewards), noreply@email-special.usps.com,
+# email@customer.usps.com, uspsinformeddelivery@feedback.usps.com (survey)

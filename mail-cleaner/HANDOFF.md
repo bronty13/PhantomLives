@@ -219,6 +219,8 @@ Restoration Church (Buffalo) people + prayer chains, other churches/pastors
 (Pastor Jerry @ The Chapel, Pat Brimer @ Live Oaks), Margaret Phillips (family) —
 add a group later if wanted.
 
+**Keep-in-inbox (PROTECT) list** — `lists/icloud_keep_inbox_senders.txt`: senders that must NEVER be foldered, unsubscribed, or deleted. Match these (by substring) as PROTECT **before** any folder/marketing rule in the categorizer. Currently: **Anthropic/Claude** (domains mail.anthropic.com / anthropic.com / claude.ai) and **USPS Informed Delivery + UPS + FedEx delivery/tracking** senders. NOTE: `usps`/`ups.com`/`fedex` were removed from the Shopping bucket (2026-06-16) — carrier *marketing* is still sweepable, but delivery/tracking stays in INBOX. Also keep-in-inbox: `backblaze.com` (B2 backup, transient) and `realwithrachugc@gmail.com` (daughter — never touch).
+
 **Facebook**: `@facebookmail.com` notification emails can't be unsubscribed
 headlessly — FB's `o.php` opt-out links are session-bound and return HTTP 400.
 Stop them in **FB → Settings → Notifications → Email**. The addresses are on the
