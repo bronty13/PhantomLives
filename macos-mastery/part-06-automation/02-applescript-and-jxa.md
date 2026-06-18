@@ -232,6 +232,10 @@ Entitlement mechanics:
 - **`tccutil reset AppleEvents`** resets all Apple Events grants, forcing fresh prompts. Useful during testing; destructive in production.
 - **MDM/configuration profile**: Enterprises can pre-approve TCC entries via a `com.apple.TCC.configuration-profile-policy` payload, allowing silent automation in managed environments.
 
+**Prompt once, deliberately — don't let a stray `tell` block raise the dialog.** Pre-flight with `AEDeterminePermissionToAutomateTarget`: call it with `askUserIfNeeded = false` to read the current status silently (`noErr` = authorized, `-1744` = not yet asked, `-1743` = the user denied — stop re-firing and degrade gracefully, `-600` = target not running), then call it again with `askUserIfNeeded = true` at a moment that makes sense to the user. This times the single prompt and lets you detect denial instead of looping into errors.
+
+**If you ship an *app* that automates another app and it re-prompts on every launch, that's an identity-stability bug, not a TCC quirk** — almost always ad-hoc signing (cdhash changes each build) or App Translocation (a quarantined app run from a DMG/Downloads gets a randomized path each launch). The full decision tree, the `AEDeterminePermissionToAutomateTarget` codes, and the "design so you never need the prompt" pattern (embed-then-import) are in [[02-tcc-and-privacy]] → *The Builder's View: Why a Grant Persists — or Re-Prompts Every Launch*. The cheapest automation prompt is the one you architect away: if the target app will ingest the right input on its own (e.g. metadata embedded in a file it imports), you may not need Apple Events — or its entitlement — at all.
+
 > ⚠️ **macOS 26 Tahoe note:** Forum reports (macscripter.net, 2026) indicate intermittent application-hang issues with AppleScript on Tahoe, particularly when targeting apps like Music and Numbers. Recompiling and re-saving scripts in Script Editor resolves most cases — this is a bytecode-compatibility issue between the `.scpt` compiled under Sequoia and Tahoe's AppleScript runtime. If you see spinning pinwheels when running scripts that worked on Sequoia, open in Script Editor and resave.
 
 ---

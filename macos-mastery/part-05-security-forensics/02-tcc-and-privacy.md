@@ -3,7 +3,7 @@ title: TCC & Privacy Internals
 part: P05 Security/Forensics
 est_time: 50 min read + 40 min labs
 prerequisites: [01-boot-process, sip-and-system-integrity]
-tags: [macos, tcc, privacy, forensics, security, sqlite, mdm, pppc]
+tags: [macos, tcc, privacy, forensics, security, sqlite, mdm, pppc, apple-events, code-signing, translocation]
 ---
 
 # TCC & Privacy Internals
@@ -157,6 +157,57 @@ When an app triggers a TCC prompt, macOS identifies the **responsible process** 
 The mechanism: `tccd` walks the process tree using `SecCodeCopyGuestWithAttributes` to find the first ancestor with a valid bundle ID and code signature. That ancestor owns the TCC entry.
 
 > 🔬 **Forensics note:** This means a `client` entry in TCC.db for `com.apple.Terminal` doesn't tell you which *script* ran; it just tells you Terminal (or something running under Terminal's attribution) was granted the permission. Attribution laundering — spawning a sensitive operation from a trusted parent — is a known evasion technique.
+
+### The Builder's View: Why a Grant Persists — or Re-Prompts Every Launch
+
+Everything above is the *investigator's* view. Now the *builder's* view, because the single most common TCC bug a developer ships is **an app that re-prompts for the same permission on every launch** — which users (rightly) read as broken and unprofessional.
+
+The rule that governs persistence is simple, and it follows directly from the `csreq` blob and Responsible Process Attribution above:
+
+> **A TCC grant is keyed to the responsible process's *code identity*, captured as the `csreq` blob. On each launch, `tccd` re-validates the running process against that stored requirement. The grant persists only if the new launch still satisfies the old `csreq`.** Change the identity, and `tccd` no longer recognizes "the same app" — so it re-prompts (or, worse, silently denies).
+
+So a permission that won't stick is almost never a TCC bug. It's an **identity-stability** bug. There are exactly two common causes.
+
+**Cause 1 — Unstable code-signing identity.** The stored `csreq` is derived from the app's Designated Requirement (see [[03-code-signing-and-provisioning]]). For a Developer ID app the DR is Team-ID-and-bundle-ID based — *stable across every rebuild*. For an **ad-hoc-signed** app there is no certificate, so the DR collapses to the **cdhash**, which changes on **every single build** (any byte change → new hash). `tccd` therefore sees build N+1 as a different app than build N and re-prompts. This is why a locally-built dev app that ad-hoc-signs re-prompts constantly, while the notarized Developer ID build of the *same code* prompts once and never again. The same trap bites a **Team ID change**: the DR stops matching and every prior grant is orphaned (07/03 covers this as "plan identity continuity from the start").
+
+> A subtle, real-world variant: a build script that uses a Developer ID cert *when it can find one* and **silently falls back to ad-hoc when it can't** (e.g. the signing identity lives in a Keychain the build sandbox can't read). Now some builds are stably-identified and some aren't, *alternating* under one bundle ID — which makes `tccd` "forget" the grant intermittently. The fix is to make a missing identity a hard build failure, never a silent ad-hoc fallback.
+
+**Cause 2 — App Translocation.** Even a perfectly Developer-ID-signed app re-prompts if it runs **translocated**. When a still-**quarantined** app (one that still carries the `com.apple.quarantine` xattr) is launched by Finder/Launch Services from a download location (a mounted DMG, `~/Downloads`), Gatekeeper runs it from a **randomized, read-only path** like `/private/var/folders/…/AppTranslocation/<UUID>/d/MyApp.app` — and that path is *different on every launch*. Persisted state keyed to the app (including TCC grants) doesn't stick because the running instance keeps changing location/identity. Three conditions must all hold for translocation: the quarantine xattr is present, Finder/LaunchServices launched it, and the user has **not moved it in Finder** since download. Breaking any one stops it permanently:
+
+- **Move the app in Finder** (drag to `/Applications`) — Finder sets `QTN_FLAG_DO_NOT_TRANSLOCATE` (the quarantine flag flips), permanently disabling translocation for that copy.
+- **Strip the quarantine xattr:** `xattr -dr com.apple.quarantine /Applications/MyApp.app` (note: a `cp`/`ditto` by a non-Finder tool does *not* clear it — only Finder or this).
+- **Ship a notarized drag-to-`/Applications` DMG** so the copy the user runs lives at a stable, de-quarantined path.
+
+> 🪟 **Windows contrast:** Windows has no direct translocation analogue — apps run from wherever they're placed and permission state isn't path-randomized. The closest cousin is SmartScreen's Mark-of-the-Web (the `Zone.Identifier` alternate data stream), which gates *first execution* of downloaded files but doesn't relocate them or reset granted capabilities on each run.
+
+**The Apple Events special case (the "wants to control X" prompt).** Automation grants (`kTCCServiceAppleEvents`) are doubly fragile because they're keyed to **two** identities — the sending app (`client`) *and* the target app (`indirect_object_identifier`). Everything above applies to the sender; on top of it, the target must be running, and the event timing matters (see the AppleScript lesson, [[02-applescript-and-jxa]]). To prompt **once, deliberately**, instead of letting a stray `tell` block raise the dialog at a random moment, pre-flight with the Core Services API:
+
+```c
+// Ask TCC the status WITHOUT prompting (askUserIfNeeded = false):
+OSStatus s = AEDeterminePermissionToAutomateTarget(
+    &targetDesc,           // NSAppleEventDescriptor(bundleIdentifier: "com.apple.Photos")
+    typeWildCard, typeWildCard,   // "any event"
+    /*askUserIfNeeded=*/ false);
+// s == noErr (0)                      → already authorized
+// s == errAEEventWouldRequireUserConsent (-1744) → not asked yet
+// s == errAEEventNotPermitted (-1743) → user has DENIED (don't re-fire; degrade gracefully)
+// s == procNotFound (-600)            → target app isn't running
+```
+
+Call it again with `askUserIfNeeded = true` at a moment that makes sense to the user (e.g. when they invoke the feature that needs it). It pre-flights and times the prompt — it does **not** make the grant persist; persistence is still Cause 1 + Cause 2.
+
+**The architectural lesson — the cheapest prompt is the one you never trigger.** Before adding *any* TCC-gated capability, ask whether the job can be done without it. Driving another app via Apple Events to manipulate its data is a classic over-reach: it adds a whole entitlement (`com.apple.security.automation.apple-events`), a second scary prompt ("wants to control Photos"), and a fragile two-key grant — often to accomplish something the target app will do *itself* if you hand it the right input.
+
+> **PhantomLives case study — PurplePeek (2026-06).** PurplePeek imports photos/videos into Apple Photos and needs to set each asset's title/caption/keywords. PhotoKit can't write those fields, so the first design drove Photos via AppleScript to set them after import — which meant shipping the apple-events entitlement and a "wants to control Photos" prompt that recurred during development (ad-hoc fallback, Cause 1). The fix wasn't a better prompt; it was **removing the need for one**: embed the metadata *into the file* with `exiftool` before import (XMP/IPTC for photos, the QuickTime `Keys:` group for videos) and let Photos ingest it natively on import. The Apple Events code, the entitlement, and the second prompt all deleted; the only remaining prompt is the standard one-time Photos-access grant. This "embed-then-import" pattern is what osxphotos and other serious Photos tools use, precisely to avoid the automation surface. (Full writeup: `PurplePeek/docs/tcc-prompt-research-spike.md`.)
+
+**Decision tree — "my app re-prompts every launch":**
+
+1. `codesign -dvvv /Applications/MyApp.app` — does it say `Signature=adhoc`, or `codesign -d -r-` shows a bare `cdhash`? → **Cause 1.** Ship a Developer ID-signed build; never let the build silently ad-hoc-fall-back.
+2. `xattr -l /Applications/MyApp.app` shows `com.apple.quarantine`, and the user runs it from a DMG/Downloads? → **Cause 2 (translocation).** Install to `/Applications` via Finder, or `xattr -dr com.apple.quarantine`, or ship a notarized DMG.
+3. Did you change Team ID / signing cert? → orphaned grants; users must re-approve once under the new identity.
+4. Is it specifically an Apple Events prompt? → confirm 1–3 for the *sender*, ensure the *target* is running, pre-flight with `AEDeterminePermissionToAutomateTarget`, and ask whether you can drop the automation entirely (embed-then-import / native API).
+
+> 🔬 **Forensics note:** The same churn is visible in TCC.db. A stably-identified app shows **one** `access` row per (service, client[, target]) with a single old `last_modified`. An app whose identity keeps changing leaves a trail of `client_type = 1` (absolute-path) rows, translocated `/private/var/folders/…/AppTranslocation/…` paths, and repeatedly-refreshed `last_modified` timestamps — the database fingerprint of an unstable or translocated binary. Conversely, a *single* `client_type = 0` (bundle-ID) row with `auth_reason = 2` is the signature of a correctly-signed app the user approved once.
 
 ### The "High-Value" Grants
 
@@ -529,6 +580,9 @@ sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db \
 | `tccutil` | CLI tool for resetting TCC permissions via `tccd` |
 | `ScreenCaptureApprovals.plist` | Plist tracking monthly screen-recording reconsent timestamps (macOS 15+) |
 | `expired` table | TCC.db table holding historical grants that were subsequently revoked |
+| App Translocation | Gatekeeper running a still-quarantined app from a randomized read-only path; a common cause of TCC grants (and other state) failing to persist across launches |
+| `AEDeterminePermissionToAutomateTarget` | Core Services API to check/pre-flight an Apple Events automation grant without firing a real event |
+| embed-then-import | Architectural pattern: write data into a file the target app ingests natively, instead of driving the target app via Apple Events — avoids the automation TCC grant entirely |
 
 ## Further reading
 
@@ -539,4 +593,9 @@ sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db \
 - [Michael Tsai: Sequoia Screen Recording Prompts and the Persistent Content Capture Entitlement](https://mjtsai.com/blog/2024/08/08/sequoia-screen-recording-prompts-and-the-persistent-content-capture-entitlement/) — the reconsent mechanism and developer impact
 - [HackTricks: macOS TCC](https://hacktricks.wiki/en/macos-hardening/macos-security-and-privilege-escalation/macos-security-protections/macos-tcc/) — bypass techniques and privilege escalation angles (red-team perspective)
 - `sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db ".schema"` — read the live schema; it evolves with each macOS release
+- Apple Developer Forums thread 126345 ("Persistent Privacy and Automation") + thread 724969 ("App Translocation Notes") — Quinn (DTS) on why grants persist (or don't) and how translocation breaks them
+- Eclectic Light (Howard Oakley): "App first run, quarantine and translocation" — the conditions that trigger translocation and how Finder's `QTN_FLAG_DO_NOT_TRANSLOCATE` stops it
+- `AEDeterminePermissionToAutomateTarget` — Apple Core Services docs; felix-schwarz.org "New Apple Event APIs in macOS Mojave"
 - [[01-boot-process]] — SIP enforcement starts at boot; understanding the sealed SSV explains why TCC.db is tamper-resistant
+- [[03-code-signing-and-provisioning]] — the Designated Requirement / cdhash mechanics behind TCC grant persistence (Cause 1 above)
+- [[02-applescript-and-jxa]] — the Apple Events automation-consent model and the `-1743` denial error
