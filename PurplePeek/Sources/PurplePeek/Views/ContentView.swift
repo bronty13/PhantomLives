@@ -61,7 +61,7 @@ struct ContentView: View {
     private var statusToast: some View {
         if let status = appState.statusMessage {
             HStack(spacing: 8) {
-                if appState.isReapplyingMetadata || appState.isImportingKeywords {
+                if appState.isImportingKeywords {
                     ProgressView().controlSize(.small)
                 }
                 Text(status).font(.callout)
@@ -73,7 +73,7 @@ struct ContentView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .task(id: status) {
                 // Auto-dismiss a finished message after a few seconds (not while working).
-                guard !appState.isReapplyingMetadata, !appState.isImportingKeywords else { return }
+                guard !appState.isImportingKeywords else { return }
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 if appState.statusMessage == status { appState.statusMessage = nil }
             }
@@ -102,11 +102,8 @@ struct ContentView: View {
             Menu {
                 Button("Import to Photos…") { showImportWizard = true }
                     .disabled(appState.selectedRootPath == nil)
-                Divider()
-                Button("Re-apply Metadata to Imported Items") { appState.reapplyMetadataToImported() }
-                    .disabled(appState.reapplyCandidateCount == 0 || appState.isReapplyingMetadata)
             } label: { Label("Photos", systemImage: "photo.badge.plus") }
-                .help("Import to Photos, or re-push title/caption/keywords to already-imported items")
+                .help("Import the kept photos and videos to your Photos library")
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {

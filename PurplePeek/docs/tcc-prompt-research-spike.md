@@ -1,6 +1,18 @@
 # Research spike: eliminating the recurring TCC prompt
 
-**Date:** 2026-06-18 · **Status:** research only (no code changed) · **Author:** spike
+**Date:** 2026-06-18 · **Status:** ✅ **Tier 1 implemented** (see CHANGELOG) · **Author:** spike
+
+> **Outcome:** Tier 1 shipped. Video metadata now embeds via the exiftool `Keys:` group and
+> imports natively; `PhotosAppleScriptService`, the "Re-apply Metadata" feature, and the
+> `com.apple.security.automation.apple-events` entitlement were removed. The load-bearing
+> assumption below — *does Photos ingest `Keys:` video tags on import?* — was **verified
+> 2026-06-18**: a tagged clip imported with the right Title/Caption and the comma-joined
+> `Keys:Keywords` string split into individual keywords. The standard one-time Photos-access
+> prompt is now the app's only TCC prompt. The Tier 0 signing-stability hardening
+> (build-app.sh ad-hoc fallback) is still worth doing to protect the *Photos* grant during dev,
+> but is no longer load-bearing for an automation prompt that no longer exists.
+
+The original research follows, unchanged.
 
 ## The problem
 

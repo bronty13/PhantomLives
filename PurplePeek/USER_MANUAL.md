@@ -21,9 +21,8 @@ For *how it's built*, see `DESIGN.md` and `HANDOFF.md`; for *what changed when*,
    PurplePeek works without these; you just lose those specific conveniences.
 3. Launch it and **drop a folder onto the window**, or use **Open Folder** (⌘O) in the toolbar.
 
-The first import (and the first "Re-apply Metadata") will prompt for **Photos access** and a
-one-time **"PurplePeek wants to control Photos"** automation prompt — allow both for full
-metadata support (see *Why metadata sometimes needs Photos automation* below).
+The first import will prompt once for **Photos access** (to add items to your library). That
+is the only permission PurplePeek asks for — there is no "control Photos" automation prompt.
 
 ## Scanning a folder
 
@@ -147,21 +146,22 @@ Toolbar **Photos → Import to Photos…** opens the import wizard.
 - **Filter**: import *all* photos/videos, *keep only*, or *undecided only*. (Audio is never
   imported — see below.)
 - Each item's **favorite, hidden, and albums** are applied via PhotoKit. **Title, caption, and
-  keywords** are embedded into photos (via `exiftool`) and set on videos afterward (via
-  Photos automation).
+  keywords** are embedded into the file (via `exiftool`) *before* import — for both photos and
+  videos — so Photos reads them on ingest.
 - The wizard shows live progress and a summary, including any failures.
-- Already imported items before setting metadata? **Photos → Re-apply Metadata to Imported
-  Items** re-pushes each imported item's current title/caption/keywords to its Photos asset —
-  no re-import needed.
+- **Set title/caption/keywords before importing.** Because metadata is embedded into the file
+  at import time, there's no way to push it to an item that's already in your Photos library —
+  set it while the item is still in PurplePeek, then import.
 
-### Why metadata sometimes needs Photos automation
+### Why metadata is embedded before import
 
 macOS only lets apps write four properties directly to a Photos asset (date, location,
-favorite, hidden). So PurplePeek uses three paths: favorite/hidden/album go through PhotoKit;
-**photo** title/caption/keywords are embedded with `exiftool` *before* import; **video** (and
-any photo whose embedding was skipped) title/caption/keywords are set *after* import via Photos
-automation — which is why the "control Photos" prompt matters for video metadata. Deny it and
-photo metadata still works; video metadata won't.
+favorite, hidden) — there's no API for title, caption, or keywords. So PurplePeek embeds those
+into the file with `exiftool` *before* import (XMP/IPTC for photos, the QuickTime `Keys:` group
+for videos), and Photos reads them as it ingests the file. This is the same embed-then-import
+approach the `osxphotos` tool uses, and it means PurplePeek needs **no "control Photos"
+automation permission**. If `exiftool` isn't installed, items still import (favorite/hidden/
+album via PhotoKit) but without title/caption/keywords.
 
 ## Audio: keep-export instead of import
 
@@ -206,11 +206,10 @@ your actual media files are never inside these backups.
 
 ## Troubleshooting
 
-- **Video metadata didn't reach Photos.** The "control Photos" automation prompt was denied.
-  Re-enable PurplePeek under System Settings → Privacy & Security → Automation → Photos, then
-  use **Photos → Re-apply Metadata to Imported Items**.
-- **Photos imported with no title/caption (photos specifically).** Install `exiftool`
-  (`brew install exiftool`); without it, photo metadata can't be embedded.
+- **Items imported with no title/caption/keywords.** Install `exiftool`
+  (`brew install exiftool`); without it, metadata can't be embedded before import. Note that
+  metadata is embedded at import time — if an item is already in Photos, set its metadata in
+  PurplePeek and re-import a fresh copy; there's no way to edit an already-imported asset.
 - **Keyword import is greyed out.** Install `osxphotos` (`pipx install osxphotos`).
 - **An item shows an orange "missing" badge.** The file left its original location on disk.
   Move it back and Refresh (⌘R), or delete the item if it's gone for good.

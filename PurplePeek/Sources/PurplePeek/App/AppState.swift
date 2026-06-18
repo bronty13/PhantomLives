@@ -836,42 +836,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    @Published var isReapplyingMetadata = false
-
-    /// Items already imported to Photos that we can re-push metadata to.
-    var reapplyCandidateCount: Int {
-        mediaFiles.filter { $0.deletedAt == nil && $0.importedAt != nil && ($0.photosAssetId?.isEmpty == false) }.count
-    }
-
-    /// Re-push title/caption/keywords to Photos (via AppleScript) for every already-imported
-    /// item — fixes items imported before metadata support, without re-importing.
-    func reapplyMetadataToImported() {
-        guard !isReapplyingMetadata else { return }
-        let targets = mediaFiles.filter { $0.deletedAt == nil && $0.importedAt != nil && ($0.photosAssetId?.isEmpty == false) }
-        guard !targets.isEmpty else { statusMessage = "No imported items to update."; return }
-
-        isReapplyingMetadata = true
-        statusMessage = "Re-applying metadata to \(targets.count) item\(targets.count == 1 ? "" : "s")…"
-        Task {
-            var applied = 0, failed = 0, done = 0
-            for file in targets {
-                let keywords = (try? db.keywordNames(forFile: file.id)) ?? []
-                let hasMetadata = (file.title?.isEmpty == false) || (file.caption?.isEmpty == false) || !keywords.isEmpty
-                if hasMetadata, let assetId = file.photosAssetId {
-                    let r = PhotosAppleScriptService.applyMetadata(
-                        localIdentifier: assetId, title: file.title, caption: file.caption, keywords: keywords
-                    )
-                    if r.titleCaptionOK { applied += 1 } else { failed += 1 }
-                }
-                done += 1
-                if done % 5 == 0 { statusMessage = "Re-applying metadata… \(done)/\(targets.count)" }
-                await Task.yield()
-            }
-            isReapplyingMetadata = false
-            statusMessage = "Re-applied metadata to \(applied) item\(applied == 1 ? "" : "s")"
-                + (failed > 0 ? " · \(failed) failed (Photos control allowed?)" : "")
-        }
-    }
+    // NOTE: "Re-apply Metadata to Imported Items" was removed in the Tier-1 TCC change.
+    // Its only mechanism was driving Photos via AppleScript ("control Photos"), which we
+    // dropped along with the apple-events entitlement. Metadata now reaches Photos only by
+    // embedding it into the file *before* import (the embed-then-import path), and PhotoKit
+    // offers no way to edit an already-imported asset's title/caption/keywords — so there is
+    // no supported way to re-push metadata to items already in the library. Set metadata
+    // before importing. (See docs/tcc-prompt-research-spike.md.)
 
     /// Import a single file (detail-panel button).
     func importSingle(_ id: String) {
@@ -895,26 +866,30 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Stage (photos) + import one file, then apply title/caption/keywords to the created
-    /// asset via AppleScript for videos (and as a fallback when photo-embedding didn't run).
-    /// Returns the asset id or an error message.
+    /// Stage (embed title/caption/keywords into a copy) + import one file. Photos read these
+    /// fields from the file on import — XMP/IPTC for photos, the QuickTime `Keys:` group for
+    /// videos — so no post-import AppleScript is needed. Returns the asset id or an error.
     private func importOneFile(_ file: MediaFile, exiftoolPath: String?) async -> Result<String, ImportFailure> {
         let type: PHAssetResourceType = (file.mediaType == .photo) ? .photo : .video
         let albums = (try? db.albums(forFile: file.id)) ?? []
         let keywords = (try? db.keywordNames(forFile: file.id)) ?? []
         let hasMetadata = (file.title?.isEmpty == false) || (file.caption?.isEmpty == false) || !keywords.isEmpty
 
-        // Photos: embed title/caption/keywords into a staged copy so Photos ingests them.
+        // Embed title/caption/keywords into a staged copy so Photos ingests them on import —
+        // photos via XMP/IPTC, videos via the QuickTime `Keys:` group. PhotoKit can't write
+        // these fields directly; this is the only path, and it needs no AppleScript / no
+        // "control Photos" automation prompt (see docs/tcc-prompt-research-spike.md). Only
+        // files that actually carry metadata are staged (copied); the rest import in place.
         var importURL = file.fileURL
         var stagedURL: URL?
-        var embedded = false
-        if file.mediaType == .photo, let ep = exiftoolPath, hasMetadata {
+        if hasMetadata, let ep = exiftoolPath {
+            let kind: MetadataStagingService.Kind = (file.mediaType == .photo) ? .photo : .video
             let meta = MetadataStagingService.Metadata(title: file.title, caption: file.caption, keywords: keywords)
             let original = file.fileURL
             stagedURL = try? await Task.detached(priority: .userInitiated) {
-                try MetadataStagingService.stage(original: original, metadata: meta, exiftoolPath: ep)
+                try MetadataStagingService.stage(original: original, metadata: meta, exiftoolPath: ep, kind: kind)
             }.value
-            if let stagedURL { importURL = stagedURL; embedded = true }
+            if let stagedURL { importURL = stagedURL }
         }
 
         do {
@@ -922,17 +897,6 @@ final class AppState: ObservableObject {
                 url: importURL, type: type, isFavorite: file.isFavorite, isHidden: file.isHidden, albums: albums
             )
             if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
-
-            // Videos (and photos whose embedding didn't run) get metadata via AppleScript —
-            // the only path that reaches videos and non-embeddable formats.
-            if hasMetadata, file.mediaType == .video || !embedded {
-                let r = PhotosAppleScriptService.applyMetadata(
-                    localIdentifier: assetId, title: file.title, caption: file.caption, keywords: keywords
-                )
-                if !r.titleCaptionOK {
-                    NSLog("PurplePeek: AppleScript metadata failed for \(file.fileName): \(r.error ?? "unknown")")
-                }
-            }
             return .success(assetId)
         } catch {
             if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }

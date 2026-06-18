@@ -67,6 +67,46 @@ final class ServicesTests: XCTestCase {
         XCTAssertFalse(MetadataStagingService.Metadata(title: nil, caption: nil, keywords: ["k"]).isEmpty)
     }
 
+    func testPhotoExiftoolArgsUseXMPAndIPTCListTags() {
+        let meta = MetadataStagingService.Metadata(title: "T", caption: "C", keywords: ["k1", "k2"])
+        let args = MetadataStagingService.exiftoolArgs(kind: .photo, metadata: meta, path: "/tmp/p.jpg")
+        XCTAssertTrue(args.contains("-XMP:Title=T"))
+        XCTAssertTrue(args.contains("-IPTC:ObjectName=T"))
+        XCTAssertTrue(args.contains("-IPTC:Caption-Abstract=C"))
+        XCTAssertTrue(args.contains("-XMP-dc:Description=C"))
+        // List tags: one -TAG= per keyword (exiftool accumulates these into a list).
+        XCTAssertTrue(args.contains("-IPTC:Keywords=k1"))
+        XCTAssertTrue(args.contains("-IPTC:Keywords=k2"))
+        XCTAssertTrue(args.contains("-XMP-dc:Subject=k1"))
+        // Photos must never get the QuickTime Keys: group.
+        XCTAssertFalse(args.contains { $0.hasPrefix("-Keys:") })
+        XCTAssertEqual(args.last, "/tmp/p.jpg")
+    }
+
+    func testVideoExiftoolArgsUseKeysGroupWithCommaJoinedKeywords() {
+        let meta = MetadataStagingService.Metadata(title: "T", caption: "C", keywords: ["k1", "k2", "k3"])
+        let args = MetadataStagingService.exiftoolArgs(kind: .video, metadata: meta, path: "/tmp/v.mp4")
+        XCTAssertTrue(args.contains("-Keys:Title=T"))
+        XCTAssertTrue(args.contains("-Keys:Description=C"))
+        // Keys:Keywords is NOT a list tag — keywords go in as ONE comma-joined string
+        // (Photos splits it back into individual keywords on import; verified 2026-06-18).
+        XCTAssertTrue(args.contains("-Keys:Keywords=k1,k2,k3"))
+        // DisplayName must NOT be set — it would override Keys:Title in Photos.
+        XCTAssertFalse(args.contains { $0.hasPrefix("-Keys:DisplayName") })
+        // Videos must never get the still-image XMP/IPTC tags.
+        XCTAssertFalse(args.contains { $0.hasPrefix("-XMP") || $0.hasPrefix("-IPTC") || $0.hasPrefix("-EXIF") })
+        XCTAssertEqual(args.last, "/tmp/v.mp4")
+    }
+
+    func testExiftoolArgsOmitEmptyFields() {
+        let meta = MetadataStagingService.Metadata(title: nil, caption: "", keywords: [""])
+        let photo = MetadataStagingService.exiftoolArgs(kind: .photo, metadata: meta, path: "/tmp/p.jpg")
+        let video = MetadataStagingService.exiftoolArgs(kind: .video, metadata: meta, path: "/tmp/v.mp4")
+        // Nothing to embed → only the leading charset flags + the path.
+        XCTAssertFalse(photo.contains { $0.hasPrefix("-XMP") || $0.hasPrefix("-IPTC") })
+        XCTAssertFalse(video.contains { $0.hasPrefix("-Keys:") })
+    }
+
     // MARK: - FileHashService
 
     func testFileHashIdenticalContentMatches() throws {

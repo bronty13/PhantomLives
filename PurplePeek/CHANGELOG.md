@@ -6,8 +6,34 @@ All notable changes to PurplePeek are documented here. Versions are git-derived
 ## [1.0] — 2026-06-16
 
 First feature-complete release — scan → browse / preview → decide → import to Photos
-(with staged + AppleScript metadata) or keep-export audio → delete → manage in Settings.
+(with embed-then-import metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
+
+### No more "control Photos" prompt — video metadata is now embed-then-import
+
+- **Removed the recurring "PurplePeek wants to control Photos" automation (TCC) prompt.**
+  Video title/caption/keywords used to be set *after* import by driving Photos via AppleScript,
+  which triggered an Apple Events consent prompt that could recur on every run. Videos now take
+  the same **embed-then-import** path photos already used: metadata is written into a staged
+  copy with `exiftool` (the QuickTime **`Keys:` group** — `Keys:Title` / `Keys:Description` /
+  `Keys:Keywords`) *before* import, and Photos ingests it natively. **The only permission
+  PurplePeek now asks for is Photos access** — the standard one-time prompt every photo app shows.
+- Verified 2026-06-18: a clip tagged via the `Keys:` group imports into Photos with the correct
+  Title and Caption, and a comma-joined `Keys:Keywords` string is split back into individual
+  keywords on import.
+- **Dropped the `com.apple.security.automation.apple-events` entitlement** and the
+  `NSAppleEventsUsageDescription` string — the app no longer sends Apple Events at all.
+- **Removed `PhotosAppleScriptService` and "Photos → Re-apply Metadata to Imported Items."**
+  Re-apply only worked through the AppleScript path; since metadata is embedded at import time
+  and PhotoKit can't edit an already-imported asset's title/caption/keywords, set metadata
+  **before** importing. (To change an item already in Photos, set it in PurplePeek and import a
+  fresh copy.)
+- New: `MetadataStagingService.Kind` (`.photo`/`.video`) and a unit-testable
+  `exiftoolArgs(kind:metadata:path:)` selecting the per-container tag set. Tests: +3 (photo
+  XMP/IPTC list tags, video `Keys:` group with comma-joined keywords + no `DisplayName`, empty-
+  field omission). 40/40 passing.
+- Background and the full fix-spectrum analysis (incl. the signing-stability and App
+  Translocation root causes that make the prompt recur) are in `docs/tcc-prompt-research-spike.md`.
 
 ### Fix: Preview text field no longer "sticks" focus across items
 

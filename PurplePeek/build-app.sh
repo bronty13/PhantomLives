@@ -61,7 +61,6 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>NSHumanReadableCopyright</key><string>PurplePeek. Personal use.</string>
     <key>NSPhotoLibraryUsageDescription</key><string>PurplePeek reads your Photos library to mirror your existing albums and keywords while you triage media on disk.</string>
     <key>NSPhotoLibraryAddUsageDescription</key><string>PurplePeek imports the photos and videos you choose to keep into your Photos library.</string>
-    <key>NSAppleEventsUsageDescription</key><string>PurplePeek can control Photos to help organize imported media.</string>
 </dict>
 </plist>
 PLIST
