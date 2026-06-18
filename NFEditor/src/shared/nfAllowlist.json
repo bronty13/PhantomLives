@@ -1,0 +1,46 @@
+{
+  "source": "https://support.niteflirt.com/hc/en-us/articles/212831098-Using-HTML",
+  "extractedFrom": "Official NiteFlirt Help Center, captured via MHTML",
+  "limits": {
+    "flirtProfileMaxChars": 7000,
+    "listingMaxChars": 14000,
+    "maxListingWidthPx": 820,
+    "recommendedProfileWidthPx": 800,
+    "responsiveBreakpoints": { "mobile": 375, "tablet": 800, "desktop": 1075 }
+  },
+  "unsupported": {
+    "javascript": true,
+    "css": "No <style> blocks or external stylesheets. Inline style attribute IS in the allowed-attribute list and works in practice.",
+    "emoji": "DESTRUCTIVE: emoji + everything after it gets stripped on save. Editor must block emoji entry.",
+    "iframe": "Not in allowlist. No YouTube/Vimeo iframe embeds.",
+    "classAttribute": "Not in allowlist. Use inline style only.",
+    "events": "onclick, onmouseover, etc. all stripped (would be JS)."
+  },
+  "html4Tags": [
+    "a","abbr","area","b","bdo","bdi","big","blink","blockquote","br","center",
+    "cite","code","col","colgroup","dd","del","dfn","div","dl","dt","em","embed",
+    "figcaption","figure","font","h1","h2","h3","h4","h5","h6","hgroup","hr","i",
+    "img","ins","kbd","li","map","mark","marquee","nav","object","ol","p","param",
+    "pre","q","ruby","rt","s","samp","small","span","strike","strong","sub","sup",
+    "table","tbody","td","tfoot","th","thead","time","tr","tt","u","ul","var","wbr"
+  ],
+  "html5Tags": ["audio","details","source","summary","track","video"],
+  "html4Attributes": [
+    "align","allowNetworking","alt","autostart","background","base","behavior",
+    "bgcolor","border","bordercolor","cellpadding","cellspacing","classid",
+    "codebase","color","cols","colspan","coords","datetime","dir","direction",
+    "face","FlashVars","height","href","id","label","lang","link","loop","menu",
+    "name","quality","rows","rowspan","salign","seamlesstabbing","scale","shape",
+    "size","span","src","style","target","text","title","type","usemap","valign",
+    "value","vspace","width","wmode"
+  ],
+  "html5Attributes": [
+    "autoplay","controls","default","height","kind","label","loop","media",
+    "muted","open","poster","preload","src","srclang","type","width"
+  ],
+  "fontSizeMapping": {
+    "1": "8pt",  "2": "10pt", "3": "12pt", "4": "14pt",
+    "5": "18pt", "6": "24pt", "7": "36pt"
+  },
+  "imageHosting": "Any host is fine as long as it doesn't require linking back. Use only the <img src=...> portion of any embed code. NiteFlirt File Manager URLs follow pattern https://www.niteflirt.com/fm/f/{a}/{b} (no extension)."
+}
