@@ -41,10 +41,14 @@ in place. The **Archive pane shows a Permissions panel** with a row per grant an
    Disk Access** (the panel's *Settings…* button opens it). **This grant is
    per-binary:** if you'll use the scheduler, you must *also* add the bundled tool
    at `PurpleAttic.app/Contents/MacOS/pattic` — the app's own grant does not cover
-   it. The **Schedule pane** has *Reveal pattic in Finder* + *Open Full Disk
-   Access…* buttons so you can drag it straight into the list. Skip this and macOS
-   pops *"PurpleAttic would like to access data from other apps"* every time the
-   scheduled run fires.
+   it *for reading the library*. The **Schedule pane** has *Reveal pattic in Finder*
+   + *Open Full Disk Access…* buttons so you can drag it straight into the list.
+   *(Separately:* macOS Sequoia shows a recurring *"PurpleAttic would like to access
+   data from other apps"* prompt on scheduled runs. Full Disk Access does **not**
+   stop it — it's an intentional, non-persistent macOS consent for reading the
+   Photos shared-library container, and the only practical mitigation is running the
+   archive less often, so the schedule defaults to **daily**. Click *Allow* when it
+   appears.)
 2. **Photos Automation** — lets the archive drive Photos.app to download/export
    images. Click **Grant…** and approve *"PurpleAttic wants to control Photos."*
    *Skip this and osxphotos thrashes — "AppleScript export failed 10 consecutive

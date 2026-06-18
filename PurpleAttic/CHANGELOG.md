@@ -3,6 +3,28 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.21.4] — 2026-06-18
+
+Docs only — no code change.
+
+### Documented
+- **Scheduled-run "access data from other apps" prompt is a macOS Sequoia limitation, not a
+  PurpleAttic bug.** Investigation (tccd unified-log attribution + system/user `TCC.db`) traced
+  the recurring `kTCCServiceSystemPolicyAppData` prompt to osxphotos reading the iCloud
+  shared-library container (`~/Library/Containers/com.apple.CloudPhotosConfiguration`), which
+  Apple designates a **transient, process-lifetime** TCC privilege (Feedback FB13410100) — it
+  re-prompts every run and cannot be made persistent without MDM. Full Disk Access (on `pattic`,
+  on the osxphotos Python, or via app-hosted launch) does **not** suppress it; a PPPC profile
+  would, but local install requires user-approved MDM. Full writeup in `HANDOFF.md`.
+- **Corrected README + USER_MANUAL**: removed the (now-disproven) claim that granting `pattic`
+  Full Disk Access stops the "access data from other apps" prompt. FDA is still required for
+  osxphotos to *read* the library; it just doesn't affect that separate consent.
+
+### Changed (operational, not code)
+- This install's schedule moved **hourly → daily (02:00)** to minimize how often the
+  unavoidable prompt appears. (The code default was already `daily`; only this Mac was set to
+  hourly.)
+
 ## [0.21.3] — 2026-06-17
 
 Kill a false "Optimize Storage likely — archiving would be INCOMPLETE" warning on

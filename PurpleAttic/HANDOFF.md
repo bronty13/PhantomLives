@@ -125,6 +125,45 @@ times, restarting Photos app" thrash. So checking the **GUI app's** grants is th
 correct gate; they cover the osxphotos subprocess. FDA is probed by reading the
 `.photoslibrary` `database/` dir (raw access ⇒ FDA, distinct from a PhotoKit grant).
 
+## Scheduled-run "access data from other apps" prompt — KNOWN macOS LIMITATION (do not re-investigate)
+
+**Symptom:** every scheduled run pops *"PurpleAttic would like to access data from
+other apps"* (`kTCCServiceSystemPolicyAppData`). It recurs no matter what the user clicks.
+
+**Root cause (Apple, "as expected" — Feedback FB13410100):** accessing *another app's
+data container* — here `~/Library/Containers/com.apple.CloudPhotosConfiguration/Data`,
+which osxphotos reads during "Processing shared iCloud library info" on every PhotosDB
+load — is a **transient, process-lifetime TCC privilege**. It is *intentionally
+non-persistent*: every new process (each scheduled `pattic`/osxphotos launch = new pid)
+re-triggers it, and there is **no documented way to make it stick** without MDM. Clicking
+*Allow* writes `auth_value=5` (a transient marker), never the durable `2`.
+
+**Caveat to the "child inherits the parent's TCC grants" rule above:** that holds for
+**Full Disk Access** (file reads) and is why osxphotos reads the library fine — but it does
+**NOT** extend to this `SystemPolicyAppData` container consent.
+
+**What was tried and PROVEN not to work** (2026-06-18, via the `tccd` unified log
+`AUTHREQ_ATTRIBUTION` + system-vs-user `TCC.db`):
+- FDA on the bundled `pattic` — granted (`auth_value=2`), still prompts.
+- FDA on the osxphotos **Python** binary — granted, still prompts.
+- Routing the scheduler through the FDA-holding `.app` (so `responsible=PurpleAttic.app`,
+  like a terminal) — still prompts. (That headless-export experiment was reverted.)
+- `tccutil reset SystemPolicyAppData …` — clears the row, but the next access re-prompts.
+- A PPPC/TCC **configuration profile** would pre-authorize it, but local install is rejected
+  ("must originate from a user-approved MDM server") — **not viable on a personal, non-MDM Mac.**
+
+**Why Warp (a terminal) is silent but PurpleAttic isn't:** unresolved, but irrelevant — the
+consent is non-persistent by design, so chasing app-side parity is a dead end.
+
+**Mitigation in place:** schedule defaulted from **hourly → daily** (cadence `daily`, 02:00),
+so the prompt is seen at most ~once/day instead of once/hour. The only true eliminations are
+MDM (overkill) or osxphotos not touching the shared-library container (no flag for it).
+
+Diagnostic recipe if this resurfaces: `log show --predicate 'process == "tccd"' --info --debug`
+and grep `SystemPolicyAppData` / `AUTHREQ_ATTRIBUTION` for the `responsible`/`accessing` pair;
+FDA lives in the **system** db `/Library/Application Support/com.apple.TCC/TCC.db` (world-readable),
+NOT the user db.
+
 ## Archive subfolder (0.6)
 
 `primaryDestination` / `mirrorDestinations` are now **drive/volume bases**; the
