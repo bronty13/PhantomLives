@@ -94,6 +94,14 @@ final class IrcleSession: ObservableObject, Identifiable {
 
     // MARK: - Inbound dispatch
 
+    /// Test/replay seam: parse a raw server line and run it through the same
+    /// dispatch the live `IRCClient` callback uses. Mirrors the production path
+    /// minus the socket. (IRCKit's `IRCClient` handles CAP/SASL internally; this
+    /// covers the application-level routing.)
+    func ingest(_ rawLine: String) {
+        if let msg = IRCMessage.parse(rawLine) { handle(msg) }
+    }
+
     private func handle(_ msg: IRCMessage) {
         switch msg.command {
         case "PING":

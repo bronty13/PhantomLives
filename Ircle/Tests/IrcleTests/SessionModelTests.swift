@@ -128,3 +128,97 @@ struct IrcleSessionTests {
         #expect(!s.buffers.contains { $0.id == q.id })
     }
 }
+
+/// Drives the core inbound dispatch with synthetic server lines (no socket) —
+/// the path that actually makes Ircle an IRC client: IRCMessage.parse → handle
+/// → buffers. Also exercises IRCKit's parser end-to-end through the session.
+@MainActor
+@Suite("IrcleSession inbound dispatch")
+struct IrcleSessionDispatchTests {
+
+    private func connected(nick: String = "me") -> IrcleSession {
+        let cfg = IRCConnectionConfig(host: "irc.example.org", port: 6697, useTLS: true,
+                                      nick: nick, user: nick, realName: nick)
+        return IrcleSession(config: cfg, displayName: "Example")
+    }
+
+    private func channel(_ s: IrcleSession, _ name: String) -> IrcleBuffer? {
+        s.buffers.first { $0.kind == .channel && IRCCase.equal($0.name, name) }
+    }
+
+    @Test func selfJoinCreatesChannelAndNamesPopulatesNickList() {
+        let s = connected()
+        s.ingest(":me!u@h JOIN #x")
+        #expect(channel(s, "#x") != nil)
+        s.ingest(":srv 353 me = #x :alice @bob +carol")
+        s.ingest(":srv 366 me #x :End of /NAMES")
+        let chan = channel(s, "#x")!
+        #expect(chan.users.count == 3)
+        // bob is op (@) → ranks above voiced carol and plain alice.
+        #expect(chan.users.first?.nick == "bob")
+        #expect(chan.users.contains { $0.nick == "carol" && $0.prefix == "+" })
+    }
+
+    @Test func privmsgFromOtherLandsInChannelWithSender() {
+        let s = connected()
+        s.ingest(":me!u@h JOIN #x")
+        s.ingest(":bob!u@h PRIVMSG #x :hello there")
+        let chan = channel(s, "#x")!
+        let line = chan.lines.first { $0.kind == .message }
+        #expect(line?.sender == "bob")
+        #expect(line?.text == "hello there")
+        #expect(line?.isSelf == false)
+    }
+
+    @Test func mentionOfOurNickIsFlagged() {
+        let s = connected(nick: "ircle-user")
+        s.ingest(":ircle-user!u@h JOIN #x")
+        s.ingest(":bob!u@h PRIVMSG #x :hey ircle-user how are you")
+        let line = channel(s, "#x")!.lines.first { $0.kind == .message }
+        #expect(line?.isMention == true)
+    }
+
+    @Test func actionRendersAsActionLine() {
+        let s = connected()
+        s.ingest(":me!u@h JOIN #x")
+        s.ingest(":bob!u@h PRIVMSG #x :\u{01}ACTION waves\u{01}")
+        let line = channel(s, "#x")!.lines.first { $0.kind == .action }
+        #expect(line?.sender == "bob")
+        #expect(line?.text == "waves")
+    }
+
+    @Test func topicNumericSetsChannelTopic() {
+        let s = connected()
+        s.ingest(":me!u@h JOIN #x")
+        s.ingest(":srv 332 me #x :welcome to the channel")
+        #expect(channel(s, "#x")?.topic == "welcome to the channel")
+    }
+
+    @Test func partRemovesUserAndQuitSweepsAllChannels() {
+        let s = connected()
+        s.ingest(":me!u@h JOIN #x")
+        s.ingest(":srv 353 me = #x :@bob alice")
+        s.ingest(":alice!u@h PART #x :bye")
+        #expect(channel(s, "#x")?.hasUser("alice") == false)
+        #expect(channel(s, "#x")?.hasUser("bob") == true)
+        s.ingest(":bob!u@h QUIT :leaving")
+        #expect(channel(s, "#x")?.hasUser("bob") == false)
+    }
+
+    @Test func incomingPrivateMessageOpensQueryKeyedBySender() {
+        let s = connected()
+        s.ingest(":dave!u@h PRIVMSG me :psst")
+        let q = s.buffers.first { $0.kind == .query }
+        #expect(q?.name == "dave")
+        #expect(q?.lines.first { $0.kind == .message }?.text == "psst")
+    }
+
+    @Test func nickChangeRenamesAcrossChannels() {
+        let s = connected()
+        s.ingest(":me!u@h JOIN #x")
+        s.ingest(":srv 353 me = #x :bob")
+        s.ingest(":bob!u@h NICK bobby")
+        #expect(channel(s, "#x")?.hasUser("bobby") == true)
+        #expect(channel(s, "#x")?.hasUser("bob") == false)
+    }
+}
