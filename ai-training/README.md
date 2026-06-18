@@ -61,7 +61,8 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 1 | **Model Landscape** | The decision framework + dated catalogs of frontier/proprietary models and open-weight/local models, including a top-~100 local-model list with use cases. |
 | 2 | **Prompt Engineering** | The durable principles, the core techniques, how prompting inverted in the reasoning-model era, advanced patterns, and reliability/security/evaluation. |
 | 3 | **Retrieval-Augmented Generation (RAG)** | The pipeline and the RAG-vs-long-context-vs-fine-tuning decision; chunking, embeddings & vector stores, retrieval quality, grounded/cited generation, and evaluation/security/production. |
-| 4+ | *(future)* | Agents & tool use, evals, fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
+| 4 | **Agents & Tool Use** | When (and when not) to build an agent; tool/function calling, agent architectures & multi-agent, context engineering & memory, MCP, safety/security, and evaluating/operating agents. |
+| 5+ | *(future)* | Evaluation, fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
 
 ---
 
@@ -87,6 +88,15 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [Retrieval Quality](part-03-rag/03-retrieval-quality.md) — hybrid search, reranking, query transformation, contextual retrieval, GraphRAG, agentic RAG.
 - [Generation & Prompt Assembly](part-03-rag/04-generation-and-prompt-assembly.md) — grounding, citations, chunk ordering ("lost in the middle"), how many chunks.
 - [Evaluation, Security & Production](part-03-rag/05-evaluation-security-and-production.md) — RAG metrics & RAGAS, injection/poisoning/access-control, freshness/latency/cost/caching.
+
+**Module 4 — Agents & Tool Use**
+- [Agent Fundamentals](part-04-agents-and-tool-use/00-agent-fundamentals.md) — agent vs. workflow vs. single call, the agent loop, and the "when *not* to build one" gate. **Start here.**
+- [Tool & Function Calling](part-04-agents-and-tool-use/01-tool-and-function-calling.md) — the call mechanic, tool_choice/parallel/streaming, and designing tools the model uses well.
+- [Agent Architectures & Patterns](part-04-agents-and-tool-use/02-agent-architectures-and-patterns.md) — the workflow taxonomy, autonomous loops (ReAct etc.), and when multi-agent wins or hurts.
+- [Context Engineering & Memory](part-04-agents-and-tool-use/03-context-engineering-and-memory.md) — context rot, compaction, context editing, memory tools, and subagent context isolation.
+- [MCP & the Tool Ecosystem](part-04-agents-and-tool-use/04-mcp-and-the-tool-ecosystem.md) — what MCP is, its architecture, and its security surface.
+- [Safety, Security & Reliability](part-04-agents-and-tool-use/05-safety-security-and-reliability.md) — failure modes, guardrails, human-in-the-loop, least privilege, excessive agency, the lethal trifecta.
+- [Evaluating & Operating Agents](part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md) — outcome vs. trajectory eval, pass^k, agent eval sets, and observability.
 
 ---
 

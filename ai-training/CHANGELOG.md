@@ -3,6 +3,41 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-18 — Module 4 (Agents & Tool Use) built
+
+- **Module 4 — Agents & Tool Use** (7 lessons), durable-first, cross-linked to
+  Modules 1–3 (tool prompting, agentic RAG, retrieval-as-memory, prompt injection):
+  - `00-agent-fundamentals.md` — agent vs workflow vs single call, the augmented LLM,
+    the gather→act→verify→repeat loop, and the durable "when *not* to build an agent"
+    gate (complexity/value/viability/cost-of-error).
+  - `01-tool-and-function-calling.md` — the call mechanic + loop, tool_choice/parallel/
+    streaming, cross-provider field-name gotchas, designing good tools (descriptions,
+    consolidation, actionable errors, bash-vs-dedicated), server vs client tools,
+    strict-schema structured output.
+  - `02-agent-architectures-and-patterns.md` — the Anthropic workflow taxonomy
+    (chaining/routing/parallelization/orchestrator-workers/evaluator-optimizer),
+    autonomous loops (ReAct/plan-execute/reflection), and multi-agent (orchestrator+
+    subagents, 90.2% win vs ~15× token cost, when it hurts).
+  - `03-context-engineering-and-memory.md` — context rot/finite attention, compaction,
+    context editing, short vs long-term memory, memory tool/files-as-memory,
+    retrieval-as-memory (just-in-time), note-taking, subagent context isolation.
+  - `04-mcp-and-the-tool-ecosystem.md` — MCP (M×N→M+N, USB-C analogy), host/client/
+    server + primitives, transports, AAIF/Linux-Foundation governance + adoption, and
+    MCP security (lethal trifecta, tool poisoning, rug pull, confused deputy).
+  - `05-safety-security-and-reliability.md` — failure modes, guardrails (input/output/
+    tripwire/cheap-gatekeeper), human-in-the-loop (+ approval-fatigue 93% caveat), least
+    privilege, OWASP LLM06 excessive agency, the lethal trifecta & Rule of Two, cost/
+    latency caps.
+  - `06-evaluating-and-operating-agents.md` — why agent eval is hard, outcome vs
+    trajectory eval, tool-selection/argument/ordering accuracy, LLM-as-judge for
+    transcripts, eval sets, pass@k vs **pass^k**, frameworks (LangSmith/agentevals/
+    OpenAI evals/τ-bench), and OTel-GenAI observability.
+- Sourcing: primary sources cited inline (Anthropic Building Effective Agents,
+  multi-agent system, context engineering, evals, writing-tools; MCP spec + AAIF
+  donation; OWASP LLM01/06; Simon Willison's lethal trifecta); Module 1–3 material
+  referenced not duplicated. Beta API flags + MCP version + token multipliers flagged
+  as dated. Updated README, CURRICULUM (status ✅), PROGRESS. All links verified.
+
 ## 2026-06-18 — Module 3 (Retrieval-Augmented Generation) built
 
 - **Module 3 — RAG** (6 lessons), durable-first, cross-linked to Modules 1–2:

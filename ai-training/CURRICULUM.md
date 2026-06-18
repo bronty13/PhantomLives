@@ -48,11 +48,22 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Generation & prompt assembly | [part-03-rag/04-generation-and-prompt-assembly.md](part-03-rag/04-generation-and-prompt-assembly.md) |
 | ✅ | Evaluation, security & production | [part-03-rag/05-evaluation-security-and-production.md](part-03-rag/05-evaluation-security-and-production.md) |
 
+## Module 4 — Agents & Tool Use
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | Agent fundamentals (agent vs workflow; when *not* to build one) | [part-04-agents-and-tool-use/00-agent-fundamentals.md](part-04-agents-and-tool-use/00-agent-fundamentals.md) |
+| ✅ | Tool & function calling (mechanics + designing good tools) | [part-04-agents-and-tool-use/01-tool-and-function-calling.md](part-04-agents-and-tool-use/01-tool-and-function-calling.md) |
+| ✅ | Agent architectures & patterns (workflows, autonomous, multi-agent) | [part-04-agents-and-tool-use/02-agent-architectures-and-patterns.md](part-04-agents-and-tool-use/02-agent-architectures-and-patterns.md) |
+| ✅ | Context engineering & memory | [part-04-agents-and-tool-use/03-context-engineering-and-memory.md](part-04-agents-and-tool-use/03-context-engineering-and-memory.md) |
+| ✅ | MCP & the tool ecosystem | [part-04-agents-and-tool-use/04-mcp-and-the-tool-ecosystem.md](part-04-agents-and-tool-use/04-mcp-and-the-tool-ecosystem.md) |
+| ✅ | Safety, security & reliability | [part-04-agents-and-tool-use/05-safety-security-and-reliability.md](part-04-agents-and-tool-use/05-safety-security-and-reliability.md) |
+| ✅ | Evaluating & operating agents | [part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md](part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md) |
+
 ## Future modules *(not yet built — see [HANDOFF.md](HANDOFF.md))*
 
 | Status | Module | Sketch |
 |---|---|---|
-| ⬜ | 4 — Agents & tool use | Tool/function calling, the agent loop, MCP, multi-agent, when *not* to build an agent. |
 | ⬜ | 5 — Evaluation | How to actually measure if a model/prompt is good; eval sets, LLM-as-judge, regression testing. |
 | ⬜ | 6 — Fine-tuning & adaptation | LoRA/QLoRA, when fine-tuning helps vs. hurts, data prep, distillation. |
 | ⬜ | 7 — Cost & latency engineering | Token economics, batching, caching, model cascades/routing, the build-vs-buy math. |

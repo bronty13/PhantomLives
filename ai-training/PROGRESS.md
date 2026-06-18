@@ -31,5 +31,14 @@ Check off lessons as you complete them.
 - [ ] Generation & prompt assembly
 - [ ] Evaluation, security & production
 
+## Module 4 — Agents & Tool Use
+- [ ] Agent fundamentals
+- [ ] Tool & function calling
+- [ ] Agent architectures & patterns
+- [ ] Context engineering & memory
+- [ ] MCP & the tool ecosystem
+- [ ] Safety, security & reliability
+- [ ] Evaluating & operating agents
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*
