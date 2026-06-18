@@ -60,11 +60,21 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Safety, security & reliability | [part-04-agents-and-tool-use/05-safety-security-and-reliability.md](part-04-agents-and-tool-use/05-safety-security-and-reliability.md) |
 | ✅ | Evaluating & operating agents | [part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md](part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md) |
 
+## Module 5 — Evaluation
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | The eval mindset (eval-driven development) | [part-05-evaluation/00-the-eval-mindset.md](part-05-evaluation/00-the-eval-mindset.md) |
+| ✅ | Building eval sets (golden datasets, contamination) | [part-05-evaluation/01-building-eval-sets.md](part-05-evaluation/01-building-eval-sets.md) |
+| ✅ | Grading methods (the reliability hierarchy) | [part-05-evaluation/02-grading-methods.md](part-05-evaluation/02-grading-methods.md) |
+| ✅ | LLM-as-a-judge | [part-05-evaluation/03-llm-as-judge.md](part-05-evaluation/03-llm-as-judge.md) |
+| ✅ | Benchmarks & the landscape (+ safety eval) | [part-05-evaluation/04-benchmarks-and-the-landscape.md](part-05-evaluation/04-benchmarks-and-the-landscape.md) |
+| ✅ | Evaluation in production (stats, A/B, CI, monitoring) | [part-05-evaluation/05-evaluation-in-production.md](part-05-evaluation/05-evaluation-in-production.md) |
+
 ## Future modules *(not yet built — see [HANDOFF.md](HANDOFF.md))*
 
 | Status | Module | Sketch |
 |---|---|---|
-| ⬜ | 5 — Evaluation | How to actually measure if a model/prompt is good; eval sets, LLM-as-judge, regression testing. |
 | ⬜ | 6 — Fine-tuning & adaptation | LoRA/QLoRA, when fine-tuning helps vs. hurts, data prep, distillation. |
 | ⬜ | 7 — Cost & latency engineering | Token economics, batching, caching, model cascades/routing, the build-vs-buy math. |
 | ⬜ | 8 — Local inference deep dive | Running models on your own hardware end-to-end (MLX on the Mac, llama.cpp, vLLM serving). |

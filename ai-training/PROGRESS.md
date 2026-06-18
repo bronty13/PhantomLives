@@ -40,5 +40,13 @@ Check off lessons as you complete them.
 - [ ] Safety, security & reliability
 - [ ] Evaluating & operating agents
 
+## Module 5 — Evaluation
+- [ ] The eval mindset
+- [ ] Building eval sets
+- [ ] Grading methods
+- [ ] LLM-as-a-judge
+- [ ] Benchmarks & the landscape
+- [ ] Evaluation in production
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*

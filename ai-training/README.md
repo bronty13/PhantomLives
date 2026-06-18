@@ -62,7 +62,8 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 2 | **Prompt Engineering** | The durable principles, the core techniques, how prompting inverted in the reasoning-model era, advanced patterns, and reliability/security/evaluation. |
 | 3 | **Retrieval-Augmented Generation (RAG)** | The pipeline and the RAG-vs-long-context-vs-fine-tuning decision; chunking, embeddings & vector stores, retrieval quality, grounded/cited generation, and evaluation/security/production. |
 | 4 | **Agents & Tool Use** | When (and when not) to build an agent; tool/function calling, agent architectures & multi-agent, context engineering & memory, MCP, safety/security, and evaluating/operating agents. |
-| 5+ | *(future)* | Evaluation, fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
+| 5 | **Evaluation** | The eval-driven-development mindset; building golden sets, the grading hierarchy, LLM-as-a-judge, reading benchmarks critically, and rigorous/continuous production eval (stats, A/B, CI, monitoring). |
+| 6+ | *(future)* | Fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
 
 ---
 
@@ -97,6 +98,14 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [MCP & the Tool Ecosystem](part-04-agents-and-tool-use/04-mcp-and-the-tool-ecosystem.md) — what MCP is, its architecture, and its security surface.
 - [Safety, Security & Reliability](part-04-agents-and-tool-use/05-safety-security-and-reliability.md) — failure modes, guardrails, human-in-the-loop, least privilege, excessive agency, the lethal trifecta.
 - [Evaluating & Operating Agents](part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md) — outcome vs. trajectory eval, pass^k, agent eval sets, and observability.
+
+**Module 5 — Evaluation**
+- [The Eval Mindset](part-05-evaluation/00-the-eval-mindset.md) — why eval is the moat, eval-driven development, "look at your data," offline vs. online. **Start here.**
+- [Building Eval Sets](part-05-evaluation/01-building-eval-sets.md) — SMART criteria, coverage & negative examples, sourcing, labeling, train/test split, contamination.
+- [Grading Methods](part-05-evaluation/02-grading-methods.md) — the reliability hierarchy: code-based, statistical/NLP metrics & their limits, classification metrics, human eval.
+- [LLM-as-a-Judge](part-05-evaluation/03-llm-as-judge.md) — the three modes, writing judge prompts, the bias table + mitigations, juries, calibration.
+- [Benchmarks & the Landscape](part-05-evaluation/04-benchmarks-and-the-landscape.md) — what benchmarks measure, contamination/saturation/Goodhart, reading leaderboards critically, safety eval.
+- [Evaluation in Production](part-05-evaluation/05-evaluation-in-production.md) — statistics (CIs, paired deltas, pass@k vs pass^k), A/B testing, CI gating, online monitoring, tooling.
 
 ---
 

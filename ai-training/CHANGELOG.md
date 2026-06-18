@@ -3,6 +3,43 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-18 — Module 5 (Evaluation) built
+
+- **Module 5 — Evaluation** (6 lessons), durable-first; the general eval discipline that
+  the module-specific evals in Modules 2–4 (prompt, RAG, agent) apply — cross-linked, not
+  duplicated:
+  - `00-the-eval-mindset.md` — evals as the moat, eval-driven development loop, "look at
+    your data"/error analysis, offline vs online, why leaderboards ≠ your task, the grading
+    spectrum + SMART criteria.
+  - `01-building-eval-sets.md` — SMART success criteria, coverage incl. negative examples &
+    class balance, sourcing (production/expert/synthetic + caveats), volume-over-polish
+    (bootstrap 20–50 vs shipping hundreds–thousands), labeling (benevolent dictator, binary
+    first), train/test split, data contamination (private/fresh sets, never publish),
+    maintaining/versioning.
+  - `02-grading-methods.md` — the reliability hierarchy: code-based (incl. guardrails vs
+    evaluators), statistical/NLP metrics (BLEU/ROUGE/BERTScore + limits), classification
+    metrics (precision/recall/F1, macro/micro, imbalance), human eval (binary, rubric,
+    IAA/kappa).
+  - `03-llm-as-judge.md` — the 80%-human-agreement foundation, three modes (pointwise/
+    pairwise/reference-based), writing judge prompts (binary>Likert, reason-then-score,
+    decompose, escape hatch), the bias table (position/verbosity/self-preference/sycophancy)
+    + mitigations, juries (PoLL), calibrate-vs-human, cost/nondeterminism/versioning.
+  - `04-benchmarks-and-the-landscape.md` — what the major benchmarks measure (knowledge/
+    math/coding/agentic/multimodal/long-context/IFEval/Arena), the caveats (contamination,
+    saturation, overfitting, construct validity, the Leaderboard Illusion) unified by
+    Goodhart's law, reading leaderboards critically, and safety/red-team eval (the worst-
+    case inversion).
+  - `05-evaluation-in-production.md` — statistics ("a number is not a result": CIs/SEM,
+    clustered SE, paired deltas, bootstrap, power; why 2pt on 100 is noise), pass@k vs
+    pass^k, A/B testing (offline + online business metrics), regression/CI gating, online
+    monitoring (sampling, guardrails vs async, user feedback, drift), neutral tooling table.
+- Sourcing: primary sources cited inline (Hamel Husain evals; Anthropic Demystifying-evals,
+  develop-tests/define-success, Adding Error Bars to Evals; OpenAI eval best practices;
+  Zheng et al. MT-Bench; contamination survey; LMArena Leaderboard Illusion; pass^k
+  sources). Benchmark SOTA numbers deliberately NOT printed (volatile); tool ownership/
+  deprecations flagged as dated. Updated README, CURRICULUM (status ✅), PROGRESS. All links
+  verified.
+
 ## 2026-06-18 — Module 4 (Agents & Tool Use) built
 
 - **Module 4 — Agents & Tool Use** (7 lessons), durable-first, cross-linked to
