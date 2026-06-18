@@ -58,17 +58,26 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | # | Module | What you'll get |
 |---|---|---|
 | 0 | [Orientation](part-00-orientation/00-how-to-use-this-course.md) | How the course works; the vocabulary you need before the catalogs make sense. |
-| 1 | **Model Landscape** (the first build) | The decision framework + dated catalogs of frontier/proprietary models and open-weight/local models, including a top-~100 local-model list with use cases. |
-| 2+ | *(future)* | Prompting, RAG, agents & tool use, evals, fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
+| 1 | **Model Landscape** | The decision framework + dated catalogs of frontier/proprietary models and open-weight/local models, including a top-~100 local-model list with use cases. |
+| 2 | **Prompt Engineering** | The durable principles, the core techniques, how prompting inverted in the reasoning-model era, advanced patterns, and reliability/security/evaluation. |
+| 3+ | *(future)* | RAG, agents & tool use, evals, fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
 
 ---
 
-## Current contents (Module 1 — Model Landscape)
+## Current contents
 
+**Module 1 — Model Landscape**
 - [How to Choose a Model](part-01-model-landscape/00-how-to-choose-a-model.md) — the task × constraint decision framework. **Start here.**
 - [Frontier & Proprietary Models](part-01-model-landscape/01-frontier-proprietary-models.md) — Claude, GPT, Gemini, Grok, Llama, Mistral, Nova, Command, DeepSeek, Qwen, and the niche players, with best-use guidance.
 - [The Open-Weight / Local Ecosystem](part-01-model-landscape/02-open-weight-local-ecosystem.md) — quantization, hardware sizing, runtimes (Ollama/MLX/llama.cpp/vLLM), licensing traps, how to pick by hardware budget.
 - [Top ~100 Local Models](part-01-model-landscape/03-top-100-local-models.md) — a categorized, popularity-anchored catalog with one-line use cases.
+
+**Module 2 — Prompt Engineering**
+- [Prompting Fundamentals](part-02-prompt-engineering/00-prompting-fundamentals.md) — what prompting is/isn't, the prerequisites, prompt anatomy, and the durable principles. **Start here.**
+- [Core Techniques](part-02-prompt-engineering/01-core-techniques.md) — zero/few-shot, roles, delimiters/XML, structured output, long-context layout, and the prefill caveat.
+- [Prompting in the Reasoning Era](part-02-prompt-engineering/02-prompting-reasoning-models.md) — how the playbook inverted: goal-not-steps, effort over prose, be less prescriptive.
+- [Advanced Patterns](part-02-prompt-engineering/03-advanced-patterns.md) — CoT variants, self-consistency, chaining, ReAct/tool prompting, meta-prompting, templating + caching.
+- [Reliability, Security & Evaluation](part-02-prompt-engineering/04-reliability-security-and-evaluation.md) — hallucination mitigation, prompt injection/jailbreak defense, and how to evaluate/iterate prompts.
 
 ---
 

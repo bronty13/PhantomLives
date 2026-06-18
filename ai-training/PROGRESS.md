@@ -16,5 +16,12 @@ Check off lessons as you complete them.
 - [ ] The open-weight / local ecosystem
 - [ ] Top ~100 local models
 
+## Module 2 — Prompt Engineering
+- [ ] Prompting fundamentals
+- [ ] Core techniques
+- [ ] Prompting in the reasoning era
+- [ ] Advanced patterns
+- [ ] Reliability, security & evaluation
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*

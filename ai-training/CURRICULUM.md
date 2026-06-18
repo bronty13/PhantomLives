@@ -27,11 +27,20 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | The open-weight / local ecosystem | [part-01-model-landscape/02-open-weight-local-ecosystem.md](part-01-model-landscape/02-open-weight-local-ecosystem.md) |
 | ✅ | Top ~100 local models | [part-01-model-landscape/03-top-100-local-models.md](part-01-model-landscape/03-top-100-local-models.md) |
 
+## Module 2 — Prompt Engineering
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | Prompting fundamentals (principles + anatomy) | [part-02-prompt-engineering/00-prompting-fundamentals.md](part-02-prompt-engineering/00-prompting-fundamentals.md) |
+| ✅ | Core techniques (few-shot, structured output, long-context, prefill) | [part-02-prompt-engineering/01-core-techniques.md](part-02-prompt-engineering/01-core-techniques.md) |
+| ✅ | Prompting in the reasoning era (the big shift) | [part-02-prompt-engineering/02-prompting-reasoning-models.md](part-02-prompt-engineering/02-prompting-reasoning-models.md) |
+| ✅ | Advanced patterns (chaining, ReAct, self-consistency, meta-prompting) | [part-02-prompt-engineering/03-advanced-patterns.md](part-02-prompt-engineering/03-advanced-patterns.md) |
+| ✅ | Reliability, security & evaluation | [part-02-prompt-engineering/04-reliability-security-and-evaluation.md](part-02-prompt-engineering/04-reliability-security-and-evaluation.md) |
+
 ## Future modules *(not yet built — see [HANDOFF.md](HANDOFF.md))*
 
 | Status | Module | Sketch |
 |---|---|---|
-| ⬜ | 2 — Prompting & context engineering | Prompt structure, system prompts, caching, structured outputs, when prompting beats fine-tuning. |
 | ⬜ | 3 — Retrieval-augmented generation (RAG) | Embeddings, vector stores, chunking, rerankers, grounded citations. |
 | ⬜ | 4 — Agents & tool use | Tool/function calling, the agent loop, MCP, multi-agent, when *not* to build an agent. |
 | ⬜ | 5 — Evaluation | How to actually measure if a model/prompt is good; eval sets, LLM-as-judge, regression testing. |
