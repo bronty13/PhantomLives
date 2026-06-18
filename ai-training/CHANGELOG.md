@@ -3,6 +3,36 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-18 — Module 8 (Local Inference Deep Dive) built — CORE CURRICULUM COMPLETE
+
+- **Module 8 — Local Inference Deep Dive** (6 lessons), hands-on, Apple-Silicon-weighted;
+  cross-linked to Modules 1 (local ecosystem), 3 (offline RAG), 6 (multi-LoRA serving,
+  chat-template trap), 7 (caching, throughput↔latency, build-vs-buy economics):
+  - `00-why-and-the-local-stack.md` — the engine/front-end/server mental model (llama.cpp is
+    the engine; Ollama/LM Studio bundle it; MLX is Apple's engine; vLLM is the prod server),
+    hardware reality (unified memory vs VRAM), and the module roadmap.
+  - `01-ollama-and-lm-studio.md` — the easy on-ramps: pull/run/ps, quant tags, OpenAI-compat
+    server (:11434 / :1234), Modelfiles, the 4096-default-context gotcha; LM Studio's dual
+    GGUF/MLX engine.
+  - `02-apple-silicon-and-mlx.md` — unified memory, the RAM→model-size fit table, the
+    iogpu.wired_limit knob, mlx-lm (generate/chat/server/convert), why MLX beats llama.cpp on
+    M-series, and the transcribe/ MLX-Whisper tie-in.
+  - `03-llama-cpp-and-gguf.md` — the engine: GGUF, quantization in depth (K-quants S/M/L,
+    Q4_K_M sweet spot, bigger=slower, I-quants + imatrix), -ngl offload, context/KV cache,
+    GBNF grammars / --json-schema, backends.
+  - `04-serving-at-scale-vllm.md` — when to graduate, vllm serve, PagedAttention + continuous
+    batching, tensor/pipeline parallel, AWQ/GPTQ/FP8, multi-LoRA, engine contrast (TGI now
+    maintenance-mode), VRAM rules; Linux+GPU caveat.
+  - `05-integration-and-operations.md` — the OpenAI-compatible base_url unlock (runs all of
+    M2–M7 locally), local tool calling + structured output, fully-offline RAG, GUIs,
+    benchmarking (tokens/sec + TTFT), OOM/slow/quality troubleshooting, privacy/security; and
+    the **course capstone** recap + "where to go from here."
+- Sourcing: primary docs cited inline (Ollama, LM Studio, MLX/mlx-lm, ggml-org/llama.cpp,
+  vLLM, Open WebUI; quant-eval preprint). Versions/ports/tokens-per-sec flagged as dated.
+- **Course-completion bookkeeping:** CURRICULUM marks the core curriculum (Modules 0–8)
+  complete with an extend-it pointer; README adds a completion banner + Module 8 contents;
+  PROGRESS lists Module 8. All links verified.
+
 ## 2026-06-18 — Module 7 (Cost & Latency Engineering) built
 
 - **Module 7 — Cost & Latency Engineering** (6 lessons), durable-first; the operational

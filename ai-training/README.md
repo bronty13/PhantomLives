@@ -65,7 +65,11 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 5 | **Evaluation** | The eval-driven-development mindset; building golden sets, the grading hierarchy, LLM-as-a-judge, reading benchmarks critically, and rigorous/continuous production eval (stats, A/B, CI, monitoring). |
 | 6 | **Fine-tuning & Adaptation** | When (and when not) to fine-tune; methods (LoRA/QLoRA, SFT, DPO, RFT, distillation), the data discipline, process/tooling/serving, and the pitfalls (forgetting, safety degradation, maintenance). |
 | 7 | **Cost & Latency Engineering** | The cost/latency/quality triangle; token economics, caching, model right-sizing & routing, latency engineering (TTFT/streaming/throughput), and production economics / build-vs-buy. |
-| 8+ | *(future)* | Local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
+| 8 | **Local Inference Deep Dive** | Running models on your own hardware end-to-end: the local stack, Ollama/LM Studio, Apple Silicon & MLX, llama.cpp/GGUF, vLLM serving, and offline integration/ops. |
+
+> 🎓 **The core curriculum (Modules 0–8) is complete** — the full arc from choosing a model
+> to running the whole stack on your own hardware. See [CURRICULUM.md](CURRICULUM.md) for the
+> lesson index and [HANDOFF.md](HANDOFF.md) to extend it.
 
 ---
 
@@ -123,6 +127,14 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [Model Selection & Routing](part-07-cost-and-latency/03-model-selection-and-routing.md) — right-sizing, cascades (FrugalGPT), routers (RouteLLM), distillation, speculative decoding.
 - [Latency Engineering](part-07-cost-and-latency/04-latency-engineering.md) — TTFT/TPOT & prefill-vs-decode, streaming, output reduction, prefix cache, and the throughput↔latency tension.
 - [Production Economics & Build-vs-Buy](part-07-cost-and-latency/05-production-economics-and-build-vs-buy.md) — cost attribution, budgets/guardrails, the API-vs-self-host math, batch, and FinOps for AI.
+
+**Module 8 — Local Inference Deep Dive**
+- [Why Local, and the Local Stack](part-08-local-inference/00-why-and-the-local-stack.md) — the engine/front-end/server mental model and hardware reality. **Start here.**
+- [Ollama & LM Studio](part-08-local-inference/01-ollama-and-lm-studio.md) — the easy on-ramps: pull/run, the OpenAI-compatible server, Modelfiles, the context gotcha.
+- [Apple Silicon & MLX](part-08-local-inference/02-apple-silicon-and-mlx.md) — unified memory, the fit table, mlx-lm, and why MLX is fastest on a Mac.
+- [llama.cpp & GGUF](part-08-local-inference/03-llama-cpp-and-gguf.md) — the engine: quantization in depth, GPU offload, context/KV cache, GBNF grammars.
+- [Serving at Scale (vLLM)](part-08-local-inference/04-serving-at-scale-vllm.md) — when to graduate, PagedAttention/continuous batching, multi-GPU, multi-LoRA serving.
+- [Integration & Operations](part-08-local-inference/05-integration-and-operations.md) — the OpenAI-compatible base_url unlock, offline RAG, benchmarking, troubleshooting (+ the course capstone).
 
 ---
 

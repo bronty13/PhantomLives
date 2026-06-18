@@ -63,5 +63,13 @@ Check off lessons as you complete them.
 - [ ] Latency engineering
 - [ ] Production economics & build-vs-buy
 
+## Module 8 — Local Inference Deep Dive
+- [ ] Why local, and the local-inference stack
+- [ ] Ollama & LM Studio
+- [ ] Apple Silicon & MLX
+- [ ] llama.cpp & GGUF
+- [ ] Serving at scale (vLLM)
+- [ ] Integration & operations
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*

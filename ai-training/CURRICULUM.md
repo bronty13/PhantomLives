@@ -92,8 +92,23 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Latency engineering | [part-07-cost-and-latency/04-latency-engineering.md](part-07-cost-and-latency/04-latency-engineering.md) |
 | ✅ | Production economics & build-vs-buy | [part-07-cost-and-latency/05-production-economics-and-build-vs-buy.md](part-07-cost-and-latency/05-production-economics-and-build-vs-buy.md) |
 
-## Future modules *(not yet built — see [HANDOFF.md](HANDOFF.md))*
+## Module 8 — Local Inference Deep Dive
 
-| Status | Module | Sketch |
+| Status | Lesson | File |
 |---|---|---|
-| ⬜ | 8 — Local inference deep dive | Running models on your own hardware end-to-end (MLX on the Mac, llama.cpp, vLLM serving). |
+| ✅ | Why local, and the local-inference stack | [part-08-local-inference/00-why-and-the-local-stack.md](part-08-local-inference/00-why-and-the-local-stack.md) |
+| ✅ | Ollama & LM Studio (the easy on-ramps) | [part-08-local-inference/01-ollama-and-lm-studio.md](part-08-local-inference/01-ollama-and-lm-studio.md) |
+| ✅ | Apple Silicon & MLX | [part-08-local-inference/02-apple-silicon-and-mlx.md](part-08-local-inference/02-apple-silicon-and-mlx.md) |
+| ✅ | llama.cpp & GGUF | [part-08-local-inference/03-llama-cpp-and-gguf.md](part-08-local-inference/03-llama-cpp-and-gguf.md) |
+| ✅ | Serving at scale (vLLM) | [part-08-local-inference/04-serving-at-scale-vllm.md](part-08-local-inference/04-serving-at-scale-vllm.md) |
+| ✅ | Integration & operations (+ course capstone) | [part-08-local-inference/05-integration-and-operations.md](part-08-local-inference/05-integration-and-operations.md) |
+
+---
+
+## 🎓 Core curriculum complete
+
+Modules 0–8 are built. The course covers the full practical arc: choosing models → prompting
+→ RAG → agents → evaluation → fine-tuning → cost/latency → running it all locally. To **extend**
+it (new modules, refreshing the dated catalogs), see [HANDOFF.md](HANDOFF.md) — candidate
+future topics include multimodal (vision/audio/video) workflows, AI product/UX patterns, and
+governance/compliance.
