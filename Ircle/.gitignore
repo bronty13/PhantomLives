@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+Package.resolved
+.DS_Store
+Ircle.app/
+* [0-9].app/
+.claude/settings.local.json
