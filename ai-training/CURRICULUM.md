@@ -71,10 +71,19 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Benchmarks & the landscape (+ safety eval) | [part-05-evaluation/04-benchmarks-and-the-landscape.md](part-05-evaluation/04-benchmarks-and-the-landscape.md) |
 | ✅ | Evaluation in production (stats, A/B, CI, monitoring) | [part-05-evaluation/05-evaluation-in-production.md](part-05-evaluation/05-evaluation-in-production.md) |
 
+## Module 6 — Fine-tuning & Adaptation
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | Fundamentals & when (not) to fine-tune | [part-06-fine-tuning/00-fundamentals-and-when-to-fine-tune.md](part-06-fine-tuning/00-fundamentals-and-when-to-fine-tune.md) |
+| ✅ | Methods (LoRA/QLoRA, SFT, DPO, RFT, distillation) | [part-06-fine-tuning/01-methods.md](part-06-fine-tuning/01-methods.md) |
+| ✅ | Data (quality, format, the chat template, synthetic) | [part-06-fine-tuning/02-data.md](part-06-fine-tuning/02-data.md) |
+| ✅ | Process, tooling & serving | [part-06-fine-tuning/03-process-tooling-and-serving.md](part-06-fine-tuning/03-process-tooling-and-serving.md) |
+| ✅ | Pitfalls, risks & maintenance | [part-06-fine-tuning/04-pitfalls-risks-and-maintenance.md](part-06-fine-tuning/04-pitfalls-risks-and-maintenance.md) |
+
 ## Future modules *(not yet built — see [HANDOFF.md](HANDOFF.md))*
 
 | Status | Module | Sketch |
 |---|---|---|
-| ⬜ | 6 — Fine-tuning & adaptation | LoRA/QLoRA, when fine-tuning helps vs. hurts, data prep, distillation. |
 | ⬜ | 7 — Cost & latency engineering | Token economics, batching, caching, model cascades/routing, the build-vs-buy math. |
 | ⬜ | 8 — Local inference deep dive | Running models on your own hardware end-to-end (MLX on the Mac, llama.cpp, vLLM serving). |

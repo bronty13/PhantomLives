@@ -3,6 +3,35 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-18 — Module 6 (Fine-tuning & Adaptation) built
+
+- **Module 6 — Fine-tuning & Adaptation** (5 lessons), durable-first; cross-linked to
+  Modules 1 (model choice), 2 (prompting), 3 (RAG = the knowledge alternative), and 5
+  (eval, required before/after a fine-tune):
+  - `00-fundamentals-and-when-to-fine-tune.md` — the adaptation spectrum
+    (prompt→RAG→fine-tune→continued-pretraining), the durable "behavior, not knowledge"
+    framing (OpenAI two-axis matrix; open-book-exam vs studying), when fine-tuning helps vs
+    when not to, the maintenance burden, and the dated provider-availability reality
+    (OpenAI winding down, Claude via Bedrock, Gemini via Vertex, open-weight DIY).
+  - `01-methods.md` — full vs PEFT (LoRA/QLoRA + swappable adapters), SFT, preference tuning
+    (RLHF/DPO + KTO/ORPO/IPO), RFT/RLVR (verifiable rewards), distillation, continued
+    pretraining, and high-level hyperparameters; a method-picker table.
+  - `02-data.md` — quality > quantity (LIMA), how-much ranges, the chat-template match (the
+    #1 silent failure), curation/decontamination, diversity + general-data mixing, synthetic
+    data & distillation (with licensing caveats), preference triples, train/val split.
+  - `03-process-tooling-and-serving.md` — the prompt/RAG-first workflow (eval before
+    training), hosted vs DIY frameworks (TRL/PEFT, Axolotl, Unsloth, LLaMA-Factory,
+    torchtune), QLoRA hardware table, practical hyperparameters, eval (incl. safety), and
+    serving (merged weights vs multi-LoRA: vLLM/LoRAX).
+  - `04-pitfalls-risks-and-maintenance.md` — catastrophic forgetting, overfitting, **safety/
+    alignment degradation even on benign data** (Qi et al.; emergent misalignment — LoRA
+    doesn't immunize), privacy/memorization, model staleness & the re-tuning treadmill,
+    cost reality, and the prompt→RAG→fine-tune→distill alternatives recap.
+- Sourcing: primary sources cited inline (LoRA, QLoRA, DPO, LIMA, Self-Instruct, Qi et al.
+  safety-compromise, emergent-misalignment, Carlini extraction; OpenAI/Vertex/Bedrock docs;
+  HF PEFT/TRL, Unsloth, Axolotl). Provider offerings + hardware figures flagged as dated.
+  Updated README, CURRICULUM (status ✅), PROGRESS. All links verified.
+
 ## 2026-06-18 — Module 5 (Evaluation) built
 
 - **Module 5 — Evaluation** (6 lessons), durable-first; the general eval discipline that

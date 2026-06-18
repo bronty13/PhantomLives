@@ -63,7 +63,8 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 3 | **Retrieval-Augmented Generation (RAG)** | The pipeline and the RAG-vs-long-context-vs-fine-tuning decision; chunking, embeddings & vector stores, retrieval quality, grounded/cited generation, and evaluation/security/production. |
 | 4 | **Agents & Tool Use** | When (and when not) to build an agent; tool/function calling, agent architectures & multi-agent, context engineering & memory, MCP, safety/security, and evaluating/operating agents. |
 | 5 | **Evaluation** | The eval-driven-development mindset; building golden sets, the grading hierarchy, LLM-as-a-judge, reading benchmarks critically, and rigorous/continuous production eval (stats, A/B, CI, monitoring). |
-| 6+ | *(future)* | Fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
+| 6 | **Fine-tuning & Adaptation** | When (and when not) to fine-tune; methods (LoRA/QLoRA, SFT, DPO, RFT, distillation), the data discipline, process/tooling/serving, and the pitfalls (forgetting, safety degradation, maintenance). |
+| 7+ | *(future)* | Cost & latency engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
 
 ---
 
@@ -106,6 +107,13 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [LLM-as-a-Judge](part-05-evaluation/03-llm-as-judge.md) — the three modes, writing judge prompts, the bias table + mitigations, juries, calibration.
 - [Benchmarks & the Landscape](part-05-evaluation/04-benchmarks-and-the-landscape.md) — what benchmarks measure, contamination/saturation/Goodhart, reading leaderboards critically, safety eval.
 - [Evaluation in Production](part-05-evaluation/05-evaluation-in-production.md) — statistics (CIs, paired deltas, pass@k vs pass^k), A/B testing, CI gating, online monitoring, tooling.
+
+**Module 6 — Fine-tuning & Adaptation**
+- [Fundamentals & When (Not) to Fine-tune](part-06-fine-tuning/00-fundamentals-and-when-to-fine-tune.md) — the adaptation spectrum and the "behavior, not knowledge" decision. **Start here.**
+- [Methods](part-06-fine-tuning/01-methods.md) — full vs. PEFT (LoRA/QLoRA), SFT, preference tuning (DPO), RFT/RLVR, distillation, continued pretraining.
+- [Data](part-06-fine-tuning/02-data.md) — quality over quantity, the chat-template trap, curation/decontamination, synthetic data, preference pairs.
+- [Process, Tooling & Serving](part-06-fine-tuning/03-process-tooling-and-serving.md) — the workflow, hosted vs. DIY, QLoRA hardware, hyperparameters, and multi-LoRA serving.
+- [Pitfalls, Risks & Maintenance](part-06-fine-tuning/04-pitfalls-risks-and-maintenance.md) — catastrophic forgetting, overfitting, safety degradation, privacy, and the re-tuning treadmill.
 
 ---
 

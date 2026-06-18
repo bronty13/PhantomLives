@@ -48,5 +48,12 @@ Check off lessons as you complete them.
 - [ ] Benchmarks & the landscape
 - [ ] Evaluation in production
 
+## Module 6 — Fine-tuning & Adaptation
+- [ ] Fundamentals & when (not) to fine-tune
+- [ ] Methods
+- [ ] Data
+- [ ] Process, tooling & serving
+- [ ] Pitfalls, risks & maintenance
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*
