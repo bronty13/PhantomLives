@@ -3,6 +3,35 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-18 — Module 7 (Cost & Latency Engineering) built
+
+- **Module 7 — Cost & Latency Engineering** (6 lessons), durable-first; the operational
+  synthesis cross-linking Modules 1 (model tiers), 2/3 (caching), 4 (model-per-step, step
+  caps, observability), 5 (eval validates a cheaper model held quality), 6 (distillation):
+  - `00-fundamentals-and-the-triangle.md` — LLM economics (output≫input, stateless re-billing,
+    hidden reasoning tokens), the cost/latency/quality triangle, the lever map, measure-first.
+  - `01-token-economics.md` — input/output asymmetry, context as the master knob (quadratic
+    growth), hidden reasoning tokens, long-context premiums, token-cutting levers, batch APIs
+    (~50% off async).
+  - `02-caching.md` — prompt/prefix caching (prefix-match invariant, ~90% vs OpenAI ~50% reads,
+    break-even, invalidators), semantic/response caching (false-hit risk + thresholds),
+    embedding caching, KV/CAG; the savings-vs-risk hierarchy.
+  - `03-model-selection-and-routing.md` — right-sizing (cheapest model that passes eval),
+    cascades (FrugalGPT), routers (RouteLLM), distillation, speculative decoding; the layered
+    compounding cost architecture.
+  - `04-latency-engineering.md` — TTFT/TPOT + prefill-vs-decode, generation-dominates,
+    streaming (perceived) vs output-reduction (real), model/effort, prefix-cache TTFT,
+    parallelism, reasoning-model TTFT, and the self-host throughput↔latency batching tension.
+  - `05-production-economics-and-build-vs-buy.md` — cost attribution (tags/gateway/OTel),
+    budgets & enforcement (gateway blocks; agent caps), the API-vs-self-host decision
+    (utilization is make-or-break; break-even varies ~100×; hybrid routing), batch, autoscaling,
+    FinOps for AI.
+- Sourcing: primary sources cited inline (FrugalGPT, RouteLLM, CAG, GPTCache papers; NVIDIA/
+  Anyscale/vLLM latency+serving docs; OpenAI/Anthropic/Google pricing/caching/batch docs; the
+  authoritative claude-api prompt-caching reference). Prices/discounts/break-even thresholds
+  flagged as dated/utilization-dependent — taught as mechanisms and ratios, not fixed numbers.
+  Updated README, CURRICULUM (status ✅), PROGRESS. All links verified.
+
 ## 2026-06-18 — Module 6 (Fine-tuning & Adaptation) built
 
 - **Module 6 — Fine-tuning & Adaptation** (5 lessons), durable-first; cross-linked to

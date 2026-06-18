@@ -64,7 +64,8 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 4 | **Agents & Tool Use** | When (and when not) to build an agent; tool/function calling, agent architectures & multi-agent, context engineering & memory, MCP, safety/security, and evaluating/operating agents. |
 | 5 | **Evaluation** | The eval-driven-development mindset; building golden sets, the grading hierarchy, LLM-as-a-judge, reading benchmarks critically, and rigorous/continuous production eval (stats, A/B, CI, monitoring). |
 | 6 | **Fine-tuning & Adaptation** | When (and when not) to fine-tune; methods (LoRA/QLoRA, SFT, DPO, RFT, distillation), the data discipline, process/tooling/serving, and the pitfalls (forgetting, safety degradation, maintenance). |
-| 7+ | *(future)* | Cost & latency engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
+| 7 | **Cost & Latency Engineering** | The cost/latency/quality triangle; token economics, caching, model right-sizing & routing, latency engineering (TTFT/streaming/throughput), and production economics / build-vs-buy. |
+| 8+ | *(future)* | Local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
 
 ---
 
@@ -114,6 +115,14 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [Data](part-06-fine-tuning/02-data.md) — quality over quantity, the chat-template trap, curation/decontamination, synthetic data, preference pairs.
 - [Process, Tooling & Serving](part-06-fine-tuning/03-process-tooling-and-serving.md) — the workflow, hosted vs. DIY, QLoRA hardware, hyperparameters, and multi-LoRA serving.
 - [Pitfalls, Risks & Maintenance](part-06-fine-tuning/04-pitfalls-risks-and-maintenance.md) — catastrophic forgetting, overfitting, safety degradation, privacy, and the re-tuning treadmill.
+
+**Module 7 — Cost & Latency Engineering**
+- [Fundamentals & the Triangle](part-07-cost-and-latency/00-fundamentals-and-the-triangle.md) — LLM economics, the cost/latency/quality triangle, the levers, and measuring. **Start here.**
+- [Token Economics](part-07-cost-and-latency/01-token-economics.md) — input/output asymmetry, context as the master knob, hidden reasoning tokens, batch APIs.
+- [Caching](part-07-cost-and-latency/02-caching.md) — prompt/prefix caching (the biggest lever), semantic & embedding caching, KV/CAG, the savings-vs-risk hierarchy.
+- [Model Selection & Routing](part-07-cost-and-latency/03-model-selection-and-routing.md) — right-sizing, cascades (FrugalGPT), routers (RouteLLM), distillation, speculative decoding.
+- [Latency Engineering](part-07-cost-and-latency/04-latency-engineering.md) — TTFT/TPOT & prefill-vs-decode, streaming, output reduction, prefix cache, and the throughput↔latency tension.
+- [Production Economics & Build-vs-Buy](part-07-cost-and-latency/05-production-economics-and-build-vs-buy.md) — cost attribution, budgets/guardrails, the API-vs-self-host math, batch, and FinOps for AI.
 
 ---
 

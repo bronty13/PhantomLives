@@ -55,5 +55,13 @@ Check off lessons as you complete them.
 - [ ] Process, tooling & serving
 - [ ] Pitfalls, risks & maintenance
 
+## Module 7 — Cost & Latency Engineering
+- [ ] Fundamentals & the cost/latency/quality triangle
+- [ ] Token economics
+- [ ] Caching
+- [ ] Model selection & routing
+- [ ] Latency engineering
+- [ ] Production economics & build-vs-buy
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*

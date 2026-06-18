@@ -81,9 +81,19 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Process, tooling & serving | [part-06-fine-tuning/03-process-tooling-and-serving.md](part-06-fine-tuning/03-process-tooling-and-serving.md) |
 | ✅ | Pitfalls, risks & maintenance | [part-06-fine-tuning/04-pitfalls-risks-and-maintenance.md](part-06-fine-tuning/04-pitfalls-risks-and-maintenance.md) |
 
+## Module 7 — Cost & Latency Engineering
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | Fundamentals & the cost/latency/quality triangle | [part-07-cost-and-latency/00-fundamentals-and-the-triangle.md](part-07-cost-and-latency/00-fundamentals-and-the-triangle.md) |
+| ✅ | Token economics | [part-07-cost-and-latency/01-token-economics.md](part-07-cost-and-latency/01-token-economics.md) |
+| ✅ | Caching | [part-07-cost-and-latency/02-caching.md](part-07-cost-and-latency/02-caching.md) |
+| ✅ | Model selection & routing | [part-07-cost-and-latency/03-model-selection-and-routing.md](part-07-cost-and-latency/03-model-selection-and-routing.md) |
+| ✅ | Latency engineering | [part-07-cost-and-latency/04-latency-engineering.md](part-07-cost-and-latency/04-latency-engineering.md) |
+| ✅ | Production economics & build-vs-buy | [part-07-cost-and-latency/05-production-economics-and-build-vs-buy.md](part-07-cost-and-latency/05-production-economics-and-build-vs-buy.md) |
+
 ## Future modules *(not yet built — see [HANDOFF.md](HANDOFF.md))*
 
 | Status | Module | Sketch |
 |---|---|---|
-| ⬜ | 7 — Cost & latency engineering | Token economics, batching, caching, model cascades/routing, the build-vs-buy math. |
 | ⬜ | 8 — Local inference deep dive | Running models on your own hardware end-to-end (MLX on the Mac, llama.cpp, vLLM serving). |
