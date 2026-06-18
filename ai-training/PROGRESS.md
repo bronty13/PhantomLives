@@ -23,5 +23,13 @@ Check off lessons as you complete them.
 - [ ] Advanced patterns
 - [ ] Reliability, security & evaluation
 
+## Module 3 — Retrieval-Augmented Generation (RAG)
+- [ ] RAG fundamentals
+- [ ] Ingestion & chunking
+- [ ] Embeddings & vector stores
+- [ ] Retrieval quality
+- [ ] Generation & prompt assembly
+- [ ] Evaluation, security & production
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*

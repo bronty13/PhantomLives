@@ -37,11 +37,21 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Advanced patterns (chaining, ReAct, self-consistency, meta-prompting) | [part-02-prompt-engineering/03-advanced-patterns.md](part-02-prompt-engineering/03-advanced-patterns.md) |
 | ✅ | Reliability, security & evaluation | [part-02-prompt-engineering/04-reliability-security-and-evaluation.md](part-02-prompt-engineering/04-reliability-security-and-evaluation.md) |
 
+## Module 3 — Retrieval-Augmented Generation (RAG)
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | RAG fundamentals (pipeline; RAG vs long-context vs fine-tuning) | [part-03-rag/00-rag-fundamentals.md](part-03-rag/00-rag-fundamentals.md) |
+| ✅ | Ingestion & chunking | [part-03-rag/01-ingestion-and-chunking.md](part-03-rag/01-ingestion-and-chunking.md) |
+| ✅ | Embeddings & vector stores | [part-03-rag/02-embeddings-and-vector-stores.md](part-03-rag/02-embeddings-and-vector-stores.md) |
+| ✅ | Retrieval quality (hybrid, rerank, query transform, GraphRAG, agentic) | [part-03-rag/03-retrieval-quality.md](part-03-rag/03-retrieval-quality.md) |
+| ✅ | Generation & prompt assembly | [part-03-rag/04-generation-and-prompt-assembly.md](part-03-rag/04-generation-and-prompt-assembly.md) |
+| ✅ | Evaluation, security & production | [part-03-rag/05-evaluation-security-and-production.md](part-03-rag/05-evaluation-security-and-production.md) |
+
 ## Future modules *(not yet built — see [HANDOFF.md](HANDOFF.md))*
 
 | Status | Module | Sketch |
 |---|---|---|
-| ⬜ | 3 — Retrieval-augmented generation (RAG) | Embeddings, vector stores, chunking, rerankers, grounded citations. |
 | ⬜ | 4 — Agents & tool use | Tool/function calling, the agent loop, MCP, multi-agent, when *not* to build an agent. |
 | ⬜ | 5 — Evaluation | How to actually measure if a model/prompt is good; eval sets, LLM-as-judge, regression testing. |
 | ⬜ | 6 — Fine-tuning & adaptation | LoRA/QLoRA, when fine-tuning helps vs. hurts, data prep, distillation. |

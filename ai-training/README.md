@@ -60,7 +60,8 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 0 | [Orientation](part-00-orientation/00-how-to-use-this-course.md) | How the course works; the vocabulary you need before the catalogs make sense. |
 | 1 | **Model Landscape** | The decision framework + dated catalogs of frontier/proprietary models and open-weight/local models, including a top-~100 local-model list with use cases. |
 | 2 | **Prompt Engineering** | The durable principles, the core techniques, how prompting inverted in the reasoning-model era, advanced patterns, and reliability/security/evaluation. |
-| 3+ | *(future)* | RAG, agents & tool use, evals, fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
+| 3 | **Retrieval-Augmented Generation (RAG)** | The pipeline and the RAG-vs-long-context-vs-fine-tuning decision; chunking, embeddings & vector stores, retrieval quality, grounded/cited generation, and evaluation/security/production. |
+| 4+ | *(future)* | Agents & tool use, evals, fine-tuning, cost engineering, local-inference deep dive — see [HANDOFF.md](HANDOFF.md). |
 
 ---
 
@@ -78,6 +79,14 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [Prompting in the Reasoning Era](part-02-prompt-engineering/02-prompting-reasoning-models.md) — how the playbook inverted: goal-not-steps, effort over prose, be less prescriptive.
 - [Advanced Patterns](part-02-prompt-engineering/03-advanced-patterns.md) — CoT variants, self-consistency, chaining, ReAct/tool prompting, meta-prompting, templating + caching.
 - [Reliability, Security & Evaluation](part-02-prompt-engineering/04-reliability-security-and-evaluation.md) — hallucination mitigation, prompt injection/jailbreak defense, and how to evaluate/iterate prompts.
+
+**Module 3 — Retrieval-Augmented Generation (RAG)**
+- [RAG Fundamentals](part-03-rag/00-rag-fundamentals.md) — the pipeline, why RAG, and the RAG vs. long-context vs. fine-tuning decision. **Start here.**
+- [Ingestion & Chunking](part-03-rag/01-ingestion-and-chunking.md) — parsing, chunking strategies, size/overlap, metadata, contextual chunking.
+- [Embeddings & Vector Stores](part-03-rag/02-embeddings-and-vector-stores.md) — how embeddings work, current models, vector DBs, ANN indexes.
+- [Retrieval Quality](part-03-rag/03-retrieval-quality.md) — hybrid search, reranking, query transformation, contextual retrieval, GraphRAG, agentic RAG.
+- [Generation & Prompt Assembly](part-03-rag/04-generation-and-prompt-assembly.md) — grounding, citations, chunk ordering ("lost in the middle"), how many chunks.
+- [Evaluation, Security & Production](part-03-rag/05-evaluation-security-and-production.md) — RAG metrics & RAGAS, injection/poisoning/access-control, freshness/latency/cost/caching.
 
 ---
 

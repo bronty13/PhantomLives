@@ -3,6 +3,34 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-18 — Module 3 (Retrieval-Augmented Generation) built
+
+- **Module 3 — RAG** (6 lessons), durable-first, cross-linked to Modules 1–2:
+  - `00-rag-fundamentals.md` — the index/query pipeline, why RAG, and the durable
+    RAG vs. long-context vs. fine-tuning decision (incl. "when RAG is the wrong tool"
+    and the adaptive-routing framing).
+  - `01-ingestion-and-chunking.md` — parsing/cleaning, chunking strategies, size +
+    the now-contested overlap, metadata, contextual/late chunking.
+  - `02-embeddings-and-vector-stores.md` — how embeddings work (cosine, dims, MRL),
+    a dated embedding-model table, vector DBs, ANN indexes (HNSW/IVF + quantization).
+  - `03-retrieval-quality.md` — the heart: top-k (retrieve-wide/rerank-narrow), hybrid
+    search + RRF, cross-encoder reranking, query transformation (HyDE/multi-query/
+    decomposition/step-back), metadata filtering, and advanced architectures
+    (Anthropic Contextual Retrieval, parent-document, GraphRAG, agentic RAG).
+  - `04-generation-and-prompt-assembly.md` — grounding, the abstention paradox,
+    citations (native vs quote-first; Citations⊗Structured-Outputs 400), chunk
+    formatting/placement, "lost in the middle" ordering, how-many-chunks.
+  - `05-evaluation-security-and-production.md` — retrieval vs generation metrics,
+    RAGAS, the retrieval-vs-generation debugging 2×2; RAG security (OWASP LLM01/04/08
+    — indirect injection, poisoning, access control, PII/embedding inversion); and
+    production (freshness/reindex, latency, cost, prompt-caching the retrieved
+    context, monitoring, tooling).
+- Sourcing: primary sources cited inline (Anthropic Contextual Retrieval & Citations,
+  "Lost in the Middle" TACL 2023, OWASP LLM Top 10 2025, RAGAS, MTEB); Module-2
+  material (grounding, citations, injection, caching, eval) referenced not duplicated.
+  Volatile facts (embedding models, prices, benchmarks) flagged as dated snapshots.
+  Updated README, CURRICULUM (status ✅), PROGRESS. All links verified.
+
 ## 2026-06-18 — Module 2 (Prompt Engineering) built
 
 - **Module 2 — Prompt Engineering** (5 lessons), durable-first per the HANDOFF rule:
