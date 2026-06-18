@@ -55,7 +55,9 @@ if git -C "$PAGES_DIR" diff --cached --quiet; then
   exit 0
 fi
 git -C "$PAGES_DIR" commit -m "Deploy NFEditor v$VERSION"
-git -C "$PAGES_DIR" push
+# `-u origin HEAD` makes the very first push work too (a freshly-created empty repo
+# has an unborn branch with no upstream); later pushes are no-ops on the upstream.
+git -C "$PAGES_DIR" push -u origin HEAD
 
 OWNER="${PAGES_REPO%%/*}"
 NAME="${PAGES_REPO##*/}"
