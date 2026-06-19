@@ -12,7 +12,7 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
-## [Unreleased]
+## [1.0.988] — 2026-06-18
 
 ### Changed
 
