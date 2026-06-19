@@ -160,9 +160,15 @@ SHORT_VERSION="$SHORT_VERSION" BUILD_NUMBER="$BUILD_NUMBER" \
 # Confirm build-app.sh actually used the Developer ID (not ad-hoc) — ad-hoc can't
 # be notarized, so catch it now rather than after a wasted notary round-trip.
 if [ -n "${NOTARIZE_PROFILE:-}" ]; then
-    codesign -dvv "$APP.app" 2>&1 | grep -q "Authority=Developer ID Application" \
-        || die "$APP.app is not Developer-ID-signed (ad-hoc?). Notarization would fail.
-       Ensure the Developer ID cert is in the login Keychain and re-run."
+    # Capture-then-grep, not `codesign … | grep -q`: under `set -o pipefail`,
+    # `grep -q` exits on first match and SIGPIPEs codesign (141), which pipefail
+    # surfaces as a pipeline failure even though the match succeeded.
+    CS_OUT="$(codesign -dvv "$APP.app" 2>&1 || true)"
+    case "$CS_OUT" in
+        *"Authority=Developer ID Application"*) ;;
+        *) die "$APP.app is not Developer-ID-signed (ad-hoc?). Notarization would fail.
+       Ensure the Developer ID cert is in the login Keychain and re-run." ;;
+    esac
 fi
 
 # ---------------------------------------------------------------------------
@@ -192,13 +198,12 @@ if [ -n "$NOTARIZE_PROFILE" ]; then
     xcrun stapler validate "$APP.app" >/dev/null 2>&1 \
         || die "stapler validate failed — $APP.app is not stapled."
     note "app notarized + stapled ✓"
-    if spctl -a -vvv -t exec "$APP.app" 2>&1 | grep -q 'accepted'; then
-        note "spctl exec assessment: accepted ✓"
-        NOTARIZED="yes"
-    else
-        echo "  ! spctl did not report 'accepted' for the app — proceeding, but inspect:"
-        spctl -a -vvv -t exec "$APP.app" 2>&1 | sed 's/^/      /' || true
-    fi
+    SPCTL_APP="$(spctl -a -vvv -t exec "$APP.app" 2>&1 || true)"
+    case "$SPCTL_APP" in
+        *accepted*) note "spctl exec assessment: accepted ✓"; NOTARIZED="yes" ;;
+        *) echo "  ! spctl did not report 'accepted' for the app — proceeding, but inspect:"
+           printf '%s\n' "$SPCTL_APP" | sed 's/^/      /' ;;
+    esac
 fi
 
 # ---------------------------------------------------------------------------
@@ -241,12 +246,12 @@ if [ -n "$NOTARIZE_PROFILE" ]; then
         || die "stapler validate failed — the DMG is not stapled."
     note "DMG notarized + stapled ✓"
     # Gatekeeper assessment for a DMG uses the -t open / primary-signature context.
-    if spctl -a -vvv -t open --context context:primary-signature "$DMG_PATH" 2>&1 | grep -q 'accepted'; then
-        note "spctl open assessment: accepted ✓"
-    else
-        echo "  ! spctl did not report 'accepted' for the DMG — inspect:"
-        spctl -a -vvv -t open --context context:primary-signature "$DMG_PATH" 2>&1 | sed 's/^/      /' || true
-    fi
+    SPCTL_DMG="$(spctl -a -vvv -t open --context context:primary-signature "$DMG_PATH" 2>&1 || true)"
+    case "$SPCTL_DMG" in
+        *accepted*) note "spctl open assessment: accepted ✓" ;;
+        *) echo "  ! spctl did not report 'accepted' for the DMG — inspect:"
+           printf '%s\n' "$SPCTL_DMG" | sed 's/^/      /' ;;
+    esac
 fi
 
 # ---------------------------------------------------------------------------

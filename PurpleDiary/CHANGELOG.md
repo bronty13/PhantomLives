@@ -3,7 +3,7 @@
 All notable changes to PurpleDiary are documented here. Versions are
 git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
-## [1.0.1012] — 2026-06-19 — Formal releases: notarized DMG (no auto-update, by design)
+## [1.0.1013] — 2026-06-19 — Formal releases: notarized DMG (no auto-update, by design)
 
 ### Added
 - **A real release pipeline — `Scripts/release.sh` + `RELEASING.md`.** PurpleDiary
