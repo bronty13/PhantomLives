@@ -2,6 +2,21 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.10.0 — 2026-06-19
+
+### Added
+
+- **Notify / friends list** — the last major piece of the Classic interface.
+  The Classic nick list now has **Users / Notify tabs**; the Notify tab shows
+  your friends with a live green/grey online dot, lets you add a nick (field +
+  `＋`) and remove one (right-click), and clicking a friend opens a query.
+  Presence is tracked by **ISON polling** (universal across networks — every
+  ~45s and immediately on connect; numeric **303 RPL_ISON** parsed into
+  per-connection presence). The list is **global**, persisted in `settings.json`
+  (`notifyNicks`), synced to every connection. Also a **`/notify add|del|list`**
+  command (works in any style). 8 tests added (ISON build, 303 parse,
+  case-insensitive add/remove dedup, persistence, new-session inheritance).
+
 ## 0.9.2 — 2026-06-19
 
 ### Added

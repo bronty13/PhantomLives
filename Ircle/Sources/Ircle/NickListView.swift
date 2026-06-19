@@ -9,53 +9,133 @@ struct NickListView: View {
     @ObservedObject var buffer: IrcleBuffer
     let palette: PlatinumPalette
     @State private var selectedNick: String?
+    @State private var tab: NickTab = .users
+    @State private var newFriend: String = ""
+
+    private var isClassic: Bool { settingsStore.settings.interfaceStyle == .classic }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header: "#chan: N users" + a Faces-window button.
-            HStack(spacing: 4) {
+            header
+            Divider().overlay(palette.hairline)
+            // Classic adds a Users/Notify tab switch; the Notify tab shows the
+            // friends list with online presence (ISON-polled).
+            if isClassic && tab == .notify {
+                notifyList
+            } else {
+                roster
+                Divider().overlay(palette.hairline)
+                actionButtons
+                    .padding(6)
+                    .background(palette.paneBG)
+            }
+        }
+        .background(palette.paneBG)
+    }
+
+    private var header: some View {
+        HStack(spacing: 4) {
+            if isClassic {
+                Picker("", selection: $tab) {
+                    Text("Users").tag(NickTab.users)
+                    Text("Notify").tag(NickTab.notify)
+                }
+                .pickerStyle(.segmented).labelsHidden().controlSize(.small).fixedSize()
+            } else {
                 Text("\(buffer.name): \(buffer.users.count) user\(buffer.users.count == 1 ? "" : "s")")
                     .font(palette.chromeFontBold())
                     .foregroundColor(palette.chromeText)
                     .lineLimit(1)
-                Spacer(minLength: 4)
-                Button(action: { openWindow(id: "faces") }) {
-                    Text("Faces").font(palette.chromeFont())
-                        .foregroundColor(palette.chromeText)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .platinumBevel(palette, raised: true)
-                }
-                .buttonStyle(.plain)
-                .help("Open the Faces window")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 6).padding(.vertical, 4)
-            .background(palette.paneBG)
-
-            Divider().overlay(palette.hairline)
-
-            // Roster
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(buffer.users) { user in
-                        NickRow(user: user, palette: palette,
-                                selected: user.nick == selectedNick)
-                            .onTapGesture { selectedNick = user.nick }
-                    }
-                }
-                .padding(.vertical, 2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 4)
+            Button(action: { openWindow(id: "faces") }) {
+                Text("Faces").font(palette.chromeFont())
+                    .foregroundColor(palette.chromeText)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .platinumBevel(palette, raised: true)
             }
-            .background(palette.textBG)
-
-            Divider().overlay(palette.hairline)
-
-            // Action buttons (classic Op/Msg/Whois/Query row)
-            actionButtons
-                .padding(6)
-                .background(palette.paneBG)
+            .buttonStyle(.plain)
+            .help("Open the Faces window")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 6).padding(.vertical, 4)
         .background(palette.paneBG)
+    }
+
+    private var roster: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(buffer.users) { user in
+                    NickRow(user: user, palette: palette,
+                            selected: user.nick == selectedNick)
+                        .onTapGesture { selectedNick = user.nick }
+                }
+            }
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(palette.textBG)
+    }
+
+    /// The Notify (friends) tab: each friend with a green/grey online dot
+    /// (ISON-polled per connection), plus an add field. Right-click to remove.
+    private var notifyList: some View {
+        let session = model.session(for: buffer)
+        let friends = settingsStore.settings.notifyNicks
+        return VStack(spacing: 0) {
+            if friends.isEmpty {
+                Text("No friends yet.\nAdd a nick below to watch who's online.")
+                    .font(palette.chromeFont()).foregroundColor(palette.timestamp)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).padding()
+                    .background(palette.textBG)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(friends, id: \.self) { friend in
+                            let online = session?.isFriendOnline(friend) ?? false
+                            HStack(spacing: 6) {
+                                Circle().fill(online ? palette.joinText : palette.timestamp)
+                                    .frame(width: 8, height: 8)
+                                Text(friend).font(palette.chromeFont())
+                                    .foregroundColor(online ? palette.chromeText : palette.timestamp)
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                            .onTapGesture { openQuery(friend) }
+                            .contextMenu {
+                                Button("Message \(friend)") { openQuery(friend) }
+                                Button("Remove from Notify") { model.removeNotify(friend) }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(palette.textBG)
+            }
+            Divider().overlay(palette.hairline)
+            HStack(spacing: 4) {
+                TextField("Add nick…", text: $newFriend)
+                    .textFieldStyle(.plain).font(palette.chromeFont())
+                    .onSubmit(addFriend)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .platinumBevel(palette, raised: false, fill: palette.textBG)
+                NickActionButton("+", palette: palette,
+                                 enabled: !newFriend.trimmingCharacters(in: .whitespaces).isEmpty,
+                                 action: addFriend)
+                    .frame(width: 30)
+            }
+            .padding(6).background(palette.paneBG)
+        }
+    }
+
+    private func addFriend() {
+        let n = newFriend.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { return }
+        model.addNotify(n)
+        newFriend = ""
     }
 
     @ViewBuilder
@@ -159,6 +239,9 @@ struct NickListView: View {
         model.session(for: buffer)?.runCommand("/\(raw)", in: buffer)
     }
 }
+
+/// The two tabs of the Classic Userlist window.
+private enum NickTab: Hashable { case users, notify }
 
 struct NickRow: View {
     let user: IrcleUser

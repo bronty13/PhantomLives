@@ -62,6 +62,7 @@ final class IrcleModel: ObservableObject {
                              displayName: profile.name,
                              autoJoin: profile.autoJoin,
                              profileID: profile.id)
+        s.notifyNicks = settingsStore.settings.notifyNicks
         // Re-publish the session's changes so SwiftUI views observing the model
         // refresh when buffers/lines mutate.
         subs[ObjectIdentifier(s)] = s.objectWillChange
@@ -141,11 +142,55 @@ final class IrcleModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if trimmed.hasPrefix("/") && !trimmed.hasPrefix("//") {
+            if handleGlobalCommand(trimmed, in: buffer) { return }
             session.runCommand(trimmed, in: buffer)
         } else {
             // "//" escapes a literal leading slash.
             let body = trimmed.hasPrefix("//") ? String(trimmed.dropFirst()) : trimmed
             session.sendText(body, to: buffer)
         }
+    }
+
+    // MARK: - Notify (friends) list
+
+    /// The global Notify list (friends). Mutating it persists to settings and
+    /// re-syncs every live session so ISON polling picks up the change.
+    var notifyNicks: [String] { settingsStore.settings.notifyNicks }
+
+    func addNotify(_ nick: String) {
+        let n = nick.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty,
+              !settingsStore.settings.notifyNicks.contains(where: { IRCCase.equal($0, n) }) else { return }
+        settingsStore.settings.notifyNicks.append(n)
+        syncNotifyToSessions()
+    }
+
+    func removeNotify(_ nick: String) {
+        settingsStore.settings.notifyNicks.removeAll { IRCCase.equal($0, nick) }
+        syncNotifyToSessions()
+    }
+
+    /// Push the current notify list into every session (which re-polls ISON).
+    func syncNotifyToSessions() {
+        for s in sessions { s.notifyNicks = settingsStore.settings.notifyNicks }
+    }
+
+    /// Commands handled by the model itself (they touch global settings / every
+    /// session) rather than a single connection. Returns true if consumed.
+    private func handleGlobalCommand(_ raw: String, in buffer: IrcleBuffer) -> Bool {
+        let parts = raw.dropFirst().split(separator: " ").map(String.init)
+        guard let cmd = parts.first?.lowercased(), cmd == "notify" else { return false }
+        let sub = parts.count > 1 ? parts[1].lowercased() : "list"
+        let arg = parts.count > 2 ? parts[2] : ""
+        switch sub {
+        case "add":                 addNotify(arg)
+        case "del", "remove", "rm": removeNotify(arg)
+        default:                    break   // "list" / unknown → just report below
+        }
+        let list = settingsStore.settings.notifyNicks
+        session(for: buffer)?.announce(
+            "Notify list: " + (list.isEmpty ? "(empty)" : list.joined(separator: ", ")),
+            in: buffer)
+        return true
     }
 }

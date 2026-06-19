@@ -55,7 +55,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Connections (server list + live status) | win | ✅ | 🟡 | We have Channelbar-by-server + a Servers settings manager, but no dedicated connection-status window. |
 | Faces window | win | ✅ | 🟡 | **We have the window** (assigned image or generated monogram) but **not the IRC face-exchange protocol** — see §4. |
 | DCC / file transfers | win | ✅ 👁 | ❌ | In the OS X build it's the **"Chat/File transfers" tab of the Connections window**, not a separate window. No DCC at all in ours. |
-| Notify / friends list | win | ✅ 👁 | ❌ | Confirmed: the Userlist window has **Users / Notify tabs**, and the user table has a **Friend** column. |
+| Notify / friends list | win | ✅ 👁 | ✅ **in Classic** | Users/Notify tabs on the nick list; ISON-polled online dots; add/remove + `/notify` command; global, persisted. |
 | Ignore/silence list panel | win | ❓ | ❌ | Original had an `on silence()` handler; no UI panel seen yet. |
 | Log viewer | win | ❓ | ❌ | No chat logging in our clone at all. |
 

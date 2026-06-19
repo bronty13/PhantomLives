@@ -22,6 +22,18 @@ final class IrcleSession: ObservableObject, Identifiable {
     /// Rolling raw protocol log for the server-console "raw" view.
     @Published private(set) var rawLog: [String] = []
 
+    /// Notify (friends) list for this connection — kept in sync with the global
+    /// `settings.notifyNicks` by the model. Their online presence is polled via
+    /// ISON and reflected in `onlineFriends`.
+    @Published var notifyNicks: [String] = [] {
+        didSet { if registered { pollNotify() } }
+    }
+    /// Case-folded nicks from the notify list currently reported online by ISON.
+    @Published private(set) var onlineFriends: Set<String> = []
+    private var notifyTimer: Timer?
+    /// How often to re-poll friend presence (seconds).
+    static let notifyPollInterval: TimeInterval = 45
+
     /// The buffer the UI currently has focused, so unread accounting can skip
     /// the active window. Set by the model when selection changes.
     weak var focusedBuffer: IrcleBuffer?
@@ -75,6 +87,48 @@ final class IrcleSession: ObservableObject, Identifiable {
     /// True when the session is connected and registered enough to send.
     var isConnected: Bool { state == .connected }
 
+    // MARK: - Notify (friends) presence
+
+    /// The ISON line that polls friend presence, or nil if the list is empty.
+    func isonCommand() -> String? {
+        let names = notifyNicks.map { $0.trimmingCharacters(in: .whitespaces) }
+                               .filter { !$0.isEmpty }
+        guard !names.isEmpty else { return nil }
+        return "ISON " + names.joined(separator: " ")
+    }
+
+    /// Ask the server who on the notify list is online (RPL_ISON / 303 reply).
+    func pollNotify() {
+        guard registered, let cmd = isonCommand() else { return }
+        client.send(cmd)
+    }
+
+    private func startNotifyPolling() {
+        notifyTimer?.invalidate()
+        pollNotify()   // immediate, so the Notify tab fills in right after connect
+        notifyTimer = Timer.scheduledTimer(withTimeInterval: Self.notifyPollInterval,
+                                            repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollNotify() }
+        }
+    }
+
+    private func stopNotifyPolling() {
+        notifyTimer?.invalidate()
+        notifyTimer = nil
+        onlineFriends.removeAll()
+    }
+
+    /// True if `nick` is on the notify list and currently reported online.
+    func isFriendOnline(_ nick: String) -> Bool {
+        onlineFriends.contains(IRCCase.fold(nick))
+    }
+
+    /// Post a client-generated system line (e.g. command feedback) to a buffer,
+    /// defaulting to the server console.
+    func announce(_ text: String, in buffer: IrcleBuffer? = nil) {
+        system(buffer ?? serverBuffer, text)
+    }
+
     private func wireClient() {
         client.onState = { [weak self] st in
             Task { @MainActor in self?.handleState(st) }
@@ -94,10 +148,12 @@ final class IrcleSession: ObservableObject, Identifiable {
         case .connected:   system(serverBuffer, "Connected. Registering…")
         case .disconnected:
             registered = false
+            stopNotifyPolling()
             system(serverBuffer, "Disconnected.")
             for b in buffers where b.kind == .channel { b.joined = false }
         case .failed(let reason):
             registered = false
+            stopNotifyPolling()
             line(serverBuffer, .error, text: reason)
         }
     }
@@ -299,6 +355,8 @@ final class IrcleSession: ObservableObject, Identifiable {
             for chan in autoJoinChannels where !chan.isEmpty {
                 client.send("JOIN \(chan)")
             }
+            // Begin polling friend presence (Notify tab).
+            startNotifyPolling()
         case "332": // RPL_TOPIC
             if msg.params.count >= 3, let buf = channelBuffer(msg.params[1]) {
                 buf.topic = msg.params[2]
@@ -320,6 +378,10 @@ final class IrcleSession: ObservableObject, Identifiable {
             }
         case "329": // RPL_CREATIONTIME — ignore
             break
+        case "303": // RPL_ISON: trailing param = space-separated online nicks
+            let online = (msg.params.last ?? "")
+                .split(separator: " ").map { IRCCase.fold(String($0)) }
+            onlineFriends = Set(online)
         case "375", "372", "376", "002", "003", "004", "005", "251", "252",
              "253", "254", "255", "265", "266", "250", "375L":
             line(serverBuffer, .motd, text: msg.params.last ?? "")
