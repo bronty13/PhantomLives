@@ -62,16 +62,23 @@ button to start an entry **From template**, write a **Blank Entry**, or open
 automatically when you use it: `{{date}}`, `{{date_long}}`, `{{time}}`,
 `{{weekday}}`, and `{{year}}`.
 
-**A built-in template library.** A fresh install starts you off with a handful
-of ready-made templates (Daily Check-in, Gratitude, Morning Pages, Evening
-Reflection, Weekly Review). For lots more, open **Manage Templates…** and click
-the **📚 library button** (top of the list) → **Add from Library…**: there are
-**18 curated scaffolds** in all — Three Good Things, Week Ahead, Monthly Review,
-Goals & Intentions, Mood & Energy Check, Lessons Learned, Decision Journal,
-Travel Log, Dream Journal, Reading Notes, Meeting Notes, Workout Log, Brain Dump,
-and more. Tap **Add** on any you want; each becomes a normal template you can
-rename, edit, or delete. (Already-added ones show "Added.") Nothing is
-downloaded — the library ships inside the app.
+**A built-in template library of 18 ready-made scaffolds.** There are **18**
+curated templates built in — Daily Check-in, Gratitude, Morning Pages, Evening
+Reflection, Weekly Review, Three Good Things, Week Ahead, Monthly Review, Goals &
+Intentions, Mood & Energy Check, Lessons Learned, Decision Journal, Travel Log,
+Dream Journal, Reading Notes, Meeting Notes, Workout Log, and Brain Dump. Two ways
+to use them:
+
+- **Quickest — just start writing with one:** click the **▾ arrow** on the **New
+  Entry** toolbar button → **Template Library** → pick any template, and a new
+  entry opens already filled in. (Your own saved templates are listed above, under
+  *My templates*.)
+- **To keep one for editing:** open **Manage Templates…** and click the **📚
+  button** (top of the list) → **Add from Library…**, then **Add** the ones you
+  want. Each becomes a normal template you can rename, edit, or delete.
+  (Already-added ones show "Added.")
+
+Nothing is downloaded — the library ships inside the app.
 
 ## Journals
 

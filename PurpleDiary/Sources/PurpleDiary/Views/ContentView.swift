@@ -65,10 +65,15 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu {
                     if !appState.templates.isEmpty {
-                        Section("From template") {
+                        Section("My templates") {
                             ForEach(appState.templates) { t in
                                 Button(t.name) { newEntry(from: t) }
                             }
+                        }
+                    }
+                    Menu("Template Library") {
+                        ForEach(TemplateLibrary.all) { curated in
+                            Button(curated.name) { newEntry(fromCurated: curated) }
                         }
                     }
                     Button("Blank Entry") { newEntry() }
@@ -165,6 +170,14 @@ struct ContentView: View {
         } catch {
             appState.errorMessage = error.localizedDescription
         }
+    }
+
+    /// Start an entry from a built-in library template *without* first saving it
+    /// to "My templates" — `createEntry(fromTemplate:)` only reads the body, so a
+    /// transient `Template` is enough to render the tokens. This is what makes all
+    /// of the curated library usable straight from the New Entry menu.
+    private func newEntry(fromCurated curated: CuratedTemplate) {
+        newEntry(from: Template.newDraft(name: curated.name, body: curated.body))
     }
 
     private func runBackupNow() {

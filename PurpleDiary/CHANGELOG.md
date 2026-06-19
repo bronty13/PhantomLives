@@ -3,6 +3,18 @@
 All notable changes to PurpleDiary are documented here. Versions are
 git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
+## [1.0.1020] — 2026-06-19 — Template library reachable from the New Entry menu
+
+### Changed
+- **The 18 built-in templates are now usable directly from the New Entry menu.**
+  Click the **▾** on the New Entry toolbar button → **Template Library** → pick
+  one, and an entry opens already filled in — no need to first "Add from Library"
+  in Manage Templates. Your saved templates are listed above under **My
+  templates**. (Feedback: the library was only reachable from Manage Templates →
+  📚, so the extra templates weren't discoverable from where entries are started.)
+  Starting from a library template uses a transient copy — it isn't added to My
+  templates unless you save it there.
+
 ## [1.0.1019] — 2026-06-19 — Templates library, journal stats header, photo calendar, formatting toolbar
 
 ### Added — A curated template library
