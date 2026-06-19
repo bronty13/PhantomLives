@@ -10,9 +10,13 @@ backlog.
 > claims, 5 refuted). **Primary sources:** the official
 > `irc.org/.../ircle/betareadme.html` changelog and Atomik's SourceForge page.
 > **Secondary:** IRChelp, the CSUN ircle tutorial, Mac Orchard, Wikipedia,
-> Macanics, preterhuman, Macintosh Repository. Screenshots live on the CSUN
-> tutorial, Macintosh Garden, and Mac Orchard pages (archive.org copies couldn't
-> be fetched headlessly — open them in a browser for the visual reference).
+> Macanics, preterhuman, Macintosh Repository.
+>
+> **Visually verified (2026-06-19):** the Macintosh Garden Ircle page
+> (`macintoshgarden.org/apps/ircle`) hosts two screenshots — a classic (OS 8/9)
+> build and a **Mac OS X / Aqua build** — which were inspected directly in a
+> browser. These confirm the menu bar and several windows the prose sources
+> couldn't (marked "👁 seen" below).
 
 **Caveats baked into this list:**
 - The **complete menu-bar inventory** (every menu + item) was *not* recoverable
@@ -32,6 +36,14 @@ differently. **Type:** `win`=window/panel · `pref`=preferences option ·
 
 ---
 
+## 0. Menu bar (👁 seen)
+
+Top-level menus, confirmed from the classic-build screenshot:
+**File · Edit · Commands · Shortcuts · Format · Windows · Help**
+(Per-item contents still need a clean capture, but `Commands`, `Shortcuts`, and
+`Format` are three menus our clone has no equivalent of — `Format` ≈ text styling
+inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
+
 ## 1. Windows & panels
 
 | Feature | Type | Original | Ours | Notes |
@@ -42,10 +54,22 @@ differently. **Type:** `win`=window/panel · `pref`=preferences option ·
 | Console (server/system messages, identd) | win | ✅ | 🟡 | We have a per-server buffer ≈ Console; no identd UI. |
 | Connections (server list + live status) | win | ✅ | 🟡 | We have Channelbar-by-server + a Servers settings manager, but no dedicated connection-status window. |
 | Faces window | win | ✅ | 🟡 | **We have the window** (assigned image or generated monogram) but **not the IRC face-exchange protocol** — see §4. |
-| DCC Status window (icons, ETA, bytes ack'd) | win | ✅ | ❌ | No DCC at all. |
-| Notify / friends list panel | win | ❓ | ❌ | Asked-for; no source confirmed the original had a dedicated panel. |
-| Ignore/silence list panel | win | ❓ | ❌ | Original had an `on silence()` handler; no UI panel documented. |
+| DCC / file transfers | win | ✅ 👁 | ❌ | In the OS X build it's the **"Chat/File transfers" tab of the Connections window**, not a separate window. No DCC at all in ours. |
+| Notify / friends list | win | ✅ 👁 | ❌ | Confirmed: the Userlist window has **Users / Notify tabs**, and the user table has a **Friend** column. |
+| Ignore/silence list panel | win | ❓ | ❌ | Original had an `on silence()` handler; no UI panel seen yet. |
 | Log viewer | win | ❓ | ❌ | No chat logging in our clone at all. |
+
+## 1b. In-window controls (👁 seen in the OS X build — all ❌ in ours)
+
+| Control | Where | Original | Ours |
+|---|---|---|---|
+| Per-user action buttons: **Op · DeOp · Whois · Kick · Ban · BanKick · Msg · Cping · Query** | Userlist | ✅ 👁 | ❌ (we have a context menu only, minimal) |
+| One-click **channel-mode toggles** `t n i p s m l k r` | Userlist | ✅ 👁 | ❌ |
+| Userlist columns **IrcOp · Friend · Hostname** | Userlist | ✅ 👁 | 🟡 (we show nick + mode prefix only) |
+| **Inputline formatting toolbar** (Plain/Bold/Underline/strike + colour swatches) | Inputline | ✅ 👁 | ❌ (no compose-time styling UI) |
+| Live **memory readout** bar `[……|……]` | Inputline | ✅ 👁 | ❌ (n/a on modern macOS) |
+| Connections buttons **Connect · Disconn · Edit · Nick · Server** + add/remove | Connections | ✅ 👁 | 🟡 (Servers settings manager, not an in-window bar) |
+| Topic bar with **set-by / on-date** | Channel | ✅ 👁 | 🟡 (we show topic, not setter/date) |
 
 ## 2. Preferences panes (`File > Preferences`, tabbed)
 
@@ -130,12 +154,14 @@ differently. **Type:** `win`=window/panel · `pref`=preferences option ·
 
 ## Open questions to resolve before building (from the research)
 
-1. **Full menu-bar map** — exact menus and every item. No source enumerated it.
+1. **Menu items per menu** — top-level menus confirmed (File · Edit · Commands ·
+   Shortcuts · Format · Windows · Help 👁); still need each menu's item list.
 2. **Full AppleScript dictionary** — real object model + whether scripts can add
    commands (circulated claim refuted).
 3. **Final 3.5-alpha preference panes** — did SSL/Growl/MP3 restructure the tabs?
-4. **Confirm dedicated panels existed** for notify/ignore/log/server-setup
-   beyond the Connections window.
+   Need a screenshot of the OS X Preferences window (not yet seen).
+4. **Notify/friends list confirmed** (Userlist Users/Notify tabs + Friend column
+   👁). Still open: a dedicated **ignore/silence list** UI and a **log viewer**.
 
 ## Suggested build priority (highest user value first)
 
