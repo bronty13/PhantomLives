@@ -3,6 +3,67 @@
 All notable changes to PurpleDiary are documented here. Versions are
 git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
+## [1.0.1019] — 2026-06-19 — Templates library, journal stats header, photo calendar, formatting toolbar
+
+### Added — A curated template library
+- **A built-in library of 18 entry templates** with a browser. Open **Manage
+  Templates… → 📚 Add from Library…** to add any of: Daily Check-in, Gratitude,
+  Morning Pages, Evening Reflection, Weekly Review, Three Good Things, Week Ahead,
+  Monthly Review, Goals & Intentions, Mood & Energy Check, Lessons Learned,
+  Decision Journal, Travel Log, Dream Journal, Reading Notes, Meeting Notes,
+  Workout Log, and Brain Dump. Each adds a normal, fully-editable template; ones
+  you already have show "Added". The library ships in-app (`Models/TemplateLibrary`)
+  — nothing is downloaded.
+  - **Why a library, not just more seeds:** the first-run seed only fires on an
+    *empty* templates table, so simply enlarging it would reach brand-new installs
+    only. The library is available to **every** install, so existing journals can
+    pull in templates added in later versions.
+  - A fresh install now seeds a richer starter set (Daily Check-in, Gratitude,
+    Morning Pages, Evening Reflection, Weekly Review) instead of two. Seeding still
+    lives in `seedDefaultTemplatesIfEmpty` (app code, not a migration), so no
+    migration hash changes.
+
+### Added — Journal stats header
+- **A Diarium-style header at the top of the timeline** (`JournalHeaderView`):
+  the current journal's name + year span beside a little book in the journal's
+  color, over a stats strip — **Entries · Media · Days · Streak · On This Day**.
+  Numbers come from the already-loaded `visibleEntries` slice (so they honor the
+  journal / hidden / vault filter): `StatsService.compute` for entries/days/streak,
+  the summed per-entry attachment counts for media, `OnThisDayService` for On This
+  Day. It scrolls with the entry list and switches with the selected journal.
+
+### Added — Photo thumbnails in the calendar
+- **Each calendar day with a photo now previews it** behind the date
+  (Diarium-style), with a legibility scrim and a faint accent tint so the
+  word-count heatmap still reads through. Thumbnails are precomputed once per
+  visible month into a `[dayStart: NSImage]` map (rebuilt when the month, journal
+  filter, or attachments change) using the cheap `attachmentThumbs` projection —
+  no per-cell DB hits, no full-res BLOBs.
+
+### Added — Editor formatting toolbar
+- **The entry editor gained a Markdown format bar** (Write mode): Bold, Italic,
+  Strikethrough, Inline code, H1/H2/H3, Bullet / Numbered / Checklist, Quote, and
+  Clear formatting. The editor backend moved from SwiftUI `TextEditor` to an
+  `NSTextView` wrapper (`MarkdownTextView`) — required because `TextEditor` doesn't
+  expose the selection the toolbar needs — keeping native spellcheck + undo, plain
+  Markdown storage, and the existing inline-media preview, Import, and word count.
+  Multi-line selections get list/quote prefixes on every line. *Underline is
+  intentionally omitted — Markdown has no underline, and `<u>` would render as
+  literal tags in the preview/exports.*
+
+### Docs
+- USER_MANUAL: "Templates" (library), and new "The journal header" + "Formatting
+  your writing" sections; the Calendar and Browsing sections note photo previews.
+  README feature bullets; HANDOFF §7/§9 + test count.
+
+### Tests
+- **+30 → 186.** `TemplateLibraryTests` (≥15 templates, unique names, non-empty
+  fields, seed-defaults a non-empty proper subset keeping the original two
+  starters, every body renders with no leftover `{{tokens}}`) and
+  `MarkdownFormatTests` (the pure `wrap` / `linePrefixed` / `cleared` transforms,
+  incl. multi-line prefixing, the no-dangling-trailing-line rule, and inline +
+  line-marker stripping). Header/calendar/editor UI verified by build + launch.
+
 ## [1.0.1018] — 2026-06-19 — 15 themes + in-app User Manual & whitepaper polish
 
 ### Added

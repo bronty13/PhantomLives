@@ -21,6 +21,10 @@ struct TimelineView: View {
     private var entryList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                if !appState.visibleEntries.isEmpty {
+                    JournalHeaderView()
+                    Divider()
+                }
                 ForEach(groupedEntries, id: \.key) { group in
                     Section {
                         ForEach(group.entries) { entry in

@@ -225,6 +225,23 @@ feature, keep it offline.
   `PurpleDiaryApp`). To add another in-app doc: bundle the `.md` in `project.yml`,
   add a `Window` scene + a Help `Button`. The parser is locked down by
   `MarkdownDocViewTests` (incl. a bundling sanity check for each doc).
+- **The entry editor is `NSTextView`-backed, not SwiftUI `TextEditor`**
+  (`Views/Shared/MarkdownEditor.swift`). The swap was forced by the **format
+  toolbar**: `TextEditor` doesn't expose its selection, which the toolbar needs to
+  wrap/prefix the selected text. `MarkdownTextView` (an `NSViewRepresentable`)
+  carries the binding + native spellcheck + undo + plain-Markdown storage and
+  hands its `NSTextView` to `MarkdownActions`; the actual string surgery lives in
+  the pure, tested **`MarkdownFormat`** enum (wrap / linePrefixed / cleared). The
+  inline-media preview, Import, and word count are unchanged. Pattern ported from
+  `MusicJournal/Views/MarkdownEditor.swift`. **No underline button by design** —
+  Markdown has none, and `<u>` would leak literal tags into preview/exports.
+- **Timeline header + calendar thumbnails read existing data, not new fetches.**
+  `JournalHeaderView` recomputes its stat strip from `visibleEntries` via
+  `StatsService`/`OnThisDayService`/`attachmentCountByEntry` (no DB hit).
+  `CalendarView` precomputes a `[dayStart: NSImage]` map once per visible month
+  (rebuilt on month / journal-filter / attachment change) via the cheap
+  `attachmentThumbs` projection — **don't** move that fetch into the per-cell body
+  (it would hit the DB ~31× per redraw).
 - **Auto-backup on launch** → `~/Downloads/PurpleDiary backup/` (5-min debounce,
   14-day retention, verify/restore). Full Settings → Backup UI. `BackupService`.
 - **Default outputs** → `~/Downloads/PurpleDiary/` (exports). User-overridable +
@@ -241,7 +258,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 170 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 186 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -263,7 +280,11 @@ build; `TextImportService` merge rule + Markdown/plain-text/RTF reading;
 (default + back-fill + move + delete-reassign) and `AppState.entryIsVisible`
 journal-visibility predicate; `PromptService` daily rotation + bundled-JSON
 decode and `OnThisDayService` month/day matching; `TemplateService` token
-render + `Template` CRUD/seed; `CalendarHeatmap` level/opacity buckets +
+render + `Template` CRUD/seed + **`TemplateLibrary`** (`TemplateLibraryTests` —
+curated set size, unique names, seed-defaults a proper subset keeping the
+originals, every body renders with no leftover tokens); the **editor format
+transforms** (`MarkdownFormat` wrap / linePrefix / clear, `MarkdownFormatTests`);
+`CalendarHeatmap` level/opacity buckets +
 `NotificationService` reminder time-clamp/body; **vault crypto core**
 (`VaultService` dual-wrap envelope, seal/unseal, session keys) and the **vault
 data path** (`DatabaseService` seal-on-write/unseal-on-read, refuse-write-to-locked,
@@ -281,15 +302,15 @@ video poster decoding, and AVKit playback are verified by hand (no headless TCC
 ```
 Sources/PurpleDiary/
 ├── App/      PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist, entitlements
-├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, Attachment, AppSettings, Theme
+├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, TemplateLibrary, Attachment, AppSettings, Theme
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
 │             FileImportService, TextImportService, ImportService, InlineMedia, PDFProcessing, PromptService,
 │             OnThisDayService, TemplateService, CalendarHeatmap, NotificationService, VaultService, StatsService, KeyStore,
 │             KeychainStore, Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService,
 │             WindowStateGuard
-└── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
-              EntryEditorView, CalendarView, OnThisDayView, InsightsView, SearchView, PeopleView,
+└── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView (+ JournalHeaderView stats strip),
+              EntryEditorView, CalendarView (per-day photo thumbnails), OnThisDayView, InsightsView, SearchView, PeopleView,
               TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,
               TemplatesSheet, ImportSheet, VaultSheets (Make/Unlock/ChangePassphrase), AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, MarkdownDocView, Settings/ (AppearanceSettingsTab = theme grid), Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)

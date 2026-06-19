@@ -23,7 +23,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 ## At a glance (Phase 1)
 
 - **Entries** — Markdown body, optional title, editable date/time, multiple
-  entries per day. Live word count. **Import…** in the editor toolbar pulls a
+  entries per day. Live word count. A **format toolbar** (Bold / Italic /
+  Strikethrough / code, H1–H3, bullet / numbered / checklist / quote, Clear) over
+  an `NSTextView` editor with native spellcheck + undo. **Import…** pulls a
   Markdown/text/RTF file's contents into the body (smart merge — sets an empty
   body, or appends after a `---` separator). *(Phase 2)*
 - **Journals** — keep separate notebooks; each entry belongs to one. Pick **All
@@ -42,9 +44,12 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 - **Mood** — 0–5 star rating per entry.
 - **Tags** — named, colored, toggleable per entry; six seeded on first launch.
 - **People** — a global list of recurring people you can link to entries.
-- **Timeline** — entries grouped by month, newest first, with an inline editor.
+- **Timeline** — entries grouped by month, newest first, with an inline editor,
+  topped by a **journal header** with an at-a-glance stat strip (Entries · Media ·
+  Days · Streak · On This Day) for the selected journal.
 - **Calendar** — month grid shaded as a **heatmap** by how much you wrote each
-  day; click to jump or create. *(heatmap: Phase 6)*
+  day, with each day's **photo previewed in its cell** (Diarium-style); click to
+  jump or create. *(heatmap: Phase 6)*
 - **Search** — ranked across title / body / tags / people.
 - **On This Day** — entries from today's date in previous years, grouped by "N
   years ago." A local look-back; nothing fetched. *(Phase 4)*
@@ -52,7 +57,11 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   library (Use to drop it in, shuffle for another). On-device, no network.
   *(Phase 4)*
 - **Templates** — reusable entry scaffolds with auto-filled date tokens. Start
-  one from the New Entry split-menu; manage them in **Manage Templates…**.
+  one from the New Entry split-menu; manage them in **Manage Templates…**. A
+  fresh install seeds a starter set; **Manage Templates… → Add from Library…**
+  offers an **18-template built-in library** (daily/gratitude/reflection,
+  weekly/monthly review, decision journal, travel, dream, reading, meeting,
+  workout, brain dump, …) that any install — new or old — can add from.
   *(Phase 5)*
 - **Daily reminder** — an opt-in local notification at a time you pick (Settings →
   Reminders). On-device, no network. *(Phase 6)*

@@ -35,6 +35,24 @@ without the key, which lives in your Mac's Keychain.
 Edits save automatically a beat after you stop typing, and again when you switch
 entries.
 
+### Formatting your writing
+
+In **Write** mode a **format bar** sits above the editor. Select some text (or
+just place the cursor) and click a button to format it:
+
+- **B** bold, **I** italic, **S** strikethrough, and **`<>`** inline code wrap
+  your selection (`**bold**`, `*italic*`, `~~strikethrough~~`, `` `code` ``).
+- **H1 / H2 / H3** make the current line a heading.
+- The list buttons turn the selected line(s) into a **bullet list**, **numbered
+  list**, or a **checklist** (`- [ ] ` you can tick), and **"** makes them a
+  **quote**. These work across several selected lines at once.
+- **Clear** strips formatting back to plain text.
+
+It's all standard **Markdown** under the hood — switch to **Preview** to see it
+rendered. (There's no underline button: Markdown has no underline, so adding one
+would just show literal tags. Bold, italic, and the rest cover it.) The editor
+keeps macOS spellcheck and full undo (⌘Z).
+
 ### Templates
 
 If you write the same kind of entry often (a daily check-in, a gratitude list),
@@ -42,8 +60,18 @@ save it as a **template**. Click the little arrow on the **New Entry** toolbar
 button to start an entry **From template**, write a **Blank Entry**, or open
 **Manage Templates…**. A template's body can include tokens that fill in
 automatically when you use it: `{{date}}`, `{{date_long}}`, `{{time}}`,
-`{{weekday}}`, and `{{year}}`. PurpleDiary starts you off with two (Daily
-check-in, Gratitude) — edit or delete them freely.
+`{{weekday}}`, and `{{year}}`.
+
+**A built-in template library.** A fresh install starts you off with a handful
+of ready-made templates (Daily Check-in, Gratitude, Morning Pages, Evening
+Reflection, Weekly Review). For lots more, open **Manage Templates…** and click
+the **📚 library button** (top of the list) → **Add from Library…**: there are
+**18 curated scaffolds** in all — Three Good Things, Week Ahead, Monthly Review,
+Goals & Intentions, Mood & Energy Check, Lessons Learned, Decision Journal,
+Travel Log, Dream Journal, Reading Notes, Meeting Notes, Workout Log, Brain Dump,
+and more. Tap **Add** on any you want; each becomes a normal template you can
+rename, edit, or delete. (Already-added ones show "Added.") Nothing is
+downloaded — the library ships inside the app.
 
 ## Journals
 
@@ -125,12 +153,16 @@ the recovery-key file you saved — PurpleDiary pulls the words out of it for yo
 ## Browsing
 
 - **Timeline** — all entries, newest first, grouped by month. Click one to open
-  it; right-click to delete.
+  it; right-click to delete. At the top is a **journal header**: the journal's
+  name and year span beside a little book, with an at-a-glance stat strip —
+  **Entries · Media · Days · Streak · On This Day** — for whichever journal (or
+  "All Journals") you're viewing.
 - **Calendar** — a month grid shaded as a **heatmap**: the more you wrote on a
-  day, the deeper its color (a Less→More key sits under the grid). Days with more
-  than one entry show the count, and today has a ring. Click a day to jump to its
-  entry (or start a new one there); hover for the day's entry and word counts.
-  Use the arrows to change month.
+  day, the deeper its color (a Less→More key sits under the grid). **Days with a
+  photo show it** right in the cell, so the month reads like a little contact
+  sheet of your life. Days with more than one entry show the count, and today has
+  a ring. Click a day to jump to its entry (or start a new one there); hover for
+  the day's entry and word counts. Use the arrows to change month.
 - **Search** — type to find entries by title, body, tag, or person. Results are
   ranked: a title match beats a body match. Click a result to open it.
 - **Insights** — a dashboard of your journaling: total entries and words, days

@@ -11,6 +11,7 @@ struct TemplatesSheet: View {
     @State private var selectedId: String?
     @State private var draftName: String = ""
     @State private var draftBody: String = ""
+    @State private var showingLibrary = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,16 +32,28 @@ struct TemplatesSheet: View {
         }
         .frame(width: 720, height: 480)
         .onAppear { if selectedId == nil { selectFirstOrNothing() } }
+        .sheet(isPresented: $showingLibrary) {
+            TemplateLibrarySheet { added in
+                // Select the most recently added one so the user lands on it.
+                if let last = added.last { selectedId = last.id; loadDraft() }
+            }
+            .environmentObject(appState)
+        }
     }
 
     private var list: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("Templates").font(.headline)
                 Spacer()
+                Button { saveDraft(); showingLibrary = true } label: {
+                    Image(systemName: "books.vertical")
+                }
+                .buttonStyle(.borderless)
+                .help("Add from the built-in template library")
                 Button { addTemplate() } label: { Image(systemName: "plus") }
                     .buttonStyle(.borderless)
-                    .help("New template")
+                    .help("New blank template")
             }
             .padding(10)
             Divider()
@@ -115,5 +128,99 @@ struct TemplatesSheet: View {
         guard let id = selectedId else { return }
         try? appState.deleteTemplate(id: id)
         selectFirstOrNothing()
+    }
+}
+
+/// The built-in template library: a scrollable list of curated scaffolds the
+/// user can add to their own templates with one click. Available to *every*
+/// install — unlike the first-run seed, which only fires on an empty table — so
+/// existing journals can pull in templates added in later versions. A curated
+/// item already present (matched by name) shows "Added" instead of an Add button.
+/// Calls `onAdded` with the templates created so the caller can select one.
+struct TemplateLibrarySheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    /// Reports the templates created during this session (in add order).
+    let onAdded: ([Template]) -> Void
+
+    @State private var added: [Template] = []
+
+    private var existingNames: Set<String> {
+        Set(appState.templates.map { $0.name.trimmingCharacters(in: .whitespaces) })
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Template Library").font(.headline)
+                    Text("\(TemplateLibrary.all.count) ready-made scaffolds — add any you like, then edit freely.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(12)
+            Divider()
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(TemplateLibrary.all) { curated in
+                        row(curated)
+                        Divider()
+                    }
+                }
+            }
+
+            Divider()
+            HStack {
+                Text(added.isEmpty ? "Nothing added yet."
+                                   : "Added \(added.count) template\(added.count == 1 ? "" : "s").")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Done") { onAdded(added); dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+        }
+        .frame(width: 560, height: 520)
+    }
+
+    @ViewBuilder
+    private func row(_ curated: CuratedTemplate) -> some View {
+        let alreadyAdded = existingNames.contains(curated.name)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "doc.text")
+                .foregroundStyle(appState.effectiveAccentColor)
+                .frame(width: 20)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(curated.name).font(.subheadline.weight(.medium))
+                Text(curated.blurb).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            if alreadyAdded {
+                Label("Added", systemImage: "checkmark")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
+            } else {
+                Button("Add") { add(curated) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+
+    private func add(_ curated: CuratedTemplate) {
+        do {
+            let t = try appState.createTemplate(name: curated.name, body: curated.body)
+            added.append(t)
+        } catch {
+            appState.errorMessage = error.localizedDescription
+        }
     }
 }

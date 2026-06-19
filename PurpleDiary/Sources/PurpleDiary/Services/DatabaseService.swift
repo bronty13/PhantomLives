@@ -865,14 +865,12 @@ final class DatabaseService {
         try dbPool.write { db in
             let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM templates") ?? 0
             guard count == 0 else { return }
-            let defaults: [(String, String)] = [
-                ("Daily check-in",
-                 "## {{weekday}}, {{date}}\n\n**Today I…**\n- \n\n**One good thing:** \n\n**On my mind:** "),
-                ("Gratitude",
-                 "## Grateful — {{date}}\n\n1. \n2. \n3. "),
-            ]
-            for (i, (name, body)) in defaults.enumerated() {
-                var t = Template.newDraft(name: name, body: body, sortOrder: i)
+            // The starter set for a fresh install. The full curated set is
+            // browsable from Manage Templates… → Add from Library… (so existing
+            // installs, whose table is non-empty and never re-seeds, can still
+            // pull the rest in). See TemplateLibrary.
+            for (i, curated) in TemplateLibrary.seedDefaults.enumerated() {
+                var t = Template.newDraft(name: curated.name, body: curated.body, sortOrder: i)
                 try t.insert(db)
             }
         }
