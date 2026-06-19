@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sparkle appcast for Ircle. Served via
+  https://raw.githubusercontent.com/bronty13/PhantomLives/main/Ircle/appcast.xml
+  (matches SUFeedURL in build-app.sh).
+
+  Do NOT hand-edit a shipped <item>: the version + sparkle:edSignature pair is
+  part of the update trust chain. Scripts/release.sh prepends each new <item>
+  (newest first), EdDSA-signs the zip, and pushes — see RELEASING.md.
+-->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Ircle</title>
+    <description>Auto-update feed for Ircle, the nostalgic Mac IRC client.</description>
+    <language>en</language>
+  </channel>
+</rss>

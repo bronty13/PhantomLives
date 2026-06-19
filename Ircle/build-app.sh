@@ -38,6 +38,23 @@ RESOURCES="$CONTENTS/Resources"
 mkdir -p "$MACOS" "$RESOURCES"
 cp "$BIN_PATH/Ircle" "$MACOS/Ircle"
 
+# Bundle Sparkle.framework (the in-app auto-updater). SwiftPM ships Sparkle as
+# an xcframework; copy the macOS slice into Contents/Frameworks/ so the loader
+# finds the framework and Sparkle's nested XPC services + Updater.app at the
+# paths it hard-codes. Without this the symbols link but the .app dies at launch
+# with a dyld error.
+SPARKLE_SRC="$(find .build/artifacts/sparkle/Sparkle/Sparkle.xcframework -name 'Sparkle.framework' -type d -path '*macos-arm64_x86_64*' 2>/dev/null | head -1)"
+if [ -z "$SPARKLE_SRC" ]; then
+    echo "FATAL: Sparkle.framework not found under .build/artifacts. Run 'swift package resolve' first." >&2
+    exit 1
+fi
+mkdir -p "$CONTENTS/Frameworks"
+ditto --noextattr "$SPARKLE_SRC" "$CONTENTS/Frameworks/Sparkle.framework"
+# SwiftPM executables only get @loader_path on LC_RPATH; Sparkle's install name
+# is @rpath/Sparkle.framework/... but it lives in Contents/Frameworks/, so add
+# the standard macOS-app rpath. Re-adding is harmless.
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS/Ircle" 2>/dev/null || true
+
 # App icon: regenerate the .iconset each build (the generator is deterministic)
 # and roll it into AppIcon.icns BEFORE codesign.
 ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
@@ -50,6 +67,16 @@ iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns"
 if [ -f "Resources/Ircle.sdef" ]; then
     cp "Resources/Ircle.sdef" "$RESOURCES/Ircle.sdef"
 fi
+
+# Sparkle config:
+#  - SUFeedURL points at appcast.xml committed to the repo, served via
+#    raw.githubusercontent.com.
+#  - SUPublicEDKey is the EdDSA public half (shared PhantomLives fleet key,
+#    exported as SPARKLE_PUBLIC_KEY in the dev shell). Routine builds without it
+#    embed the placeholder, and UpdaterController declines to start the updater
+#    (updates disabled) rather than crash — see UpdaterController.swift.
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/bronty13/PhantomLives/main/Ircle/appcast.xml}"
+SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-PLACEHOLDER_RUN_generate_keys_AND_SET_SPARKLE_PUBLIC_KEY}"
 
 # HEREDOC without a quoted tag so $SHORT_VERSION / $BUILD_NUMBER expand.
 # CFBundleIconFile is baked directly into the heredoc (avoids the silent-Set
@@ -73,6 +100,10 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSAppleScriptEnabled</key><true/>
     <key>OSAScriptingDefinition</key><string>Ircle.sdef</string>
+    <key>SUFeedURL</key><string>${SPARKLE_FEED_URL}</string>
+    <key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_KEY}</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
 </dict>
 </plist>
 PLIST
@@ -90,6 +121,32 @@ detect_codesign_identity() {
 }
 CODESIGN_ID="$(detect_codesign_identity)"
 
+# Sign one path with the project identity + hardened runtime (+ timestamp with a
+# real cert). Used for Sparkle's nested executables, which must be signed
+# individually, inside-out, BEFORE the outer .app.
+sign_helper() {
+    local target="$1"
+    if [ "$CODESIGN_ID" = "-" ]; then
+        codesign --force --sign - --options runtime "$target" 2>/dev/null || true
+    else
+        codesign --force --sign "$CODESIGN_ID" --options runtime --timestamp "$target"
+    fi
+}
+
+# Sparkle bundles nested executables (XPC services + Updater.app + Autoupdate)
+# that must each be signed before the framework, and the framework before the
+# outer .app — outside-in signing fails verification. Sign inside-out.
+sign_sparkle() {
+    local fw="$CONTENTS/Frameworks/Sparkle.framework"
+    [ -d "$fw" ] || return 0
+    find "$fw/Versions/B/XPCServices" -name '*.xpc' -mindepth 1 -maxdepth 1 2>/dev/null | while read -r xpc; do
+        sign_helper "$xpc"
+    done
+    [ -d "$fw/Versions/B/Updater.app" ] && sign_helper "$fw/Versions/B/Updater.app"
+    [ -f "$fw/Versions/B/Autoupdate" ] && sign_helper "$fw/Versions/B/Autoupdate"
+    sign_helper "$fw"
+}
+
 # Strip extended attributes codesign refuses on (quarantine / FinderInfo /
 # provenance / fileprovider), recursively + explicitly.
 xattr -cr "$APP_DIR" 2>/dev/null || true
@@ -100,9 +157,11 @@ find "$APP_DIR" -exec xattr -d com.apple.quarantine {} \; 2>/dev/null || true
 
 if [ "$CODESIGN_ID" = "-" ]; then
     echo "Signing ad-hoc (no Developer ID Application cert found)..."
+    sign_sparkle
     codesign --force --sign - "$APP_DIR" 2>/dev/null || true
 else
     echo "Signing with: $CODESIGN_ID"
+    sign_sparkle
     codesign --force --sign "$CODESIGN_ID" --options runtime --timestamp "$APP_DIR"
     if codesign --verify --deep --strict --verbose=2 "$APP_DIR" 2>/tmp/ircle-codesign.log; then
         echo "Signature verified."

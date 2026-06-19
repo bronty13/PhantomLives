@@ -81,8 +81,8 @@ package (a local SwiftPM path dependency).
 
 Working: connect, multiple servers at once, join, chat, queries, nick list,
 mIRC color/formatting rendering, the Faces window (per-user avatars), the
-Platinum/Graphite themes, Keychain-backed passwords, backup. Planned: optional
-Sparkle auto-update and AppleScript.
+Platinum/Graphite themes, Keychain-backed passwords, AppleScript, Sparkle
+auto-update, backup. See `RELEASING.md` for cutting a release.
 
 ## Naming
 

@@ -25,6 +25,9 @@ struct IrcleApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { UpdaterController.shared.checkForUpdates() }
+                    .disabled(!UpdaterController.shared.canCheckForUpdates)
+                Divider()
                 Button("Connect") { model.connectDefault() }
                     .keyboardShortcut("k", modifiers: [.command])
                 Button("Disconnect") { model.disconnectSelected() }

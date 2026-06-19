@@ -12,12 +12,17 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../IRCKit"),
+        // Sparkle 2.x for in-app auto-updates. SPM ships an xcframework binary
+        // target; build-app.sh copies the macOS slice into Contents/Frameworks/
+        // and codesigns each nested XPC service + the framework. See RELEASING.md.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .executableTarget(
             name: "Ircle",
             dependencies: [
                 .product(name: "IRCKit", package: "IRCKit"),
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/Ircle"
         ),

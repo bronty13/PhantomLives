@@ -2,6 +2,23 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.8.0 — 2026-06-18
+
+### Added
+
+- **Sparkle 2 auto-update.** Sparkle dependency in `Package.swift`; an
+  `UpdaterController` and a "Check for Updates…" menu item; `build-app.sh`
+  bundles `Sparkle.framework`, adds the rpath, signs the nested XPC services /
+  Updater.app / Autoupdate inside-out, and embeds the `SU*` Info.plist keys
+  (feed `…/Ircle/appcast.xml`, the shared fleet EdDSA public key, daily checks).
+  - `UpdaterController` starts the updater **only when a real `SUPublicEDKey` is
+    embedded** — a dev build without `SPARKLE_PUBLIC_KEY` keeps updates off and
+    launches normally instead of crashing on the placeholder key.
+- **Release tooling:** `Scripts/release.sh` (notarize + staple + zip +
+  EdDSA-sign + GitHub release + appcast prepend/push, mirrored from PurpleIRC),
+  a seeded `appcast.xml`, and `RELEASING.md` (one-time setup + the shared-key
+  workflow). Releases are git-derived `1.0.<count>`, tag `ircle-v<version>`.
+
 ## 0.7.0 — 2026-06-18
 
 ### Added
