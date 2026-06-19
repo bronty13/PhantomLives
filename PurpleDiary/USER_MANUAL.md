@@ -1,9 +1,14 @@
 # PurpleDiary — User Manual
 
 PurpleDiary is your private journal. Everything stays on your Mac — there's no
-account and nothing leaves your computer unless you choose to export or sync it.
-Your journal is **encrypted at rest**: the database on disk is unreadable
+account, no cloud, and nothing leaves your computer unless *you* export or copy
+it. Your journal is **encrypted at rest**: the database on disk is unreadable
 without the key, which lives in your Mac's Keychain.
+
+> **Reading this inside the app:** everything here is also available from
+> **Help → PurpleDiary User Manual** (⌘?), and the full security write-up from
+> **Help → Security & Privacy whitepaper…** — both render right inside
+> PurpleDiary, no browser needed.
 
 ## Writing an entry
 
@@ -327,22 +332,56 @@ isn't, how the recovery key works, and how to verify the claims yourself. It's
 the same document as `Docs/SECURITY.md` in the project, rendered right inside the
 app.
 
+## Themes & appearance
+
+Make PurpleDiary look the way you like in **Settings → Appearance**. Pick from
+**15 built-in themes** — each one sets an accent color *and* a light or dark look
+across the whole app in a single click:
+
+- **Purple Dark** — the signature: violet on deep charcoal. This is what a fresh
+  install opens with.
+- **Purple Light** — the same signature violet on a clean light page.
+- …plus 13 more: **Midnight**, **Indigo Night**, **Ocean**, **Crimson**,
+  **Graphite**, and **Slate** (dark), and **Rose Quartz**, **Lavender**,
+  **Forest**, **Mint**, **Sunset**, **Goldenrod**, and **Sepia** (light).
+
+Click a theme card to switch instantly — the timeline, sidebar, charts, calendar
+heatmap, and buttons all recolor at once. The card you're using shows a check.
+
+Prefer your own look? The **Custom** section underneath lets you set the
+light/dark **Mode** and pick **any accent color** by hand; doing that simply
+shows "Custom" instead of a highlighted theme. Your choice is saved and sticks
+across launches. (Themes are just a preference — they have no effect on how your
+journal is encrypted.)
+
 ## Settings
 
 - **General** — daily word goal, week-start day; restore the original sample
   entries, **add 100 sample entries** to try things at scale, or **remove all
   sample entries** the app generated; the **Export** controls (format + folder,
   described above); app version + database location.
-- **Appearance** — light/dark/system and the accent color.
+- **Appearance** — the 15-theme picker plus a Custom light/dark mode + accent
+  color (see **Themes & appearance** above).
 - **Security** — encryption status, app-lock toggles, Touch ID options,
   passphrase, and recovery-key management (above).
 - **Backup** — described above. Backups capture the encrypted database plus the
   key envelopes, so a restore on another Mac can be unlocked with your passphrase
   or recovery key.
 
+## Updates
+
+PurpleDiary has **no auto-updater** — on purpose. An in-app "check for updates"
+would have to reach out over the network, and PurpleDiary's whole promise is that
+it never does (see the whitepaper). So new versions are simply a fresh download:
+grab the latest from the project's Releases page and drag the new app over the
+old one. Your journal lives separately in your Library folder and is untouched by
+an update.
+
 ## What's coming
 
-More of the "auto-assembled day" features that define Diarium — pulling in your
-calendar, location, and weather (photos already work, above) — plus a map of your
-entries and bring-your-own-cloud sync are planned for the next phases. See
+A few "auto-assembled day" ideas remain on the wish-list — a map of where your
+entries happened, and optionally pointing your encrypted database at a folder you
+already sync (iCloud Drive, Dropbox) for multi-Mac use. Anything that would make
+the app phone out on its own — live weather, cloud accounts, telemetry — is
+deliberately **out of scope**: keeping PurpleDiary fully offline is the point. See
 `SCOPING.md` in the project for the full roadmap.

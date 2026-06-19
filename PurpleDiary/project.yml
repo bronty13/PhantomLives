@@ -26,9 +26,17 @@ targets:
     sources:
       - path: Sources/PurpleDiary
       # Bundle the security whitepaper into Contents/Resources so the in-app
-      # SecurityDocView can render it via Bundle.main lookup. Docs/ stays the
+      # MarkdownDocView can render it via Bundle.main lookup. Docs/ stays the
       # canonical authoring location.
       - path: Docs/SECURITY.md
+        type: file
+        buildPhase:
+          copyFiles:
+            destination: resources
+      # Bundle the user manual too, so Help → PurpleDiary User Manual renders it
+      # in-app via the same MarkdownDocView. USER_MANUAL.md (repo root) stays the
+      # canonical authoring location.
+      - path: USER_MANUAL.md
         type: file
         buildPhase:
           copyFiles:

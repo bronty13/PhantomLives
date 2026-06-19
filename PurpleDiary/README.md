@@ -73,6 +73,14 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   (entries, words, days journaled, avg mood, current/longest streak), mood over
   time, entries/words per month, tag usage, and a line chart per tracker. No new
   permissions. *(Phase 2)*
+- **Themes** — **15 built-in themes** in Settings → Appearance, each pairing an
+  accent color with a light or dark look applied app-wide in one click: the
+  signature **Purple Dark** + **Purple Light**, plus Midnight, Indigo Night,
+  Ocean, Crimson, Graphite, Slate (dark) and Rose Quartz, Lavender, Forest, Mint,
+  Sunset, Goldenrod, Sepia (light). A **Custom** section keeps the hand-pick
+  light/dark mode + accent color. Themes are plaintext prefs — no security
+  bearing. The selected theme is derived by matching `(accent, scheme)`, so there
+  is no separate stored flag to drift.
 - **Export** — save the whole journal as **Markdown**, **HTML**, **PDF**, or
   **JSON** from File → Export Journal… (⇧⌘E) or Settings → General. Entries are
   grouped by month; files land in `~/Downloads/PurpleDiary/`. JSON is a
@@ -94,11 +102,14 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   bytes under a per-journal content key (AES-256-GCM), dual-wrapped under a
   passphrase and a generated 24-word recovery key. Ciphertext even with the app
   and DB open; the key is session-only and dropped on ⌘L. *(Phase 9)*
-- **Security & Privacy whitepaper** — a full trust document
-  ([`Docs/SECURITY.md`](Docs/SECURITY.md)) readable in-app via **Help → Security
-  & Privacy whitepaper…**. Covers the encryption-at-rest design, the recovery
-  key, the local-only/no-network model, and a "verify the claims" section, and
-  is honest about limitations (`settings.json` is plaintext preferences only).
+- **In-app docs** — both the **User Manual** ([`USER_MANUAL.md`](USER_MANUAL.md),
+  **Help → PurpleDiary User Manual**, ⌘?) and the **Security & Privacy whitepaper**
+  ([`Docs/SECURITY.md`](Docs/SECURITY.md), **Help → Security & Privacy
+  whitepaper…**) render right inside the app from their bundled Markdown via a
+  shared `MarkdownDocView`. The whitepaper covers the encryption-at-rest design,
+  the recovery key, the local-only/no-network model, and a "verify the claims"
+  section, and is honest about limitations (`settings.json` is plaintext
+  preferences only).
 
 ## Build
 

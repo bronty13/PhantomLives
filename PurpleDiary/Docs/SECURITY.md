@@ -1,10 +1,12 @@
 # PurpleDiary — Security & Privacy Whitepaper
 
-**Version**: covers PurpleDiary builds from May 2026 onward, with the Phase-1
-privacy core in place — a SQLCipher-encrypted database, a Keychain-held
-data-encryption key, optional passphrase protection, and a 24-word recovery
-key. This whitepaper is updated each time the security posture changes; check
-`CHANGELOG.md` for the per-version delta.
+**Version**: covers PurpleDiary builds from May 2026 onward. The privacy core is
+fully in place — a SQLCipher-encrypted database, a Keychain-held data-encryption
+key, optional passphrase protection, and a 24-word recovery key — alongside the
+later additions documented here: encrypted-BLOB attachments (photos, video,
+audio, PDFs, and arbitrary files), and **Vault journals** (per-journal
+cryptographic separation, §10). This whitepaper is updated each time the security
+posture changes; check `CHANGELOG.md` for the per-version delta.
 
 This document is meant to be read end-to-end by someone making a trust decision
 about PurpleDiary — your journal is some of the most personal data you own, and
@@ -38,15 +40,16 @@ In scope:
   the *page* level, the entire SQLite file — every table, index, and internal
   structure — is ciphertext. There is no plaintext "shadow" of your entries
   anywhere in the file.
-- **Photo, video & audio attachments.** Media you attach to an entry — photos
-  imported from Apple Photos or from Files, and videos and audio added from
-  Files — is stored as BLOBs *inside* `diary.sqlite` (photos as a downscaled
-  JPEG plus a thumbnail; video byte-for-byte plus a poster-frame thumbnail; audio
-  byte-for-byte), so it inherits the same SQLCipher encryption at rest as your
-  text — there are no separate plaintext media files on disk, and it rides along
-  inside the encrypted backup zip. (One practical consequence: uncompressed video
-  and audio live in the database, so a large file grows both the DB and every
-  launch backup.)
+- **Attachments (photos, video, audio, PDFs & any file).** Media and documents
+  you attach to an entry — photos imported from Apple Photos or from Files, and
+  video, audio, PDFs, and **arbitrary files** added from Files — are stored as
+  BLOBs *inside* `diary.sqlite` (photos as a downscaled JPEG plus a thumbnail;
+  video byte-for-byte plus a poster-frame thumbnail; PDFs byte-for-byte plus a
+  first-page thumbnail; audio and other files byte-for-byte), so they inherit the
+  same SQLCipher encryption at rest as your text — there are no separate plaintext
+  media files on disk, and they ride along inside the encrypted backup zip. (One
+  practical consequence: uncompressed video, audio, PDFs, and files live in the
+  database, so a large attachment grows both the DB and every launch backup.)
 - **The encryption key itself.** The 256-bit data-encryption key (DEK) is
   stored in the macOS login Keychain by default, and can additionally be wrapped
   under a passphrase-derived key you choose (opt-in). It is never written to
@@ -58,8 +61,9 @@ In scope:
 
 Explicitly out of scope:
 
-- **`settings.json` is plaintext.** Your preferences — accent color, week-start
-  day, word goal, backup configuration, lock toggles — are stored as plain JSON.
+- **`settings.json` is plaintext.** Your preferences — theme / accent color /
+  light-dark mode, week-start day, word goal, backup configuration, lock toggles
+  — are stored as plain JSON.
   This file contains **no journal content**: no entry text, no titles, no tags
   you've written, no mood data. It is deliberately readable so the app can boot
   and so you can inspect/repair it. If that bothers you, see §10.
@@ -240,6 +244,13 @@ threat categories that dominate most security reviews — TLS configuration,
 server breaches, man-in-the-middle, end-to-end-encryption guarantees against the
 cloud provider — do not apply, because nothing is ever transmitted.
 
+This includes updates: PurpleDiary has **no in-app updater**. A new version is a
+manual download (a notarized `.dmg` you drag over the old app), precisely so the
+app never has to contact a server to learn a version is available. This is a
+deliberate trade of convenience for the no-network guarantee — an auto-updater
+like Sparkle was considered and rejected because it polls an update feed over
+HTTPS.
+
 If you want your journal on more than one Mac, the planned approach (a later
 phase) is the simplest possible one: point the database or its backups at a
 folder you already sync (iCloud Drive, Dropbox, a file server). Because the
@@ -344,8 +355,9 @@ run on their own install:
    ```sh
    cat ~/Library/Application\ Support/PurpleDiary/settings.json | python3 -m json.tool
    ```
-   You should see only preferences (accent color, week start, word goal, backup
-   path, lock toggles) — no entry text, titles, tags, or moods.
+   You should see only preferences (theme / accent color / light-dark mode, week
+   start, word goal, backup path, lock toggles) — no entry text, titles, tags, or
+   moods.
 
 4. **Confirm there's no network traffic.** Watch the app with Little Snitch, or
    `lsof -i -nP | grep -i purplediary` while it runs. There should be nothing —
@@ -381,9 +393,10 @@ backup after the migration contains only the encrypted database.
 - **Photo, video & audio attachments are in the database.** Media you attach
   (photos from Apple Photos or Files, videos and audio from Files) is stored as
   BLOBs inside the SQLCipher database (see §1, §3), so it's encrypted at rest and
-  captured by backups like everything else. Photos are downscaled; **video and
-  audio are stored uncompressed**, so a large file noticeably grows the database
-  and every launch backup. Arbitrary-file attachments are not yet supported.
+  captured by backups like everything else. Photos are downscaled; **video, audio,
+  PDFs, and other files are stored uncompressed**, so a large attachment noticeably
+  grows the database and every launch backup. PDFs and arbitrary files are
+  supported (each stored byte-for-byte; PDFs also keep a first-page thumbnail).
 - **Hidden journals are a visibility gate, not separate encryption.** A journal
   marked *hidden* is filtered out of the Timeline, Calendar, Search, and Insights
   until you unlock it for the session (Touch ID / device password / passphrase).
@@ -462,4 +475,4 @@ an update here. The repository history is the canonical chronology.
 
 ---
 
-*Drafted 2026-05-30. Last reviewed 2026-05-31 (photo, video & audio attachments stored as encrypted BLOBs).*
+*Drafted 2026-05-30. Last reviewed 2026-06-19 (attachments extended to PDFs & arbitrary files; Vault journals; download-only update model; themes noted as plaintext prefs).*

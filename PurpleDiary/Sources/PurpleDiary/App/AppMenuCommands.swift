@@ -51,18 +51,25 @@ struct AppMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .help) {
-            SecurityDocMenuItem()
+            HelpDocMenuItems()
         }
     }
 }
 
-/// Help → Security & Privacy whitepaper. Opens the in-app `SecurityDocView`
-/// window (id `security-doc`, declared in `PurpleDiaryApp`). Kept as its own
-/// view so it can reach `\.openWindow` from inside the App-level Commands block.
-private struct SecurityDocMenuItem: View {
+/// The Help menu items: **PurpleDiary User Manual** (⌘?) and **Security &
+/// Privacy whitepaper**. Each opens its in-app `MarkdownDocView` window (ids
+/// `user-manual` / `security-doc`, declared in `PurpleDiaryApp`). Kept as their
+/// own view so they can reach `\.openWindow` from inside the App-level Commands
+/// block.
+private struct HelpDocMenuItems: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        Button("PurpleDiary User Manual") {
+            openWindow(id: "user-manual")
+        }
+        .keyboardShortcut("?", modifiers: [.command])
+
         Button("Security & Privacy whitepaper…") {
             openWindow(id: "security-doc")
         }

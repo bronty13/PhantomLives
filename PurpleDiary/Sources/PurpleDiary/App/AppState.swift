@@ -106,6 +106,13 @@ final class AppState: ObservableObject {
     var settings: AppSettings {
         get { settingsStore.settings }
         set {
+            // `settings` is a computed passthrough to the child `SettingsStore`,
+            // so mutating it fires `SettingsStore.objectWillChange` but NOT
+            // `AppState.objectWillChange`. The main window's `.tint()` /
+            // `.preferredColorScheme()` are bound to `AppState`, so without this
+            // an appearance change (e.g. picking a theme) wouldn't repaint the
+            // main window live. Announce the change explicitly.
+            objectWillChange.send()
             settingsStore.settings = newValue
             settingsStore.save()
         }
@@ -121,6 +128,24 @@ final class AppState: ObservableObject {
         case "dark":  return .dark
         default:      return nil
         }
+    }
+
+    // MARK: - Themes
+
+    /// The built-in theme currently in effect, derived purely from the persisted
+    /// `(accentColorHex, colorScheme)` pair. `nil` = a custom accent or "match
+    /// system" mode that matches no built-in theme (shown as “Custom”).
+    var selectedTheme: Theme? {
+        Theme.matching(accentHex: settings.accentColorHex, colorScheme: settings.colorScheme)
+    }
+
+    /// Apply a theme by writing its accent + scheme into settings. Propagates to
+    /// the whole UI through `effectiveAccentColor` / `preferredColorScheme`.
+    func applyTheme(_ theme: Theme) {
+        var s = settings
+        s.accentColorHex = theme.accentHex
+        s.colorScheme = theme.scheme
+        settings = s
     }
 
     // MARK: - Init

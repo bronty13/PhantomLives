@@ -222,10 +222,34 @@ struct GeneralSettingsTab: View {
 struct AppearanceSettingsTab: View {
     @EnvironmentObject private var appState: AppState
 
+    // Three-column grid of theme cards; adapts down on a narrow window.
+    private let columns = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 12)]
+
+    private var selectedThemeId: String? { appState.selectedTheme?.id }
+
     var body: some View {
         Form {
-            Section("Mode") {
-                Picker("Color scheme", selection: Binding(
+            Section {
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(Theme.all) { theme in
+                        ThemeSwatch(theme: theme, isSelected: theme.id == selectedThemeId) {
+                            appState.applyTheme(theme)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("Theme")
+            } footer: {
+                Text(selectedThemeId == nil
+                     ? "Custom — a hand-picked accent or “Match system” mode. Pick a theme above to switch, or fine-tune below."
+                     : "Selected: \(appState.selectedTheme?.name ?? ""). Each theme sets an accent color and a light or dark look across the whole app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Custom") {
+                Picker("Mode", selection: Binding(
                     get: { appState.settings.colorScheme },
                     set: { var s = appState.settings; s.colorScheme = $0; appState.settings = s }
                 )) {
@@ -235,8 +259,7 @@ struct AppearanceSettingsTab: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 360)
-            }
-            Section("Accent") {
+
                 ColorPicker("Accent color", selection: Binding(
                     get: { Color(hex: appState.settings.accentColorHex) ?? .purple },
                     set: { newVal in
@@ -248,6 +271,49 @@ struct AppearanceSettingsTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// A tappable theme preview card: the theme's representative background with a
+/// pair of accent chips and its name, ringed + check-marked when it's the one in
+/// effect. Previews are static (they don't change the live window); tapping
+/// applies the theme via `AppState.applyTheme`.
+private struct ThemeSwatch: View {
+    let theme: Theme
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Circle().fill(theme.accent).frame(width: 22, height: 22)
+                    Capsule().fill(theme.accent.opacity(0.45)).frame(width: 34, height: 10)
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(theme.accent)
+                    }
+                }
+                Text(theme.name)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(theme.previewForeground)
+                Text(theme.isDark ? "Dark" : "Light")
+                    .font(.caption2)
+                    .foregroundStyle(theme.previewForeground.opacity(0.55))
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme.previewBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(isSelected ? theme.accent : Color.secondary.opacity(0.25),
+                                  lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(theme.blurb)
     }
 }
 

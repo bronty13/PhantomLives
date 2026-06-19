@@ -5,9 +5,14 @@ import Foundation
 /// usable: auto-backup on, 14-day retention, lock off (opt-in), 750-word
 /// daily goal.
 struct AppSettings: Codable {
-    // Appearance
-    var accentColorHex: String = "#7C5CFF"     // purple — the PurpleDiary accent
-    var colorScheme: String = "auto"           // "auto" | "light" | "dark"
+    // Appearance. The default (accent + scheme) is the signature "Purple Dark"
+    // theme — see Theme.signature. Themes write these two fields; the selected
+    // theme is derived by matching them back (AppState.selectedTheme), so no
+    // separate theme id is persisted. "auto" scheme = the un-themed "match
+    // system" state. Existing installs keep whatever they saved; only a brand-new
+    // install starts on Purple Dark.
+    var accentColorHex: String = "#7C5CFF"     // purple — the PurpleDiary signature accent
+    var colorScheme: String = "dark"           // "auto" | "light" | "dark"
 
     // Writing
     var dailyWordGoal: Int = 750               // 0 disables the goal indicator

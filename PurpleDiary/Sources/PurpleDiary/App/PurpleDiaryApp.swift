@@ -27,13 +27,24 @@ struct PurpleDiaryApp: App {
 
         // In-app SECURITY.md viewer. Reachable from Help → Security & Privacy
         // whitepaper. Bundle-loaded markdown rendered by a small hand-rolled
-        // block parser; see SecurityDocView.
+        // block parser; see MarkdownDocView.
         Window("Security & Privacy", id: "security-doc") {
-            SecurityDocView()
+            MarkdownDocView(resource: "SECURITY",
+                            sourceLabel: "Source: Docs/SECURITY.md in the PurpleDiary repository.")
                 .tint(appState.effectiveAccentColor)
                 .preferredColorScheme(appState.preferredColorScheme)
         }
         .defaultSize(width: 760, height: 720)
+
+        // In-app USER_MANUAL.md viewer. Reachable from Help → PurpleDiary User
+        // Manual. Same renderer, different bundled resource.
+        Window("User Manual", id: "user-manual") {
+            MarkdownDocView(resource: "USER_MANUAL",
+                            sourceLabel: "Source: USER_MANUAL.md in the PurpleDiary repository.")
+                .tint(appState.effectiveAccentColor)
+                .preferredColorScheme(appState.preferredColorScheme)
+        }
+        .defaultSize(width: 820, height: 760)
 
         Settings {
             SettingsView()

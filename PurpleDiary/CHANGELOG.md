@@ -3,6 +3,53 @@
 All notable changes to PurpleDiary are documented here. Versions are
 git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
+## [1.0.1018] — 2026-06-19 — 15 themes + in-app User Manual & whitepaper polish
+
+### Added
+- **15 built-in themes (Settings → Appearance).** A picker grid of theme cards,
+  each pairing an accent color with a light or dark look applied across the whole
+  app in one click: the signature **Purple Dark** and **Purple Light**, plus
+  Midnight, Indigo Night, Ocean, Crimson, Graphite, Slate (dark) and Rose Quartz,
+  Lavender, Forest, Mint, Sunset, Goldenrod, Sepia (light). A **Custom** section
+  keeps the previous hand-pick light/dark Mode + accent ColorPicker.
+  - **No new persisted state.** The whole UI already reads its accent from
+    `AppState.effectiveAccentColor` (→ `settings.accentColorHex`) and its mode
+    from `settings.colorScheme`, so a theme just writes those two fields and the
+    selected theme is *derived* by matching them back (`Theme.matching`). The
+    custom controls simply read as "Custom" (no match) — there's no `themeId` flag
+    to drift, and **no view files changed** to pick up the colors.
+  - **Signature default.** A brand-new install now opens on **Purple Dark**
+    (`AppSettings` default flipped to `#7C5CFF` + `dark`). Existing installs keep
+    whatever they had saved.
+  - Fixed a latent propagation gap: `AppState.settings`'s setter now fires
+    `objectWillChange` so an appearance change repaints the main window live (it
+    mutates the child `SettingsStore`, which doesn't publish on `AppState`).
+- **In-app User Manual (Help → PurpleDiary User Manual, ⌘?).** `USER_MANUAL.md`
+  is now bundled and rendered inside the app, alongside the existing Security &
+  Privacy whitepaper. The reader `SecurityDocView` was generalized to
+  **`MarkdownDocView`** (resource + source label parameters) so one parser serves
+  both docs; `project.yml` bundles `USER_MANUAL.md` as a resource.
+
+### Docs
+- **USER_MANUAL.md** — new "Themes & appearance" section (the 15 themes + Custom);
+  an in-app-help pointer up top; replaced the stale "What's coming" (which still
+  promised network weather) with accurate **Updates** (download-only, no
+  auto-updater) + offline-only roadmap notes.
+- **Docs/SECURITY.md** — corrected the now-false "arbitrary-file attachments are
+  not yet supported" (Phase 7 shipped PDF + any-file); attachments wording extended
+  to PDFs/files throughout; added themes to the plaintext-`settings.json` field
+  lists; added a §4 note that there is **no in-app updater** (reinforcing the
+  no-network guarantee); refreshed the version header + review date.
+- README "Themes" + "In-app docs" bullets; HANDOFF §2/§7/§8/§9 updated (theme
+  model, `MarkdownDocView`, bundled `USER_MANUAL.md`, test count).
+
+### Tests
+- **+14 → 170 total.** New `ThemeTests` (15 themes, unique ids + unique
+  `(accent, scheme)` pairs, valid hex, signature = Purple Dark, `Theme.matching`
+  round-trip + case-insensitive hex + Custom/auto → nil, fresh-install default
+  selects the signature). `MarkdownDocViewTests` (renamed) gains a `USER_MANUAL.md`
+  bundling sanity check. **170/170 green.**
+
 ## [1.0.1013] — 2026-06-19 — Formal releases: notarized DMG (no auto-update, by design)
 
 ### Added

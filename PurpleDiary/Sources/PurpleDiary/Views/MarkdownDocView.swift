@@ -1,20 +1,25 @@
 import SwiftUI
 
-/// Renders `Docs/SECURITY.md` (bundled as a Contents/Resources file by
-/// project.yml) inside the app, reachable from **Help → Security & Privacy
-/// whitepaper**. A lightweight hand-rolled block parser keeps the view fast and
-/// avoids pulling in a markdown library for one document. Inline formatting
-/// (bold, italic, inline code, links) goes through `AttributedString(markdown:)`;
-/// block structure (headings, list items, dividers, code blocks, paragraphs) is
-/// laid out manually so headings actually look like headings.
+/// Renders a bundled Markdown document (e.g. `Docs/SECURITY.md` or
+/// `USER_MANUAL.md`, copied into Contents/Resources by project.yml) inside the
+/// app, reachable from the **Help** menu. A lightweight hand-rolled block parser
+/// keeps the view fast and avoids pulling in a markdown library for two
+/// documents. Inline formatting (bold, italic, inline code, links) goes through
+/// `AttributedString(markdown:)`; block structure (headings, list items,
+/// dividers, code blocks, paragraphs) is laid out manually so headings actually
+/// look like headings.
 ///
-/// The whitepaper is a user-facing trust artifact: someone deciding whether to
-/// trust PurpleDiary with their most personal writing deserves to read exactly
-/// how it's protected without leaving for a browser. The bar isn't "perfect
-/// CommonMark" — it's "the whitepaper is legible and the source link works."
-/// Mirrors PurpleLife's `SecurityDocView`; the parser is shared verbatim so the
-/// two stay in lock-step.
-struct SecurityDocView: View {
+/// These are user-facing trust/help artifacts: someone deciding whether to trust
+/// PurpleDiary with their most personal writing — or learning how a feature works
+/// — deserves to read it without leaving for a browser. The bar isn't "perfect
+/// CommonMark" — it's "the document is legible and selectable." One view serves
+/// both docs; the caller passes the bundle resource name + a source label.
+struct MarkdownDocView: View {
+
+    /// Bundle resource base name (no extension), e.g. `"SECURITY"` / `"USER_MANUAL"`.
+    let resource: String
+    /// Footer attribution, e.g. "Source: Docs/SECURITY.md in the PurpleDiary repository."
+    let sourceLabel: String
 
     @Environment(\.dismiss) private var dismiss
 
@@ -40,7 +45,7 @@ struct SecurityDocView: View {
             }
             Divider()
             HStack {
-                Text("Source: Docs/SECURITY.md in the PurpleDiary repository.")
+                Text(sourceLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -102,15 +107,15 @@ struct SecurityDocView: View {
     // MARK: - Loading + parsing
 
     private func load() {
-        guard let url = Bundle.main.url(forResource: "SECURITY", withExtension: "md") else {
-            loadError = "SECURITY.md not found in the app bundle. This is a build-config bug — Docs/SECURITY.md should be listed in project.yml under sources with type: file."
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "md") else {
+            loadError = "\(resource).md not found in the app bundle. This is a build-config bug — it should be listed in project.yml under the app target's sources with type: file (destination: resources)."
             return
         }
         do {
             let text = try String(contentsOf: url, encoding: .utf8)
             blocks = Self.parse(text)
         } catch {
-            loadError = "Couldn't read SECURITY.md: \(error.localizedDescription)"
+            loadError = "Couldn't read \(resource).md: \(error.localizedDescription)"
         }
     }
 

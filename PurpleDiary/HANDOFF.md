@@ -4,9 +4,15 @@ Engineer-facing orientation for anyone picking up PurpleDiary. Read this before
 non-trivial changes. For the design brief and roadmap see `SCOPING.md`; for the
 security model see `Docs/SECURITY.md`; for user-facing help see `USER_MANUAL.md`.
 
-Last updated: 2026-06-01 (Phase 9 vault complete — title/body + attachment
-sealing, create/unlock/manage UI, paste-back-tolerant recovery; vault seal
-now fails closed rather than falling back to plaintext).
+Last updated: 2026-06-19 (added: 15-theme picker — `Theme` model + the
+Appearance grid, selection derived by matching `(accentColorHex, colorScheme)`
+with no new persisted field, signature default flipped to Purple Dark; the
+in-app doc reader generalized from `SecurityDocView` → `MarkdownDocView`, now
+serving **both** `Docs/SECURITY.md` and a bundled `USER_MANUAL.md` from Help;
+USER_MANUAL + SECURITY whitepaper polished. Earlier: 2026-06-01 Phase 9 vault
+complete — title/body + attachment sealing, create/unlock/manage UI,
+paste-back-tolerant recovery; vault seal fails closed rather than falling back
+to plaintext).
 
 ---
 
@@ -198,6 +204,27 @@ feature, keep it offline.
   `AppState.Section`. `WindowStateGuard` is wired from `AppDelegate`.
   (`.navigationTitle` on Insights/Trackers is effectively inert in this layout —
   harmless, not load-bearing.)
+- **Themes (`Models/Theme.swift`).** 15 presets, each a `(accentHex, scheme)`
+  pair. The whole UI already reads its accent from `AppState.effectiveAccentColor`
+  (→ `settings.accentColorHex`) and its mode from `settings.colorScheme`, so a
+  theme is **not** a new piece of state: `applyTheme` just writes those two
+  fields, and `selectedTheme` is *derived* by `Theme.matching(...)` — there is no
+  stored `themeId` to drift, and the custom ColorPicker/Mode controls read as
+  "Custom" (no match). The picker grid lives in `AppearanceSettingsTab`. Two
+  gotchas baked in: (1) every theme's `(accentHex, scheme)` is unique
+  (`ThemeTests`) or selection would be ambiguous; (2) the `AppState.settings`
+  setter calls `objectWillChange.send()` — without it a theme change wouldn't
+  repaint the main window live (the setter mutates the child `SettingsStore`, not
+  `AppState`). The signature default (Purple Dark) is the `AppSettings` default
+  (`accentColorHex "#7C5CFF"`, `colorScheme "dark"`) — a new install opens on it;
+  existing installs keep their saved values.
+- **In-app docs = `Views/MarkdownDocView.swift`** (was `SecurityDocView`). One
+  small hand-rolled block parser renders **both** `Docs/SECURITY.md` and
+  `USER_MANUAL.md`, each bundled into `Contents/Resources` by `project.yml` and
+  opened from the **Help** menu (`security-doc` / `user-manual` `Window` scenes in
+  `PurpleDiaryApp`). To add another in-app doc: bundle the `.md` in `project.yml`,
+  add a `Window` scene + a Help `Button`. The parser is locked down by
+  `MarkdownDocViewTests` (incl. a bundling sanity check for each doc).
 - **Auto-backup on launch** → `~/Downloads/PurpleDiary backup/` (5-min debounce,
   14-day retention, verify/restore). Full Settings → Backup UI. `BackupService`.
 - **Default outputs** → `~/Downloads/PurpleDiary/` (exports). User-overridable +
@@ -214,7 +241,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 156 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 170 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -224,7 +251,11 @@ full saved-file-with-prose / garbage-rejected),
 `KeyStore` unlock round-trips, SQLCipher at-rest (ciphertext on disk, wrong-key
 rejection, plaintext→cipher migration); `StatsService` (totals/streaks/tracker
 series); `ExportService` render paths (MD/HTML/JSON incl. escaping + schema v4);
-`SecurityDocView` markdown parser; attachment CRUD/dedupe + thumb projection
+`MarkdownDocView` markdown parser (+ each doc's bundling sanity check); the
+**theme table** (`ThemeTests` — 15 themes, unique ids, unique `(accent, scheme)`
+pairs, valid hex, signature = Purple Dark, `Theme.matching` round-trip + case-
+insensitive hex + Custom/auto → nil, fresh-install default selects the
+signature); attachment CRUD/dedupe + thumb projection
 (kind/mime) + fetch-by-id + `ImageProcessing` resize; `FileImportService`
 classification (image/video/audio/unsupported) + image- and audio-from-file
 build; `TextImportService` merge rule + Markdown/plain-text/RTF reading;
@@ -250,7 +281,7 @@ video poster decoding, and AVKit playback are verified by hand (no headless TCC
 ```
 Sources/PurpleDiary/
 ├── App/      PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist, entitlements
-├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, Attachment, AppSettings
+├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, Attachment, AppSettings, Theme
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
 │             FileImportService, TextImportService, ImportService, InlineMedia, PDFProcessing, PromptService,
@@ -260,8 +291,9 @@ Sources/PurpleDiary/
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
               EntryEditorView, CalendarView, OnThisDayView, InsightsView, SearchView, PeopleView,
               TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,
-              TemplatesSheet, ImportSheet, VaultSheets (Make/Unlock/ChangePassphrase), AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
+              TemplatesSheet, ImportSheet, VaultSheets (Make/Unlock/ChangePassphrase), AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, MarkdownDocView, Settings/ (AppearanceSettingsTab = theme grid), Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 Resources/Prompts.json   Bundled writing-prompt library (Phase 4)
-Docs/SECURITY.md   Security & Privacy whitepaper (also rendered in-app via Help)
+Docs/SECURITY.md   Security & Privacy whitepaper (bundled as a resource; rendered in-app via Help → Security & Privacy whitepaper)
+USER_MANUAL.md     User manual (repo root; bundled as a resource; rendered in-app via Help → PurpleDiary User Manual)
 ```
