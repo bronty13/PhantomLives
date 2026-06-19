@@ -105,7 +105,7 @@ private struct DCCRow: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.filename).font(palette.chromeFontBold()).lineLimit(1)
-                Text("from \(item.peer) · \(sizeText)")
+                Text("\(item.isOutgoing ? "to" : "from") \(item.peer) · \(sizeText)")
                     .font(palette.chromeFont()).foregroundColor(palette.timestamp)
                 statusLine
             }

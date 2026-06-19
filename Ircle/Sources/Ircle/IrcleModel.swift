@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 import IRCKit
 
 /// Top-level app store. Owns the open IRC connections (one `IrcleSession` per
@@ -189,6 +190,36 @@ final class IrcleModel: ObservableObject {
         session.announce("Offered DCC chat to \(nick) (listening on \(ip):\(port)). Open DCC Transfers (⌘⇧D).")
     }
 
+    /// Pick a file (NSOpenPanel) and offer it to `nick` via DCC SEND.
+    func promptAndSendFile(to nick: String, on session: IrcleSession) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Send"
+        panel.message = "Choose a file to send to \(nick) via DCC."
+        if panel.runModal() == .OK, let url = panel.url {
+            startDCCSend(to: nick, fileURL: url, on: session)
+        }
+    }
+
+    /// Offer a specific file to `nick`: bind a listener, advertise via CTCP DCC
+    /// SEND, and add the outgoing transfer to the DCC store.
+    func startDCCSend(to nick: String, fileURL: URL, on session: IrcleSession) {
+        guard let ip = DCC.primaryIPv4() else {
+            session.announce("Can't send to \(nick): no routable network address found."); return
+        }
+        guard let (_, port, size, wildcard) = dcc.offerSend(to: nick, fileURL: fileURL, advertiseIP: ip) else {
+            session.announce("Can't send \(fileURL.lastPathComponent) to \(nick): no free port in the DCC range."); return
+        }
+        if wildcard {
+            session.announce("⚠️ DCC SEND is listening on all interfaces (couldn't bind \(ip)); any host reaching port \(port) could connect before \(nick).")
+        }
+        session.sendRaw("PRIVMSG \(nick) :\u{01}\(DCC.sendOfferCommand(filename: fileURL.lastPathComponent, ip: ip, port: port, size: size))\u{01}")
+        let sz = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+        session.announce("Offering \(fileURL.lastPathComponent) (\(sz)) to \(nick). Open DCC Transfers (⌘⇧D).")
+    }
+
     // MARK: - Notify (friends) list
 
     /// The global Notify list (friends). Mutating it persists to settings and
@@ -232,10 +263,10 @@ final class IrcleModel: ObservableObject {
                 if arg.isEmpty { session.announce("Usage: /dcc chat <nick>", in: buffer) }
                 else { startDCCChat(to: arg, on: session) }
             case "send":
-                session.announce("DCC SEND from Ircle isn't available yet — coming soon. "
-                                 + "(You can already receive files others send you.)", in: buffer)
+                if arg.isEmpty { session.announce("Usage: /dcc send <nick>", in: buffer) }
+                else { promptAndSendFile(to: arg, on: session) }
             default:
-                session.announce("Usage: /dcc chat <nick>   (DCC send: coming soon)", in: buffer)
+                session.announce("Usage: /dcc chat <nick>  ·  /dcc send <nick>", in: buffer)
             }
             return true
         default:

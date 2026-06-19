@@ -1,6 +1,30 @@
 import Foundation
 import Network
 
+/// Shared listener-binding for the DCC initiate side. Binds to `bindHost` (the
+/// advertised IP) scanning `range`, falling back to the wildcard (reported via
+/// the flag — a footgun the caller should warn about) only if no host-bound port
+/// is free. Lifted from PurpleIRC's hardened createListener.
+enum DCCNet {
+    static func makeListener(bindHost: String,
+                             range: ClosedRange<UInt16>) -> (NWListener, UInt16, Bool)? {
+        for p in range {
+            guard let port = NWEndpoint.Port(rawValue: p) else { continue }
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(bindHost), port: port)
+            if let l = try? NWListener(using: params, on: port) { return (l, p, false) }
+        }
+        for p in range {
+            guard let port = NWEndpoint.Port(rawValue: p) else { continue }
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
+            if let l = try? NWListener(using: params, on: port) { return (l, p, true) }
+        }
+        return nil
+    }
+}
+
 /// Receives a DCC file (the *accept*/GET side): connects out to the peer's
 /// validated `host:port`, streams bytes to `destination`, sends the classic
 /// 4-byte big-endian "total received" acknowledgements, and stops at
@@ -173,7 +197,7 @@ public final class DCCChat {
     /// free. The first incoming connection is adopted; the listener then closes.
     public func listen(bindHost: String,
                        portRange: ClosedRange<UInt16> = 49152...49200) -> (port: UInt16, wildcard: Bool)? {
-        guard let (l, port, wildcard) = Self.makeListener(bindHost: bindHost, range: portRange) else {
+        guard let (l, port, wildcard) = DCCNet.makeListener(bindHost: bindHost, range: portRange) else {
             return nil
         }
         listener = l
@@ -203,27 +227,6 @@ public final class DCCChat {
             default: break
             }
         }
-    }
-
-    /// Bind a listener to `bindHost`, scanning `range`; fall back to the
-    /// wildcard (reported via the `wildcard` flag) only if no host-bound port
-    /// is available. (Lifted from PurpleIRC's hardened createListener.)
-    private static func makeListener(bindHost: String,
-                                     range: ClosedRange<UInt16>) -> (NWListener, UInt16, Bool)? {
-        for p in range {
-            guard let port = NWEndpoint.Port(rawValue: p) else { continue }
-            let params = NWParameters.tcp
-            params.allowLocalEndpointReuse = true
-            params.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(bindHost), port: port)
-            if let l = try? NWListener(using: params, on: port) { return (l, p, false) }
-        }
-        for p in range {
-            guard let port = NWEndpoint.Port(rawValue: p) else { continue }
-            let params = NWParameters.tcp
-            params.allowLocalEndpointReuse = true
-            if let l = try? NWListener(using: params, on: port) { return (l, p, true) }
-        }
-        return nil
     }
 
     /// Send a line (a trailing newline is appended).
@@ -265,6 +268,118 @@ public final class DCCChat {
         listener = nil
         connection?.cancel()
         connection = nil
+        onState?(s)
+    }
+}
+
+/// Offers and sends a file (the *initiate*/SEND side): listens on a vetted local
+/// port (advertised to the peer via a CTCP DCC SEND offer), accepts the first
+/// inbound connection, and streams the file in chunks with backpressure,
+/// draining the receiver's 4-byte acks. Pure Network+Foundation.
+public final class DCCUpload {
+
+    public enum State: Equatable, Sendable {
+        case connecting, transferring, completed, failed(String), cancelled
+    }
+
+    public var onState: ((State) -> Void)?
+    /// Total bytes sent so far (for a progress bar).
+    public var onProgress: ((UInt64) -> Void)?
+
+    /// Advertised file size (bytes) — goes in the DCC SEND offer.
+    public let fileSize: UInt64
+
+    private let fileURL: URL
+    private let queue = DispatchQueue(label: "IRCKit.dcc.upload")
+    private var listener: NWListener?
+    private var connection: NWConnection?
+    private var handle: FileHandle?
+    private var sent: UInt64 = 0
+    private var done = false
+    private static let chunk = 65536
+
+    public init(fileURL: URL) {
+        self.fileURL = fileURL
+        let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        self.fileSize = (attrs?[.size] as? NSNumber)?.uint64Value ?? 0
+    }
+
+    /// Bind a listener and await the peer. Returns the chosen port + whether it
+    /// fell back to the wildcard (caller should warn), or nil if no port was free.
+    public func listen(bindHost: String,
+                       portRange: ClosedRange<UInt16> = 49152...49200) -> (port: UInt16, wildcard: Bool)? {
+        guard let (l, port, wildcard) = DCCNet.makeListener(bindHost: bindHost, range: portRange) else {
+            return nil
+        }
+        listener = l
+        onState?(.connecting)
+        l.newConnectionHandler = { [weak self] conn in
+            guard let self else { conn.cancel(); return }
+            self.queue.async {
+                self.listener?.cancel()
+                self.listener = nil
+                self.adopt(conn)
+                conn.start(queue: self.queue)
+            }
+        }
+        l.start(queue: queue)
+        return (port, wildcard)
+    }
+
+    public func cancel() {
+        guard !done else { return }
+        finish(.cancelled)
+    }
+
+    private func adopt(_ conn: NWConnection) {
+        connection = conn
+        conn.stateUpdateHandler = { [weak self] st in
+            guard let self else { return }
+            switch st {
+            case .ready:
+                self.handle = try? FileHandle(forReadingFrom: self.fileURL)
+                guard self.handle != nil else { self.finish(.failed("Couldn't open file to send.")); return }
+                self.onState?(.transferring)
+                self.drainAcks()
+                self.sendNextChunk()
+            case .failed(let e): self.finish(.failed(e.localizedDescription))
+            case .cancelled: break
+            default: break
+            }
+        }
+    }
+
+    private func sendNextChunk() {
+        guard !done else { return }
+        let data = (try? handle?.read(upToCount: Self.chunk)) ?? nil
+        guard let data, !data.isEmpty else {
+            finish(.completed); return   // EOF — whole file sent
+        }
+        connection?.send(content: data, completion: .contentProcessed { [weak self] error in
+            guard let self else { return }
+            if let error { self.finish(.failed(error.localizedDescription)); return }
+            self.sent += UInt64(data.count)
+            self.onProgress?(self.sent)
+            self.sendNextChunk()
+        })
+    }
+
+    /// Drain the receiver's 4-byte acks so its buffer can't back up (advisory —
+    /// we complete on EOF, not on ack count).
+    private func drainAcks() {
+        connection?.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] _, _, isComplete, _ in
+            guard let self, !self.done, !isComplete else { return }
+            self.drainAcks()
+        }
+    }
+
+    private func finish(_ s: State) {
+        guard !done else { return }
+        done = true
+        try? handle?.close()
+        handle = nil
+        listener?.cancel(); listener = nil
+        connection?.cancel(); connection = nil
         onState?(s)
     }
 }

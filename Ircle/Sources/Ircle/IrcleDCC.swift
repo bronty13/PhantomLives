@@ -12,18 +12,32 @@ final class DCCItem: ObservableObject, Identifiable {
     let size: UInt64
     let host: String
     let port: UInt16
+    /// True when WE are sending the file (outgoing); false when receiving.
+    let isOutgoing: Bool
 
     @Published var state: DCCItemState = .offered
     @Published var received: UInt64 = 0
+    /// Incoming: where the file is saved. Outgoing: the source file (for Reveal).
     var destination: URL?
     var download: DCCDownload?
+    var upload: DCCUpload?
 
-    init(peer: String, filename: String, size: UInt64, host: String, port: UInt16) {
+    init(peer: String, filename: String, size: UInt64, host: String, port: UInt16, isOutgoing: Bool = false) {
         self.peer = peer; self.filename = filename; self.size = size
-        self.host = host; self.port = port
+        self.host = host; self.port = port; self.isOutgoing = isOutgoing
     }
 
     func apply(_ s: DCCDownload.State) {
+        switch s {
+        case .connecting:   state = .connecting
+        case .transferring: state = .transferring
+        case .completed:    state = .completed
+        case .cancelled:    state = .cancelled
+        case .failed(let m): state = .failed(m)
+        }
+    }
+
+    func apply(upload s: DCCUpload.State) {
         switch s {
         case .connecting:   state = .connecting
         case .transferring: state = .transferring
@@ -166,7 +180,25 @@ final class IrcleDCC: ObservableObject {
 
     func decline(_ item: DCCItem) { if item.state == .offered { item.state = .declined } }
 
-    func cancel(_ item: DCCItem) { item.download?.cancel() }
+    func cancel(_ item: DCCItem) { item.download?.cancel(); item.upload?.cancel() }
+
+    /// Offer a file to `peer` (we listen + advertise). Binds to `advertiseIP`,
+    /// inserts an outgoing item, and returns the listening port + size + whether
+    /// it fell back to the wildcard, or nil if no port was free.
+    func offerSend(to peer: String, fileURL: URL, advertiseIP: String)
+        -> (item: DCCItem, port: UInt16, size: UInt64, wildcard: Bool)? {
+        let upload = DCCUpload(fileURL: fileURL)
+        guard let (port, wildcard) = upload.listen(bindHost: advertiseIP) else { return nil }
+        let item = DCCItem(peer: peer, filename: fileURL.lastPathComponent, size: upload.fileSize,
+                           host: advertiseIP, port: port, isOutgoing: true)
+        item.destination = fileURL   // for Reveal
+        upload.onState = { [weak item] s in Task { @MainActor in item?.apply(upload: s) } }
+        upload.onProgress = { [weak item] n in Task { @MainActor in item?.received = n } }
+        item.upload = upload
+        item.state = .connecting
+        items.insert(item, at: 0)
+        return (item, port, upload.fileSize, wildcard)
+    }
 
     func clearFinished() {
         items.removeAll { $0.state.isTerminal }

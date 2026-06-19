@@ -69,16 +69,7 @@ struct NickListView: View {
                     NickRow(user: user, palette: palette,
                             selected: user.nick == selectedNick)
                         .onTapGesture { selectedNick = user.nick }
-                        .contextMenu {
-                            Button("Query") { openQuery(user.nick) }
-                            Button("Whois") { send("WHOIS \(user.nick)") }
-                            Divider()
-                            Button("Start DCC Chat") {
-                                if let s = model.session(for: buffer) {
-                                    model.startDCCChat(to: user.nick, on: s)
-                                }
-                            }
-                        }
+                        .contextMenu { nickMenu(for: user.nick) }
                 }
             }
             .padding(.vertical, 2)
@@ -138,6 +129,19 @@ struct NickListView: View {
                     .frame(width: 30)
             }
             .padding(6).background(palette.paneBG)
+        }
+    }
+
+    @ViewBuilder
+    private func nickMenu(for nick: String) -> some View {
+        Button("Query") { openQuery(nick) }
+        Button("Whois") { send("WHOIS \(nick)") }
+        Divider()
+        Button("Start DCC Chat") {
+            if let s = model.session(for: buffer) { model.startDCCChat(to: nick, on: s) }
+        }
+        Button("Send File…") {
+            if let s = model.session(for: buffer) { model.promptAndSendFile(to: nick, on: s) }
         }
     }
 

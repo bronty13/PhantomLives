@@ -85,7 +85,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Text / background **colour pickers** ("whatever colours you wish") | pref | ✅ | 🟡 | We ship Platinum/Graphite themes, not arbitrary user colour pickers. |
 | SSL options (3.5a line) | pref | ✅ | ✅ | We do TLS via IRCKit (+ SASL, proxy). |
 
-## 3. DCC / file transfer  — **Stage 1 done: offers parsed + surfaced; transport pending**
+## 3. DCC / file transfer  — **done** (accept + initiate, files + chat)
 
 > IRCKit's audited `DCC` engine now parses + validates inbound offers (SSRF +
 > path-traversal guards) and Ircle surfaces them. Accepting/transferring (sockets,
@@ -94,7 +94,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Feature | Type | Original |
 |---|---|---|
 | DCC Chat (**accept + initiate done** — Stages 3–4a) | cmd/eng | ✅ |
-| DCC Send / Get (**receive/accept done** — Stage 2) | cmd/eng | ✅→🟡 |
+| DCC Send / Get (**both directions done**) | cmd/eng | ✅ |
 | DCC RESUME (incl. with PC clients) | eng | ✅ |
 | Drag-and-drop send | win | ✅ |
 | MacBinary recognition on GET | eng | ✅ |

@@ -2,6 +2,20 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.17.0 — 2026-06-19
+
+### Added
+
+- **DCC — Stage 4b: send a file (DCC SEND).** You can now offer a file:
+  **right-click a nick → Send File…**, or **`/dcc send <nick>`** (both open a file
+  picker). Ircle binds a listener on your real interface, advertises the file via
+  a CTCP DCC SEND offer, and streams it with a progress bar once the peer
+  connects (draining their acks; warns on a wildcard bind). Runs on IRCKit's new
+  `DCCUpload`. **This completes DCC** — accept + initiate, for both files and
+  chat. The transfer window shows outgoing items ("to <nick>") alongside
+  incoming. 2 engine tests for the offer encoder; the byte transfer itself is
+  the two-client smoke test.
+
 ## 0.16.0 — 2026-06-19
 
 ### Added
