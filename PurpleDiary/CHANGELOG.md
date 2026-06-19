@@ -3,6 +3,41 @@
 All notable changes to PurpleDiary are documented here. Versions are
 git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
+## [1.0.1012] — 2026-06-19 — Formal releases: notarized DMG (no auto-update, by design)
+
+### Added
+- **A real release pipeline — `Scripts/release.sh` + `RELEASING.md`.** PurpleDiary
+  can now be cut as a notarized, stapled **`.dmg`** attached to a tagged GitHub
+  release (`purplediary-v<version>`), instead of being source-only / build-from-
+  checkout. One command: build → notarize+staple the app → build the drag-to-
+  Applications DMG → notarize+staple the DMG → `gh release create`. Version stays
+  git-derived (`1.0.<commit-count>`); the script refuses a dirty/unpushed tree and
+  won't clobber an existing tag.
+  - **Two notarization passes on purpose.** The app is stapled *before* it's
+    sealed into the read-only DMG, and the DMG is stapled after — so a downloaded
+    app is Gatekeeper-clean **offline** even after the user drags it out of the
+    DMG (you can only staple a writable bundle). Both artifacts are proven with
+    `stapler validate` + an `spctl` assessment; a broken notarization fails the
+    release loudly.
+  - Reuses the shared PhantomLives signing identity (`Developer ID Application:
+    Robert Olen`) and the shared `PurpleDedup-Notary` notary profile — no
+    PurpleDiary-specific credential setup.
+
+### Deliberately NOT added
+- **No Sparkle / no in-app auto-update.** Sparkle polls an `appcast.xml` over
+  HTTPS — that is the exact "update-check" network egress PurpleDiary forbids
+  (HANDOFF §6; the same constraint that got WeatherKit reverted). Keeping releases
+  download-only is what lets "PurpleDiary makes no network requests" stay
+  *literally* true. Updating is: download the newer DMG and re-drag. `RELEASING.md`
+  records this reasoning so the constraint isn't quietly bolted over later.
+
+### Docs
+- New `RELEASING.md` (one-time per-Mac setup, the run steps, env knobs, the
+  no-Sparkle rationale, troubleshooting). README gains a **Releases / install**
+  section pointing at the GitHub releases page alongside build-from-source.
+- Tests unchanged and green (**156/156**) — this change is build/release tooling
+  only; no app code or migrations touched.
+
 ## [1.0.588] — 2026-06-01 — Vault hardening + changelog versioning
 
 ### Changed

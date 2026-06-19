@@ -120,6 +120,22 @@ manual version bumping.
 
 **Requires full Xcode** (not just Command Line Tools) and `xcodegen` on PATH.
 
+## Install a release (no build needed)
+
+Tagged releases ship a notarized, stapled **`.dmg`** on the
+[GitHub releases page](https://github.com/bronty13/PhantomLives/releases?q=purplediary)
+(`purplediary-v<version>`). Download the DMG, open it, and drag **PurpleDiary**
+to Applications — it's notarized, so it opens on any Mac with no Gatekeeper
+prompt.
+
+**Updating is manual, by design.** PurpleDiary is a no-network app — there is no
+in-app updater, no Sparkle, no update-check (see [HANDOFF](HANDOFF.md) §6 and
+[`Docs/SECURITY.md`](Docs/SECURITY.md)). To update, download the newer DMG and
+re-drag it over the old app; your journal data lives separately in
+`~/Library/Application Support/PurpleDiary/` and is untouched.
+
+Cutting a release is a single script — see [`RELEASING.md`](RELEASING.md).
+
 ## Test
 
 ```sh

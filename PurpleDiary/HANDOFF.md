@@ -45,7 +45,14 @@ with the no-network guarantee.
 ./build-app.sh --no-open    # build + install, no focus-stealing relaunch
 ./build-app.sh --no-install # build only
 ./run-tests.sh              # xcodebuild test → PurpleDiaryTests (70 tests)
+Scripts/release.sh          # cut a notarized DMG + GitHub release (see RELEASING.md)
 ```
+
+- **Releasing:** `Scripts/release.sh` builds a notarized, stapled `.dmg` and
+  publishes a `purplediary-v<version>` GitHub release. There is **no Sparkle / no
+  in-app auto-update** — that would mean an `appcast.xml` HTTPS poll, i.e. the
+  exact update-check egress §6 forbids. Updates are download-only (re-drag the
+  newer DMG). Full process + one-time per-Mac setup in `RELEASING.md`.
 
 - **Requires full Xcode** (not just CLT) and `xcodegen` on PATH. `build-app.sh`
   sets `DEVELOPER_DIR` to Xcode if needed.
