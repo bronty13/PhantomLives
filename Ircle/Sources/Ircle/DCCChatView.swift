@@ -7,7 +7,7 @@ struct DCCChatView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     let sessionID: UUID
 
-    private var palette: PlatinumPalette { .forAppearance(settingsStore.settings.appearance) }
+    private var palette: PlatinumPalette { settingsStore.palette }
 
     var body: some View {
         Group {

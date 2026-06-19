@@ -154,6 +154,9 @@ struct AppSettings: Codable {
     /// `$1`…`$9` are positional args, `$2-`/`$*` the rest; with no `$` the args
     /// are appended. See `AliasExpander`.
     var aliases: [String: String] = [:]
+    /// Optional message text / background colour overrides (hex, empty = theme).
+    var customTextColorHex: String = ""
+    var customBackgroundColorHex: String = ""
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
@@ -167,7 +170,8 @@ struct AppSettings: Codable {
     var lastBackupAt: String = ""
 
     enum CodingKeys: String, CodingKey {
-        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, ctcpSoundsEnabled, aliases, showTimestamps, fontSize
+        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, ctcpSoundsEnabled, aliases
+        case customTextColorHex, customBackgroundColorHex, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -185,6 +189,8 @@ struct AppSettings: Codable {
         ignoreMasks = (try? c.decode([String].self, forKey: .ignoreMasks)) ?? []
         ctcpSoundsEnabled = (try? c.decode(Bool.self, forKey: .ctcpSoundsEnabled)) ?? true
         aliases = (try? c.decode([String: String].self, forKey: .aliases)) ?? [:]
+        customTextColorHex = (try? c.decode(String.self, forKey: .customTextColorHex)) ?? ""
+        customBackgroundColorHex = (try? c.decode(String.self, forKey: .customBackgroundColorHex)) ?? ""
         showTimestamps = (try? c.decode(Bool.self, forKey: .showTimestamps)) ?? true
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 12
         autoBackupEnabled = (try? c.decode(Bool.self, forKey: .autoBackupEnabled)) ?? true
@@ -200,6 +206,15 @@ struct AppSettings: Codable {
 final class SettingsStore: ObservableObject {
     @Published var settings: AppSettings {
         didSet { save() }
+    }
+
+    /// The active palette: the chosen theme with the user's text/background
+    /// colour overrides applied. Views should read this rather than calling
+    /// `forAppearance` directly, so custom colours take effect everywhere.
+    var palette: PlatinumPalette {
+        .forAppearance(settings.appearance)
+            .applying(textHex: settings.customTextColorHex,
+                      backgroundHex: settings.customBackgroundColorHex)
     }
 
     static let appName = "Ircle"

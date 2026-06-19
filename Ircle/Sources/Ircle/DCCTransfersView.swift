@@ -8,7 +8,7 @@ struct DCCTransfersView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @Environment(\.openWindow) private var openWindow
 
-    private var palette: PlatinumPalette { .forAppearance(settingsStore.settings.appearance) }
+    private var palette: PlatinumPalette { settingsStore.palette }
 
     var body: some View {
         VStack(spacing: 0) {

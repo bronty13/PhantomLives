@@ -11,7 +11,7 @@ struct LogViewerView: View {
     @State private var selected: LogFile.ID?
     @State private var content: String = ""
 
-    private var palette: PlatinumPalette { .forAppearance(settingsStore.settings.appearance) }
+    private var palette: PlatinumPalette { settingsStore.palette }
 
     var body: some View {
         HStack(spacing: 0) {

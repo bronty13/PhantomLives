@@ -11,7 +11,7 @@ struct FacesView: View {
     @EnvironmentObject var faces: FacesStore
 
     private var palette: PlatinumPalette {
-        .forAppearance(settingsStore.settings.appearance)
+        settingsStore.palette
     }
 
     private var users: [IrcleUser] {

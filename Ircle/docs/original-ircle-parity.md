@@ -82,7 +82,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Faces tab: face folder + exchange options | pref | ✅ | ❌ | We have faces but no prefs/exchange. |
 | CTCP tab: Enable CTCP sound, Disable CTCP, finger/userinfo replies, FACE EXIST/GET | pref | ✅ | 🟡 | We answer VERSION/PING/TIME but expose no CTCP prefs and no sound/face. |
 | Sound tab (per-event sounds; MP3/AIFF in 3.5) | pref | ✅ | ❌ | No sounds. |
-| Text / background **colour pickers** ("whatever colours you wish") | pref | ✅ | 🟡 | We ship Platinum/Graphite themes, not arbitrary user colour pickers. |
+| Text / background **colour pickers** | pref | ✅ | ✅ | Settings → Custom colours (text + background overrides on top of the theme). |
 | SSL options (3.5a line) | pref | ✅ | ✅ | We do TLS via IRCKit (+ SASL, proxy). |
 
 ## 3. DCC / file transfer  — **done** (accept + initiate, files + chat)
@@ -131,7 +131,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Feature | Type | Original | Ours | Notes |
 |---|---|---|---|---|
 | mIRC colour + formatting rendering | eng | ✅ | ✅ | Ours adds background-contrast clamping. |
-| Adjustable text/background colours | pref | ✅ | 🟡 | Theme presets, not free colour pickers. |
+| Adjustable text/background colours | pref | ✅ | ✅ | Custom-colour overrides in Settings. |
 | IRC macros (ircII-style) / aliases | cmd | ✅ | ✅ | /alias with $1/$2-/$* templates; persisted. |
 | Per-event sounds (MP3/AIFF in 3.5) | pref | ✅ | 🟡 | CTCP SOUND clips play; no per-event (join/etc.) sound mapping yet. |
 | Notifications (Growl in 3.5) | — | ✅ | ✅ 🆕 | macOS notifications for mentions/PMs; Settings toggle. |

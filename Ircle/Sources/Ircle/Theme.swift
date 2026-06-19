@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The classic Mac OS 8/9 "Platinum" look, plus a modern dark "Graphite"
 /// variant. Recreated from observation of Ircle 3.x — grey bevels, monospaced
@@ -7,14 +8,14 @@ struct PlatinumPalette {
     // Window + pane chrome
     let windowBG: Color
     let paneBG: Color          // beveled control backgrounds (channelbar, lists)
-    let textBG: Color          // the message area / input field interior
+    var textBG: Color          // the message area / input field interior
     let bevelLight: Color      // top/left highlight edge
     let bevelDark: Color       // bottom/right shadow edge
     let hairline: Color        // 1px separators
     let chromeText: Color      // labels on chrome
 
     // Message colors
-    let normalText: Color
+    var normalText: Color
     let timestamp: Color
     let serverText: Color      // MOTD / numerics
     let topicText: Color       // topic + system status
@@ -29,7 +30,7 @@ struct PlatinumPalette {
     let selection: Color       // selected channelbar/nick row
     /// Luminance (0…1) of `textBG`, so the mIRC renderer can keep colored text
     /// legible against the message-area background.
-    let messageBackgroundLuminance: Double
+    var messageBackgroundLuminance: Double
 
     static func platinum() -> PlatinumPalette {
         PlatinumPalette(
@@ -88,6 +89,25 @@ struct PlatinumPalette {
         case .platinum: return .platinum()
         case .graphite: return .graphite()
         }
+    }
+
+    /// Apply optional user overrides for the message text + background colours
+    /// (hex strings; empty = keep the theme's). Recomputes the contrast
+    /// luminance from a custom background so mIRC colours stay legible.
+    func applying(textHex: String, backgroundHex: String) -> PlatinumPalette {
+        var p = self
+        if let c = Color(ircleHex: textHex) { p.normalText = c }
+        if let c = Color(ircleHex: backgroundHex) {
+            p.textBG = c
+            p.messageBackgroundLuminance = PlatinumPalette.luminance(of: c)
+        }
+        return p
+    }
+
+    /// Perceived (Rec. 601) luminance 0…1 of a SwiftUI colour, via sRGB.
+    static func luminance(of color: Color) -> Double {
+        guard let c = NSColor(color).usingColorSpace(.sRGB) else { return 1.0 }
+        return 0.299 * c.redComponent + 0.587 * c.greenComponent + 0.114 * c.blueComponent
     }
 
     // Fonts: Monaco (classic Mac monospace) for messages; Geneva (classic Mac
@@ -155,5 +175,28 @@ private struct BevelEdges: View {
 extension View {
     func platinumBevel(_ palette: PlatinumPalette, raised: Bool = true, fill: Color? = nil) -> some View {
         modifier(PlatinumBevel(palette: palette, raised: raised, fill: fill))
+    }
+}
+
+// MARK: - Hex ⇄ Color
+
+extension Color {
+    /// Parse a `#RRGGBB` / `RRGGBB` hex string. Empty/invalid → nil.
+    init?(ircleHex hex: String) {
+        let s = hex.trimmingCharacters(in: .whitespaces)
+                   .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
+        self = Color(red: Double((v >> 16) & 0xFF) / 255.0,
+                     green: Double((v >> 8) & 0xFF) / 255.0,
+                     blue: Double(v & 0xFF) / 255.0)
+    }
+
+    /// `#RRGGBB` for persistence, via sRGB. nil if the colour can't be resolved.
+    var ircleHexString: String? {
+        guard let c = NSColor(self).usingColorSpace(.sRGB) else { return nil }
+        let r = Int((c.redComponent * 255).rounded())
+        let g = Int((c.greenComponent * 255).rounded())
+        let b = Int((c.blueComponent * 255).rounded())
+        return String(format: "#%02X%02X%02X", r, g, b)
     }
 }

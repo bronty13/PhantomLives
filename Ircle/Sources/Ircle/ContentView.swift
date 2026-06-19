@@ -10,7 +10,7 @@ struct ContentView: View {
     @EnvironmentObject var settingsStore: SettingsStore
 
     private var palette: PlatinumPalette {
-        .forAppearance(settingsStore.settings.appearance)
+        settingsStore.palette
     }
 
     var body: some View {

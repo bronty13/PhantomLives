@@ -200,6 +200,21 @@ struct AppearanceSettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @Environment(\.openWindow) private var openWindow
 
+    /// ColorPicker bindings: read the hex override (falling back to the theme's
+    /// current colour for display), write the chosen colour back as hex.
+    private var textColorBinding: Binding<Color> {
+        Binding(
+            get: { Color(ircleHex: settingsStore.settings.customTextColorHex) ?? settingsStore.palette.normalText },
+            set: { settingsStore.settings.customTextColorHex = $0.ircleHexString ?? "" }
+        )
+    }
+    private var backgroundColorBinding: Binding<Color> {
+        Binding(
+            get: { Color(ircleHex: settingsStore.settings.customBackgroundColorHex) ?? settingsStore.palette.textBG },
+            set: { settingsStore.settings.customBackgroundColorHex = $0.ircleHexString ?? "" }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Theme") {
@@ -218,6 +233,18 @@ struct AppearanceSettingsView: View {
                 }
                 .pickerStyle(.radioGroup)
                 Text("Classic surfaces the dense original-Ircle nick-list action buttons (Op, Kick, Ban, Whois, …). Clean keeps a minimal set.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            Section("Custom colours") {
+                ColorPicker("Message text", selection: textColorBinding, supportsOpacity: false)
+                ColorPicker("Message background", selection: backgroundColorBinding, supportsOpacity: false)
+                Button("Reset to theme defaults") {
+                    settingsStore.settings.customTextColorHex = ""
+                    settingsStore.settings.customBackgroundColorHex = ""
+                }
+                .disabled(settingsStore.settings.customTextColorHex.isEmpty
+                          && settingsStore.settings.customBackgroundColorHex.isEmpty)
+                Text("Overrides the chat text and background on top of the chosen theme.")
                     .font(.caption).foregroundColor(.secondary)
             }
             Section("Messages") {

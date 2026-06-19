@@ -2,6 +2,16 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.21.0 — 2026-06-19
+
+### Added
+
+- **Custom message colours.** Settings → Appearance → Custom colours lets you
+  override the **message text** and **background** on top of the chosen theme
+  (with a "Reset to theme defaults"). A custom background also recomputes the
+  contrast luminance so mIRC colours stay legible. Persisted as hex; applied
+  app-wide via a shared `settingsStore.palette`. 4 tests.
+
 ## 0.20.0 — 2026-06-19
 
 ### Added
