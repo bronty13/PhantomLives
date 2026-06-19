@@ -19,7 +19,9 @@ The classic single-window arrangement, consolidated and resizable:
   highlighting.
 - **Topic bar** — the channel topic, in an inset Platinum well.
 - **Message area** — monospaced (Monaco), colored by line kind the way Ircle
-  did: blue server/MOTD text, purple topics/actions, green joins, etc.
+  did: blue server/MOTD text, purple topics/actions, green joins, etc. Message
+  bodies render **mIRC formatting** — bold/italic/underline/strikethrough, the
+  16-color palette, and IRCv3 hex colors.
 - **Nick list** — the right-hand "*N* users" roster with mode prefixes and a
   row of action buttons (Query / Whois / Op / DeOp).
 - **Input line** — formatting buttons (B/I/U), a "talking to …" status, and
@@ -36,6 +38,7 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
   `echo-message`, `account-tag`, …).
 - Channels, queries, auto-join, nick list with op/voice ranking, topic
   tracking, CTCP (VERSION/PING/TIME + `/me` actions), PING/PONG keepalive.
+- mIRC formatting rendering (colors, bold/italic/underline/strike, hex colors).
 - Slash commands: `/join /part /msg /query /me /nick /topic /whois /quit /raw`
   (anything else is passed through to the server).
 - Auto-backup-on-launch of your settings (server profiles, credentials,
@@ -47,7 +50,7 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (18 tests: backup, buffers, session plumbing)
+./run-tests.sh        # swift-testing (34 tests: backup, buffers, dispatch, mIRC rendering)
 swift build           # debug build
 ```
 
@@ -62,11 +65,10 @@ package (a local SwiftPM path dependency).
 
 ## Status & roadmap
 
-MVP: connect, join, chat, queries, nick list, the Platinum/Graphite themes,
-backup. Planned: mIRC color *rendering* in the message area (codes are stripped
-to plain text today), the Faces window (per-user avatars), a multi-server
-Connections manager, Keychain-backed credentials, optional Sparkle
-auto-update, and AppleScript.
+Working: connect, join, chat, queries, nick list, mIRC color/formatting
+rendering, the Platinum/Graphite themes, backup. Planned: the Faces window
+(per-user avatars), a multi-server Connections manager, Keychain-backed
+credentials, optional Sparkle auto-update, and AppleScript.
 
 ## Naming
 

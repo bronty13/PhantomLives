@@ -2,6 +2,29 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.2.0 — 2026-06-18
+
+### Added
+
+- **mIRC color & formatting rendering** in the message area — the colored chat
+  Ircle was known for. New `MircRenderer` (app-layer, SwiftUI) turns mIRC codes
+  into an `AttributedString`: bold, italic, underline, strikethrough, reverse,
+  reset, the 16-color palette, and IRCv3 hex (`^D`) colors. `MessageRow` now
+  paints message/action/notice/topic/MOTD bodies in color instead of stripping
+  codes to plain text; the classic per-kind prefix (`<nick>`, `* nick`,
+  `-nick-`, `***`, `!!!`) is drawn separately and nicks are colored.
+- 8 renderer tests (visible-text-equals-stripped invariant, base color, color
+  code → foreground, reset-to-base, fg/bg pair, hex color, incomplete-hex
+  fallback, plain prefix helper).
+
+### Notes
+
+- IRCKit stays Foundation-only; `IRCText.stripFormatting` remains the engine's
+  plain-text path (matching/logs). Rendering lives in the app, as designed.
+- mIRC colors render literally (e.g. color 0 = white): authentic, but a
+  white-on-white edge case exists on the light Platinum theme — theme-aware
+  contrast clamping is a possible later refinement.
+
 ## 0.1.0 — 2026-06-18
 
 Initial MVP. A clean-room nostalgic recreation of the classic Mac *Ircle* IRC

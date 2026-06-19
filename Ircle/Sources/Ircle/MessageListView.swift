@@ -53,9 +53,9 @@ struct MessageRow: View {
                 Text(Self.time(line.timestamp))
                     .font(font).foregroundColor(palette.timestamp)
             }
-            Text(decorated)
-                .font(font)
-                .foregroundColor(palette.color(for: line.kind))
+            // Per-run fonts/colors live inside the AttributedString (mIRC
+            // rendering), so no outer .font/.foregroundColor here.
+            Text(attributed)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -64,25 +64,28 @@ struct MessageRow: View {
         .background(line.isMention ? palette.mentionBG : .clear)
     }
 
-    /// Build the classic line prefix per kind. mIRC codes are stripped for the
-    /// MVP plain-text path (full color rendering is a later enhancement).
-    private var decorated: String {
-        let text = IRCText.stripFormatting(line.text)
+    /// Classic line prefix per kind + the body rendered with mIRC colors. The
+    /// prefix is client-generated (plain); only the body carries mIRC codes.
+    private var attributed: AttributedString {
+        var out = AttributedString()
         switch line.kind {
         case .message:
-            let who = line.sender ?? "?"
-            return "<\(who)> \(text)"
+            out += MircRenderer.plain("<\(line.sender ?? "?")> ", size: fontSize,
+                                      color: line.isSelf ? palette.ownNick : palette.otherNick)
         case .action:
-            return "* \(line.sender ?? "?") \(text)"
+            out += MircRenderer.plain("* \(line.sender ?? "?") ", size: fontSize, color: palette.actionText)
         case .notice:
-            return "-\(line.sender ?? "?")- \(text)"
+            out += MircRenderer.plain("-\(line.sender ?? "?")- ", size: fontSize, color: palette.noticeText)
         case .join, .part, .quit, .nickChange, .mode, .topic:
-            return "*** \(text)"
-        case .motd, .system:
-            return text
+            out += MircRenderer.plain("*** ", size: fontSize, color: palette.color(for: line.kind))
         case .error:
-            return "!!! \(text)"
+            out += MircRenderer.plain("!!! ", size: fontSize, color: palette.errorText)
+        case .motd, .system:
+            break
         }
+        out += MircRenderer.attributed(line.text, size: fontSize,
+                                       baseColor: palette.color(for: line.kind))
+        return out
     }
 
     private static func time(_ d: Date) -> String {
