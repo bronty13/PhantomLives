@@ -2,8 +2,9 @@ import Foundation
 import IRCKit
 
 /// A saved server connection, the persisted shape of what becomes an
-/// `IRCConnectionConfig` at connect time. (Passwords live here for the MVP;
-/// a Keychain move is a later hardening step — see README.)
+/// `IRCConnectionConfig` at connect time. Passwords are held in memory here
+/// (so SwiftUI binds them directly) but are NOT encoded to JSON — `SettingsStore`
+/// persists them in the Keychain via `SecretStore`. See `encode(to:)` below.
 struct ServerProfile: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var name: String = "Libera.Chat"
@@ -19,6 +20,33 @@ struct ServerProfile: Codable, Identifiable, Hashable {
     var saslPassword: String = ""
     /// Channels to auto-join after registration.
     var autoJoin: [String] = ["#ircle"]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, host, port, useTLS, nick, user, realName
+        case serverPassword, saslMechanism, saslAccount, saslPassword, autoJoin
+    }
+
+    // Synthesized `init(from:)` is kept (decodes every key, including any LEGACY
+    // plaintext password from an older settings.json — SettingsStore migrates
+    // those into the Keychain). But `encode` deliberately writes the two
+    // password fields as empty: secrets live in the Keychain, never in JSON.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(host, forKey: .host)
+        try c.encode(port, forKey: .port)
+        try c.encode(useTLS, forKey: .useTLS)
+        try c.encode(nick, forKey: .nick)
+        try c.encode(user, forKey: .user)
+        try c.encode(realName, forKey: .realName)
+        try c.encode(saslMechanism, forKey: .saslMechanism)
+        try c.encode(saslAccount, forKey: .saslAccount)
+        try c.encode(autoJoin, forKey: .autoJoin)
+        // Secrets intentionally not persisted to disk:
+        try c.encode("", forKey: .serverPassword)
+        try c.encode("", forKey: .saslPassword)
+    }
 
     func makeConfig() -> IRCConnectionConfig {
         // Trim the host (a stray space or a pasted "host:port" breaks DNS and
@@ -164,14 +192,33 @@ final class SettingsStore: ObservableObject {
     /// user settings.
     private let directory: URL
     private var fileURL: URL { directory.appendingPathComponent("settings.json") }
+    /// Where per-server passwords actually live (Keychain in production).
+    private let secrets: SecretStore
 
-    init(directory: URL? = nil) {
+    init(directory: URL? = nil, secretStore: SecretStore? = nil) {
         let dir = directory ?? Self.supportDirectory
         self.directory = dir
+        self.secrets = secretStore ?? KeychainSecretStore()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         if let data = try? Data(contentsOf: dir.appendingPathComponent("settings.json")),
            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
-            self.settings = decoded
+            var loaded = decoded
+            var migratedLegacy = false
+            // Passwords aren't in the JSON: load them from the Keychain. If a
+            // field DID come back non-empty, it's legacy plaintext from an older
+            // build — keep it (it'll be written to the Keychain on save below).
+            for i in loaded.servers.indices {
+                let id = loaded.servers[i].id.uuidString
+                if loaded.servers[i].serverPassword.isEmpty {
+                    loaded.servers[i].serverPassword = secrets.get("\(id).serverPassword") ?? ""
+                } else { migratedLegacy = true }
+                if loaded.servers[i].saslPassword.isEmpty {
+                    loaded.servers[i].saslPassword = secrets.get("\(id).saslPassword") ?? ""
+                } else { migratedLegacy = true }
+            }
+            self.settings = loaded
+            // Migrate legacy plaintext → Keychain and rewrite the JSON stripped.
+            if migratedLegacy { save() }
         } else {
             // Fresh install: seed the well-known networks so the Servers list
             // isn't empty. (Existing installs keep their saved list; they can
@@ -185,6 +232,12 @@ final class SettingsStore: ObservableObject {
 
     /// Public so BackupService can persist `lastBackupAt` after a run.
     func save() {
+        // Route passwords to the Keychain; the JSON encoder writes them empty.
+        for server in settings.servers {
+            let id = server.id.uuidString
+            secrets.set(server.serverPassword, for: "\(id).serverPassword")
+            secrets.set(server.saslPassword, for: "\(id).saslPassword")
+        }
         guard let data = try? JSONEncoder().encode(settings) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }

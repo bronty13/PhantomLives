@@ -10,10 +10,13 @@ import Testing
 struct ModelMultiServerTests {
 
     private func makeModel() -> IrcleModel {
-        // runLaunchBackup: false so tests never zip Application Support into
-        // ~/Downloads. We don't exercise connectDefault, so settings content
-        // doesn't matter here.
-        IrcleModel(settingsStore: SettingsStore(), runLaunchBackup: false)
+        // Temp dir + in-memory secrets so tests never touch the real settings
+        // file or Keychain. runLaunchBackup: false so we don't zip Application
+        // Support into ~/Downloads.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ircle-model-\(UUID().uuidString)", isDirectory: true)
+        let store = SettingsStore(directory: dir, secretStore: InMemorySecretStore())
+        return IrcleModel(settingsStore: store, runLaunchBackup: false)
     }
 
     private func profile(_ name: String, host: String) -> ServerProfile {

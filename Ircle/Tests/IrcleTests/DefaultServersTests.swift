@@ -47,7 +47,7 @@ struct FreshInstallSeedingTests {
     @Test func freshStoreSeedsTheDefaultNetworks() {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ircle-seed-\(UUID().uuidString)", isDirectory: true)
-        let store = SettingsStore(directory: dir)
+        let store = SettingsStore(directory: dir, secretStore: InMemorySecretStore())
         #expect(store.settings.servers.count == ServerProfile.defaultServers().count)
         #expect(store.settings.servers.contains { $0.name == "Libera Chat" })
         // And it persisted, so a reload sees the same list (no re-seed wipe).

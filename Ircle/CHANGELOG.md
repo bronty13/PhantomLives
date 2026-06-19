@@ -2,6 +2,28 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.6.0 — 2026-06-18
+
+### Changed (security)
+
+- **Passwords now live in the macOS Keychain, not `settings.json`.** Server
+  passwords and SASL passwords are stored via a new device-only Keychain store
+  (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, service
+  `com.phantomlives.Ircle`, keyed per server profile) and loaded back into
+  memory at launch. `ServerProfile` still binds the cleartext in memory (so the
+  Settings fields work normally) but its JSON encoder writes the password
+  fields empty — secrets never touch disk.
+- **Automatic migration:** any plaintext password left in an older
+  `settings.json` is read once, moved into the Keychain, and scrubbed from the
+  rewritten file.
+- `SecretStore` is injectable (`KeychainSecretStore` in production,
+  `InMemorySecretStore` in tests), so tests never touch the real Keychain.
+
+### Tests
+
+- 3 new (passwords go to the secret store and not the JSON; reload rehydrates
+  from the store; legacy plaintext migrates out and is scrubbed). 59 total.
+
 ## 0.5.0 — 2026-06-18
 
 ### Added

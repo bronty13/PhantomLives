@@ -24,7 +24,7 @@ struct SettingsServerBindingTests {
     private func tempStore() -> SettingsStore {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ircle-settings-\(UUID().uuidString)", isDirectory: true)
-        return SettingsStore(directory: dir)
+        return SettingsStore(directory: dir, secretStore: InMemorySecretStore())
     }
 
     @Test func idLookupSurvivesRemovalOfEarlierServer() {

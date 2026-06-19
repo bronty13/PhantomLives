@@ -50,16 +50,19 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 - mIRC formatting rendering (colors, bold/italic/underline/strike, hex colors).
 - Slash commands: `/join /part /msg /query /me /nick /topic /whois /quit /raw`
   (anything else is passed through to the server).
-- Auto-backup-on-launch of your settings (server profiles, credentials,
-  appearance) — `~/Downloads/Ircle backup/`, 14-day retention. Full
-  Settings → Backup UI (run now, test, restore, reveal).
+- **Passwords stored in the macOS Keychain** (device-only), never in
+  `settings.json`; legacy plaintext is migrated out automatically.
+- Auto-backup-on-launch of your settings (server profiles, appearance) —
+  `~/Downloads/Ircle backup/`, 14-day retention. Full Settings → Backup UI
+  (run now, test, restore, reveal). (Passwords live in the Keychain, so they're
+  not in the backup zip.)
 
 ## Build / run / test
 
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (56 tests: backup, buffers, dispatch, mIRC, faces, multi-server, presets)
+./run-tests.sh        # swift-testing (59 tests: backup, buffers, dispatch, mIRC, faces, multi-server, presets, credentials)
 swift build           # debug build
 ```
 
@@ -76,8 +79,8 @@ package (a local SwiftPM path dependency).
 
 Working: connect, multiple servers at once, join, chat, queries, nick list,
 mIRC color/formatting rendering, the Faces window (per-user avatars), the
-Platinum/Graphite themes, backup. Planned: Keychain-backed credentials,
-optional Sparkle auto-update, and AppleScript.
+Platinum/Graphite themes, Keychain-backed passwords, backup. Planned: optional
+Sparkle auto-update and AppleScript.
 
 ## Naming
 
