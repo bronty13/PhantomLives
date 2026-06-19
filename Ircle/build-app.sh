@@ -175,7 +175,76 @@ rm -rf "$FINAL_APP_DIR"
 ditto --noextattr "$APP_DIR" "$FINAL_APP_DIR"
 rm -rf "$WORK_DIR"
 
+# Optional notarization + stapling. Gatekeeper warns "developer cannot be
+# verified" on Macs the user hasn't run the app on before unless the bundle is
+# notarized AND the ticket is stapled to the .app. Both are gated on the
+# NOTARIZE_PROFILE env var so routine personal builds skip them; a release build
+# (Scripts/release.sh) opts in and then asserts `stapler validate` afterward —
+# so this block MUST produce a stapled bundle when NOTARIZE_PROFILE is set with
+# a real Developer ID cert, or the release fails loudly. Setup is one-time per
+# Mac — see RELEASING.md.
+if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+    if [ "$CODESIGN_ID" = "-" ]; then
+        echo "WARNING: NOTARIZE_PROFILE is set but the bundle is ad-hoc-signed."
+        echo "Notary will reject it — skipping. Set CODESIGN_IDENTITY to a"
+        echo "Developer ID Application cert and re-run."
+    else
+        echo "Notarizing with profile: $NOTARIZE_PROFILE"
+        # notarytool wants a zip/dmg/pkg, not a raw .app. We zip via ditto so
+        # the embedded signature is preserved bit-for-bit.
+        NOTARIZE_ZIP="$(mktemp -t ircle-notarize).zip"
+        ditto -c -k --keepParent "$FINAL_APP_DIR" "$NOTARIZE_ZIP"
+        # `notarytool submit --wait` exits 0 whether Apple accepted or rejected
+        # — the wait completed either way. `|| true` so a missing profile / auth
+        # / network blip doesn't abort the whole script under `set -e`; we read
+        # the verdict from the plist's <status> instead.
+        xcrun notarytool submit "$NOTARIZE_ZIP" \
+                --keychain-profile "$NOTARIZE_PROFILE" \
+                --wait \
+                --output-format plist > /tmp/notarize.plist 2>&1 || true
+        rm -f "$NOTARIZE_ZIP"
+        # A real submission writes a plist with :status/:id; a pre-flight
+        # failure writes plain text PlistBuddy can't parse — detect that via its
+        # exit code and mark SubmitFailed so the warning shows the raw error.
+        if /usr/libexec/PlistBuddy -c 'Print :status' /tmp/notarize.plist >/tmp/notarize.status 2>/dev/null; then
+            NOTARIZE_STATUS="$(cat /tmp/notarize.status)"
+            NOTARIZE_ID="$(/usr/libexec/PlistBuddy -c 'Print :id' /tmp/notarize.plist 2>/dev/null || echo '')"
+        else
+            NOTARIZE_STATUS="SubmitFailed"
+            NOTARIZE_ID=""
+        fi
+        rm -f /tmp/notarize.status
+        if [ "$NOTARIZE_STATUS" = "Accepted" ]; then
+            echo "Notarization accepted (id $NOTARIZE_ID)."
+            echo "Stapling ticket to ${FINAL_APP_DIR}…"
+            if xcrun stapler staple "$FINAL_APP_DIR"; then
+                NOTARIZE_OK=1
+            else
+                echo "WARNING: stapler failed — bundle is notarized but ticket isn't embedded."
+            fi
+        else
+            echo "WARNING: notarization did not succeed (status: $NOTARIZE_STATUS)."
+            if [ -z "$NOTARIZE_ID" ]; then
+                echo "         notarytool error:"
+                sed 's/^/           /' /tmp/notarize.plist 2>/dev/null | head -4
+                echo "         (Often: profile '$NOTARIZE_PROFILE' isn't stored on this"
+                echo "          Mac — see RELEASING.md. The signed bundle was still built.)"
+            else
+                echo "         Apple rejected submission $NOTARIZE_ID. Fetching log to /tmp/notarize.log…"
+                xcrun notarytool log "$NOTARIZE_ID" \
+                    --keychain-profile "$NOTARIZE_PROFILE" \
+                    /tmp/notarize.log 2>&1 || true
+                echo "         Common cause: an executable in the bundle not signed"
+                echo "         with --options runtime + --timestamp. See /tmp/notarize.log."
+            fi
+        fi
+    fi
+fi
+
 echo "Built $FINAL_APP_DIR"
+if [ "${NOTARIZE_OK:-0}" = "1" ]; then
+    echo "(Notarized + stapled — Gatekeeper will accept this bundle on any Mac.)"
+fi
 
 # Auto-install: replace /Applications/Ircle.app and relaunch. Opt out with
 # `--no-install` or `BUILD_ONLY=1`; `--no-open` installs without relaunch.

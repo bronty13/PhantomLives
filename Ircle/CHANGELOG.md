@@ -2,6 +2,19 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.8.2 — 2026-06-18
+
+### Fixed
+
+- **First release now actually notarizes.** `build-app.sh` was missing the
+  notarization + stapling step, so `Scripts/release.sh` (which builds with
+  `NOTARIZE_PROFILE` set and then asserts `stapler validate`) failed at the
+  verify gate — the bundle was Developer-ID-signed but never sent to Apple's
+  notary. Ported the standard PhantomLives notarize-and-staple block (submit
+  via `notarytool --wait`, parse the verdict from the result plist, staple on
+  `Accepted`); gated on `NOTARIZE_PROFILE` so routine personal builds still
+  skip it. This unblocks cutting the first Ircle release.
+
 ## 0.8.1 — 2026-06-18
 
 ### Fixed
