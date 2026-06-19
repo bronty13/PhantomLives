@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 import Combine
 
 /// Native bot functionality that runs alongside the JavaScriptCore `BotHost`.

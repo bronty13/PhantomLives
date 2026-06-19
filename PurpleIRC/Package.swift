@@ -12,12 +12,19 @@ let package = Package(
         // and codesigns each nested XPC service + the framework alongside the
         // main bundle. See RELEASING.md for the EdDSA keypair / appcast setup.
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+        // IRCKit — the shared IRC wire engine (IRCMessage/IRCSanitize, IRCClient
+        // + config/state, IRCConnectionEvent, SASLMechanism, ProxyType, IRCText).
+        // PurpleIRC's IRCConnection session layer is built on top of it; the
+        // engine files that used to live here were extracted into IRCKit and are
+        // shared with Ircle. See ../IRCKit.
+        .package(path: "../IRCKit"),
     ],
     targets: [
         .executableTarget(
             name: "PurpleIRC",
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "IRCKit", package: "IRCKit"),
             ],
             path: "Sources/PurpleIRC"
         ),

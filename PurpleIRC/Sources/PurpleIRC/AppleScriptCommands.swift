@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 #if canImport(AppKit)
 import AppKit
 #endif

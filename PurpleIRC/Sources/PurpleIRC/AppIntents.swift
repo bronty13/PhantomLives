@@ -1,4 +1,5 @@
 import AppIntents
+import IRCKit
 import Foundation
 
 // AppIntents framework — Shortcuts.app + Focus Filter integration.

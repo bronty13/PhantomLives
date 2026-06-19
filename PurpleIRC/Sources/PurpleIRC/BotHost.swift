@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 import JavaScriptCore
 import Combine
 import CryptoKit

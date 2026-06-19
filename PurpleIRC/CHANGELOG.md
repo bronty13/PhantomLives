@@ -14,6 +14,23 @@ count (`1.0.<count>`).
 
 ## [Unreleased]
 
+### Changed
+
+- **The IRC wire engine now lives in the shared `IRCKit` package.** The
+  network-only engine files (`IRCMessage`/`IRCSanitize`, `IRCClient` +
+  `IRCConnectionState`/`IRCConnectionConfig`, `IRCConnectionEvent`,
+  `SASLMechanism`, `ProxyType`, the SASL/proxy framers, and the
+  code-stripper now exposed as `IRCText.stripFormatting`) were extracted into
+  `../IRCKit` and deleted from PurpleIRC, which now depends on it (shared with
+  Ircle). `IRCConnection` (the session layer) and everything UI-side are
+  unchanged in behavior; `IRCFormatter.stripCodes` delegates to
+  `IRCText.stripFormatting`. PurpleIRC also inherits IRCKit's small engine
+  improvements: a 20s connect timeout and treating a transient `.waiting`
+  network state as *connecting* rather than *failed*. The three engine test
+  files (IRCMessage/IRCSanitize/SASLNegotiator, 63 tests) moved to IRCKit's
+  suite (72 tests); PurpleIRC's own suite is 355 and green. No user-visible
+  change. (Plan: IRCKit Phase 2.)
+
 ### Fixed
 
 - **Release zip opens cleanly on any Mac, however it's unzipped.** The release

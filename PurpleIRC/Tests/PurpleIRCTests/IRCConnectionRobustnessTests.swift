@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 import Testing
 @testable import PurpleIRC
 

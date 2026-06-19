@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 import Combine
 
 /// One pending suggestion for a specific buffer. The view layer reads this

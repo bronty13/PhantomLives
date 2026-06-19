@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 import CryptoKit
 
 /// Append-only persistent log writer. Files are laid out as

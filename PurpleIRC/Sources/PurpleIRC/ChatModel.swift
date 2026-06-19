@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 import SwiftUI
 import Combine
 

@@ -1,4 +1,7 @@
 import Foundation
+import IRCKit
+
+// `SASLMechanism` (and `ProxyType`) now live in IRCKit, shared with Ircle.
 
 extension Array {
     /// Reorder the subset of elements matching `predicate`, leaving every
@@ -19,20 +22,6 @@ extension Array {
         filteredItems.move(fromOffsets: source, toOffset: destination)
         for (i, underlyingIdx) in filteredIndices.enumerated() {
             self[underlyingIdx] = filteredItems[i]
-        }
-    }
-}
-
-enum SASLMechanism: String, Codable, CaseIterable, Identifiable {
-    case none = "NONE"
-    case plain = "PLAIN"
-    case external = "EXTERNAL"
-    var id: String { rawValue }
-    var displayName: String {
-        switch self {
-        case .none: return "None"
-        case .plain: return "PLAIN (account + password)"
-        case .external: return "EXTERNAL (client cert)"
         }
     }
 }

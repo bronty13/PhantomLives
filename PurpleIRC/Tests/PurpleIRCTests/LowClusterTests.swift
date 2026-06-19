@@ -1,4 +1,5 @@
 import Foundation
+import IRCKit
 import CryptoKit
 import Testing
 @testable import PurpleIRC

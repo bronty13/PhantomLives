@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import IRCKit
 
 /// Parses mIRC formatting / color codes and IRCv3 link-detects URLs, producing
 /// an AttributedString suitable for SwiftUI Text. Raw text (with codes intact)
@@ -136,40 +137,12 @@ enum IRCFormatter {
     }
 
     /// Returns `raw` with every mIRC code stripped — suitable for bot matching,
-    /// URL extraction against plain text, and logs.
+    /// URL extraction against plain text, and logs. Delegates to IRCKit's
+    /// Foundation-only `IRCText.stripFormatting` (the canonical implementation,
+    /// shared with Ircle); the view-time `render(...)` path below keeps its own
+    /// SwiftUI-aware parsing.
     static func stripCodes(_ raw: String) -> String {
-        var out = ""
-        var i = raw.startIndex
-        while i < raw.endIndex {
-            let c = raw[i]
-            if c == color {
-                i = raw.index(after: i)
-                i = consumeDigits(raw, at: i, max: 2)
-                if i < raw.endIndex, raw[i] == "," {
-                    let afterComma = raw.index(after: i)
-                    let probe = consumeDigits(raw, at: afterComma, max: 2)
-                    if probe > afterComma { i = probe }
-                }
-                continue
-            }
-            if c == hexCol {
-                i = raw.index(after: i)
-                i = consumeHex(raw, at: i, count: 6)
-                if i < raw.endIndex, raw[i] == "," {
-                    let afterComma = raw.index(after: i)
-                    let probe = consumeHex(raw, at: afterComma, count: 6)
-                    if probe > afterComma { i = probe }
-                }
-                continue
-            }
-            if controlSet.contains(c) {
-                i = raw.index(after: i)
-                continue
-            }
-            out.append(c)
-            i = raw.index(after: i)
-        }
-        return out
+        IRCText.stripFormatting(raw)
     }
 
     // MARK: - Internal
