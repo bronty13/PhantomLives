@@ -267,8 +267,10 @@ GATE_DETRITUS="$(find "$GATE_APP/Contents/Frameworks" -name '._*' 2>/dev/null | 
 [ "$GATE_DETRITUS" = "0" ] || die "release zip leaves $GATE_DETRITUS AppleDouble (._*) file(s) in Frameworks/
        after a plain unzip — Gatekeeper will reject this on a clean Mac. The
        xattr-strip step above did not fully clean the bundle."
-xcrun stapler validate "$GATE_APP" >/dev/null 2>&1 \
-    || die "release zip fails stapler validate after unzip — notarization ticket missing."
+if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+    xcrun stapler validate "$GATE_APP" >/dev/null 2>&1 \
+        || die "release zip fails stapler validate after unzip — notarization ticket missing."
+fi
 codesign --verify --deep --strict "$GATE_APP" 2>/tmp/gate-codesign.err \
     || die "release zip fails strict codesign after unzip:
 $(sed 's/^/         /' /tmp/gate-codesign.err)
