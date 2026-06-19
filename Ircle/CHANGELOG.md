@@ -2,6 +2,17 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.23.0 — 2026-06-19
+
+### Added
+
+- **Per-event sounds.** Optionally play a clip when you're **mentioned**, get a
+  **private message**, or someone **joins**/**parts**. Settings → Appearance →
+  Sounds: enable "per-event sounds" and name a clip per event (from
+  `~/Downloads/Ircle/Sounds/`). Off by default; mention takes precedence over a
+  plain PM. (`SoundService` no longer carries its own enable flag — CTCP sound
+  and per-event sound are gated independently by their settings.) 2 tests.
+
 ## 0.22.0 — 2026-06-19
 
 ### Added

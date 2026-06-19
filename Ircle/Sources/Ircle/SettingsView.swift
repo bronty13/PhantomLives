@@ -215,6 +215,17 @@ struct AppearanceSettingsView: View {
         )
     }
 
+    private func eventSoundField(_ label: String, _ key: String) -> some View {
+        TextField(label, text: eventBinding(key), prompt: Text("clip filename"))
+    }
+    private func eventBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { settingsStore.settings.eventSounds[key] ?? "" },
+            set: { settingsStore.settings.eventSounds[key] =
+                    $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Theme") {
@@ -247,11 +258,28 @@ struct AppearanceSettingsView: View {
                 Text("Overrides the chat text and background on top of the chosen theme.")
                     .font(.caption).foregroundColor(.secondary)
             }
+            Section("Sounds") {
+                Toggle("Play incoming CTCP sound clips", isOn: $settingsStore.settings.ctcpSoundsEnabled)
+                Toggle("Play per-event sounds", isOn: $settingsStore.settings.eventSoundsEnabled)
+                Group {
+                    eventSoundField("Mention", "mention")
+                    eventSoundField("Private message", "privatemsg")
+                    eventSoundField("Someone joins", "join")
+                    eventSoundField("Someone parts", "part")
+                }
+                .disabled(!settingsStore.settings.eventSoundsEnabled)
+                Button("Reveal Sounds Folder") {
+                    let dir = SoundService.defaultDirectory
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    NSWorkspace.shared.activateFileViewerSelecting([dir])
+                }
+                Text("Drop .wav/.aiff/.mp3 clips into ~/Downloads/Ircle/Sounds/ and name them above.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
             Section("Messages") {
                 Toggle("Show timestamps", isOn: $settingsStore.settings.showTimestamps)
                 Toggle("Notify me of mentions & private messages",
                        isOn: $settingsStore.settings.notificationsEnabled)
-                Toggle("Play CTCP sound clips", isOn: $settingsStore.settings.ctcpSoundsEnabled)
                 HStack {
                     Text("Font size")
                     Slider(value: $settingsStore.settings.fontSize, in: 9...18, step: 1)

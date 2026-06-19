@@ -44,6 +44,30 @@ struct SoundTests {
         #expect(line?.text.contains("hello there") == true)
     }
 
+    @Test func eventSoundNameRespectsEnableAndMapping() {
+        let cfg = IRCConnectionConfig(host: "irc.example.org", port: 6697, useTLS: true,
+                                      nick: "me", user: "me", realName: "Me")
+        let s = IrcleSession(config: cfg, displayName: "Example")
+        s.eventSounds = ["mention": "ding.wav"]
+        s.eventSoundsEnabled = false
+        #expect(s.eventSoundName(for: "mention") == nil)        // disabled → nil
+        s.eventSoundsEnabled = true
+        #expect(s.eventSoundName(for: "mention") == "ding.wav") // enabled + mapped
+        #expect(s.eventSoundName(for: "join") == nil)           // unmapped → nil
+    }
+
+    @Test func eventSoundsDefaultOffAndRoundTrip() throws {
+        var a = AppSettings()
+        #expect(a.eventSoundsEnabled == false)
+        #expect(a.eventSounds.isEmpty)
+        a.eventSoundsEnabled = true
+        a.eventSounds = ["mention": "x.wav", "join": "j.aiff"]
+        let data = try JSONEncoder().encode(a)
+        let back = try JSONDecoder().decode(AppSettings.self, from: data)
+        #expect(back.eventSoundsEnabled)
+        #expect(back.eventSounds == ["mention": "x.wav", "join": "j.aiff"])
+    }
+
     @Test func ctcpSoundsEnabledDefaultsTrueAndRoundTrips() throws {
         #expect(AppSettings().ctcpSoundsEnabled)
         var s = AppSettings()

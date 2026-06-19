@@ -38,6 +38,21 @@ final class IrcleSession: ObservableObject, Identifiable {
     /// Mirror of `settings.ignoreMasks` — inbound messages from a matching
     /// hostmask are dropped. Kept in sync by the model.
     var ignoreMasks: [String] = []
+    /// Sound settings, mirrored by the model.
+    var ctcpSoundsEnabled = true
+    var eventSoundsEnabled = false
+    var eventSounds: [String: String] = [:]
+
+    /// The clip to play for `event` ("mention"/"privatemsg"/"join"/"part"), or
+    /// nil if per-event sounds are off or that event isn't mapped.
+    func eventSoundName(for event: String) -> String? {
+        guard eventSoundsEnabled, let clip = eventSounds[event], !clip.isEmpty else { return nil }
+        return clip
+    }
+
+    private func playEventSound(_ event: String) {
+        if let clip = eventSoundName(for: event) { SoundService.shared.play(name: clip) }
+    }
 
     /// True if a message from `prefix` (nick!user@host) should be ignored.
     func isIgnored(_ prefix: String?) -> Bool {
@@ -254,7 +269,7 @@ final class IrcleSession: ObservableObject, Identifiable {
         let parts = args.split(separator: " ", maxSplits: 1).map(String.init)
         let file = parts.first ?? ""
         let text = parts.count > 1 ? parts[1] : ""
-        SoundService.shared.play(name: file)
+        if ctcpSoundsEnabled { SoundService.shared.play(name: file) }
         line(buffer, .action, sender: from,
              text: text.isEmpty ? "♪ \(file)" : "\(text)  ♪\(file)",
              isMention: mentions(text))
@@ -340,6 +355,7 @@ final class IrcleSession: ObservableObject, Identifiable {
         } else if let buf = channelBuffer(channel) {
             buf.addUser(who)
             line(buf, .join, sender: who, text: "\(who) has joined \(channel)")
+            playEventSound("join")
         }
     }
 
@@ -354,6 +370,7 @@ final class IrcleSession: ObservableObject, Identifiable {
             buf.removeUser(who)
             let suffix = reason.isEmpty ? "" : " (\(reason))"
             line(buf, .part, sender: who, text: "\(who) has left \(channel)\(suffix)")
+            playEventSound("part")
         }
     }
 
@@ -623,6 +640,11 @@ final class IrcleSession: ObservableObject, Identifiable {
         buffer.append(l, focused: focused)
         maybeNotify(kind: kind, buffer: buffer, sender: sender, text: text,
                     isSelf: isSelf, isMention: isMention, focused: focused)
+        // Per-event sounds: a mention takes precedence over a plain PM.
+        if kind == .message, !isSelf {
+            if isMention { playEventSound("mention") }
+            else if buffer.kind == .query { playEventSound("privatemsg") }
+        }
         // Persist channel/query transcripts (server-console noise is skipped).
         if buffer.kind != .server {
             LogService.shared.log(network: displayName, target: buffer.name,

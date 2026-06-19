@@ -39,11 +39,13 @@ final class IrcleModel: ObservableObject {
 
     private func pushPerSessionSettings(_ s: AppSettings) {
         LogService.shared.enabled = s.loggingEnabled
-        SoundService.shared.enabled = s.ctcpSoundsEnabled
         for sess in sessions {
             if sess.notifyNicks != s.notifyNicks { sess.notifyNicks = s.notifyNicks }
             sess.notificationsEnabled = s.notificationsEnabled
             sess.ignoreMasks = s.ignoreMasks
+            sess.ctcpSoundsEnabled = s.ctcpSoundsEnabled
+            sess.eventSoundsEnabled = s.eventSoundsEnabled
+            sess.eventSounds = s.eventSounds
         }
     }
 
@@ -86,6 +88,9 @@ final class IrcleModel: ObservableObject {
         s.notifyNicks = settingsStore.settings.notifyNicks
         s.notificationsEnabled = settingsStore.settings.notificationsEnabled
         s.ignoreMasks = settingsStore.settings.ignoreMasks
+        s.ctcpSoundsEnabled = settingsStore.settings.ctcpSoundsEnabled
+        s.eventSoundsEnabled = settingsStore.settings.eventSoundsEnabled
+        s.eventSounds = settingsStore.settings.eventSounds
         s.onDCCOffer = { [weak self] offer, from in self?.dcc.addOffer(offer, from: from) }
         // Re-publish the session's changes so SwiftUI views observing the model
         // refresh when buffers/lines mutate.

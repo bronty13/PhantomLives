@@ -150,6 +150,10 @@ struct AppSettings: Codable {
     var ignoreMasks: [String] = []
     /// Play incoming CTCP SOUND clips (from ~/Downloads/Ircle/Sounds/).
     var ctcpSoundsEnabled: Bool = true
+    /// Play a clip on certain events (mention/privatemsg/join/part).
+    var eventSoundsEnabled: Bool = false
+    /// Event key → clip filename (empty/absent = silent for that event).
+    var eventSounds: [String: String] = [:]
     /// User command aliases: name (lowercase, no slash) → expansion template.
     /// `$1`…`$9` are positional args, `$2-`/`$*` the rest; with no `$` the args
     /// are appended. See `AliasExpander`.
@@ -171,7 +175,7 @@ struct AppSettings: Codable {
 
     enum CodingKeys: String, CodingKey {
         case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, ctcpSoundsEnabled, aliases
-        case customTextColorHex, customBackgroundColorHex, showTimestamps, fontSize
+        case eventSoundsEnabled, eventSounds, customTextColorHex, customBackgroundColorHex, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -188,6 +192,8 @@ struct AppSettings: Codable {
         loggingEnabled = (try? c.decode(Bool.self, forKey: .loggingEnabled)) ?? false
         ignoreMasks = (try? c.decode([String].self, forKey: .ignoreMasks)) ?? []
         ctcpSoundsEnabled = (try? c.decode(Bool.self, forKey: .ctcpSoundsEnabled)) ?? true
+        eventSoundsEnabled = (try? c.decode(Bool.self, forKey: .eventSoundsEnabled)) ?? false
+        eventSounds = (try? c.decode([String: String].self, forKey: .eventSounds)) ?? [:]
         aliases = (try? c.decode([String: String].self, forKey: .aliases)) ?? [:]
         customTextColorHex = (try? c.decode(String.self, forKey: .customTextColorHex)) ?? ""
         customBackgroundColorHex = (try? c.decode(String.self, forKey: .customBackgroundColorHex)) ?? ""

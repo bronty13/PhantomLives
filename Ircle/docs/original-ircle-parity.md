@@ -81,7 +81,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | DCC tab: Auto-accept Chat, Auto-GET, Auto-save folder, Enable XDCC/FServe | pref | ✅ | ❌ | No DCC. |
 | Faces tab: face folder + exchange options | pref | ✅ | ❌ | We have faces but no prefs/exchange. |
 | CTCP tab: Enable CTCP sound, Disable CTCP, finger/userinfo replies, FACE EXIST/GET | pref | ✅ | 🟡 | We answer VERSION/PING/TIME but expose no CTCP prefs and no sound/face. |
-| Sound tab (per-event sounds; MP3/AIFF in 3.5) | pref | ✅ | ❌ | No sounds. |
+| Sound tab (per-event sounds; MP3/AIFF in 3.5) | pref | ✅ | ✅ | Settings → Sounds: CTCP + per-event clip mapping. |
 | Text / background **colour pickers** | pref | ✅ | ✅ | Settings → Custom colours (text + background overrides on top of the theme). |
 | SSL options (3.5a line) | pref | ✅ | ✅ | We do TLS via IRCKit (+ SASL, proxy). |
 
@@ -133,7 +133,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | mIRC colour + formatting rendering | eng | ✅ | ✅ | Ours adds background-contrast clamping. |
 | Adjustable text/background colours | pref | ✅ | ✅ | Custom-colour overrides in Settings. |
 | IRC macros (ircII-style) / aliases | cmd | ✅ | ✅ | /alias with $1/$2-/$* templates; persisted. |
-| Per-event sounds (MP3/AIFF in 3.5) | pref | ✅ | 🟡 | CTCP SOUND clips play; no per-event (join/etc.) sound mapping yet. |
+| Per-event sounds (MP3/AIFF in 3.5) | pref | ✅ | ✅ | CTCP SOUND + per-event (mention/PM/join/part) clip mapping. |
 | Notifications (Growl in 3.5) | — | ✅ | ✅ 🆕 | macOS notifications for mentions/PMs; Settings toggle. |
 | Themes | — | (colours only) | ✅ | We exceed the original here (Platinum/Graphite). |
 | Auto-update | — | manual | 🆕 | We add Sparkle. |
