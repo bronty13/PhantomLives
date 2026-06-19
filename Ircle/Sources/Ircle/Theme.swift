@@ -27,6 +27,9 @@ struct PlatinumPalette {
     let otherNick: Color
     let mentionBG: Color
     let selection: Color       // selected channelbar/nick row
+    /// Luminance (0…1) of `textBG`, so the mIRC renderer can keep colored text
+    /// legible against the message-area background.
+    let messageBackgroundLuminance: Double
 
     static func platinum() -> PlatinumPalette {
         PlatinumPalette(
@@ -49,7 +52,8 @@ struct PlatinumPalette {
             ownNick:    Color(red: 0.0,  green: 0.0,  blue: 0.55),
             otherNick:  Color(red: 0.30, green: 0.20, blue: 0.0),
             mentionBG:  Color(red: 1.0,  green: 1.0,  blue: 0.60),
-            selection:  Color(red: 0.30, green: 0.45, blue: 0.85)
+            selection:  Color(red: 0.30, green: 0.45, blue: 0.85),
+            messageBackgroundLuminance: 1.0   // white
         )
     }
 
@@ -74,7 +78,8 @@ struct PlatinumPalette {
             ownNick:    Color(red: 0.55, green: 0.72, blue: 1.0),
             otherNick:  Color(red: 0.85, green: 0.78, blue: 0.55),
             mentionBG:  Color(red: 0.40, green: 0.38, blue: 0.10),
-            selection:  Color(red: 0.25, green: 0.40, blue: 0.78)
+            selection:  Color(red: 0.25, green: 0.40, blue: 0.78),
+            messageBackgroundLuminance: 0.11   // Color(white: 0.11)
         )
     }
 

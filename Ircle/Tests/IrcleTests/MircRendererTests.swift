@@ -61,6 +61,36 @@ struct MircRendererTests {
         #expect(String(attr.characters) == "FF00xy")
     }
 
+    // MARK: - Contrast clamping
+
+    @Test func whiteIsDarkenedOnLightBackground() {
+        // mIRC color 0 (white) on the light Platinum bg (luminance 1.0) would be
+        // invisible — it must be pulled well below the background luminance.
+        let clamped = RGBColor(r: 1, g: 1, b: 1).contrasted(against: 1.0)
+        #expect(clamped.luminance <= 1.0 - RGBColor.minContrast + 0.001)
+    }
+
+    @Test func blackIsLightenedOnDarkBackground() {
+        // mIRC color 1 (black) on the dark Graphite bg (≈0.11) must be lifted.
+        let clamped = RGBColor(r: 0, g: 0, b: 0).contrasted(against: 0.11)
+        #expect(clamped.luminance >= 0.11 + RGBColor.minContrast - 0.001)
+    }
+
+    @Test func sufficientlyContrastingColorIsUnchanged() {
+        // Pure red (luminance ≈0.30) on white (1.0) already separates enough.
+        let red = RGBColor(r: 1, g: 0, b: 0)
+        #expect(red.contrasted(against: 1.0) == red)
+    }
+
+    @Test func renderClampsWhiteOnLightBackgroundAwayFromPureWhite() {
+        // End-to-end: the rendered run for `^C00white` on a light background must
+        // not be pure white.
+        let attr = MircRenderer.attributed("\u{03}00white", size: 12,
+                                           baseColor: .black, backgroundLuminance: 1.0)
+        let run = attr.runs.first { String(attr[$0.range].characters) == "white" }
+        #expect(run?.foregroundColor != Color(red: 1, green: 1, blue: 1))
+    }
+
     @Test func plainHelperProducesRequestedColor() {
         let attr = MircRenderer.plain("<bob> ", size: 12, color: Color(red: 0.3, green: 0.2, blue: 0))
         #expect(String(attr.characters) == "<bob> ")

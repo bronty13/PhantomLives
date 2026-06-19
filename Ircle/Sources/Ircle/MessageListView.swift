@@ -119,7 +119,8 @@ struct MessageRow: View {
             break
         }
         out += MircRenderer.attributed(line.text, size: fontSize,
-                                       baseColor: palette.color(for: line.kind))
+                                       baseColor: palette.color(for: line.kind),
+                                       backgroundLuminance: palette.messageBackgroundLuminance)
         return out
     }
 

@@ -2,6 +2,19 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.8.1 — 2026-06-18
+
+### Fixed
+
+- **mIRC colors stay legible against the theme background.** `MircRenderer` now
+  clamps a code's foreground color for contrast: if it's within ~0.42 luminance
+  of the backdrop (the message-area background, or an explicit mIRC background
+  for that run) it's blended toward the opposite extreme until it separates,
+  preserving hue otherwise. Fixes mIRC white (color 0) washing out on the light
+  Platinum theme and black (color 1) on dark Graphite; also tames hard cases
+  like yellow-on-white. The renderer now works in an internal `RGBColor` so it
+  can reason about luminance. 4 tests added.
+
 ## 0.8.0 — 2026-06-18
 
 ### Added
