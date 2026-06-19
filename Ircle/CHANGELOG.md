@@ -2,6 +2,18 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.9.2 — 2026-06-19
+
+### Added
+
+- **Classic Inputline formatting toolbar.** In Classic style the input bar adds,
+  next to the existing Bold/Italic/Underline buttons, a **strikethrough (S)**, a
+  **plain/reset (P)** button, and a **16-colour mIRC colour menu** (inserts
+  `^C NN`, plus an "End colour" that inserts a bare `^C`). Clean style keeps the
+  minimal B/I/U set. The inserted codes render through the existing mIRC
+  formatter (already covered by `MircRendererTests`), so no new parsing — this is
+  a view-only addition.
+
 ## 0.9.1 — 2026-06-19
 
 ### Added

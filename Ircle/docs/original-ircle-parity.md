@@ -66,7 +66,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Per-user action buttons: **Op · DeOp · Whois · Kick · Ban · BanKick · Msg · Cping · Query** | Userlist | ✅ 👁 | ✅ **in Classic** (Settings → Interface → Classic; Clean keeps the compact Query/Whois/Op/DeOp bar) |
 | One-click **channel-mode toggles** `t n i p s m l k r` | Userlist | ✅ 👁 | ✅ **in Classic** (lit = active; backed by MODE-parsing + 324 on join; `l`/`k` clear-only since they need a value) |
 | Userlist columns **IrcOp · Friend · Hostname** | Userlist | ✅ 👁 | 🟡 (we show nick + mode prefix only) |
-| **Inputline formatting toolbar** (Plain/Bold/Underline/strike + colour swatches) | Inputline | ✅ 👁 | ❌ (no compose-time styling UI) |
+| **Inputline formatting toolbar** (Plain/Bold/Underline/strike + colour swatches) | Inputline | ✅ 👁 | ✅ (B/I/U always; Classic adds Strike/Plain + a 16-colour mIRC menu) |
 | Live **memory readout** bar `[……|……]` | Inputline | ✅ 👁 | ❌ (n/a on modern macOS) |
 | Connections buttons **Connect · Disconn · Edit · Nick · Server** + add/remove | Connections | ✅ 👁 | 🟡 (Servers settings manager, not an in-window bar) |
 | Topic bar with **set-by / on-date** | Channel | ✅ 👁 | 🟡 (we show topic, not setter/date) |

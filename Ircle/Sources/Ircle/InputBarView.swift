@@ -4,6 +4,7 @@ import SwiftUI
 /// of who you're talking to, and the text field. Return sends.
 struct InputBarView: View {
     @EnvironmentObject var model: IrcleModel
+    @EnvironmentObject var settingsStore: SettingsStore
     @ObservedObject var buffer: IrcleBuffer
     let palette: PlatinumPalette
     @State private var text: String = ""
@@ -16,6 +17,13 @@ struct InputBarView: View {
                 formatButton("B", code: "\u{02}")
                 formatButton("I", code: "\u{1D}")
                 formatButton("U", code: "\u{1F}")
+                // Classic style surfaces the rest of the original Inputline
+                // toolbar: strikethrough, plain/reset, and the mIRC colour menu.
+                if settingsStore.settings.interfaceStyle == .classic {
+                    formatButton("S", code: "\u{1E}")   // strikethrough
+                    formatButton("P", code: "\u{0F}")   // plain / reset all formatting
+                    colorMenu
+                }
                 Text("talking to \(buffer.name)")
                     .font(palette.chromeFont())
                     .foregroundColor(palette.timestamp)
@@ -59,6 +67,51 @@ struct InputBarView: View {
         }
         .buttonStyle(.plain)
     }
+
+    /// The mIRC colour picker — inserts `^C NN` (colour) or a bare `^C` (reset
+    /// colour). Indices 0–15 are the standard mIRC palette.
+    private var colorMenu: some View {
+        Menu {
+            ForEach(Array(Self.mircColors.enumerated()), id: \.offset) { i, c in
+                Button { text.append("\u{03}\(String(format: "%02d", i))") } label: {
+                    Label("\(i)  \(c.name)", systemImage: "circle.fill")
+                        .foregroundStyle(c.color)
+                }
+            }
+            Divider()
+            Button("End colour") { text.append("\u{03}") }
+        } label: {
+            Text("C")
+                .font(palette.chromeFontBold())
+                .foregroundColor(palette.chromeText)
+                .frame(width: 18, height: 16)
+                .platinumBevel(palette, raised: true)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Insert an mIRC colour code")
+    }
+
+    /// Standard mIRC palette (0–15) for the colour menu labels.
+    private static let mircColors: [(name: String, color: Color)] = [
+        ("White",    Color(red: 1,    green: 1,    blue: 1)),
+        ("Black",    Color(red: 0,    green: 0,    blue: 0)),
+        ("Blue",     Color(red: 0,    green: 0,    blue: 0.5)),
+        ("Green",    Color(red: 0,    green: 0.5,  blue: 0)),
+        ("Red",      Color(red: 1,    green: 0,    blue: 0)),
+        ("Brown",    Color(red: 0.5,  green: 0.25, blue: 0)),
+        ("Purple",   Color(red: 0.5,  green: 0,    blue: 0.5)),
+        ("Orange",   Color(red: 1,    green: 0.5,  blue: 0)),
+        ("Yellow",   Color(red: 1,    green: 1,    blue: 0)),
+        ("Lt Green", Color(red: 0,    green: 1,    blue: 0)),
+        ("Teal",     Color(red: 0,    green: 0.5,  blue: 0.5)),
+        ("Cyan",     Color(red: 0,    green: 1,    blue: 1)),
+        ("Lt Blue",  Color(red: 0,    green: 0,    blue: 1)),
+        ("Pink",     Color(red: 1,    green: 0,    blue: 1)),
+        ("Grey",     Color(red: 0.5,  green: 0.5,  blue: 0.5)),
+        ("Lt Grey",  Color(red: 0.75, green: 0.75, blue: 0.75)),
+    ]
 
     private func send() {
         let toSend = text
