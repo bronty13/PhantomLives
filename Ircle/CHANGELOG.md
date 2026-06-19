@@ -2,6 +2,21 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.5.0 — 2026-06-18
+
+### Added
+
+- **Built-in list of common IRC networks** (Libera Chat, OFTC, EFnet, Undernet,
+  DALnet, IRCnet, QuakeNet, Rizon, EsperNet, SwiftIRC, GameSurge, GeekShed,
+  Snoonet, Hackint, freenode, 2600net, AfterNET, SorceryNet) — `ServerProfile.
+  defaultServers()`, mirroring PurpleIRC. TLS defaults are network-correct:
+  modern networks use TLS/6697, older ones that don't reliably offer TLS
+  (EFnet, Undernet, IRCnet, QuakeNet, GameSurge) default to plaintext/6667.
+  - **Fresh installs** are pre-seeded with the full list.
+  - **Existing installs** keep their saved servers and can pull in any they're
+    missing via the new **"Add Common Servers"** button (the `list.star` icon)
+    in Settings → Servers — idempotent, by-name, never touches existing entries.
+
 ## 0.4.3 — 2026-06-18
 
 ### Fixed

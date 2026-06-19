@@ -39,6 +39,38 @@ struct ServerProfile: Codable, Identifiable, Hashable {
             saslPassword: saslPassword
         )
     }
+
+    /// Well-known public IRC networks, pre-populated on first launch so users
+    /// don't have to hunt down hostnames. Default to TLS/6697 unless the network
+    /// historically doesn't offer TLS on that port — older networks (EFnet,
+    /// Undernet, IRCnet, QuakeNet, GameSurge) default to plaintext 6667, the
+    /// value that actually connects out of the box (the Undernet timeout the
+    /// maintainer hit). Users can enable TLS per server in Settings.
+    static func defaultServers() -> [ServerProfile] {
+        func make(_ name: String, _ host: String, port: Int = 6697, tls: Bool = true) -> ServerProfile {
+            ServerProfile(name: name, host: host, port: port, useTLS: tls, autoJoin: [])
+        }
+        return [
+            make("Libera Chat",  "irc.libera.chat"),
+            make("OFTC",         "irc.oftc.net"),
+            make("EFnet",        "irc.efnet.org",     port: 6667, tls: false),
+            make("Undernet",     "irc.undernet.org",  port: 6667, tls: false),
+            make("DALnet",       "irc.dal.net"),
+            make("IRCnet",       "open.ircnet.net",   port: 6667, tls: false),
+            make("QuakeNet",     "irc.quakenet.org",  port: 6667, tls: false),
+            make("Rizon",        "irc.rizon.net"),
+            make("EsperNet",     "irc.esper.net"),
+            make("SwiftIRC",     "irc.swiftirc.net"),
+            make("GameSurge",    "irc.gamesurge.net", port: 6667, tls: false),
+            make("GeekShed",     "irc.geekshed.net"),
+            make("Snoonet",      "irc.snoonet.org"),
+            make("Hackint",      "irc.hackint.org"),
+            make("freenode",     "irc.freenode.net"),
+            make("2600net",      "irc.2600.net"),
+            make("AfterNET",     "irc.afternet.org"),
+            make("SorceryNet",   "irc.sorcery.net",   port: 9999),
+        ]
+    }
 }
 
 /// Platinum-era nostalgia toggle. "Modern comfort" means we also offer a dark
@@ -141,7 +173,13 @@ final class SettingsStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
             self.settings = decoded
         } else {
-            self.settings = AppSettings()
+            // Fresh install: seed the well-known networks so the Servers list
+            // isn't empty. (Existing installs keep their saved list; they can
+            // pull in any missing presets via "Add Common Servers".)
+            var seeded = AppSettings()
+            seeded.servers = ServerProfile.defaultServers()
+            self.settings = seeded
+            save()   // didSet doesn't fire during init; persist the seed
         }
     }
 

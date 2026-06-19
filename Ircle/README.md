@@ -39,7 +39,9 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 ## Features
 
 - **Multiple servers at once** — each network is its own session; manage saved
-  servers in Settings → Servers, connect from the Servers menu.
+  servers in Settings → Servers, connect from the Servers menu. Ships a built-in
+  list of common networks (Libera, OFTC, Undernet, DALnet, Rizon, …) with
+  network-correct TLS defaults; "Add Common Servers" pulls in any you're missing.
 - TLS, SASL (PLAIN / EXTERNAL), server password, and SOCKS5 / HTTP-CONNECT
   proxies — all via IRCKit's IRCv3-aware engine (CAP negotiation, `server-time`,
   `echo-message`, `account-tag`, …).
@@ -57,7 +59,7 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (48 tests: backup, buffers, dispatch, mIRC, faces, multi-server)
+./run-tests.sh        # swift-testing (56 tests: backup, buffers, dispatch, mIRC, faces, multi-server, presets)
 swift build           # debug build
 ```
 

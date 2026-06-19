@@ -60,11 +60,16 @@ struct ConnectionSettingsView: View {
             Divider()
             HStack(spacing: 2) {
                 Button(action: addServer) { Image(systemName: "plus") }
+                    .help("Add a new server")
                 Button(action: removeSelected) { Image(systemName: "minus") }
                     .disabled(selectedID == nil)
+                    .help("Remove the selected server")
                 Button(action: duplicateSelected) { Image(systemName: "plus.square.on.square") }
                     .disabled(selectedID == nil)
+                    .help("Duplicate the selected server")
                 Spacer()
+                Button(action: addMissingDefaults) { Image(systemName: "list.star") }
+                    .help("Add common IRC networks (Libera, OFTC, Undernet, …) that aren't already in the list")
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 6).padding(.vertical, 4)
@@ -115,6 +120,18 @@ struct ConnectionSettingsView: View {
         copy.name = original.name + " copy"
         settingsStore.settings.servers.append(copy)
         selectedID = copy.id
+    }
+
+    /// Append any well-known networks whose name isn't already in the list.
+    /// Idempotent and non-destructive — never edits or removes existing servers.
+    private func addMissingDefaults() {
+        let existing = Set(servers.map { $0.name.lowercased() })
+        let missing = ServerProfile.defaultServers().filter {
+            !existing.contains($0.name.lowercased())
+        }
+        guard !missing.isEmpty else { return }
+        settingsStore.settings.servers.append(contentsOf: missing)
+        if selectedID == nil { selectedID = missing.first?.id }
     }
 }
 
