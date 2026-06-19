@@ -24,6 +24,8 @@ All notable changes to IRCKit are documented here.
   `DCC.chatOfferCommand`/`sendOfferCommand` offer encoders.
 - **`DCCUpload`** — the DCC SEND/offer transport: listen on a vetted port,
   accept the peer, stream the file with backpressure, drain acks. Pure Network.
+- **`IRCMask`** — IRC hostmask glob matching (`*`/`?`, case-insensitive; bare
+  nick → `<nick>!*@*`) for ignore lists. 6 tests.
 
 ## 0.2.0 — 2026-06-18
 

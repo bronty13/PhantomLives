@@ -145,6 +145,9 @@ struct AppSettings: Codable {
     var notificationsEnabled: Bool = true
     /// Save channel/query transcripts to ~/Downloads/Ircle/Logs/. Off by default.
     var loggingEnabled: Bool = false
+    /// Hostmask patterns to ignore (drop inbound messages from). Global; matched
+    /// via `IRCMask`. Bare nicks expand to `<nick>!*@*`.
+    var ignoreMasks: [String] = []
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
@@ -158,7 +161,7 @@ struct AppSettings: Codable {
     var lastBackupAt: String = ""
 
     enum CodingKeys: String, CodingKey {
-        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, showTimestamps, fontSize
+        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -173,6 +176,7 @@ struct AppSettings: Codable {
         notifyNicks = (try? c.decode([String].self, forKey: .notifyNicks)) ?? []
         notificationsEnabled = (try? c.decode(Bool.self, forKey: .notificationsEnabled)) ?? true
         loggingEnabled = (try? c.decode(Bool.self, forKey: .loggingEnabled)) ?? false
+        ignoreMasks = (try? c.decode([String].self, forKey: .ignoreMasks)) ?? []
         showTimestamps = (try? c.decode(Bool.self, forKey: .showTimestamps)) ?? true
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 12
         autoBackupEnabled = (try? c.decode(Bool.self, forKey: .autoBackupEnabled)) ?? true

@@ -35,6 +35,15 @@ final class IrcleSession: ObservableObject, Identifiable {
     @Published private(set) var isAway = false
     /// Mirror of `settings.notificationsEnabled`, kept in sync by the model.
     var notificationsEnabled = true
+    /// Mirror of `settings.ignoreMasks` — inbound messages from a matching
+    /// hostmask are dropped. Kept in sync by the model.
+    var ignoreMasks: [String] = []
+
+    /// True if a message from `prefix` (nick!user@host) should be ignored.
+    func isIgnored(_ prefix: String?) -> Bool {
+        guard let prefix, !ignoreMasks.isEmpty else { return false }
+        return ignoreMasks.contains { IRCMask.matches(pattern: $0, hostmask: prefix) }
+    }
     /// Set by the model to receive validated inbound DCC offers.
     var onDCCOffer: ((DCC.Offer, String) -> Void)?
     private var notifyTimer: Timer?
@@ -206,6 +215,7 @@ final class IrcleSession: ObservableObject, Identifiable {
 
     private func handlePrivmsg(_ msg: IRCMessage) {
         guard msg.params.count >= 2 else { return }
+        if isIgnored(msg.prefix) { return }   // drop messages/CTCP/DCC from ignored users
         let from = msg.nickFromPrefix ?? "?"
         let target = msg.params[0]
         let body = msg.params[1]
@@ -283,6 +293,7 @@ final class IrcleSession: ObservableObject, Identifiable {
 
     private func handleNotice(_ msg: IRCMessage) {
         guard msg.params.count >= 2 else { return }
+        if isIgnored(msg.prefix) { return }
         let from = msg.nickFromPrefix ?? "?"
         let target = msg.params[0]
         let body = msg.params[1]

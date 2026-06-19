@@ -2,6 +2,18 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.18.0 — 2026-06-19
+
+### Added
+
+- **Ignore list.** Drop messages (and CTCP/DCC) from unwanted users:
+  **`/ignore add|del|list <mask>`** (and `/unignore <mask>`), or **right-click a
+  nick → Ignore**. Masks are IRC hostmasks with `*`/`?` wildcards, matched
+  case-insensitively by IRCKit's new `IRCMask`; a bare nick expands to
+  `<nick>!*@*` (so `/ignore bob` silences bob from anywhere, `*!*@spam.host`
+  silences a whole host). The list is global and persisted. 5 tests (Ircle) +
+  6 (IRCKit mask matcher).
+
 ## 0.17.1 — 2026-06-19
 
 ### Fixed

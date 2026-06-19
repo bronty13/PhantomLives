@@ -42,6 +42,7 @@ final class IrcleModel: ObservableObject {
         for sess in sessions {
             if sess.notifyNicks != s.notifyNicks { sess.notifyNicks = s.notifyNicks }
             sess.notificationsEnabled = s.notificationsEnabled
+            sess.ignoreMasks = s.ignoreMasks
         }
     }
 
@@ -83,6 +84,7 @@ final class IrcleModel: ObservableObject {
                              profileID: profile.id)
         s.notifyNicks = settingsStore.settings.notifyNicks
         s.notificationsEnabled = settingsStore.settings.notificationsEnabled
+        s.ignoreMasks = settingsStore.settings.ignoreMasks
         s.onDCCOffer = { [weak self] offer, from in self?.dcc.addOffer(offer, from: from) }
         // Re-publish the session's changes so SwiftUI views observing the model
         // refresh when buffers/lines mutate.
@@ -251,6 +253,21 @@ final class IrcleModel: ObservableObject {
         settingsStore.settings.notifyNicks.removeAll { IRCCase.equal($0, nick) }
     }
 
+    // MARK: - Ignore list
+
+    var ignoreMasks: [String] { settingsStore.settings.ignoreMasks }
+
+    func addIgnore(_ mask: String) {
+        let m = mask.trimmingCharacters(in: .whitespaces)
+        guard !m.isEmpty,
+              !settingsStore.settings.ignoreMasks.contains(where: { $0.caseInsensitiveCompare(m) == .orderedSame }) else { return }
+        settingsStore.settings.ignoreMasks.append(m)   // → $settings sink syncs sessions
+    }
+
+    func removeIgnore(_ mask: String) {
+        settingsStore.settings.ignoreMasks.removeAll { $0.caseInsensitiveCompare(mask) == .orderedSame }
+    }
+
     /// Commands handled by the model itself (they touch global settings / every
     /// session) rather than a single connection. Returns true if consumed.
     private func handleGlobalCommand(_ raw: String, in buffer: IrcleBuffer) -> Bool {
@@ -268,6 +285,24 @@ final class IrcleModel: ObservableObject {
             let list = settingsStore.settings.notifyNicks
             session(for: buffer)?.announce(
                 "Notify list: " + (list.isEmpty ? "(empty)" : list.joined(separator: ", ")),
+                in: buffer)
+            return true
+        case "ignore":
+            switch sub {
+            case "add":                 addIgnore(arg)
+            case "del", "remove", "rm", "un": removeIgnore(arg)
+            default:                    break   // "list"/unknown → report below
+            }
+            let list = settingsStore.settings.ignoreMasks
+            session(for: buffer)?.announce(
+                "Ignore list: " + (list.isEmpty ? "(empty)" : list.joined(separator: ", ")),
+                in: buffer)
+            return true
+        case "unignore":
+            if !sub.isEmpty { removeIgnore(sub) }
+            let list = settingsStore.settings.ignoreMasks
+            session(for: buffer)?.announce(
+                "Ignore list: " + (list.isEmpty ? "(empty)" : list.joined(separator: ", ")),
                 in: buffer)
             return true
         case "dcc":

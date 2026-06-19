@@ -143,6 +143,8 @@ struct NickListView: View {
         Button("Send File…") {
             if let s = model.session(for: buffer) { model.promptAndSendFile(to: nick, on: s) }
         }
+        Divider()
+        Button("Ignore \(nick)") { model.addIgnore(nick) }
     }
 
     private func addFriend() {

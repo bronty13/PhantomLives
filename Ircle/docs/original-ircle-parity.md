@@ -56,7 +56,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Faces window | win | ✅ | 🟡 | **We have the window** (assigned image or generated monogram) but **not the IRC face-exchange protocol** — see §4. |
 | DCC / file transfers | win | ✅ 👁 | ❌ | In the OS X build it's the **"Chat/File transfers" tab of the Connections window**, not a separate window. No DCC at all in ours. |
 | Notify / friends list | win | ✅ 👁 | ✅ **in Classic** | Users/Notify tabs on the nick list; ISON-polled online dots; add/remove + `/notify` command; global, persisted. |
-| Ignore/silence list panel | win | ❓ | ❌ | Original had an `on silence()` handler; no UI panel seen yet. |
+| Ignore/silence list panel | win | ❓ | 🟡 | `/ignore` list works (command + right-click); no dedicated panel UI. |
 | Log viewer | win | ❓ | ✅ | Chat Logs window (⌘⇧L) browses ~/Downloads/Ircle/Logs; logging is opt-in. |
 
 ## 1b. In-window controls (👁 seen in the OS X build — all ❌ in ours)
@@ -149,7 +149,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | TLS/SSL, SASL, proxy | eng | 🟡 (SSL in 3.5a) | ✅ | Ours via IRCKit (SASL PLAIN/EXTERNAL, SOCKS5/HTTP). |
 | Slash commands | cmd | many | 🟡 | Ours: JOIN/PART/MSG/QUERY/ME/NICK/TOPIC/QUIT/RAW/WHOIS + server passthrough. |
 | `/away` (+ away UI) | cmd | ✅ | ✅ (`/away [msg]`; 305/306 tracked) | |
-| `/ignore` + ignore list | cmd/win | ✅ | ❌ | |
+| `/ignore` + ignore list | cmd/win | ✅ | ✅ (/ignore + right-click; hostmask wildcards; persisted) | |
 | Auto-ops | pref | ✅ | ❌ | |
 | Chat logging | eng/win | ✅ | ✅ | Opt-in; per-network/channel .log files under ~/Downloads/Ircle/Logs. |
 | URL handling (clickable links) | eng | ✅ | ✅ | renderer linkifies URLs (tappable, underlined). |
