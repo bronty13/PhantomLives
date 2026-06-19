@@ -545,6 +545,11 @@ final class IrcleSession: ObservableObject, Identifiable {
         buffer.append(l, focused: focused)
         maybeNotify(kind: kind, buffer: buffer, sender: sender, text: text,
                     isSelf: isSelf, isMention: isMention, focused: focused)
+        // Persist channel/query transcripts (server-console noise is skipped).
+        if buffer.kind != .server {
+            LogService.shared.log(network: displayName, target: buffer.name,
+                                  line: MessageRow.plain(l, showTimestamps: false))
+        }
     }
 
     /// Post a macOS notification for a mention or a private message that arrives

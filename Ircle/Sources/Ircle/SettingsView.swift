@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import IRCKit
 
 struct SettingsView: View {
@@ -197,6 +198,7 @@ private struct ServerEditor: View {
 
 struct AppearanceSettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Form {
@@ -227,6 +229,19 @@ struct AppearanceSettingsView: View {
                     Slider(value: $settingsStore.settings.fontSize, in: 9...18, step: 1)
                     Text("\(Int(settingsStore.settings.fontSize)) pt")
                         .monospacedDigit().frame(width: 44, alignment: .trailing)
+                }
+            }
+            Section("Logging") {
+                Toggle("Save chat logs to disk", isOn: $settingsStore.settings.loggingEnabled)
+                Text("Transcripts are written to ~/Downloads/Ircle/Logs/<network>/<channel>.log.")
+                    .font(.caption).foregroundColor(.secondary)
+                HStack {
+                    Button("Open Log Viewer") { openWindow(id: "logs") }
+                    Button("Reveal Logs Folder") {
+                        let dir = LogService.defaultDirectory
+                        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                        NSWorkspace.shared.activateFileViewerSelecting([dir])
+                    }
                 }
             }
         }

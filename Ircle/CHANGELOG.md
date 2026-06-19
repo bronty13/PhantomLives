@@ -2,6 +2,17 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.12.0 — 2026-06-19
+
+### Added
+
+- **Chat logging + a log viewer.** Optionally save channel/query transcripts to
+  `~/Downloads/Ircle/Logs/<network>/<channel>.log` (off by default; toggle in
+  Settings → Logging). A new **Chat Logs** window (⌘⇧L, or the Window menu /
+  Settings) browses saved logs — conversations in a sidebar, the transcript on
+  the right (tails the last 256 KB), with Refresh + Reveal-in-Finder. Filenames
+  are sanitized so a channel/network name can't escape the logs folder. 6 tests.
+
 ## 0.11.0 — 2026-06-19
 
 ### Added

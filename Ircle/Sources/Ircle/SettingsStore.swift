@@ -143,6 +143,8 @@ struct AppSettings: Codable {
     /// Post a macOS notification for mentions / private messages while the
     /// relevant window isn't focused.
     var notificationsEnabled: Bool = true
+    /// Save channel/query transcripts to ~/Downloads/Ircle/Logs/. Off by default.
+    var loggingEnabled: Bool = false
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
@@ -156,7 +158,7 @@ struct AppSettings: Codable {
     var lastBackupAt: String = ""
 
     enum CodingKeys: String, CodingKey {
-        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, showTimestamps, fontSize
+        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -170,6 +172,7 @@ struct AppSettings: Codable {
         interfaceStyle = (try? c.decode(InterfaceStyle.self, forKey: .interfaceStyle)) ?? .clean
         notifyNicks = (try? c.decode([String].self, forKey: .notifyNicks)) ?? []
         notificationsEnabled = (try? c.decode(Bool.self, forKey: .notificationsEnabled)) ?? true
+        loggingEnabled = (try? c.decode(Bool.self, forKey: .loggingEnabled)) ?? false
         showTimestamps = (try? c.decode(Bool.self, forKey: .showTimestamps)) ?? true
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 12
         autoBackupEnabled = (try? c.decode(Bool.self, forKey: .autoBackupEnabled)) ?? true

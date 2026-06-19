@@ -57,7 +57,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | DCC / file transfers | win | ✅ 👁 | ❌ | In the OS X build it's the **"Chat/File transfers" tab of the Connections window**, not a separate window. No DCC at all in ours. |
 | Notify / friends list | win | ✅ 👁 | ✅ **in Classic** | Users/Notify tabs on the nick list; ISON-polled online dots; add/remove + `/notify` command; global, persisted. |
 | Ignore/silence list panel | win | ❓ | ❌ | Original had an `on silence()` handler; no UI panel seen yet. |
-| Log viewer | win | ❓ | ❌ | No chat logging in our clone at all. |
+| Log viewer | win | ❓ | ✅ | Chat Logs window (⌘⇧L) browses ~/Downloads/Ircle/Logs; logging is opt-in. |
 
 ## 1b. In-window controls (👁 seen in the OS X build — all ❌ in ours)
 
@@ -147,7 +147,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | `/away` (+ away UI) | cmd | ✅ | ✅ (`/away [msg]`; 305/306 tracked) | |
 | `/ignore` + ignore list | cmd/win | ✅ | ❌ | |
 | Auto-ops | pref | ✅ | ❌ | |
-| Chat logging | eng/win | ✅ | ❌ | |
+| Chat logging | eng/win | ✅ | ✅ | Opt-in; per-network/channel .log files under ~/Downloads/Ircle/Logs. |
 | URL handling (clickable links) | eng | ✅ | ✅ | renderer linkifies URLs (tappable, underlined). |
 
 ---

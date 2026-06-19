@@ -35,6 +35,7 @@ struct IrcleApp: App {
             }
             CommandGroup(after: .toolbar) {
                 FacesMenuItem()
+                LogsMenuItem()
             }
             CommandMenu("Servers") {
                 ForEach(settingsStore.settings.servers) { profile in
@@ -55,6 +56,13 @@ struct IrcleApp: App {
         }
         .defaultSize(width: 420, height: 480)
 
+        // The Log viewer — read-only browser of saved transcripts.
+        Window("Chat Logs", id: "logs") {
+            LogViewerView()
+                .environmentObject(settingsStore)
+        }
+        .defaultSize(width: 640, height: 460)
+
         Settings {
             SettingsView()
                 .environmentObject(model)
@@ -70,5 +78,14 @@ private struct FacesMenuItem: View {
     var body: some View {
         Button("Faces") { openWindow(id: "faces") }
             .keyboardShortcut("f", modifiers: [.command, .shift])
+    }
+}
+
+/// Menu item that opens the Chat Logs window.
+private struct LogsMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Chat Logs") { openWindow(id: "logs") }
+            .keyboardShortcut("l", modifiers: [.command, .shift])
     }
 }
