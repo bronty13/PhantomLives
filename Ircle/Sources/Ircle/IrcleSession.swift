@@ -53,7 +53,17 @@ final class IrcleSession: ObservableObject, Identifiable {
 
     // MARK: - Connection lifecycle
 
+    /// Set on RPL_WELCOME (001). Distinguishes "socket up" (`state == .connected`)
+    /// from "registration complete" — the two differ during the CAP/NICK/USER
+    /// handshake, which is exactly when ERR_NICKNAMEINUSE (433) must auto-bump
+    /// the nick. Reset whenever a fresh connection starts.
+    private var registered = false
+    private var nickBumps = 0
+    private static let maxNickBumps = 6
+
     func connect() {
+        registered = false
+        nickBumps = 0
         system(serverBuffer, "Connecting to \(config.host):\(config.port)…")
         client.connect(config: config)
     }
@@ -83,9 +93,11 @@ final class IrcleSession: ObservableObject, Identifiable {
         case .connecting:  system(serverBuffer, "Connecting…")
         case .connected:   system(serverBuffer, "Connected. Registering…")
         case .disconnected:
+            registered = false
             system(serverBuffer, "Disconnected.")
             for b in buffers where b.kind == .channel { b.joined = false }
         case .failed(let reason):
+            registered = false
             line(serverBuffer, .error, text: reason)
         }
     }
@@ -272,6 +284,7 @@ final class IrcleSession: ObservableObject, Identifiable {
         case "001":
             // Server may have adjusted our nick during registration.
             if let assigned = msg.params.first { nick = assigned }
+            registered = true
             line(serverBuffer, .motd, text: msg.params.last ?? "")
             // Registration is complete — fire the auto-join list.
             for chan in autoJoinChannels where !chan.isEmpty {
@@ -295,12 +308,21 @@ final class IrcleSession: ObservableObject, Identifiable {
         case "375", "372", "376", "002", "003", "004", "005", "251", "252",
              "253", "254", "255", "265", "266", "250", "375L":
             line(serverBuffer, .motd, text: msg.params.last ?? "")
-        case "433": // ERR_NICKNAMEINUSE — auto-bump with an underscore once.
+        case "433": // ERR_NICKNAMEINUSE
             let attempted = msg.params.count > 1 ? msg.params[1] : nick
-            line(serverBuffer, .error, text: "Nickname \(attempted) is in use.")
-            if state != .connected || !isConnected {
+            // Auto-bump the nick during registration (before RPL_WELCOME) — this
+            // is the common case when a second server reuses a nick already
+            // taken on that network. Without this, registration stalls and the
+            // connection never completes. Bump a bounded number of times, then
+            // give up and surface the error so the user can pick another nick.
+            if !registered && nickBumps < Self.maxNickBumps {
+                nickBumps += 1
                 let alt = attempted + "_"
+                nick = alt
+                line(serverBuffer, .error, text: "Nickname \(attempted) is in use — trying \(alt)…")
                 client.send("NICK \(alt)")
+            } else {
+                line(serverBuffer, .error, text: "Nickname \(attempted) is in use.")
             }
         default:
             // Errors (4xx/5xx) and unhandled numerics: dump the trailing text.

@@ -221,4 +221,21 @@ struct IrcleSessionDispatchTests {
         #expect(channel(s, "#x")?.hasUser("bobby") == true)
         #expect(channel(s, "#x")?.hasUser("bob") == false)
     }
+
+    @Test func nickInUseAutoBumpsDuringRegistration() {
+        // Pre-001 (not yet registered): a 433 must bump the nick so registration
+        // can complete — the bug that left a second connection stuck.
+        let s = connected(nick: "bob")
+        s.ingest(":srv 433 * bob :Nickname is already in use")
+        #expect(s.nick == "bob_")
+        s.ingest(":srv 433 * bob_ :Nickname is already in use")
+        #expect(s.nick == "bob__")
+    }
+
+    @Test func nickInUseDoesNotBumpAfterRegistration() {
+        let s = connected(nick: "bob")
+        s.ingest(":srv 001 bob :Welcome")     // registered
+        s.ingest(":srv 433 * bob :Nickname is already in use")
+        #expect(s.nick == "bob")              // no auto-bump once registered
+    }
 }

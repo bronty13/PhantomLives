@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import IRCKit
 
 /// The central message area — the classic Ircle channel window. Monospaced
@@ -15,7 +16,8 @@ struct MessageListView: View {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     ForEach(buffer.lines) { line in
                         MessageRow(line: line, palette: palette,
-                                   fontSize: fontSize, showTimestamps: showTimestamps)
+                                   fontSize: fontSize, showTimestamps: showTimestamps,
+                                   copyAll: copyAll)
                             .id(line.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -37,6 +39,14 @@ struct MessageListView: View {
     }
 
     private static let bottomAnchor = "ircle.messages.bottom"
+
+    /// Copy the whole buffer (timestamps + plain text) to the clipboard.
+    private func copyAll() {
+        let text = buffer.lines
+            .map { MessageRow.plain($0, showTimestamps: showTimestamps) }
+            .joined(separator: "\n")
+        Pasteboard.copy(text)
+    }
 }
 
 struct MessageRow: View {
@@ -44,6 +54,7 @@ struct MessageRow: View {
     let palette: PlatinumPalette
     let fontSize: Double
     let showTimestamps: Bool
+    var copyAll: (() -> Void)? = nil
 
     private var font: Font { palette.messageFont(fontSize) }
 
@@ -62,6 +73,30 @@ struct MessageRow: View {
         }
         .padding(.vertical, 0.5)
         .background(line.isMention ? palette.mentionBG : .clear)
+        // Drag-select doesn't always work across rows in a LazyVStack, so give
+        // every line an explicit Copy (and Copy All) — the reliable way to grab
+        // an error message out of the console.
+        .contextMenu {
+            Button("Copy") { Pasteboard.copy(MessageRow.plain(line, showTimestamps: showTimestamps)) }
+            if let copyAll { Button("Copy All") { copyAll() } }
+        }
+    }
+
+    /// Plain-text form of a line (the copyable representation), mirroring the
+    /// on-screen prefix but with mIRC codes stripped.
+    static func plain(_ line: IrcleLine, showTimestamps: Bool) -> String {
+        let body = IRCText.stripFormatting(line.text)
+        let core: String
+        switch line.kind {
+        case .message:    core = "<\(line.sender ?? "?")> \(body)"
+        case .action:     core = "* \(line.sender ?? "?") \(body)"
+        case .notice:     core = "-\(line.sender ?? "?")- \(body)"
+        case .join, .part, .quit, .nickChange, .mode, .topic: core = "*** \(body)"
+        case .error:      core = "!!! \(body)"
+        case .motd, .system: core = body
+        }
+        guard showTimestamps else { return core }
+        return "[\(time(line.timestamp))] \(core)"
     }
 
     /// Classic line prefix per kind + the body rendered with mIRC colors. The

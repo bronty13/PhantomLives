@@ -2,6 +2,26 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.4.2 — 2026-06-18
+
+### Fixed
+
+- **A second server that hit a nick collision never finished connecting.** The
+  ERR_NICKNAMEINUSE (433) auto-bump was guarded by `state != .connected ||
+  !isConnected`, which is never true during registration (the socket is already
+  `.connected` before RPL_WELCOME), so the nick was never bumped and
+  registration stalled — common when a new server reuses a nick already taken on
+  that network. Now tracked with a proper `registered` flag (set on 001): a 433
+  before registration bumps the nick (up to 6 times, appending `_`) and shows
+  what it's trying; after registration it just reports the collision.
+
+### Added
+
+- **Copy from the message area.** Right-click any line for **Copy** (that line,
+  timestamp + text, mIRC codes stripped) or **Copy All** (the whole buffer) —
+  the reliable way to lift an error message out of the console, since SwiftUI
+  drag-selection across rows isn't dependable. New `Pasteboard` helper.
+
 ## 0.4.1 — 2026-06-18
 
 ### Fixed
