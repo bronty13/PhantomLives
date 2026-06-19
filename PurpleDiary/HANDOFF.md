@@ -142,6 +142,7 @@ encrypted install at launch. The frozen set is asserted by
 | `v4_journals` | `journals` (+ seeded default journal `Journal.defaultId`); adds NOT NULL `entries.journal_id` (existing rows back-fill to default via the column DEFAULT) + index. Hidden = app-level visibility only. |
 | `v5_templates` | `templates` (reusable entry scaffolds; two starter templates seeded on first run by `seedDefaultTemplatesIfEmpty`). |
 | `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation. Transparent sealing data path wired (`DatabaseService` seals title+body on write / unseals on read for unlocked vaults; locked vaults gated from `visibleEntries` + export). Make-Vault / unlock / change-passphrase / remove UI shipped in the sidebar; app-lock re-seals vaults. Seals entry title+body **and attachment bytes** (data + thumbnails). |
+| `v7_journal_settings` | Adds `journals` columns for the Journal Settings sheet: `description`, `sort_mode`, `show_in_all_entries`, `show_in_on_this_day`, `show_in_calendar`, `default_template_id` (nullable), `conceal_content`. All additive with defaults that preserve today's behavior. |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -242,6 +243,24 @@ feature, keep it offline.
   (rebuilt on month / journal-filter / attachment change) via the cheap
   `attachmentThumbs` projection — **don't** move that fetch into the per-cell body
   (it would hit the DB ~31× per redraw).
+- **Per-journal settings (`v7` + `JournalSettingsSheet`).** Each journal carries
+  a description, `sortMode` (`JournalSortMode`), three "show in …" toggles, an
+  optional `defaultTemplateId`, and `concealContent`. Wiring: the All-Entries
+  toggle lives **inside** `AppState.entryIsVisible` (only when `selectedJournalId
+  == nil`); On This Day / Calendar use dedicated slices `AppState.onThisDayEntries`
+  / `calendarEntries` (filtered `visibleEntries`) so Search/Insights stay
+  unaffected; per-journal sort is applied in `TimelineView.groupedEntries` (only
+  when a single journal is selected); the default template is applied in
+  `createEntry(date:title:)`; conceal blurs the title+snippet in `EntryRow`. The
+  sheet edits a `Journal` value copy and saves once via `updateJournal` (GRDB
+  full-record write picks up every column). Opened from the sidebar context menu,
+  vault-sheet pattern (`@State editingSettings`).
+- **Tests must not touch real ~/Downloads (TCC).** `SettingsStore.downloadsDir`
+  (backups + exports) redirects to a temp dir under XCTest, mirroring
+  `supportDirectory`. Without it the launch backup blocks the headless test host
+  on a Downloads-access prompt and the runner "hangs before establishing
+  connection" (no failing assertion — diagnose a launch hang by `sample`-ing the
+  host process, not by grepping for `error:`).
 - **Auto-backup on launch** → `~/Downloads/PurpleDiary backup/` (5-min debounce,
   14-day retention, verify/restore). Full Settings → Backup UI. `BackupService`.
 - **Default outputs** → `~/Downloads/PurpleDiary/` (exports). User-overridable +
@@ -258,7 +277,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 186 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 190 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -312,7 +331,7 @@ Sources/PurpleDiary/
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView (+ JournalHeaderView stats strip),
               EntryEditorView, CalendarView (per-day photo thumbnails), OnThisDayView, InsightsView, SearchView, PeopleView,
               TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,
-              TemplatesSheet, ImportSheet, VaultSheets (Make/Unlock/ChangePassphrase), AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, MarkdownDocView, Settings/ (AppearanceSettingsTab = theme grid), Shared/
+              TemplatesSheet (+ TemplateLibrarySheet), JournalSettingsSheet, ImportSheet, VaultSheets (Make/Unlock/ChangePassphrase), AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, MarkdownDocView, Settings/ (AppearanceSettingsTab = theme grid), Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 Resources/Prompts.json   Bundled writing-prompt library (Phase 4)
 Docs/SECURITY.md   Security & Privacy whitepaper (bundled as a resource; rendered in-app via Help → Security & Privacy whitepaper)

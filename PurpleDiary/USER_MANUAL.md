@@ -96,6 +96,32 @@ own entries.
   if you're on All Journals). Move an entry between journals with the **journal
   menu** in the editor header (next to the date).
 
+### Journal settings
+
+Right-click a journal → **Journal Settings…** to open its settings sheet (it shows
+how many entries and photos the journal has at the top). From here you can set:
+
+- **Name** and a **Description** — the description appears under the journal's name
+  at the top of the Timeline.
+- **Color** — pick any color for the journal's book and sidebar dot.
+- **Sort Order** — how this journal's entries are ordered when you're viewing it:
+  **Entry Date** (newest or oldest first), **Recently Edited**, or **Recently
+  Added**. (The "All Journals" view always shows newest-first.)
+- **Show in All Entries / On This Day / Calendar** — turn a journal's entries on or
+  off in each of those views independently. Handy for a journal you want to keep to
+  its own tab without fully hiding it. (You can still open the journal directly to
+  see its entries.)
+- **Default Template** — start every new blank entry in this journal from a chosen
+  template automatically.
+- **Conceal Content** — blur this journal's entry previews in lists so a glance
+  over your shoulder doesn't reveal them; open an entry to read it normally.
+- **Encryption** shows the journal's protection (encrypted at rest, or *sealed* if
+  it's a vault).
+
+**Update** saves your changes; **Cancel** discards them. **Delete Journal** is here
+too (you'll choose whether to move its entries to your default journal or delete
+them).
+
 ### Hidden journals
 
 Mark a journal **Hidden** (right-click → *Hide*) to keep it private: its entries

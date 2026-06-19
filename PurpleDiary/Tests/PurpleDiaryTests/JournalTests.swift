@@ -89,4 +89,63 @@ final class JournalTests: XCTestCase {
         let data = try JSONEncoder().encode(j)
         XCTAssertEqual(try JSONDecoder().decode(Journal.self, from: data), j)
     }
+
+    // MARK: - v7 per-journal settings
+
+    func testNewJournalSettingsDefaultsAreBackwardCompatible() {
+        let j = Journal.newDraft(name: "x")
+        XCTAssertEqual(j.journalDescription, "")
+        XCTAssertEqual(j.sortModeValue, .dateDesc)
+        XCTAssertTrue(j.showInAllEntries)
+        XCTAssertTrue(j.showInOnThisDay)
+        XCTAssertTrue(j.showInCalendar)
+        XCTAssertNil(j.defaultTemplateId)
+        XCTAssertFalse(j.concealContent)
+    }
+
+    func testJournalSettingsPersistRoundTrip() throws {
+        var j = Journal.newDraft(name: "Configured")
+        j.journalDescription = "My private notes"
+        j.sortMode = JournalSortMode.dateAsc.rawValue
+        j.showInAllEntries = false
+        j.showInOnThisDay = false
+        j.showInCalendar = false
+        j.defaultTemplateId = "tmpl-123"
+        j.concealContent = true
+        try DatabaseService.shared.insertJournal(j)
+        defer { try? DatabaseService.shared.deleteJournal(id: j.id) }
+
+        let fetched = try DatabaseService.shared.fetchAllJournals().first { $0.id == j.id }
+        XCTAssertEqual(fetched?.journalDescription, "My private notes")
+        XCTAssertEqual(fetched?.sortMode, "date_asc")
+        XCTAssertEqual(fetched?.showInAllEntries, false)
+        XCTAssertEqual(fetched?.showInOnThisDay, false)
+        XCTAssertEqual(fetched?.showInCalendar, false)
+        XCTAssertEqual(fetched?.defaultTemplateId, "tmpl-123")
+        XCTAssertEqual(fetched?.concealContent, true)
+    }
+
+    func testShowInAllEntriesGate() {
+        // Opted out of the combined view + "All Journals" selected → excluded…
+        XCTAssertFalse(AppState.entryIsVisible(entryJournalId: "a", selectedJournalId: nil,
+            journalIsHidden: false, journalIsUnlocked: false, showInAllEntries: false))
+        // …but still shows when that journal is explicitly selected.
+        XCTAssertTrue(AppState.entryIsVisible(entryJournalId: "a", selectedJournalId: "a",
+            journalIsHidden: false, journalIsUnlocked: false, showInAllEntries: false))
+        // Opted in → shows under All as usual.
+        XCTAssertTrue(AppState.entryIsVisible(entryJournalId: "a", selectedJournalId: nil,
+            journalIsHidden: false, journalIsUnlocked: false, showInAllEntries: true))
+    }
+
+    func testJournalSortModeComparator() {
+        var a = Entry.newDraft(title: "a")
+        a.date = "2026-01-01T00:00:00Z"; a.createdAt = "2026-01-03T00:00:00Z"; a.updatedAt = "2026-01-05T00:00:00Z"
+        var b = Entry.newDraft(title: "b")
+        b.date = "2026-02-01T00:00:00Z"; b.createdAt = "2026-01-02T00:00:00Z"; b.updatedAt = "2026-01-04T00:00:00Z"
+
+        XCTAssertTrue(JournalSortMode.dateDesc.ordered(b, a), "newest entry date first")
+        XCTAssertTrue(JournalSortMode.dateAsc.ordered(a, b), "oldest entry date first")
+        XCTAssertTrue(JournalSortMode.edited.ordered(a, b), "a edited more recently")
+        XCTAssertTrue(JournalSortMode.created.ordered(a, b), "a created more recently")
+    }
 }

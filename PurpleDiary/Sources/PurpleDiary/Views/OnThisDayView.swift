@@ -8,7 +8,7 @@ struct OnThisDayView: View {
     @EnvironmentObject private var appState: AppState
 
     private var matches: [Entry] {
-        OnThisDayService.entries(from: appState.visibleEntries)
+        OnThisDayService.entries(from: appState.onThisDayEntries)
     }
 
     var body: some View {
@@ -23,7 +23,8 @@ struct OnThisDayView: View {
                                 ForEach(group.entries) { entry in
                                     EntryRow(entry: entry,
                                              tags: appState.tagsByEntry[entry.id] ?? [],
-                                             isSelected: false)
+                                             isSelected: false,
+                                             concealed: appState.journalsById[entry.journalId]?.concealContent ?? false)
                                         .contentShape(Rectangle())
                                         .onTapGesture {
                                             appState.selectedEntryId = entry.id

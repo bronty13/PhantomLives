@@ -11,6 +11,7 @@ struct SidebarView: View {
     @State private var renaming: Journal?
     @State private var renameText = ""
     @State private var deleting: Journal?
+    @State private var editingSettings: Journal?
 
     // Vault flows (Phase 9)
     @State private var makingVault: Journal?
@@ -78,6 +79,7 @@ struct SidebarView: View {
                 Text("This journal has no entries.")
             }
         }
+        .sheet(item: $editingSettings) { j in JournalSettingsSheet(journal: j).environmentObject(appState) }
         .sheet(item: $makingVault) { j in MakeVaultSheet(journal: j).environmentObject(appState) }
         .sheet(item: $unlockingVault) { j in VaultUnlockSheet(journal: j).environmentObject(appState) }
         .sheet(item: $changingPassphrase) { j in ChangeVaultPassphraseSheet(journal: j).environmentObject(appState) }
@@ -244,6 +246,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func journalContextMenu(_ journal: Journal) -> some View {
+        Button("Journal Settings…") { editingSettings = journal }
         Button("Rename…") {
             renameText = journal.name
             renaming = journal

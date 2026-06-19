@@ -322,16 +322,24 @@ final class AppState: ObservableObject {
                                journalIsHidden: Bool,
                                journalIsUnlocked: Bool,
                                journalIsVault: Bool = false,
-                               vaultIsUnlocked: Bool = false) -> Bool {
+                               vaultIsUnlocked: Bool = false,
+                               showInAllEntries: Bool = true) -> Bool {
         if journalIsHidden && !journalIsUnlocked { return false }
         if journalIsVault && !vaultIsUnlocked { return false }
-        if let sel = selectedJournalId, sel != entryJournalId { return false }
+        if let sel = selectedJournalId {
+            if sel != entryJournalId { return false }
+        } else if !showInAllEntries {
+            // No specific journal selected ("All Journals") and this journal opted
+            // out of the combined view — hide it here, but it still shows when the
+            // user selects that journal directly (handled by the branch above).
+            return false
+        }
         return true
     }
 
     /// Entries the Timeline / Calendar / Search / Insights should operate on,
-    /// after applying the hidden-journal gate, the locked-vault gate, and the
-    /// active journal filter.
+    /// after applying the hidden-journal gate, the locked-vault gate, the active
+    /// journal filter, and the per-journal "Show in All Entries" toggle.
     var visibleEntries: [Entry] {
         entries.filter { entry in
             let journal = journalsById[entry.journalId]
@@ -343,9 +351,21 @@ final class AppState: ObservableObject {
                 journalIsHidden: hidden,
                 journalIsUnlocked: unlockedHiddenJournalIds.contains(entry.journalId),
                 journalIsVault: vault,
-                vaultIsUnlocked: VaultService.isUnlocked(entry.journalId)
+                vaultIsUnlocked: VaultService.isUnlocked(entry.journalId),
+                showInAllEntries: journal?.showInAllEntries ?? true
             )
         }
+    }
+
+    /// `visibleEntries` further narrowed to journals that opt into **On This Day**.
+    /// Feed this (not `visibleEntries`) into `OnThisDayService`.
+    var onThisDayEntries: [Entry] {
+        visibleEntries.filter { journalsById[$0.journalId]?.showInOnThisDay ?? true }
+    }
+
+    /// `visibleEntries` further narrowed to journals that opt into the **Calendar**.
+    var calendarEntries: [Entry] {
+        visibleEntries.filter { journalsById[$0.journalId]?.showInCalendar ?? true }
     }
 
     // MARK: - Journals: mutations
@@ -482,7 +502,14 @@ final class AppState: ObservableObject {
         // selected). A hidden journal is only selectable once unlocked, so this
         // never silently writes into a locked journal.
         let journalId = selectedJournalId ?? Journal.defaultId
-        let entry = Entry.newDraft(date: date, title: title, journalId: journalId)
+        var entry = Entry.newDraft(date: date, title: title, journalId: journalId)
+        // If the journal has a default template, pre-fill the body from it (its
+        // date tokens rendered for `date`). An explicit "From template" pick uses
+        // the dedicated `createEntry(fromTemplate:)` path instead.
+        if let tid = journalsById[journalId]?.defaultTemplateId,
+           let template = templates.first(where: { $0.id == tid }) {
+            entry.bodyMarkdown = TemplateService.render(template.body, date: date)
+        }
         try DatabaseService.shared.insertEntry(entry)
         reloadEntries()
         selectedEntryId = entry.id

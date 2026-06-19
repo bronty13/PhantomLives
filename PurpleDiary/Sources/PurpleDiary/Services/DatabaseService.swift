@@ -420,6 +420,24 @@ final class DatabaseService {
             }
         }
 
+        // Per-journal settings (the Day One-style "Journal Settings" sheet):
+        // a description, an entry sort mode, three "show in …" visibility toggles,
+        // an optional default template applied to new entries, and a conceal flag
+        // that blurs entry previews. All additive columns with safe defaults so
+        // existing journals keep today's behavior (visible everywhere, no default
+        // template, not concealed, newest-first).
+        migrator.registerMigration("v7_journal_settings") { db in
+            try db.alter(table: "journals") { t in
+                t.add(column: "description", .text).notNull().defaults(to: "")
+                t.add(column: "sort_mode", .text).notNull().defaults(to: "date_desc")
+                t.add(column: "show_in_all_entries", .integer).notNull().defaults(to: 1)
+                t.add(column: "show_in_on_this_day", .integer).notNull().defaults(to: 1)
+                t.add(column: "show_in_calendar", .integer).notNull().defaults(to: 1)
+                t.add(column: "default_template_id", .text)   // nullable → "None"
+                t.add(column: "conceal_content", .integer).notNull().defaults(to: 0)
+            }
+        }
+
         try migrator.migrate(writer)
     }
 

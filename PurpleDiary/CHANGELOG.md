@@ -3,6 +3,47 @@
 All notable changes to PurpleDiary are documented here. Versions are
 git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
+## [1.0.1021] — 2026-06-19 — Rich Journal Settings sheet
+
+### Added
+- **A Day One-style "Journal Settings" sheet** (sidebar → right-click a journal →
+  **Journal Settings…**). One place to edit a journal, with an
+  `N entries · M photos` summary up top and Delete / Cancel / Update at the
+  bottom. New, persisted per-journal settings (migration `v7_journal_settings`):
+  - **Description** — free text, shown under the journal name in the timeline header.
+  - **Color** — full color picker (was a fixed preset list).
+  - **Sort Order** — Entry Date (newest/oldest), Recently Edited, Recently Added;
+    applied to the timeline when that journal is selected ("All Journals" stays
+    newest-first).
+  - **Show in All Entries / On This Day / Calendar** — per-view visibility toggles.
+    A journal can stay private to its own tab without being fully hidden.
+  - **Default Template** — a new blank entry in this journal starts from it.
+  - **Conceal Content** — blurs this journal's entry previews in lists (open an
+    entry to read it).
+  - **Encryption** status is shown read-only (honestly labeled: "encrypted at
+    rest", or "Vault — sealed" — PurpleDiary has no network, so no "end-to-end").
+
+### Fixed
+- **Tests no longer hang on a `~/Downloads` permission prompt.** The launch-time
+  backup resolved its directory to the real `~/Downloads` even under XCTest;
+  the freshly-built, differently-signed test host has no Downloads TCC grant, so
+  that access popped a prompt that blocked the app's main thread and hung the
+  test runner "before establishing connection" (a 5½-minute timeout, no failing
+  assertion). User-output dirs now redirect to a temp dir under XCTest, mirroring
+  the existing `supportDirectory` redirect. (Latent bug, surfaced while adding the
+  journal settings tests.)
+
+### Tests
+- **+4 → 190.** `JournalTests`: v7 defaults are backward-compatible, the new
+  columns round-trip through the DB, the "Show in All Entries" visibility rule
+  (excluded under All, shown when selected), and the `JournalSortMode` comparator
+  for all four modes. `SecurityMiscTests` frozen-migration list extended to
+  `v7_journal_settings`.
+
+### Docs
+- USER_MANUAL "Journals" gains a "Journal Settings" section; README; HANDOFF
+  (§4 migrations, §7, §9, test count).
+
 ## [1.0.1020] — 2026-06-19 — Template library reachable from the New Entry menu
 
 ### Changed

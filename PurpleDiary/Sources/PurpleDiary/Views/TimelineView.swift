@@ -30,7 +30,8 @@ struct TimelineView: View {
                         ForEach(group.entries) { entry in
                             EntryRow(entry: entry,
                                      tags: appState.tagsByEntry[entry.id] ?? [],
-                                     isSelected: appState.selectedEntryId == entry.id)
+                                     isSelected: appState.selectedEntryId == entry.id,
+                                     concealed: appState.journalsById[entry.journalId]?.concealContent ?? false)
                                 .onTapGesture { appState.selectedEntryId = entry.id }
                                 .contextMenu {
                                     Button(role: .destructive) {
@@ -100,7 +101,11 @@ struct TimelineView: View {
     private var groupedEntries: [EntryGroup] {
         let fmt = DateFormatter()
         fmt.dateFormat = "LLLL yyyy"
-        let sorted = appState.visibleEntries.sorted { $0.date > $1.date }
+        // Per-journal sort mode applies only when a single journal is selected;
+        // "All Journals" stays newest-first.
+        let mode: JournalSortMode = appState.selectedJournalId
+            .flatMap { appState.journalsById[$0]?.sortModeValue } ?? .dateDesc
+        let sorted = appState.visibleEntries.sorted { mode.ordered($0, $1) }
         var order: [String] = []
         var buckets: [String: [Entry]] = [:]
         for entry in sorted {
@@ -118,6 +123,9 @@ struct EntryRow: View {
     let entry: Entry
     let tags: [Tag]
     let isSelected: Bool
+    /// When the entry's journal has "Conceal Content" on, the title + snippet are
+    /// blurred in the list (open the entry to read it). Mood/tags stay visible.
+    var concealed: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -131,15 +139,18 @@ struct EntryRow: View {
             .frame(width: 34)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(displayTitle)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
-                if !snippet.isEmpty {
-                    Text(snippet)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                Group {
+                    Text(displayTitle)
+                        .font(.body.weight(.medium))
+                        .lineLimit(1)
+                    if !snippet.isEmpty {
+                        Text(snippet)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 }
+                .blur(radius: concealed ? 4.5 : 0)
                 if !tags.isEmpty || entry.mood != .unset {
                     HStack(spacing: 4) {
                         if entry.mood != .unset {

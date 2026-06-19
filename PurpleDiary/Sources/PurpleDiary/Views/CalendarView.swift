@@ -37,7 +37,7 @@ struct CalendarView: View {
     /// Uses the cheap `attachmentThumbs` projection (thumbnail BLOB only, no
     /// full-res data) and is bounded by the month's entries-with-attachments.
     private func reloadThumbs() {
-        let monthEntries = appState.visibleEntries
+        let monthEntries = appState.calendarEntries
             .filter { (appState.attachmentCountByEntry[$0.id] ?? 0) > 0 &&
                       cal.isDate($0.dateValue, equalTo: visibleMonth, toGranularity: .month) }
             .sorted { $0.dateValue > $1.dateValue }   // newest first → most recent photo wins
@@ -107,7 +107,7 @@ struct CalendarView: View {
     }
 
     private func dayCell(_ day: Date) -> some View {
-        let entriesOnDay = appState.visibleEntries.filter { cal.isDate($0.dateValue, inSameDayAs: day) }
+        let entriesOnDay = appState.calendarEntries.filter { cal.isDate($0.dateValue, inSameDayAs: day) }
         let words = entriesOnDay.reduce(0) { $0 + $1.wordCount }
         let level = CalendarHeatmap.level(words: words)
         let isToday = cal.isDateInToday(day)

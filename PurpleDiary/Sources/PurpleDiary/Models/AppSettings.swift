@@ -91,7 +91,21 @@ final class SettingsStore: ObservableObject {
     }
 
     private static var downloadsDir: URL {
-        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        // Under XCTest, route user-output dirs (the launch backup + exports) to a
+        // disposable temp dir instead of the real ~/Downloads. ~/Downloads is
+        // TCC-protected: the freshly-built, differently-signed test-host app has
+        // no Downloads grant, so the launch-time backup's directory access would
+        // pop a TCC prompt that blocks the main thread — and headless, nobody
+        // answers it, hanging the test runner before it can connect. Mirrors the
+        // XCTest redirect on `AppSettings.supportDirectory`.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            let dir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                .appendingPathComponent("PurpleDiary-tests-downloads-\(ProcessInfo.processInfo.processIdentifier)",
+                                        isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
+        return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
     }
 }

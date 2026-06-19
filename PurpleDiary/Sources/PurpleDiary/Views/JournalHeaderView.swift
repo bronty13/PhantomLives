@@ -30,7 +30,11 @@ struct JournalHeaderView: View {
     }
 
     private var onThisDayCount: Int {
-        OnThisDayService.entries(from: appState.visibleEntries).count
+        OnThisDayService.entries(from: appState.onThisDayEntries).count
+    }
+
+    private var journalDescription: String {
+        selectedJournal?.journalDescription.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     /// "2026", or "2023–2026" across the journal's entries, or the current year
@@ -57,6 +61,13 @@ struct JournalHeaderView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
+            }
+
+            if !journalDescription.isEmpty {
+                Text(journalDescription)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             statsStrip
