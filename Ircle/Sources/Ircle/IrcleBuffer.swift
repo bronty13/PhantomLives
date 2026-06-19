@@ -92,6 +92,14 @@ final class IrcleBuffer: ObservableObject, Identifiable {
         users.sort()
     }
 
+    /// Update a member's WHO-derived info (host, IRCop flag) by nick.
+    func setUserInfo(nick: String, host: String, isIrcOp: Bool) {
+        let folded = IRCCase.fold(stripPrefix(nick))
+        guard let idx = users.firstIndex(where: { $0.id == folded }) else { return }
+        users[idx].host = host
+        users[idx].isIrcOp = isIrcOp
+    }
+
     func removeUser(_ nick: String) {
         let folded = IRCCase.fold(stripPrefix(nick))
         users.removeAll { $0.id == folded }

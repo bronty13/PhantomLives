@@ -2,6 +2,16 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.22.0 — 2026-06-19
+
+### Added
+
+- **Nick-list hostnames + IRCop markers.** On joining a channel Ircle now sends
+  a `WHO` and parses the replies (numeric 352), so hovering a nick shows its
+  `user@host`, and in Classic style network operators get a ✪ marker. (The
+  original's wide Userlist had IrcOp/Hostname columns; our narrow list surfaces
+  the same data as a tooltip + marker.) 2 tests.
+
 ## 0.21.0 — 2026-06-19
 
 ### Added

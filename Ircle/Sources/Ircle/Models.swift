@@ -60,6 +60,10 @@ struct IrcleUser: Identifiable, Equatable, Comparable {
     var nick: String
     /// Highest-ranked membership prefix the server reports: `~ & @ % +` or "".
     var prefix: String
+    /// `user@host`, populated from a WHO reply (nil until known).
+    var host: String? = nil
+    /// Network operator (IRCop) — the `*` flag in a WHO reply.
+    var isIrcOp: Bool = false
 
     var id: String { nick.lowercased() }
 

@@ -333,8 +333,10 @@ final class IrcleSession: ObservableObject, Identifiable {
             buf.joined = true
             system(buf, "Now talking in \(channel)")
             // Ask the server for the channel modes so the Classic mode-toggle
-            // row reflects current state (replies as numeric 324).
+            // row reflects current state (replies as numeric 324), and a WHO so
+            // the nick list can show hostnames + IRCop flags (replies as 352).
             client.send("MODE \(channel)")
+            client.send("WHO \(channel)")
         } else if let buf = channelBuffer(channel) {
             buf.addUser(who)
             line(buf, .join, sender: who, text: "\(who) has joined \(channel)")
@@ -443,6 +445,14 @@ final class IrcleSession: ObservableObject, Identifiable {
             if msg.params.count >= 3, let buf = channelBuffer(msg.params[1]) {
                 buf.setModes(msg.params[2])
             }
+        case "352": // RPL_WHOREPLY: <me> <chan> <user> <host> <server> <nick> <flags> :<hops> <real>
+            if msg.params.count >= 7, let buf = channelBuffer(msg.params[1]) {
+                let user = msg.params[2], host = msg.params[3]
+                let nick = msg.params[5], flags = msg.params[6]
+                buf.setUserInfo(nick: nick, host: "\(user)@\(host)", isIrcOp: flags.contains("*"))
+            }
+        case "315": // RPL_ENDOFWHO — nothing to print
+            break
         case "329": // RPL_CREATIONTIME — ignore
             break
         case "303": // RPL_ISON: trailing param = space-separated online nicks

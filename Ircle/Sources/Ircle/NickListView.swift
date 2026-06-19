@@ -67,7 +67,7 @@ struct NickListView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(buffer.users) { user in
                     NickRow(user: user, palette: palette,
-                            selected: user.nick == selectedNick)
+                            selected: user.nick == selectedNick, showDetails: isClassic)
                         .onTapGesture { selectedNick = user.nick }
                         .contextMenu { nickMenu(for: user.nick) }
                 }
@@ -263,6 +263,8 @@ struct NickRow: View {
     let user: IrcleUser
     let palette: PlatinumPalette
     let selected: Bool
+    /// Classic style surfaces the WHO-derived IRCop marker.
+    var showDetails: Bool = false
 
     private var prefixColor: Color {
         switch user.prefix.first {
@@ -284,11 +286,18 @@ struct NickRow: View {
                 .font(palette.chromeFont())
                 .foregroundColor(selected ? .white : palette.chromeText)
                 .lineLimit(1)
+            if showDetails && user.isIrcOp {
+                Text("✪")
+                    .font(palette.chromeFont(10))
+                    .foregroundColor(palette.serverText)
+                    .help("IRC operator")
+            }
             Spacer()
         }
         .padding(.horizontal, 6).padding(.vertical, 1)
         .background(selected ? palette.selection : .clear)
         .contentShape(Rectangle())
+        .help(user.host ?? user.nick)   // hostname tooltip once WHO replies
     }
 }
 
