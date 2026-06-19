@@ -2,6 +2,29 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.4.0 — 2026-06-18
+
+### Added
+
+- **Multi-server** — connect to several IRC networks at once (classic Ircle
+  did up to ten), each its own `IrcleSession`. `IrcleModel` went from one
+  `session` to `[IrcleSession]`:
+  - The **Channelbar groups buffers by server**, with a thin divider between
+    networks; selecting any buffer switches context.
+  - Selection, **per-session focus** (background servers keep accruing unread),
+    input routing, and buffer-close all resolve to the buffer's owning session.
+  - Connecting the same saved profile twice **focuses the existing session**
+    (and reconnects it if dropped) instead of duplicating it.
+  - Closing a **server buffer** disconnects and removes that whole connection.
+- **Multi-server Settings** — the "Servers" tab is now a list (add / remove /
+  duplicate) plus a per-server editor, a connected indicator, and per-server
+  Connect/Disconnect.
+- A **Servers menu** listing every saved profile ("Connect to …") plus
+  "Disconnect Current". The status bar shows a "*N* servers" badge when more
+  than one is open.
+- 7 model tests (open multiple, dedup per profile, selection+focus tracking,
+  owner lookup, remove/reselect, close-server-removes-session, input routing).
+
 ## 0.3.0 — 2026-06-18
 
 ### Added

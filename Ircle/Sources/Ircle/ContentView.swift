@@ -55,9 +55,18 @@ struct Channelbar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                ForEach(model.buffers) { buffer in
-                    ChannelbarButton(buffer: buffer, palette: palette,
-                                     selected: buffer.id == model.selectedBufferID)
+                // One group per connected server. A thin divider separates
+                // servers so multiple networks read as distinct strips.
+                ForEach(Array(model.sessions.enumerated()), id: \.element.id) { index, session in
+                    if index > 0 {
+                        Rectangle().fill(palette.hairline)
+                            .frame(width: 1, height: 20)
+                            .padding(.horizontal, 2)
+                    }
+                    ForEach(session.buffers) { buffer in
+                        ChannelbarButton(buffer: buffer, palette: palette,
+                                         selected: buffer.id == model.selectedBufferID)
+                    }
                 }
             }
             .padding(.horizontal, 6)
@@ -106,7 +115,9 @@ struct ChannelbarButton: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            if buffer.kind != .server {
+            if buffer.kind == .server {
+                Button("Disconnect & Close") { model.closeBuffer(buffer) }
+            } else {
                 Button("Close") { model.closeBuffer(buffer) }
             }
         }
@@ -153,7 +164,7 @@ struct StatusBar: View {
     let palette: PlatinumPalette
 
     private var stateText: String {
-        guard let s = model.session else { return "Not connected" }
+        guard let s = model.selectedSession else { return "Not connected" }
         switch s.state {
         case .disconnected: return "Disconnected"
         case .connecting:   return "Connecting…"
@@ -163,17 +174,23 @@ struct StatusBar: View {
     }
 
     var body: some View {
+        let session = model.selectedSession
         HStack(spacing: 10) {
             Circle()
-                .fill(model.session?.isConnected == true ? palette.joinText : palette.partText)
+                .fill(session?.isConnected == true ? palette.joinText : palette.partText)
                 .frame(width: 8, height: 8)
             Text(stateText).font(palette.chromeFont())
-            if let nick = model.session?.nick {
+            if let nick = session?.nick {
                 Text("•").foregroundColor(palette.timestamp)
                 Text(nick).font(palette.chromeFontBold())
             }
+            if model.sessions.count > 1 {
+                Text("•").foregroundColor(palette.timestamp)
+                Text("\(model.sessions.count) servers").font(palette.chromeFont())
+                    .foregroundColor(palette.timestamp)
+            }
             Spacer()
-            if let host = model.session?.displayName {
+            if let host = session?.displayName {
                 Text(host).font(palette.chromeFont()).foregroundColor(palette.timestamp)
             }
         }

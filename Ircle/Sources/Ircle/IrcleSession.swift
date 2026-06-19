@@ -30,15 +30,20 @@ final class IrcleSession: ObservableObject, Identifiable {
     private let client = IRCClient()
     private var config: IRCConnectionConfig
     let displayName: String
+    /// The saved `ServerProfile` this session was started from, so the model
+    /// can avoid opening a duplicate session for the same profile.
+    let profileID: UUID?
     /// Channels to JOIN automatically once registration completes (RPL_WELCOME).
     private let autoJoinChannels: [String]
 
     private static let maxRawLines = 2_000
 
-    init(config: IRCConnectionConfig, displayName: String, autoJoin: [String] = []) {
+    init(config: IRCConnectionConfig, displayName: String,
+         autoJoin: [String] = [], profileID: UUID? = nil) {
         self.config = config
         self.displayName = displayName
         self.autoJoinChannels = autoJoin
+        self.profileID = profileID
         self.nick = config.nick
         let srv = IrcleBuffer(kind: .server, name: displayName)
         self.serverBuffer = srv

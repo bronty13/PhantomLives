@@ -27,11 +27,18 @@ struct IrcleApp: App {
             CommandGroup(after: .appInfo) {
                 Button("Connect") { model.connectDefault() }
                     .keyboardShortcut("k", modifiers: [.command])
-                Button("Disconnect") { model.disconnect() }
+                Button("Disconnect") { model.disconnectSelected() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
             }
             CommandGroup(after: .toolbar) {
                 FacesMenuItem()
+            }
+            CommandMenu("Servers") {
+                ForEach(settingsStore.settings.servers) { profile in
+                    Button("Connect to \(profile.name)") { model.connect(to: profile) }
+                }
+                Divider()
+                Button("Disconnect Current") { model.disconnectSelected() }
             }
         }
 

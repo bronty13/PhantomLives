@@ -2,22 +2,26 @@ import Foundation
 import Combine
 import IRCKit
 
-/// Top-level app store. For the MVP it drives a single `IrcleSession`, owns the
-/// selected buffer, routes the input line to a command or a message, and runs
-/// the launch-time backup. Multi-session support slots in by promoting
-/// `session` to an array.
+/// Top-level app store. Owns the open IRC connections (one `IrcleSession` per
+/// server — classic Ircle did up to ten), the selected buffer across all of
+/// them, input routing, and the launch-time backup.
 @MainActor
 final class IrcleModel: ObservableObject {
-    @Published var session: IrcleSession?
+    @Published private(set) var sessions: [IrcleSession] = []
     @Published var selectedBufferID: UUID?
 
     let settingsStore: SettingsStore
-    private var cancellables: Set<AnyCancellable> = []
+    /// One republish subscription per session, keyed by identity so it can be
+    /// torn down when a session is removed.
+    private var subs: [ObjectIdentifier: AnyCancellable] = [:]
 
-    init(settingsStore: SettingsStore) {
+    init(settingsStore: SettingsStore, runLaunchBackup: Bool = true) {
         self.settingsStore = settingsStore
         // Repo standard: auto-backup on launch (before we touch live data much).
-        BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
+        // Tests pass `false` so they don't zip Application Support into Downloads.
+        if runLaunchBackup {
+            BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
+        }
     }
 
     // MARK: - Connection
@@ -28,60 +32,103 @@ final class IrcleModel: ObservableObject {
         connect(to: profile)
     }
 
-    func connect(to profile: ServerProfile) {
-        // Tear down any prior session.
-        session?.disconnect()
-        cancellables.removeAll()
-
-        let s = IrcleSession(config: profile.makeConfig(),
-                             displayName: profile.name,
-                             autoJoin: profile.autoJoin)
-        // Re-publish the session's changes so SwiftUI views observing the model
-        // refresh when buffers/lines mutate.
-        s.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
-
-        session = s
-        selectedBufferID = s.serverBuffer.id
-        s.focusedBuffer = s.serverBuffer
-        s.connect()
+    /// Open (or focus) a connection for `profile`. If a session for this profile
+    /// already exists it is selected — and reconnected if it had dropped —
+    /// rather than duplicated.
+    @discardableResult
+    func connect(to profile: ServerProfile) -> IrcleSession {
+        openSession(for: profile, autoConnect: true)
     }
 
-    func disconnect() {
-        session?.disconnect()
+    /// Create or focus a session for `profile`. `autoConnect: false` registers
+    /// the session without opening a socket (used by tests).
+    @discardableResult
+    func openSession(for profile: ServerProfile, autoConnect: Bool = true) -> IrcleSession {
+        if let existing = sessions.first(where: { $0.profileID == profile.id }) {
+            select(existing.serverBuffer)
+            if autoConnect && !existing.isConnected { existing.connect() }
+            return existing
+        }
+        let s = IrcleSession(config: profile.makeConfig(),
+                             displayName: profile.name,
+                             autoJoin: profile.autoJoin,
+                             profileID: profile.id)
+        // Re-publish the session's changes so SwiftUI views observing the model
+        // refresh when buffers/lines mutate.
+        subs[ObjectIdentifier(s)] = s.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+        sessions.append(s)
+        select(s.serverBuffer)
+        if autoConnect { s.connect() }
+        return s
+    }
+
+    /// Disconnect the session that owns the selected buffer (keeps it in the
+    /// list so it can be reconnected).
+    func disconnectSelected() {
+        selectedSession?.disconnect()
+    }
+
+    /// Disconnect and remove a whole session (e.g. closing its server buffer).
+    func removeSession(_ session: IrcleSession) {
+        session.disconnect()
+        subs[ObjectIdentifier(session)] = nil
+        let wasSelected = selectedSession === session
+        sessions.removeAll { $0 === session }
+        if wasSelected {
+            if let next = sessions.last { select(next.serverBuffer) }
+            else { selectedBufferID = nil }
+        }
     }
 
     // MARK: - Selection
 
-    var buffers: [IrcleBuffer] { session?.buffers ?? [] }
+    /// All buffers across every session, in session order.
+    var allBuffers: [IrcleBuffer] { sessions.flatMap { $0.buffers } }
+
+    /// The session that owns `buffer`, if any.
+    func session(for buffer: IrcleBuffer) -> IrcleSession? {
+        sessions.first { session in session.buffers.contains { $0.id == buffer.id } }
+    }
+
+    /// The session that owns the currently-selected buffer.
+    var selectedSession: IrcleSession? {
+        guard let id = selectedBufferID else { return sessions.first }
+        return sessions.first { session in session.buffers.contains { $0.id == id } }
+    }
 
     var selectedBuffer: IrcleBuffer? {
-        guard let id = selectedBufferID else { return session?.serverBuffer }
-        return session?.buffers.first { $0.id == id } ?? session?.serverBuffer
+        guard let id = selectedBufferID else { return sessions.first?.serverBuffer }
+        return allBuffers.first { $0.id == id }
     }
 
     func select(_ buffer: IrcleBuffer) {
         selectedBufferID = buffer.id
         buffer.clearUnread()
-        session?.focusedBuffer = buffer
+        // Only the owning session focuses this buffer; every other session has
+        // no focused buffer, so background activity still accrues unread counts.
+        let owner = session(for: buffer)
+        for s in sessions { s.focusedBuffer = (s === owner) ? buffer : nil }
     }
 
     func closeBuffer(_ buffer: IrcleBuffer) {
-        guard let session else { return }
+        guard let session = session(for: buffer) else { return }
+        // Closing a server buffer tears down the whole connection.
+        if buffer.kind == .server {
+            removeSession(session)
+            return
+        }
         let wasSelected = buffer.id == selectedBufferID
         session.closeBuffer(buffer)
-        if wasSelected {
-            let target = session.buffers.last ?? session.serverBuffer
-            select(target)
-        }
+        if wasSelected { select(session.buffers.last ?? session.serverBuffer) }
     }
 
     // MARK: - Input routing
 
-    /// Send whatever the user typed in the input bar of `buffer`.
+    /// Send whatever the user typed in the input bar of `buffer`, to the session
+    /// that owns it.
     func submitInput(_ text: String, in buffer: IrcleBuffer) {
-        guard let session else { return }
+        guard let session = session(for: buffer) else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if trimmed.hasPrefix("/") && !trimmed.hasPrefix("//") {

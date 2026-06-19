@@ -80,13 +80,12 @@ struct NickListView: View {
     }
 
     private func openQuery(_ nick: String) {
-        guard let session = model.session else { return }
-        let buf = session.ensureQuery(nick)
-        model.select(buf)
+        guard let session = model.session(for: buffer) else { return }
+        model.select(session.ensureQuery(nick))
     }
 
     private func send(_ raw: String) {
-        model.session?.runCommand("/\(raw)", in: buffer)
+        model.session(for: buffer)?.runCommand("/\(raw)", in: buffer)
     }
 }
 

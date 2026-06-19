@@ -16,7 +16,8 @@ The classic single-window arrangement, consolidated and resizable:
 
 - **Channelbar** — the signature horizontal strip of beveled buffer buttons
   (server console, channels `#`, queries `@`), with unread badges and mention
-  highlighting.
+  highlighting. With **multiple servers** connected, buffers are grouped by
+  network with a divider between them.
 - **Topic bar** — the channel topic, in an inset Platinum well.
 - **Message area** — monospaced (Monaco), colored by line kind the way Ircle
   did: blue server/MOTD text, purple topics/actions, green joins, etc. Message
@@ -37,6 +38,8 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 
 ## Features
 
+- **Multiple servers at once** — each network is its own session; manage saved
+  servers in Settings → Servers, connect from the Servers menu.
 - TLS, SASL (PLAIN / EXTERNAL), server password, and SOCKS5 / HTTP-CONNECT
   proxies — all via IRCKit's IRCv3-aware engine (CAP negotiation, `server-time`,
   `echo-message`, `account-tag`, …).
@@ -54,7 +57,7 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (41 tests: backup, buffers, dispatch, mIRC rendering, faces)
+./run-tests.sh        # swift-testing (48 tests: backup, buffers, dispatch, mIRC, faces, multi-server)
 swift build           # debug build
 ```
 
@@ -69,10 +72,10 @@ package (a local SwiftPM path dependency).
 
 ## Status & roadmap
 
-Working: connect, join, chat, queries, nick list, mIRC color/formatting
-rendering, the Faces window (per-user avatars), the Platinum/Graphite themes,
-backup. Planned: a multi-server Connections manager, Keychain-backed
-credentials, optional Sparkle auto-update, and AppleScript.
+Working: connect, multiple servers at once, join, chat, queries, nick list,
+mIRC color/formatting rendering, the Faces window (per-user avatars), the
+Platinum/Graphite themes, backup. Planned: Keychain-backed credentials,
+optional Sparkle auto-update, and AppleScript.
 
 ## Naming
 

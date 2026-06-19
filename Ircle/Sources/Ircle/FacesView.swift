@@ -127,12 +127,12 @@ private struct FaceCell: View {
     }
 
     private func openQuery() {
-        guard let session = model.session else { return }
+        guard let session = model.selectedSession else { return }
         model.select(session.ensureQuery(user.nick))
     }
 
     private func whois() {
         guard let buffer = model.selectedBuffer else { return }
-        model.session?.runCommand("/whois \(user.nick)", in: buffer)
+        model.selectedSession?.runCommand("/whois \(user.nick)", in: buffer)
     }
 }
