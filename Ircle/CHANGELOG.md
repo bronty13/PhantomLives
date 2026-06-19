@@ -6,14 +6,16 @@ All notable changes to Ircle are documented here.
 
 ### Added
 
-- **In-app manual** (**Help → Ircle Manual**, ⌘?). A detailed, themed document
-  covering the **history of the original Ircle** (Olaf Titz's 1993 GPL Pascal →
-  Onno Tijdgat's 3.x → the final 3.5a6), the **research findings** about the
-  original's menus/windows/prefs/DCC/scripting, a full **feature reference** for
-  this app, and how it differs from the original. Rendered by a small,
+- **In-app manual** (**Help → Ircle Manual**, ⌘?). A comprehensive, themed
+  document: a getting-started walkthrough, per-feature how-tos (servers, nick
+  list, DCC, sounds, logging, ignore, aliases, …), a **full slash-command
+  reference**, **keyboard shortcuts**, a **settings reference**, **where Ircle
+  stores files**, a **troubleshooting/FAQ**, plus the **history of the original
+  Ircle** (Olaf Titz's 1993 GPL Pascal → Onno Tijdgat's 3.x → the final 3.5a6)
+  and the **research findings** about the original's menus/windows/prefs/DCC/
+  scripting (with provenance), and how this app differs. Rendered by a small,
   dependency-free in-house Markdown reader (`MarkdownParser` + `ManualView`,
-  themed to match the app); the manual ships as `Resources/Manual.md`. 9 parser
-  tests.
+  themed to match the app); ships as `Resources/Manual.md`. 9 parser tests.
 
 ## 0.23.0 — 2026-06-19
 
