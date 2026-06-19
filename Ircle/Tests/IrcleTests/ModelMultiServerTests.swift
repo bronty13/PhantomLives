@@ -37,10 +37,12 @@ struct ModelMultiServerTests {
     @Test func sameProfileIsNotDuplicated() {
         let m = makeModel()
         let p = profile("Libera", host: "irc.libera.chat")
-        let a = m.openSession(for: p, autoConnect: false)
+        _ = m.openSession(for: p, autoConnect: false)
         let b = m.openSession(for: p, autoConnect: false)
-        #expect(a === b)
+        // No duplicate accumulates. (A not-connected session is rebuilt rather
+        // than reused, so the latest instance is the one that survives.)
         #expect(m.sessions.count == 1)
+        #expect(m.sessions.first === b)
     }
 
     @Test func selectionAndFocusTrackTheOwningSession() {
@@ -88,6 +90,23 @@ struct ModelMultiServerTests {
         m.closeBuffer(s2.serverBuffer)
         #expect(m.sessions.count == 1)
         #expect(!m.sessions.contains { $0 === s2 })
+    }
+
+    @Test func reconnectAfterEditRebuildsFromUpdatedProfile() {
+        // A not-connected session must be replaced when the profile is edited,
+        // so the new host/port/nick take effect (the stale-config bug: editing
+        // the port still reconnected to the old one).
+        let m = makeModel()
+        var p = profile("Undernet", host: "irc.undernet.org")
+        let s1 = m.openSession(for: p, autoConnect: false)
+        #expect(s1.displayName == "Undernet")
+
+        p.name = "Undernet (plain)"            // same id, edited profile
+        let s2 = m.openSession(for: p, autoConnect: false)
+        #expect(s2 !== s1)                      // stale session dropped
+        #expect(m.sessions.count == 1)          // not duplicated
+        #expect(s2.displayName == "Undernet (plain)")   // new profile applied
+        #expect(s2.serverBuffer.name == "Undernet (plain)")
     }
 
     @Test func inputRoutesToTheBuffersOwnSession() {

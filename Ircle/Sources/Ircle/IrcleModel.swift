@@ -45,9 +45,16 @@ final class IrcleModel: ObservableObject {
     @discardableResult
     func openSession(for profile: ServerProfile, autoConnect: Bool = true) -> IrcleSession {
         if let existing = sessions.first(where: { $0.profileID == profile.id }) {
-            select(existing.serverBuffer)
-            if autoConnect && !existing.isConnected { existing.connect() }
-            return existing
+            // A live connection: just focus it (don't disrupt it).
+            if existing.isConnected {
+                select(existing.serverBuffer)
+                return existing
+            }
+            // Not connected: the session captured its config (host/port/nick/…)
+            // when it was created, so reusing it would reconnect with the OLD
+            // settings even after the user edited the profile. Drop it and fall
+            // through to build a fresh session from the current profile.
+            removeSession(existing)
         }
         let s = IrcleSession(config: profile.makeConfig(),
                              displayName: profile.name,

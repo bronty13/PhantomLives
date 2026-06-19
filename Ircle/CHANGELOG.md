@@ -2,6 +2,18 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.4.3 — 2026-06-18
+
+### Fixed
+
+- **Editing a server's port/host didn't take effect on reconnect.** A session
+  captures its connection config when created; the reconnect path reused the
+  existing (not-connected) session, so it kept dialing the *old* host/port even
+  after you edited the profile — e.g. changing Undernet from 6697 to 6667 still
+  tried 6697. Now a not-connected session is dropped and rebuilt from the
+  current profile on reconnect (a live connection is still just focused, never
+  disrupted). Regression test added.
+
 ## 0.4.2 — 2026-06-18
 
 ### Fixed
