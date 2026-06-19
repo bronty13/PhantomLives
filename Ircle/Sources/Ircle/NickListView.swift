@@ -4,20 +4,32 @@ import SwiftUI
 /// roster and a row of action buttons beneath it.
 struct NickListView: View {
     @EnvironmentObject var model: IrcleModel
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject var buffer: IrcleBuffer
     let palette: PlatinumPalette
     @State private var selectedNick: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header: "#chan: N users"
-            Text("\(buffer.name): \(buffer.users.count) user\(buffer.users.count == 1 ? "" : "s")")
-                .font(palette.chromeFontBold())
-                .foregroundColor(palette.chromeText)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6).padding(.vertical, 4)
-                .background(palette.paneBG)
+            // Header: "#chan: N users" + a Faces-window button.
+            HStack(spacing: 4) {
+                Text("\(buffer.name): \(buffer.users.count) user\(buffer.users.count == 1 ? "" : "s")")
+                    .font(palette.chromeFontBold())
+                    .foregroundColor(palette.chromeText)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Button(action: { openWindow(id: "faces") }) {
+                    Text("Faces").font(palette.chromeFont())
+                        .foregroundColor(palette.chromeText)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .platinumBevel(palette, raised: true)
+                }
+                .buttonStyle(.plain)
+                .help("Open the Faces window")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .background(palette.paneBG)
 
             Divider().overlay(palette.hairline)
 
@@ -93,11 +105,12 @@ struct NickRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 4) {
             Text(user.prefix.isEmpty ? " " : user.prefix)
                 .font(palette.chromeFontBold())
                 .foregroundColor(prefixColor)
-                .frame(width: 10)
+                .frame(width: 8)
+            AvatarView(nick: user.nick, size: 15)
             Text(user.nick)
                 .font(palette.chromeFont())
                 .foregroundColor(selected ? .white : palette.chromeText)

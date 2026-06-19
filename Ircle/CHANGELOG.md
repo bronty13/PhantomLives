@@ -2,6 +2,31 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.3.0 — 2026-06-18
+
+### Added
+
+- **Faces window** — a separate window (like classic Ircle) showing a grid of
+  avatars for the people on the focused channel. Each face is a **locally
+  assigned image** (right-click → Assign Image…, persisted) or a generated
+  **monogram** (deterministic color + initials from the nick — no network art).
+  Per-face actions: Assign/Remove image, Query, Whois; double-click opens a
+  query. Open it with ⌘⇧F, the Window menu, or the "Faces" button in the nick
+  list. Small avatars now also appear beside each name in the nick list.
+- `FaceGraphics` (pure: stable FNV-1a hue + initials), `FacesStore` (nick →
+  image, persisted to `Application Support/Ircle/faces.json` + `Faces/`, so
+  faces ride along in the launch backup), `AvatarView`, `FacesView`.
+- 7 tests (hue determinism + case-folding + range, initials, and the store's
+  assign/copy, reassign-replaces-file, clear, and persist-across-instances).
+
+### Fixed
+
+- Window sizing made robust against SwiftUI's unreliable macOS-14 scene sizing:
+  the `AppDelegate` now grows any window that comes up degenerate (Spacer-driven
+  ~100×110) to a usable size on `didBecomeKey`, guarded by a degeneracy
+  threshold so it never disturbs the Settings window. Covers both the main and
+  Faces windows.
+
 ## 0.2.0 — 2026-06-18
 
 ### Added

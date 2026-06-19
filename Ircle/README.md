@@ -22,6 +22,10 @@ The classic single-window arrangement, consolidated and resizable:
   did: blue server/MOTD text, purple topics/actions, green joins, etc. Message
   bodies render **mIRC formatting** — bold/italic/underline/strikethrough, the
   16-color palette, and IRCv3 hex colors.
+- **Faces window** — a separate window with a grid of per-user avatars
+  (assigned image or generated monogram), opened with ⌘⇧F / the Window menu /
+  the nick-list "Faces" button. Small avatars also show beside names in the
+  nick list.
 - **Nick list** — the right-hand "*N* users" roster with mode prefixes and a
   row of action buttons (Query / Whois / Op / DeOp).
 - **Input line** — formatting buttons (B/I/U), a "talking to …" status, and
@@ -50,7 +54,7 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (34 tests: backup, buffers, dispatch, mIRC rendering)
+./run-tests.sh        # swift-testing (41 tests: backup, buffers, dispatch, mIRC rendering, faces)
 swift build           # debug build
 ```
 
@@ -66,8 +70,8 @@ package (a local SwiftPM path dependency).
 ## Status & roadmap
 
 Working: connect, join, chat, queries, nick list, mIRC color/formatting
-rendering, the Platinum/Graphite themes, backup. Planned: the Faces window
-(per-user avatars), a multi-server Connections manager, Keychain-backed
+rendering, the Faces window (per-user avatars), the Platinum/Graphite themes,
+backup. Planned: a multi-server Connections manager, Keychain-backed
 credentials, optional Sparkle auto-update, and AppleScript.
 
 ## Naming
