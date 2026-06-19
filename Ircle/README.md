@@ -10,6 +10,10 @@ the shared **[IRCKit](../IRCKit)** wire engine.
 > from observation — no GPL Pascal lifted, no proprietary art/fonts/resources
 > copied. It uses macOS's own Monaco/Geneva fonts for the period feel.
 
+A full **in-app manual** (Help → Ircle Manual, ⌘?) covers usage, the command
+reference, troubleshooting, and the history/research behind the app; it ships as
+[`Resources/Manual.md`](Resources/Manual.md).
+
 ## What it looks like
 
 The classic single-window arrangement, consolidated and resizable:
@@ -17,54 +21,68 @@ The classic single-window arrangement, consolidated and resizable:
 - **Channelbar** — the signature horizontal strip of beveled buffer buttons
   (server console, channels `#`, queries `@`), with unread badges and mention
   highlighting. With **multiple servers** connected, buffers are grouped by
-  network with a divider between them.
+  network.
 - **Topic bar** — the channel topic, in an inset Platinum well.
-- **Message area** — monospaced (Monaco), colored by line kind the way Ircle
-  did: blue server/MOTD text, purple topics/actions, green joins, etc. Message
-  bodies render **mIRC formatting** — bold/italic/underline/strikethrough, the
-  16-color palette, and IRCv3 hex colors.
-- **Faces window** — a separate window with a grid of per-user avatars
-  (assigned image or generated monogram), opened with ⌘⇧F / the Window menu /
-  the nick-list "Faces" button. Small avatars also show beside names in the
-  nick list.
-- **Nick list** — the right-hand "*N* users" roster with mode prefixes and a
-  row of action buttons (Query / Whois / Op / DeOp).
-- **Input line** — formatting buttons (B/I/U), a "talking to …" status, and
-  the field. Return sends; `/commands` supported.
-- **Status bar** — connection state, your nick, the server.
+- **Message area** — monospaced (Monaco), colored by line kind; bodies render
+  **mIRC formatting** (bold/italic/underline/strikethrough, the 16-color palette,
+  hex colors), kept legible against the background, with **clickable links**.
+- **Nick list** — the right-hand roster with mode prefixes, avatars, and
+  WHO-derived **hostnames** (hover) + **IRCop** markers; right-click for Query /
+  Whois / DCC / Ignore.
+- **Faces window** — per-user avatars (assigned image or generated monogram),
+  ⌘⇧F.
+- **Input line** + **status bar**.
 
-Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
-**Graphite** (a modern dark variant). Toggle in Settings → Appearance.
+Two themes — **Platinum** (light, default) and **Graphite** (dark) — plus
+**custom text/background colours** (Settings → Appearance).
+
+### Clean vs Classic
+A **Clean / Classic** interface toggle (Settings → Interface). Clean is minimal;
+**Classic** surfaces the dense original-Ircle cockpit: the nick-list action grid
+(Op/DeOp/Whois, Kick/Ban/BanKick, Msg/Cping/Query), the one-click channel-mode
+toggle row (`t n i p s m l k r`), the Users/Notify tabs, and the input
+formatting toolbar (B/I/U/S + a 16-colour menu).
 
 ## Features
 
-- **Multiple servers at once** — each network is its own session; manage saved
-  servers in Settings → Servers, connect from the Servers menu. Ships a built-in
-  list of common networks (Libera, OFTC, Undernet, DALnet, Rizon, …) with
-  network-correct TLS defaults; "Add Common Servers" pulls in any you're missing.
-- TLS, SASL (PLAIN / EXTERNAL), server password, and SOCKS5 / HTTP-CONNECT
-  proxies — all via IRCKit's IRCv3-aware engine (CAP negotiation, `server-time`,
-  `echo-message`, `account-tag`, …).
-- Channels, queries, auto-join, nick list with op/voice ranking, topic
-  tracking, CTCP (VERSION/PING/TIME + `/me` actions), PING/PONG keepalive.
-- mIRC formatting rendering (colors, bold/italic/underline/strike, hex colors).
-- Slash commands: `/join /part /msg /query /me /nick /topic /whois /quit /raw`
-  (anything else is passed through to the server).
-- **AppleScript** — `connect`, `join channel "#x"`, `say "…" [to "#x"|"nick"]`,
-  `current nickname` (e.g. `tell application "Ircle" to say "hi" to "#ircle"`).
-- **Passwords stored in the macOS Keychain** (device-only), never in
-  `settings.json`; legacy plaintext is migrated out automatically.
-- Auto-backup-on-launch of your settings (server profiles, appearance) —
-  `~/Downloads/Ircle backup/`, 14-day retention. Full Settings → Backup UI
-  (run now, test, restore, reveal). (Passwords live in the Keychain, so they're
-  not in the backup zip.)
+- **Multiple servers at once** — each network its own session; saved profiles in
+  Settings → Servers; a built-in list of common networks (Libera, OFTC, …) with
+  correct TLS defaults.
+- **Engine:** TLS, SASL (PLAIN/EXTERNAL), server password, SOCKS5/HTTP-CONNECT
+  proxies, full IRCv3 CAP negotiation — via IRCKit.
+- **Conversations:** channels, queries, auto-join, op/voice-ranked nick list,
+  topic tracking, CTCP (VERSION/PING/TIME + `/me`).
+- **DCC** — accept **and** initiate, files **and** chat. Right-click → Send
+  File… / Start DCC Chat (or `/dcc send|chat`); a DCC Transfers window (⌘⇧D) with
+  progress; downloads to `~/Downloads/Ircle/DCC/`. Security-hardened
+  (SSRF-validated peer addresses, path-traversal-safe filenames).
+- **Notify (friends) list** — `/notify`; online dots in the Classic Notify tab
+  (ISON-polled).
+- **Ignore** — `/ignore` (or right-click) with hostmask wildcards; drops
+  messages/CTCP/DCC from matches.
+- **Sounds** — CTCP sounds + per-event sounds (mention/PM/join/part) from
+  `~/Downloads/Ircle/Sounds/`.
+- **Logging** — opt-in transcripts to `~/Downloads/Ircle/Logs/`, with an in-app
+  log viewer (⌘⇧L).
+- **macOS notifications** for mentions & private messages.
+- **Command aliases** — `/alias j /join`, with `$1`/`$2-`/`$*` templates.
+- **`/away`**, **custom colours**, **in-app manual** (⌘?).
+- **AppleScript** — `connect`, `join`, `say [to …]`, `current nickname`.
+- **Passwords in the macOS Keychain** (device-only); **auto-backup-on-launch**;
+  **Sparkle 2** auto-update (notarized + stapled).
+
+### Slash commands
+`/join` (`/j`) `/part` (`/leave`) `/msg` `/query` `/me` `/nick` `/topic`
+`/whois` `/away` `/quit` `/raw` (`/quote`) `/sound` `/notify` `/ignore`
+(`/unignore`) `/dcc chat|send` `/alias` (`/unalias`) — anything else is passed to
+the server; prefix a literal message with `//`.
 
 ## Build / run / test
 
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (59 tests: backup, buffers, dispatch, mIRC, faces, multi-server, presets, credentials)
+./run-tests.sh        # swift-testing (135 tests)
 swift build           # debug build
 ```
 
@@ -74,15 +92,23 @@ package (a local SwiftPM path dependency).
 ## Default locations
 
 - Settings / config: `~/Library/Application Support/Ircle/settings.json`
+- Passwords: macOS **Keychain** (device-only)
+- DCC downloads: `~/Downloads/Ircle/DCC/`
+- Sounds (you provide): `~/Downloads/Ircle/Sounds/`
+- Chat logs: `~/Downloads/Ircle/Logs/<network>/<channel>.log`
 - Backups: `~/Downloads/Ircle backup/`
-- User-visible output (logs, future DCC): `~/Downloads/Ircle/`
 
 ## Status & roadmap
 
-Working: connect, multiple servers at once, join, chat, queries, nick list,
-mIRC color/formatting rendering, the Faces window (per-user avatars), the
-Platinum/Graphite themes, Keychain-backed passwords, AppleScript, Sparkle
-auto-update, backup. See `RELEASING.md` for cutting a release.
+A full-featured client: multi-server, channels/queries, mIRC rendering, DCC
+(files + chat, both directions), logging, notifications, ignore, sounds,
+aliases, custom colours, the Clean/Classic interface, and an in-app manual.
+See `RELEASING.md` for cutting a release.
+
+**Not yet built (deliberately, as future projects):** a full **AppleScript
+host** (the original's scripting object model + event handlers + `/load`), and
+**networked faces** (the original's CTCP/PICT face exchange — current Faces are
+local avatars).
 
 ## Naming
 
