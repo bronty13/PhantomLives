@@ -22,6 +22,8 @@ final class IrcleModel: ObservableObject {
         if runLaunchBackup {
             BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
         }
+        // Let AppleScript commands reach the live model.
+        IrcleAppleScriptBridge.register(host: self)
     }
 
     // MARK: - Connection

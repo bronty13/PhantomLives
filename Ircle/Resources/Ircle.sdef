@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Ircle Terminology" xmlns:xi="http://www.w3.org/2003/XInclude">
+    <suite name="Ircle Suite" code="IRCL"
+           description="Control Ircle from AppleScript.">
+
+        <command name="connect" code="IRCLcnct"
+                 description="Connect to the default (first) saved server.">
+            <cocoa class="IrcleConnectCommand"/>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="join channel" code="IRCLjoin"
+                 description="JOIN a channel on the active server.">
+            <cocoa class="IrcleJoinCommand"/>
+            <direct-parameter description="Channel name (with or without a leading #)."
+                              type="text"/>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="say" code="IRCLsayy"
+                 description="Send a message to a channel/user, or to the active conversation.">
+            <cocoa class="IrcleSayCommand"/>
+            <direct-parameter description="Message body." type="text"/>
+            <parameter name="to" code="targ" type="text" optional="yes"
+                       description="Channel (e.g. #ircle) or nickname. Defaults to the active conversation.">
+                <cocoa key="target"/>
+            </parameter>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="current nickname" code="IRCLnick"
+                 description="Return your current nickname on the active server.">
+            <cocoa class="IrcleCurrentNickCommand"/>
+            <result type="text" description="The current nickname."/>
+        </command>
+
+    </suite>
+</dictionary>

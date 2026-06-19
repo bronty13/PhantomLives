@@ -44,6 +44,13 @@ ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
 swift Scripts/generate-icon.swift "$ICONSET_DIR" >/dev/null
 iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns"
 
+# AppleScript dictionary: the .sdef declares the verbs the OS routes to the
+# NSScriptCommand subclasses in AppleScriptCommands.swift. Paired with
+# NSAppleScriptEnabled + OSAScriptingDefinition in Info.plist below.
+if [ -f "Resources/Ircle.sdef" ]; then
+    cp "Resources/Ircle.sdef" "$RESOURCES/Ircle.sdef"
+fi
+
 # HEREDOC without a quoted tag so $SHORT_VERSION / $BUILD_NUMBER expand.
 # CFBundleIconFile is baked directly into the heredoc (avoids the silent-Set
 # PlistBuddy gotcha — see docs/app-icon-standard.md).
@@ -64,6 +71,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSAppleScriptEnabled</key><true/>
+    <key>OSAScriptingDefinition</key><string>Ircle.sdef</string>
 </dict>
 </plist>
 PLIST

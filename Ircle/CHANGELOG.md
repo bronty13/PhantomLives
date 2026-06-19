@@ -2,6 +2,21 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.7.0 — 2026-06-18
+
+### Added
+
+- **AppleScript support.** A scripting dictionary (`Resources/Ircle.sdef`) with
+  four commands — `connect`, `join channel "#x"`, `say "text" [to "#x"|"nick"]`,
+  and `current nickname` — implemented as `NSScriptCommand` subclasses
+  (`AppleScriptCommands.swift`) that reach the live `IrcleModel` via a weak
+  bridge registered at launch. All script input is sanitized through
+  `IRCSanitize.field`. Info.plist gains `NSAppleScriptEnabled` +
+  `OSAScriptingDefinition`; build-app.sh copies the `.sdef` into the bundle.
+  - Note: each command class carries an explicit `@objc(...)` name so Cocoa
+    Scripting can resolve the `.sdef`'s `<cocoa class>` (Swift's mangled names
+    otherwise yield AppleScript error -1717).
+
 ## 0.6.0 — 2026-06-18
 
 ### Changed (security)

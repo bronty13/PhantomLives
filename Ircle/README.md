@@ -50,6 +50,8 @@ Two themes: **Platinum** (classic Mac OS 8/9 light grey, the default) and
 - mIRC formatting rendering (colors, bold/italic/underline/strike, hex colors).
 - Slash commands: `/join /part /msg /query /me /nick /topic /whois /quit /raw`
   (anything else is passed through to the server).
+- **AppleScript** — `connect`, `join channel "#x"`, `say "…" [to "#x"|"nick"]`,
+  `current nickname` (e.g. `tell application "Ircle" to say "hi" to "#ircle"`).
 - **Passwords stored in the macOS Keychain** (device-only), never in
   `settings.json`; legacy plaintext is migrated out automatically.
 - Auto-backup-on-launch of your settings (server profiles, appearance) —
