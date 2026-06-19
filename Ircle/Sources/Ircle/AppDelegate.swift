@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
+        // Ask once for permission to post mention / private-message banners.
+        NotificationService.requestAuthorization()
+
         // SwiftUI's scene sizing (`.defaultSize` / `.frame(minWidth:)` /
         // `.windowResizability`) is unreliable on macOS 14+ — windows can come
         // up at a degenerate ~100×110 frame (greedy Spacers give the content no

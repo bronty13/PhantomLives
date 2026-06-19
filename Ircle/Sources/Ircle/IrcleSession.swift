@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 import IRCKit
 
 /// One IRC connection's worth of session state, built on IRCKit's wire-level
@@ -30,6 +31,10 @@ final class IrcleSession: ObservableObject, Identifiable {
     }
     /// Case-folded nicks from the notify list currently reported online by ISON.
     @Published private(set) var onlineFriends: Set<String> = []
+    /// Whether we're marked /away on this connection (tracked from 305/306).
+    @Published private(set) var isAway = false
+    /// Mirror of `settings.notificationsEnabled`, kept in sync by the model.
+    var notificationsEnabled = true
     private var notifyTimer: Timer?
     /// How often to re-poll friend presence (seconds).
     static let notifyPollInterval: TimeInterval = 45
@@ -382,6 +387,12 @@ final class IrcleSession: ObservableObject, Identifiable {
             let online = (msg.params.last ?? "")
                 .split(separator: " ").map { IRCCase.fold(String($0)) }
             onlineFriends = Set(online)
+        case "305": // RPL_UNAWAY — no longer marked away
+            isAway = false
+            system(serverBuffer, msg.params.last ?? "You are no longer marked as away.")
+        case "306": // RPL_NOWAWAY — now marked away
+            isAway = true
+            system(serverBuffer, msg.params.last ?? "You have been marked as away.")
         case "375", "372", "376", "002", "003", "004", "005", "251", "252",
              "253", "254", "255", "265", "266", "250", "375L":
             line(serverBuffer, .motd, text: msg.params.last ?? "")
@@ -472,6 +483,11 @@ final class IrcleSession: ObservableObject, Identifiable {
             if !rest.isEmpty { client.send(rest) }
         case "WHOIS":
             if !rest.isEmpty { client.send("WHOIS \(rest)") }
+        case "AWAY":
+            // `/away <msg>` marks away; bare `/away` clears it. Server confirms
+            // via 306 (now away) / 305 (no longer away).
+            if rest.isEmpty { client.send("AWAY") }
+            else { client.send("AWAY :\(rest)") }
         default:
             // Unknown command: pass it straight through to the server.
             client.send(line)
@@ -525,7 +541,27 @@ final class IrcleSession: ObservableObject, Identifiable {
     private func line(_ buffer: IrcleBuffer, _ kind: LineKind, sender: String? = nil,
                       text: String, isSelf: Bool = false, isMention: Bool = false) {
         let l = IrcleLine(kind: kind, sender: sender, text: text, isSelf: isSelf, isMention: isMention)
-        buffer.append(l, focused: buffer === focusedBuffer)
+        let focused = buffer === focusedBuffer
+        buffer.append(l, focused: focused)
+        maybeNotify(kind: kind, buffer: buffer, sender: sender, text: text,
+                    isSelf: isSelf, isMention: isMention, focused: focused)
+    }
+
+    /// Post a macOS notification for a mention or a private message that arrives
+    /// while you're not actively looking at it (different buffer, or app in the
+    /// background). Gated on the global setting (mirrored into `notificationsEnabled`).
+    private func maybeNotify(kind: LineKind, buffer: IrcleBuffer, sender: String?,
+                             text: String, isSelf: Bool, isMention: Bool, focused: Bool) {
+        guard notificationsEnabled, kind == .message, !isSelf else { return }
+        let isPM = buffer.kind == .query
+        guard isMention || isPM else { return }
+        // If you're already reading this buffer in the frontmost window, stay quiet.
+        if focused && NSApplication.shared.isActive { return }
+        let who = sender ?? "?"
+        let title = isPM ? "Private message — \(who)" : "\(who) in \(buffer.name)"
+        NotificationService.post(title: title,
+                                 body: IRCText.stripFormatting(text),
+                                 id: "ircle.\(buffer.id.uuidString)")
     }
 
     private func system(_ buffer: IrcleBuffer, _ text: String) {

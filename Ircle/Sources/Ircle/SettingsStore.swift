@@ -140,6 +140,9 @@ struct AppSettings: Codable {
     /// ISON polling and shown in the Classic nick list's Notify tab. Global
     /// across networks; "online" is resolved per-connection.
     var notifyNicks: [String] = []
+    /// Post a macOS notification for mentions / private messages while the
+    /// relevant window isn't focused.
+    var notificationsEnabled: Bool = true
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
@@ -153,7 +156,7 @@ struct AppSettings: Codable {
     var lastBackupAt: String = ""
 
     enum CodingKeys: String, CodingKey {
-        case servers, appearance, interfaceStyle, notifyNicks, showTimestamps, fontSize
+        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -166,6 +169,7 @@ struct AppSettings: Codable {
         appearance = (try? c.decode(IrcleAppearance.self, forKey: .appearance)) ?? .platinum
         interfaceStyle = (try? c.decode(InterfaceStyle.self, forKey: .interfaceStyle)) ?? .clean
         notifyNicks = (try? c.decode([String].self, forKey: .notifyNicks)) ?? []
+        notificationsEnabled = (try? c.decode(Bool.self, forKey: .notificationsEnabled)) ?? true
         showTimestamps = (try? c.decode(Bool.self, forKey: .showTimestamps)) ?? true
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 12
         autoBackupEnabled = (try? c.decode(Bool.self, forKey: .autoBackupEnabled)) ?? true

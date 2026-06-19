@@ -130,7 +130,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Adjustable text/background colours | pref | ✅ | 🟡 | Theme presets, not free colour pickers. |
 | IRC macros (ircII-style) / aliases | cmd | ✅ | ❌ | No user-defined macros/aliases. |
 | Per-event sounds (MP3/AIFF in 3.5) | pref | ✅ | ❌ | |
-| Notifications (Growl in 3.5) | — | ✅ | ❌ → 🆕 | We have none yet; modern target = `UNUserNotificationCenter`. |
+| Notifications (Growl in 3.5) | — | ✅ | ✅ 🆕 | macOS notifications for mentions/PMs; Settings toggle. |
 | Themes | — | (colours only) | ✅ | We exceed the original here (Platinum/Graphite). |
 | Auto-update | — | manual | 🆕 | We add Sparkle. |
 | Credential storage | — | prefs file | 🆕 | We add Keychain. |
@@ -144,11 +144,11 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Built-in server list | pref | ✅ | ✅ | Our presets. |
 | TLS/SSL, SASL, proxy | eng | 🟡 (SSL in 3.5a) | ✅ | Ours via IRCKit (SASL PLAIN/EXTERNAL, SOCKS5/HTTP). |
 | Slash commands | cmd | many | 🟡 | Ours: JOIN/PART/MSG/QUERY/ME/NICK/TOPIC/QUIT/RAW/WHOIS + server passthrough. |
-| `/away` (+ away UI) | cmd | ✅ | ❌ | |
+| `/away` (+ away UI) | cmd | ✅ | ✅ (`/away [msg]`; 305/306 tracked) | |
 | `/ignore` + ignore list | cmd/win | ✅ | ❌ | |
 | Auto-ops | pref | ✅ | ❌ | |
 | Chat logging | eng/win | ✅ | ❌ | |
-| URL handling (clickable links) | eng | ✅ | ❌ | mIRC renderer does not linkify URLs yet. |
+| URL handling (clickable links) | eng | ✅ | ✅ | renderer linkifies URLs (tappable, underlined). |
 
 ---
 

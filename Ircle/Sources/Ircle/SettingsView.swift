@@ -220,6 +220,8 @@ struct AppearanceSettingsView: View {
             }
             Section("Messages") {
                 Toggle("Show timestamps", isOn: $settingsStore.settings.showTimestamps)
+                Toggle("Notify me of mentions & private messages",
+                       isOn: $settingsStore.settings.notificationsEnabled)
                 HStack {
                     Text("Font size")
                     Slider(value: $settingsStore.settings.fontSize, in: 9...18, step: 1)

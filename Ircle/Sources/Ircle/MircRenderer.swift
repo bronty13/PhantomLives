@@ -119,7 +119,30 @@ enum MircRenderer {
                             into: &out)
             }
         }
-        return out
+        return linkified(out)
+    }
+
+    private static let linkDetector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    /// Detect URLs in the rendered text and mark them as tappable `link` runs
+    /// (SwiftUI `Text` opens them via the default browser). Underlined so they
+    /// read as links over the monospaced body.
+    private static func linkified(_ attr: AttributedString) -> AttributedString {
+        guard let linkDetector else { return attr }
+        var attr = attr
+        let plain = String(attr.characters)
+        guard !plain.isEmpty else { return attr }
+        let full = NSRange(plain.startIndex..., in: plain)
+        for m in linkDetector.matches(in: plain, range: full) {
+            guard let url = m.url,
+                  let r = Range(m.range, in: plain),
+                  let lo = AttributedString.Index(r.lowerBound, within: attr),
+                  let hi = AttributedString.Index(r.upperBound, within: attr) else { continue }
+            attr[lo..<hi].link = url
+            attr[lo..<hi].underlineStyle = .single
+        }
+        return attr
     }
 
     /// A plain attributed run (no code parsing) — for client-generated prefixes.

@@ -2,6 +2,19 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.11.0 — 2026-06-19
+
+### Added
+
+- **Clickable links.** URLs in messages are now detected and rendered as
+  tappable, underlined links (open in your browser). Applies in both styles.
+- **macOS notifications** for mentions and private messages that arrive while
+  you're not looking (different buffer, or app in the background). On by default;
+  toggle in Settings → Messages ("Notify me of mentions & private messages").
+  Requests permission once on first launch; coalesces per conversation.
+- **`/away [message]`** marks you away (bare `/away` clears it); the server's
+  305/306 replies update a tracked away state and print confirmation.
+
 ## 0.10.0 — 2026-06-19
 
 ### Added

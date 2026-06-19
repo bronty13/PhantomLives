@@ -14,6 +14,7 @@ final class IrcleModel: ObservableObject {
     /// One republish subscription per session, keyed by identity so it can be
     /// torn down when a session is removed.
     private var subs: [ObjectIdentifier: AnyCancellable] = [:]
+    private var settingsSub: AnyCancellable?
 
     init(settingsStore: SettingsStore, runLaunchBackup: Bool = true) {
         self.settingsStore = settingsStore
@@ -24,6 +25,20 @@ final class IrcleModel: ObservableObject {
         }
         // Let AppleScript commands reach the live model.
         IrcleAppleScriptBridge.register(host: self)
+        // Push per-connection settings (notify list, notification toggle) to
+        // every live session whenever settings change — from the Settings UI,
+        // the Notify tab, or `/notify`. One sync path; guarded so unrelated
+        // settings edits don't trigger spurious ISON re-polls.
+        settingsSub = settingsStore.$settings.sink { [weak self] s in
+            self?.pushPerSessionSettings(s)
+        }
+    }
+
+    private func pushPerSessionSettings(_ s: AppSettings) {
+        for sess in sessions {
+            if sess.notifyNicks != s.notifyNicks { sess.notifyNicks = s.notifyNicks }
+            sess.notificationsEnabled = s.notificationsEnabled
+        }
     }
 
     // MARK: - Connection
@@ -63,6 +78,7 @@ final class IrcleModel: ObservableObject {
                              autoJoin: profile.autoJoin,
                              profileID: profile.id)
         s.notifyNicks = settingsStore.settings.notifyNicks
+        s.notificationsEnabled = settingsStore.settings.notificationsEnabled
         // Re-publish the session's changes so SwiftUI views observing the model
         // refresh when buffers/lines mutate.
         subs[ObjectIdentifier(s)] = s.objectWillChange
@@ -161,18 +177,11 @@ final class IrcleModel: ObservableObject {
         let n = nick.trimmingCharacters(in: .whitespaces)
         guard !n.isEmpty,
               !settingsStore.settings.notifyNicks.contains(where: { IRCCase.equal($0, n) }) else { return }
-        settingsStore.settings.notifyNicks.append(n)
-        syncNotifyToSessions()
+        settingsStore.settings.notifyNicks.append(n)   // → $settings sink syncs sessions
     }
 
     func removeNotify(_ nick: String) {
         settingsStore.settings.notifyNicks.removeAll { IRCCase.equal($0, nick) }
-        syncNotifyToSessions()
-    }
-
-    /// Push the current notify list into every session (which re-polls ISON).
-    func syncNotifyToSessions() {
-        for s in sessions { s.notifyNicks = settingsStore.settings.notifyNicks }
     }
 
     /// Commands handled by the model itself (they touch global settings / every

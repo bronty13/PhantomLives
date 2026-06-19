@@ -91,6 +91,19 @@ struct MircRendererTests {
         #expect(run?.foregroundColor != Color(red: 1, green: 1, blue: 1))
     }
 
+    @Test func detectsAndLinksURLs() {
+        // A URL in the body becomes a tappable `.link` run (SwiftUI opens it).
+        let attr = MircRenderer.attributed("see https://example.com now",
+                                           size: 12, baseColor: .black)
+        let linked = attr.runs.first { $0.link != nil }
+        #expect(linked?.link == URL(string: "https://example.com"))
+    }
+
+    @Test func plainTextHasNoLink() {
+        let attr = MircRenderer.attributed("no links here", size: 12, baseColor: .black)
+        #expect(attr.runs.allSatisfy { $0.link == nil })
+    }
+
     @Test func plainHelperProducesRequestedColor() {
         let attr = MircRenderer.plain("<bob> ", size: 12, color: Color(red: 0.3, green: 0.2, blue: 0))
         #expect(String(attr.characters) == "<bob> ")
