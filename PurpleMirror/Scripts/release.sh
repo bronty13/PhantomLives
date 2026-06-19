@@ -107,9 +107,42 @@ if [ -n "$NOTARIZE_PROFILE" ]; then
 fi
 
 echo; echo "== Package =="
+# Strip xattrs BEFORE zipping and zip with --norsrc --noextattr. codesign leaves
+# a com.apple.provenance xattr on every bundle file; a plain `ditto -c -k` stores
+# those as AppleDouble (._name) entries in the zip. macOS's own extractors merge
+# and drop them, but `unzip` / various browser/3rd-party extractors leave them as
+# ._Autoupdate, ._Sparkle, … in Sparkle.framework's root, which a clean Mac
+# rejects as "unsealed contents present in the root directory of an embedded
+# framework" (the "could not verify is free of malware" prompt). Stripping xattrs
+# first makes the zip carry no AppleDouble, so EVERY extractor yields a
+# Gatekeeper-valid bundle. The notarization staple is not an xattr and survives.
+# (Incident: Ircle 1.0.979 shipped this; fleet-wide fix.)
 rm -f "$ZIP_PATH"
-ditto -c -k --keepParent "$APP.app" "$ZIP_PATH"
+CLEAN_APP_DIR="$(mktemp -d)/$APP.app"
+ditto --noextattr --norsrc "$APP.app" "$CLEAN_APP_DIR"
+xattr -cr "$CLEAN_APP_DIR" 2>/dev/null || true
+ditto -c -k --keepParent --norsrc --noextattr "$CLEAN_APP_DIR" "$ZIP_PATH"
+rm -rf "$(dirname "$CLEAN_APP_DIR")"
 echo "  Wrote $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"
+
+# Extractor-agnostic gate: a release zip is only good if a NON-Apple extractor
+# also yields a Gatekeeper-valid bundle. Extract with `unzip` and assert no ._*
+# detritus in Frameworks/, a valid staple, and strict codesign.
+echo "  Verifying the zip survives a non-Apple extractor (unzip)…"
+GATE_DIR="$(mktemp -d)"
+( cd "$GATE_DIR" && unzip -q "$ZIP_PATH" ) || die "could not unzip the release zip for verification."
+GATE_APP="$GATE_DIR/$APP.app"
+GATE_DETRITUS="$(find "$GATE_APP/Contents/Frameworks" -name '._*' 2>/dev/null | wc -l | tr -d ' ')"
+[ "$GATE_DETRITUS" = "0" ] || die "release zip leaves $GATE_DETRITUS AppleDouble (._*) file(s) in Frameworks/ after unzip — Gatekeeper will reject this on a clean Mac."
+if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+    xcrun stapler validate "$GATE_APP" >/dev/null 2>&1 \
+        || die "release zip fails stapler validate after unzip — notarization ticket missing."
+fi
+codesign --verify --deep --strict "$GATE_APP" 2>/tmp/pm-gate.err \
+    || die "release zip fails strict codesign after unzip (unsealed-framework failure):
+$(sed 's/^/         /' /tmp/pm-gate.err)"
+rm -rf "$GATE_DIR"
+note "extractor-agnostic gate passed (unzip → no ._* detritus, stapled, strict-valid) ✓"
 SIGN_FRAGMENT="$("$SPARKLE_BIN/sign_update" "$ZIP_PATH" 2>/tmp/pm-sign.err)" \
     || die "sign_update failed — EdDSA private key not in this Mac's Keychain. $(cat /tmp/pm-sign.err 2>/dev/null)"
 note "EdDSA-signed: $SIGN_FRAGMENT"

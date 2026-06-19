@@ -3,6 +3,18 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — release zip is Gatekeeper-clean on any extractor
+
+A plain `ditto -c -k` stored codesign's `com.apple.provenance` xattrs as
+AppleDouble (`._name`) sidecars in the release zip. Apple's own extractors
+discard them, but `unzip` and various browser/third-party extractors leave them
+as `._Autoupdate`, `._Sparkle`, … inside `Sparkle.framework`, which a clean Mac
+rejects as *"unsealed contents present in the root directory of an embedded
+framework"* — the *"Apple could not verify… is free of malware"* prompt.
+`Scripts/release.sh` now strips xattrs and zips with `--norsrc --noextattr`,
+plus a gate that unzips the artifact and fails the release on any `._*` / staple
+/ strict-codesign problem. (Fleet-wide fix; first hit on Ircle 1.0.979.)
+
 ## Unreleased — faster preview hashing (use all cores for JPEG derivatives)
 
 The derivative perceptual pass was capped at 6 concurrent decodes — a cap that

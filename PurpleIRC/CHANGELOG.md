@@ -12,6 +12,22 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [Unreleased]
+
+### Fixed
+
+- **Release zip opens cleanly on any Mac, however it's unzipped.** The release
+  `.zip` was built with a plain `ditto -c -k`, which stores codesign's
+  `com.apple.provenance` xattrs as AppleDouble (`._name`) sidecars. Apple's own
+  extractors discard them, but `unzip` and several browser/third-party
+  extractors leave them as `._Autoupdate`, `._Sparkle`, … inside
+  `Sparkle.framework`, which a clean Mac rejects as *"unsealed contents present
+  in the root directory of an embedded framework"* — the *"Apple could not
+  verify… is free of malware"* prompt. `Scripts/release.sh` now strips xattrs
+  and zips with `--norsrc --noextattr`, and a new gate unzips the artifact and
+  fails the release on any `._*` / staple / strict-codesign problem. (Fleet-wide
+  fix; first hit on Ircle 1.0.979.)
+
 ## [1.0.828] — 2026-06-13
 
 ### Added

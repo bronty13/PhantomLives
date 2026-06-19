@@ -127,11 +127,46 @@ if [ -n "${NOTARIZE_PROFILE:-}" ]; then
     fi
 fi
 
-# Zip the bundle. ditto -c -k --keepParent preserves codesign-friendly
-# attributes; plain `zip` strips xattrs and breaks the signature.
+# Zip the bundle. Strip xattrs BEFORE zipping and zip with --norsrc --noextattr.
+# codesign leaves a com.apple.provenance xattr on every bundle file; a plain
+# `ditto -c -k` stores those as AppleDouble (._name) entries in the zip. macOS's
+# own extractors merge and drop them, but `unzip` / various browser/3rd-party
+# extractors leave them as ._Autoupdate, ._Sparkle, … in Sparkle.framework's
+# root, which a clean Mac rejects as "unsealed contents present in the root
+# directory of an embedded framework" (the "could not verify is free of malware"
+# prompt). Stripping xattrs first makes the zip carry no AppleDouble, so EVERY
+# extractor yields a Gatekeeper-valid bundle. The notarization staple is not an
+# xattr and survives. (Incident: Ircle 1.0.979 shipped this; fleet-wide fix.)
 rm -f "$ZIP_PATH"
-ditto -c -k --keepParent PurpleDedup.app "$ZIP_PATH"
+CLEAN_APP_DIR="$(mktemp -d)/PurpleDedup.app"
+ditto --noextattr --norsrc PurpleDedup.app "$CLEAN_APP_DIR"
+xattr -cr "$CLEAN_APP_DIR" 2>/dev/null || true
+ditto -c -k --keepParent --norsrc --noextattr "$CLEAN_APP_DIR" "$ZIP_PATH"
+rm -rf "$(dirname "$CLEAN_APP_DIR")"
 echo "Wrote $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"
+
+# Extractor-agnostic gate: a release zip is only good if a NON-Apple extractor
+# also yields a Gatekeeper-valid bundle. Extract with `unzip` and assert no ._*
+# detritus in Frameworks/, a valid staple, and strict codesign.
+echo "Verifying the zip survives a non-Apple extractor (unzip)…"
+GATE_DIR="$(mktemp -d)"
+if ! ( cd "$GATE_DIR" && unzip -q "$ZIP_PATH" ); then
+    echo "FATAL: could not unzip the release zip for verification." >&2; exit 1
+fi
+GATE_APP="$GATE_DIR/PurpleDedup.app"
+GATE_DETRITUS="$(find "$GATE_APP/Contents/Frameworks" -name '._*' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$GATE_DETRITUS" != "0" ]; then
+    echo "FATAL: release zip leaves $GATE_DETRITUS AppleDouble (._*) file(s) in Frameworks/ after unzip — Gatekeeper will reject this on a clean Mac." >&2; exit 1
+fi
+if [ -n "${NOTARIZE_PROFILE:-}" ] && ! xcrun stapler validate "$GATE_APP" >/dev/null 2>&1; then
+    echo "FATAL: release zip fails stapler validate after unzip — notarization ticket missing." >&2; exit 1
+fi
+if ! codesign --verify --deep --strict "$GATE_APP" 2>/tmp/pd-gate.err; then
+    echo "FATAL: release zip fails strict codesign after unzip (unsealed-framework failure):" >&2
+    sed 's/^/         /' /tmp/pd-gate.err >&2; exit 1
+fi
+rm -rf "$GATE_DIR"
+echo "Extractor-agnostic gate passed (unzip → no ._* detritus, stapled, strict-valid) ✓"
 
 # Sparkle's sign_update reads the private key from Keychain. Output is a
 # `sparkle:edSignature="..." length="..."` fragment — exactly what goes in

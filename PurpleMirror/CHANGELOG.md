@@ -2,6 +2,17 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## Unreleased
+
+- **Release zip opens cleanly on any Mac, however it's unzipped.** A plain
+  `ditto -c -k` stored codesign's `com.apple.provenance` xattrs as AppleDouble
+  (`._name`) sidecars; `unzip`/browser extractors leave them as `._Autoupdate`,
+  `._Sparkle`, … in `Sparkle.framework`, which a clean Mac rejects as *"unsealed
+  contents present in the root directory of an embedded framework"* (the *"could
+  not verify is free of malware"* prompt). `Scripts/release.sh` now strips xattrs
+  and zips with `--norsrc --noextattr`, plus an unzip-based gate that fails the
+  release on any `._*` / staple / strict-codesign problem. (Fleet-wide fix.)
+
 ## 1.17.0 — 2026-06-16
 
 - **A paused job no longer looks like a problem.** An agent that's intentionally unloaded
