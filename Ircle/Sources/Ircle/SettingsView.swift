@@ -77,11 +77,20 @@ struct ConnectionSettingsView: View {
 
     private var selectedBinding: Binding<ServerProfile>? {
         guard let id = selectedID,
-              let idx = settingsStore.settings.servers.firstIndex(where: { $0.id == id })
+              settingsStore.settings.servers.contains(where: { $0.id == id })
         else { return nil }
+        // IMPORTANT: look up by id inside the closures — never capture an array
+        // index. Removing a server shrinks the array while SwiftUI may still
+        // read a previously-built binding; a captured index would then be out
+        // of range (crash). An id lookup degrades to a no-op / default instead.
+        let store = settingsStore
         return Binding(
-            get: { settingsStore.settings.servers[idx] },
-            set: { settingsStore.settings.servers[idx] = $0 }
+            get: { store.settings.servers.first(where: { $0.id == id }) ?? ServerProfile() },
+            set: { newValue in
+                if let idx = store.settings.servers.firstIndex(where: { $0.id == id }) {
+                    store.settings.servers[idx] = newValue
+                }
+            }
         )
     }
 

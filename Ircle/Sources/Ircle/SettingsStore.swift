@@ -122,12 +122,17 @@ final class SettingsStore: ObservableObject {
         return URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)
     }
 
-    private var fileURL: URL { Self.supportDirectory.appendingPathComponent("settings.json") }
+    /// The directory this store reads/writes `settings.json` in. Defaults to
+    /// Application Support; tests pass a temp dir so they never touch the real
+    /// user settings.
+    private let directory: URL
+    private var fileURL: URL { directory.appendingPathComponent("settings.json") }
 
-    init() {
-        try? FileManager.default.createDirectory(at: Self.supportDirectory,
-                                                 withIntermediateDirectories: true)
-        if let data = try? Data(contentsOf: Self.supportDirectory.appendingPathComponent("settings.json")),
+    init(directory: URL? = nil) {
+        let dir = directory ?? Self.supportDirectory
+        self.directory = dir
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let data = try? Data(contentsOf: dir.appendingPathComponent("settings.json")),
            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
             self.settings = decoded
         } else {

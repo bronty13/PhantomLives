@@ -2,6 +2,19 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.4.1 — 2026-06-18
+
+### Fixed
+
+- **Crash when removing a server in Settings** ("Index out of range",
+  EXC_BREAKPOINT). The Servers editor's `Binding<ServerProfile>` captured an
+  array *index*; deleting a server shrank the array while SwiftUI still read the
+  old binding, indexing past the end. The binding now resolves the profile by
+  **id** inside its get/set closures (degrading to a default / no-op if the
+  server is gone), never by a captured index. Regression tests added; the
+  binding-safety tests also confirm `SettingsStore(directory:)` so tests no
+  longer touch the real user `settings.json`.
+
 ## 0.4.0 — 2026-06-18
 
 ### Added

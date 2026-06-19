@@ -91,7 +91,8 @@ struct BackupServiceTests {
 
     @Test func debounceSkipsRecentBackup() throws {
         // A store whose lastBackupAt is "now" must be skipped by the launch run.
-        let store = SettingsStore()
+        // Use a temp dir so we never touch the real user settings.json.
+        let store = SettingsStore(directory: tempDir())
         store.settings.autoBackupEnabled = true
         store.settings.lastBackupAt = BackupService.isoNow()
         let before = store.settings.lastBackupAt
