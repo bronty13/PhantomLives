@@ -115,10 +115,27 @@ enum IrcleAppearance: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How much chrome the windows show. `clean` is the minimal modern layout;
+/// `classic` surfaces the dense "power IRC" cockpit the original Ircle was known
+/// for (full per-user action grid on the nick list, etc.).
+enum InterfaceStyle: String, Codable, CaseIterable, Identifiable {
+    case clean      // minimal (default)
+    case classic    // elaborate, original-Ircle-style chrome
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .clean:   return "Clean (minimal)"
+        case .classic: return "Classic (elaborate)"
+        }
+    }
+}
+
 /// The full persisted settings document.
 struct AppSettings: Codable {
     var servers: [ServerProfile] = [ServerProfile()]
     var appearance: IrcleAppearance = .platinum
+    /// Window-chrome density — see `InterfaceStyle`.
+    var interfaceStyle: InterfaceStyle = .clean
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
@@ -132,7 +149,7 @@ struct AppSettings: Codable {
     var lastBackupAt: String = ""
 
     enum CodingKeys: String, CodingKey {
-        case servers, appearance, showTimestamps, fontSize
+        case servers, appearance, interfaceStyle, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -143,6 +160,7 @@ struct AppSettings: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         servers = (try? c.decode([ServerProfile].self, forKey: .servers)) ?? [ServerProfile()]
         appearance = (try? c.decode(IrcleAppearance.self, forKey: .appearance)) ?? .platinum
+        interfaceStyle = (try? c.decode(InterfaceStyle.self, forKey: .interfaceStyle)) ?? .clean
         showTimestamps = (try? c.decode(Bool.self, forKey: .showTimestamps)) ?? true
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 12
         autoBackupEnabled = (try? c.decode(Bool.self, forKey: .autoBackupEnabled)) ?? true

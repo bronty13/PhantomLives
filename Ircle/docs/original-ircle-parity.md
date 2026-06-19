@@ -63,8 +63,8 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 
 | Control | Where | Original | Ours |
 |---|---|---|---|
-| Per-user action buttons: **Op · DeOp · Whois · Kick · Ban · BanKick · Msg · Cping · Query** | Userlist | ✅ 👁 | ❌ (we have a context menu only, minimal) |
-| One-click **channel-mode toggles** `t n i p s m l k r` | Userlist | ✅ 👁 | ❌ |
+| Per-user action buttons: **Op · DeOp · Whois · Kick · Ban · BanKick · Msg · Cping · Query** | Userlist | ✅ 👁 | ✅ **in Classic** (Settings → Interface → Classic; Clean keeps the compact Query/Whois/Op/DeOp bar) |
+| One-click **channel-mode toggles** `t n i p s m l k r` | Userlist | ✅ 👁 | ❌ (next Classic addition — needs channel-mode state tracking on the buffer) |
 | Userlist columns **IrcOp · Friend · Hostname** | Userlist | ✅ 👁 | 🟡 (we show nick + mode prefix only) |
 | **Inputline formatting toolbar** (Plain/Bold/Underline/strike + colour swatches) | Inputline | ✅ 👁 | ❌ (no compose-time styling UI) |
 | Live **memory readout** bar `[……|……]` | Inputline | ✅ 👁 | ❌ (n/a on modern macOS) |

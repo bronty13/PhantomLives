@@ -2,6 +2,20 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.9.0 — 2026-06-19
+
+### Added
+
+- **Interface Style setting: Clean vs Classic.** Settings → Interface now lets
+  you choose between the minimal modern layout (**Clean**, the default — your
+  current look is preserved) and **Classic**, which surfaces the dense
+  original-Ircle "power IRC" chrome. In Classic, the nick list shows the full
+  3×3 action grid — **Op · Kick · Msg / DeOp · Ban · Cping / Whois · BanKick ·
+  Query** — instead of the compact Query/Whois/Op/DeOp bar. The choice persists
+  in `settings.json` and defaults to Clean for existing installs. 4 tests added.
+  (Groundwork toward fuller Classic chrome — channel-mode toggle row, Notify
+  tab, Inputline formatting toolbar — tracked in `docs/original-ircle-parity.md`.)
+
 ## 0.8.3 — 2026-06-18
 
 ### Fixed

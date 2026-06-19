@@ -208,6 +208,16 @@ struct AppearanceSettingsView: View {
                 }
                 .pickerStyle(.radioGroup)
             }
+            Section("Interface") {
+                Picker("Style", selection: $settingsStore.settings.interfaceStyle) {
+                    ForEach(InterfaceStyle.allCases) { s in
+                        Text(s.displayName).tag(s)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                Text("Classic surfaces the dense original-Ircle nick-list action buttons (Op, Kick, Ban, Whois, …). Clean keeps a minimal set.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
             Section("Messages") {
                 Toggle("Show timestamps", isOn: $settingsStore.settings.showTimestamps)
                 HStack {

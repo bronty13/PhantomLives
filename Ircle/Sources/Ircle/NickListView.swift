@@ -4,6 +4,7 @@ import SwiftUI
 /// roster and a row of action buttons beneath it.
 struct NickListView: View {
     @EnvironmentObject var model: IrcleModel
+    @EnvironmentObject var settingsStore: SettingsStore
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var buffer: IrcleBuffer
     let palette: PlatinumPalette
@@ -57,7 +58,16 @@ struct NickListView: View {
         .background(palette.paneBG)
     }
 
+    @ViewBuilder
     private var actionButtons: some View {
+        switch settingsStore.settings.interfaceStyle {
+        case .clean:   cleanActionButtons
+        case .classic: classicActionButtons
+        }
+    }
+
+    /// Minimal set (the default "Clean" layout).
+    private var cleanActionButtons: some View {
         let nick = selectedNick
         return VStack(spacing: 4) {
             HStack(spacing: 4) {
@@ -77,6 +87,37 @@ struct NickListView: View {
                 }
             }
         }
+    }
+
+    /// The full original-Ircle 3×3 cockpit grid (the "Classic" layout):
+    ///   Op    Kick     Msg
+    ///   DeOp  Ban      Cping
+    ///   Whois BanKick  Query
+    private var classicActionButtons: some View {
+        let nick = selectedNick
+        let on = nick != nil
+        return VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                NickActionButton("Op", palette: palette, enabled: on) { ifNick { send("MODE \(buffer.name) +o \($0)") } }
+                NickActionButton("Kick", palette: palette, enabled: on) { ifNick { send("KICK \(buffer.name) \($0)") } }
+                NickActionButton("Msg", palette: palette, enabled: on) { ifNick { openQuery($0) } }
+            }
+            HStack(spacing: 4) {
+                NickActionButton("DeOp", palette: palette, enabled: on) { ifNick { send("MODE \(buffer.name) -o \($0)") } }
+                NickActionButton("Ban", palette: palette, enabled: on) { ifNick { send("MODE \(buffer.name) +b \($0)!*@*") } }
+                NickActionButton("Cping", palette: palette, enabled: on) { ifNick { send("PRIVMSG \($0) :\u{01}PING\u{01}") } }
+            }
+            HStack(spacing: 4) {
+                NickActionButton("Whois", palette: palette, enabled: on) { ifNick { send("WHOIS \($0)") } }
+                NickActionButton("BanKick", palette: palette, enabled: on) { ifNick { send("MODE \(buffer.name) +b \($0)!*@*"); send("KICK \(buffer.name) \($0)") } }
+                NickActionButton("Query", palette: palette, enabled: on) { ifNick { openQuery($0) } }
+            }
+        }
+    }
+
+    /// Run `body` with the selected nick if there is one.
+    private func ifNick(_ body: (String) -> Void) {
+        if let n = selectedNick { body(n) }
     }
 
     private func openQuery(_ nick: String) {
