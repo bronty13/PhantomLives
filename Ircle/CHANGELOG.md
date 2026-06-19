@@ -6,6 +6,13 @@ All notable changes to Ircle are documented here.
 
 ### Fixed
 
+- **Connection attempts could hang / show a scary "Waiting: … timed out".**
+  Via IRCKit 0.2.0, a connect now times out cleanly after 20s with an actionable
+  message (names the host:port, suggests checking TLS vs. port), and the
+  transient `.waiting` state no longer reads as a hard failure. The profile →
+  config conversion also trims the host (a stray space or a pasted `host:port`
+  was a silent timeout cause) and falls back to the conventional port
+  (6697 TLS / 6667 plain) when it's blank.
 - **A second server that hit a nick collision never finished connecting.** The
   ERR_NICKNAMEINUSE (433) auto-bump was guarded by `state != .connected ||
   !isConnected`, which is never true during registration (the socket is already

@@ -21,9 +21,14 @@ struct ServerProfile: Codable, Identifiable, Hashable {
     var autoJoin: [String] = ["#ircle"]
 
     func makeConfig() -> IRCConnectionConfig {
-        IRCConnectionConfig(
-            host: host,
-            port: UInt16(clamping: port),
+        // Trim the host (a stray space or a pasted "host:port" breaks DNS and
+        // surfaces as a connection timeout). Fall back to the conventional port
+        // for the TLS setting when it's blank/zero.
+        let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedPort = (port > 0 && port <= 65535) ? UInt16(port) : (useTLS ? 6697 : 6667)
+        return IRCConnectionConfig(
+            host: cleanHost,
+            port: resolvedPort,
             useTLS: useTLS,
             nick: nick,
             user: user.isEmpty ? "ircle" : user,

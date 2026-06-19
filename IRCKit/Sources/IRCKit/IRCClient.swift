@@ -76,6 +76,14 @@ public final class IRCClient {
     private var negotiator: SASLNegotiator?
     private var pendingConfig: IRCConnectionConfig?
 
+    // Connect-timeout bookkeeping. NWConnection enters `.waiting` (and keeps
+    // retrying) when it can't reach the endpoint — e.g. wrong host/port, or a
+    // TLS/plaintext port mismatch — which can hang indefinitely. We give up
+    // after `connectTimeoutSeconds` with an actionable error.
+    private var didBecomeReady = false
+    private var connectTimeout: DispatchWorkItem?
+    public var connectTimeoutSeconds: TimeInterval = 20
+
     public init() {}
 
     public func connect(config: IRCConnectionConfig) {
@@ -132,12 +140,21 @@ public final class IRCClient {
             guard let self else { return }
             switch state {
             case .ready:
+                self.didBecomeReady = true
+                self.cancelConnectTimeout()
                 self.onState?(.connected)
                 self.startRegistration()
                 self.receiveLoop()
             case .waiting(let err):
-                self.onState?(.failed("Waiting: \(self.humanize(err))"))
+                // `.waiting` is transient — NWConnection keeps retrying and may
+                // still reach `.ready`. Don't surface it as a hard failure
+                // (that's what alarmed users with "Waiting: … timed out"); stay
+                // in "connecting" and let the connect timeout decide. Leave a
+                // breadcrumb in the raw log for diagnosis.
+                self.onRaw?("(connecting — \(self.humanize(err)))", false)
+                self.onState?(.connecting)
             case .failed(let err):
+                self.cancelConnectTimeout()
                 let proxyReason = ProxyFramer.takeLastError()
                 let detail = self.humanize(err)
                 if let proxyReason {
@@ -147,6 +164,7 @@ public final class IRCClient {
                 }
                 self.connection = nil
             case .cancelled:
+                self.cancelConnectTimeout()
                 self.onState?(.disconnected)
                 self.connection = nil
             case .preparing, .setup:
@@ -155,11 +173,34 @@ public final class IRCClient {
                 break
             }
         }
+        didBecomeReady = false
+        scheduleConnectTimeout()
         onState?(.connecting)
         conn.start(queue: queue)
     }
 
+    private func scheduleConnectTimeout() {
+        connectTimeout?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, !self.didBecomeReady else { return }
+            self.onState?(.failed(
+                "Timed out connecting to \(self.host):\(self.port). The server didn't respond — "
+                + "check the host and port, and whether TLS should be \(self.useTLS ? "OFF" : "ON") "
+                + "for this port (commonly 6697 = TLS, 6667 = plain)."))
+            self.connection?.cancel()
+            self.connection = nil
+        }
+        connectTimeout = item
+        queue.asyncAfter(deadline: .now() + connectTimeoutSeconds, execute: item)
+    }
+
+    private func cancelConnectTimeout() {
+        connectTimeout?.cancel()
+        connectTimeout = nil
+    }
+
     public func disconnect(quitMessage: String? = nil) {
+        cancelConnectTimeout()
         if let conn = connection, conn.state == .ready {
             let msg = quitMessage ?? "Client closed"
             sendSync("QUIT :\(msg)")

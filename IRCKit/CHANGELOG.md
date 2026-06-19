@@ -2,6 +2,20 @@
 
 All notable changes to IRCKit are documented here.
 
+## 0.2.0 — 2026-06-18
+
+### Changed
+
+- `IRCClient` now has a **connect timeout** (`connectTimeoutSeconds`, default
+  20s): if the connection never reaches `.ready`, it fails with an actionable
+  message naming the host/port and suggesting a TLS/port check, then cancels —
+  instead of hanging.
+- `.waiting` (NWConnection's transient "can't reach the endpoint yet, retrying"
+  state) is no longer surfaced as a hard `.failed`. It stays `.connecting` and
+  leaves a breadcrumb via `onRaw`, letting the connection recover on its own;
+  the connect timeout provides the definitive failure. (Previously this showed
+  alarming "Waiting: … timed out" errors mid-connect.)
+
 ## 0.1.0 — 2026-06-18
 
 Initial release. Extracted the UI-independent IRC wire engine from PurpleIRC
