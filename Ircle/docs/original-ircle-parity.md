@@ -85,7 +85,11 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Text / background **colour pickers** ("whatever colours you wish") | pref | ✅ | 🟡 | We ship Platinum/Graphite themes, not arbitrary user colour pickers. |
 | SSL options (3.5a line) | pref | ✅ | ✅ | We do TLS via IRCKit (+ SASL, proxy). |
 
-## 3. DCC / file transfer  — **entirely missing in our clone (❌)**
+## 3. DCC / file transfer  — **Stage 1 done: offers parsed + surfaced; transport pending**
+
+> IRCKit's audited `DCC` engine now parses + validates inbound offers (SSRF +
+> path-traversal guards) and Ircle surfaces them. Accepting/transferring (sockets,
+> a manager window) is Stage 2.
 
 | Feature | Type | Original |
 |---|---|---|

@@ -2,6 +2,19 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.13.0 — 2026-06-19
+
+### Added
+
+- **DCC — Stage 1: safe offer detection.** Incoming `DCC SEND` / `DCC CHAT`
+  offers are now parsed and surfaced in the server console (filename, size,
+  peer address) instead of falling into a generic CTCP dump — backed by IRCKit's
+  new audited `DCC` engine, which validates the peer address (SSRF guard;
+  hostnames/loopback/link-local refused) and sanitizes the filename
+  (path-traversal guard). Unsafe offers are explicitly ignored with a notice.
+  **Accepting/transferring is not wired yet** ("coming soon") — that's Stage 2
+  (sockets + a transfer manager + a two-client smoke test). 3 tests.
+
 ## 0.12.0 — 2026-06-19
 
 ### Added

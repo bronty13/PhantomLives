@@ -2,6 +2,19 @@
 
 All notable changes to IRCKit are documented here.
 
+## 0.3.0 — 2026-06-19
+
+### Added
+
+- **`DCC` pure engine** — the single audited copy of DCC's security-critical
+  logic, shared by every PhantomLives IRC app: `parseOffer` (CTCP DCC
+  SEND/CHAT → validated `Offer`), `sanitizeFilename` (path-traversal guard),
+  `validatedPeerHost` (SSRF guard — only routable IP literals; rejects
+  hostnames/loopback/unspecified/link-local; allows RFC1918), `isSafeIPv4`,
+  `ipv4StringToInt`. No sockets/UI — transport + orchestration live in the app.
+  12 tests ported from PurpleIRC's DCCSecurityTests + offer-parse/sanitize cases.
+  (PurpleIRC keeps its own DCCService copy for now; converge later.)
+
 ## 0.2.0 — 2026-06-18
 
 ### Changed

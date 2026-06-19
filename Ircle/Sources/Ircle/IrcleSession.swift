@@ -240,10 +240,39 @@ final class IrcleSession: ObservableObject, Identifiable {
                 let f = DateFormatter(); f.dateFormat = "EEE MMM d HH:mm:ss yyyy"
                 client.send("NOTICE \(from) :\u{01}TIME \(f.string(from: Date()))\u{01}")
             }
+        case "DCC":
+            if !isSelf { handleDCCOffer(args: args, from: from) }
+            return   // DCC has its own surfacing; skip the generic CTCP line
         default:
             break
         }
         system(serverBuffer, "[CTCP \(verb) from \(from)]")
+    }
+
+    /// Surface an inbound DCC offer safely. The peer address and filename are
+    /// validated/sanitized by IRCKit's `DCC` engine (SSRF + path-traversal
+    /// guards). Accepting/transferring is not wired yet — Stage 2.
+    private func handleDCCOffer(args: String, from: String) {
+        switch DCC.parseOffer(args) {
+        case .offer(let o):
+            switch o.kind {
+            case .chat:
+                line(serverBuffer, .notice, sender: from,
+                     text: "wants to start a DCC chat (\(o.host):\(o.port)). "
+                         + "Accepting DCC isn't available yet — coming soon.")
+            case .send:
+                let sz = ByteCountFormatter.string(fromByteCount: Int64(o.size ?? 0), countStyle: .file)
+                line(serverBuffer, .notice, sender: from,
+                     text: "offers a file via DCC SEND: “\(o.filename ?? "?")” (\(sz)) "
+                         + "from \(o.host):\(o.port). Accepting DCC isn't available yet — coming soon.")
+            }
+            NSApplication.shared.requestUserAttention(.informationalRequest)
+        case .rejectedUnsafeAddress(let token):
+            line(serverBuffer, .error,
+                 text: "Ignored a DCC offer from \(from): unsafe or invalid peer address (\(token)).")
+        case .unsupported:
+            system(serverBuffer, "[CTCP DCC from \(from): \(args)]")
+        }
     }
 
     private func handleNotice(_ msg: IRCMessage) {
