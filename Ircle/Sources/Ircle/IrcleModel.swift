@@ -39,6 +39,7 @@ final class IrcleModel: ObservableObject {
 
     private func pushPerSessionSettings(_ s: AppSettings) {
         LogService.shared.enabled = s.loggingEnabled
+        SoundService.shared.enabled = s.ctcpSoundsEnabled
         for sess in sessions {
             if sess.notifyNicks != s.notifyNicks { sess.notifyNicks = s.notifyNicks }
             sess.notificationsEnabled = s.notificationsEnabled

@@ -224,6 +224,7 @@ struct AppearanceSettingsView: View {
                 Toggle("Show timestamps", isOn: $settingsStore.settings.showTimestamps)
                 Toggle("Notify me of mentions & private messages",
                        isOn: $settingsStore.settings.notificationsEnabled)
+                Toggle("Play CTCP sound clips", isOn: $settingsStore.settings.ctcpSoundsEnabled)
                 HStack {
                     Text("Font size")
                     Slider(value: $settingsStore.settings.fontSize, in: 9...18, step: 1)

@@ -233,6 +233,10 @@ final class IrcleSession: ObservableObject, Identifiable {
                 line(buf, .action, sender: from, text: args, isSelf: isSelf, isMention: mention)
                 return
             }
+            if verb == "SOUND" {
+                handleSound(args: args, buffer: bufferForTarget(target, peer: from), from: from)
+                return
+            }
             // Answer the common CTCP queries; surface the rest in the console.
             handleCTCP(verb: verb, args: args, from: from, isSelf: isSelf)
             return
@@ -242,6 +246,18 @@ final class IrcleSession: ObservableObject, Identifiable {
         let mention = !isSelf && (mentions(body) || IRCCase.equal(target, nick))
         // body kept raw (renderer strips mIRC codes at draw time).
         line(buf, .message, sender: from, text: body, isSelf: isSelf, isMention: mention)
+    }
+
+    /// A CTCP SOUND: play the (sanitized, local-only) clip and show the
+    /// accompanying text like an action.
+    private func handleSound(args: String, buffer: IrcleBuffer, from: String) {
+        let parts = args.split(separator: " ", maxSplits: 1).map(String.init)
+        let file = parts.first ?? ""
+        let text = parts.count > 1 ? parts[1] : ""
+        SoundService.shared.play(name: file)
+        line(buffer, .action, sender: from,
+             text: text.isEmpty ? "♪ \(file)" : "\(text)  ♪\(file)",
+             isMention: mentions(text))
     }
 
     private func handleCTCP(verb: String, args: String, from: String, isSelf: Bool) {
@@ -534,6 +550,12 @@ final class IrcleSession: ObservableObject, Identifiable {
             // via 306 (now away) / 305 (no longer away).
             if rest.isEmpty { client.send("AWAY") }
             else { client.send("AWAY :\(rest)") }
+        case "SOUND":
+            // `/sound <file> [text]` — play locally + send CTCP SOUND to this
+            // channel/query. Ignored on the server console.
+            guard !rest.isEmpty, buffer.kind != .server else { return }
+            client.send("PRIVMSG \(buffer.name) :\u{01}SOUND \(rest)\u{01}")
+            handleSound(args: rest, buffer: buffer, from: nick)
         default:
             // Unknown command: pass it straight through to the server.
             client.send(line)

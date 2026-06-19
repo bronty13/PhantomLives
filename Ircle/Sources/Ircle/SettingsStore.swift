@@ -148,6 +148,8 @@ struct AppSettings: Codable {
     /// Hostmask patterns to ignore (drop inbound messages from). Global; matched
     /// via `IRCMask`. Bare nicks expand to `<nick>!*@*`.
     var ignoreMasks: [String] = []
+    /// Play incoming CTCP SOUND clips (from ~/Downloads/Ircle/Sounds/).
+    var ctcpSoundsEnabled: Bool = true
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
@@ -161,7 +163,7 @@ struct AppSettings: Codable {
     var lastBackupAt: String = ""
 
     enum CodingKeys: String, CodingKey {
-        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, showTimestamps, fontSize
+        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, ctcpSoundsEnabled, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -177,6 +179,7 @@ struct AppSettings: Codable {
         notificationsEnabled = (try? c.decode(Bool.self, forKey: .notificationsEnabled)) ?? true
         loggingEnabled = (try? c.decode(Bool.self, forKey: .loggingEnabled)) ?? false
         ignoreMasks = (try? c.decode([String].self, forKey: .ignoreMasks)) ?? []
+        ctcpSoundsEnabled = (try? c.decode(Bool.self, forKey: .ctcpSoundsEnabled)) ?? true
         showTimestamps = (try? c.decode(Bool.self, forKey: .showTimestamps)) ?? true
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 12
         autoBackupEnabled = (try? c.decode(Bool.self, forKey: .autoBackupEnabled)) ?? true

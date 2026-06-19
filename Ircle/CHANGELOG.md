@@ -2,6 +2,20 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.19.0 — 2026-06-19
+
+### Added
+
+- **CTCP sound.** Receiving a `CTCP SOUND` plays the named clip from
+  `~/Downloads/Ircle/Sounds/` and shows the accompanying text like an action;
+  send one with **`/sound <file> [text]`**. The sound name is sanitized (via
+  IRCKit's `DCC.sanitizeFilename`) and resolved only within the Sounds folder, so
+  a peer can't make Ircle play or probe an arbitrary path. Toggle "Play CTCP
+  sound clips" in Settings → Messages (on by default). 4 tests.
+  *(CTCP FACE exchange — the classic 32×32-PICT-over-DCC mechanism — is
+  intentionally not implemented; our Faces are modern local avatars. It would be
+  a separate, modernized feature if wanted.)*
+
 ## 0.18.0 — 2026-06-19
 
 ### Added

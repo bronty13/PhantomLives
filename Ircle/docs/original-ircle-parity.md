@@ -107,7 +107,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Feature | Type | Original | Ours | Notes |
 |---|---|---|---|---|
 | CTCP responder (VERSION/PING/TIME) | eng | ✅ | ✅ | Ours answers VERSION/PING/TIME; ACTION for `/me`. |
-| CTCP **sound** (`/ctcp nick sound file`, sounds folder) | eng/pref | ✅ | ❌ | |
+| CTCP **sound** | eng | ✅ | ✅ | Receive plays from ~/Downloads/Ircle/Sounds/; send via /sound; name sanitized. |
 | CTCP **FACE EXIST / FACE GET** (32×32 PICT exchange; big faces; DCC of face) | eng | ✅ | ❌ | This is the *networked* half of the Faces window. |
 | finger / userinfo custom replies | pref | ✅ | ❌ | |
 
@@ -133,7 +133,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | mIRC colour + formatting rendering | eng | ✅ | ✅ | Ours adds background-contrast clamping. |
 | Adjustable text/background colours | pref | ✅ | 🟡 | Theme presets, not free colour pickers. |
 | IRC macros (ircII-style) / aliases | cmd | ✅ | ❌ | No user-defined macros/aliases. |
-| Per-event sounds (MP3/AIFF in 3.5) | pref | ✅ | ❌ | |
+| Per-event sounds (MP3/AIFF in 3.5) | pref | ✅ | 🟡 | CTCP SOUND clips play; no per-event (join/etc.) sound mapping yet. |
 | Notifications (Growl in 3.5) | — | ✅ | ✅ 🆕 | macOS notifications for mentions/PMs; Settings toggle. |
 | Themes | — | (colours only) | ✅ | We exceed the original here (Platinum/Graphite). |
 | Auto-update | — | manual | 🆕 | We add Sparkle. |
