@@ -64,13 +64,23 @@ struct IrcleApp: App {
         }
         .defaultSize(width: 640, height: 460)
 
-        // DCC Transfers — accept/decline inbound file offers, with progress.
+        // DCC Transfers — accept/decline inbound file + chat offers.
         Window("DCC Transfers", id: "dcc") {
             DCCTransfersView()
                 .environmentObject(model.dcc)
                 .environmentObject(settingsStore)
         }
         .defaultSize(width: 520, height: 360)
+
+        // One window per accepted DCC chat, addressed by session UUID.
+        WindowGroup("DCC Chat", id: "dccchat", for: UUID.self) { $sessionID in
+            if let sessionID {
+                DCCChatView(sessionID: sessionID)
+                    .environmentObject(model.dcc)
+                    .environmentObject(settingsStore)
+            }
+        }
+        .defaultSize(width: 480, height: 420)
 
         Settings {
             SettingsView()

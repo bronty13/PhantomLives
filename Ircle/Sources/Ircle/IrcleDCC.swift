@@ -44,20 +44,92 @@ enum DCCItemState: Equatable {
     }
 }
 
+/// One line in a DCC chat.
+struct DCCChatLine: Identifiable, Equatable {
+    let id = UUID()
+    let text: String
+    let fromSelf: Bool
+}
+
+enum DCCChatState: Equatable {
+    case offered, connecting, connected, closed, failed(String), declined
+    var isActive: Bool { self == .connecting || self == .connected }
+    var isTerminal: Bool {
+        switch self { case .closed, .failed, .declined: return true; default: return false }
+    }
+}
+
+/// An offered/active DCC CHAT (the accept side).
+@MainActor
+final class DCCChatSession: ObservableObject, Identifiable {
+    let id = UUID()
+    let peer: String
+    let host: String
+    let port: UInt16
+    @Published var state: DCCChatState = .offered
+    @Published var lines: [DCCChatLine] = []
+    var chat: DCCChat?
+
+    init(peer: String, host: String, port: UInt16) {
+        self.peer = peer; self.host = host; self.port = port
+    }
+
+    func apply(_ s: DCCChat.State) {
+        switch s {
+        case .connecting: state = .connecting
+        case .connected:  state = .connected
+        case .closed:     state = .closed
+        case .failed(let m): state = .failed(m)
+        }
+    }
+}
+
 /// App-side DCC orchestration: holds offered/active transfers, decides the
 /// (sanitized, in-Downloads, non-clobbering) save path, and drives IRCKit's
 /// `DCCDownload`. Never auto-accepts — the user must accept each offer.
 @MainActor
 final class IrcleDCC: ObservableObject {
     @Published private(set) var items: [DCCItem] = []
+    @Published private(set) var chats: [DCCChatSession] = []
 
-    /// Record an inbound SEND offer (already validated/sanitized by IRCKit's
-    /// DCC engine). CHAT offers are not handled here yet (Stage 3).
+    /// Record an inbound DCC offer (already validated/sanitized by IRCKit's DCC
+    /// engine): SEND → a file transfer, CHAT → a chat session.
     func addOffer(_ offer: DCC.Offer, from peer: String) {
-        guard offer.kind == .send else { return }
-        items.insert(DCCItem(peer: peer, filename: offer.filename ?? "dcc-file",
-                             size: offer.size ?? 0, host: offer.host, port: offer.port), at: 0)
+        switch offer.kind {
+        case .send:
+            items.insert(DCCItem(peer: peer, filename: offer.filename ?? "dcc-file",
+                                 size: offer.size ?? 0, host: offer.host, port: offer.port), at: 0)
+        case .chat:
+            chats.insert(DCCChatSession(peer: peer, host: offer.host, port: offer.port), at: 0)
+        }
     }
+
+    // MARK: - Chat
+
+    func acceptChat(_ s: DCCChatSession) {
+        guard s.state == .offered else { return }
+        let chat = DCCChat(host: s.host, port: s.port)
+        chat.onState = { [weak s] st in Task { @MainActor in s?.apply(st) } }
+        chat.onLine = { [weak s] line in
+            Task { @MainActor in s?.lines.append(DCCChatLine(text: line, fromSelf: false)) }
+        }
+        s.chat = chat
+        s.state = .connecting
+        chat.start()
+    }
+
+    func declineChat(_ s: DCCChatSession) { if s.state == .offered { s.state = .declined } }
+
+    func sendChat(_ s: DCCChatSession, _ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard s.state == .connected, !t.isEmpty else { return }
+        s.chat?.send(t)
+        s.lines.append(DCCChatLine(text: t, fromSelf: true))
+    }
+
+    func closeChat(_ s: DCCChatSession) { s.chat?.close() }
+
+    func chat(id: UUID) -> DCCChatSession? { chats.first { $0.id == id } }
 
     func accept(_ item: DCCItem) {
         guard item.state == .offered else { return }
@@ -76,7 +148,10 @@ final class IrcleDCC: ObservableObject {
 
     func cancel(_ item: DCCItem) { item.download?.cancel() }
 
-    func clearFinished() { items.removeAll { $0.state.isTerminal } }
+    func clearFinished() {
+        items.removeAll { $0.state.isTerminal }
+        chats.removeAll { $0.state.isTerminal }
+    }
 
     /// `~/Downloads/Ircle/DCC/`.
     static var downloadsDir: URL {

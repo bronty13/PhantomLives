@@ -261,14 +261,14 @@ final class IrcleSession: ObservableObject, Identifiable {
             case .chat:
                 line(serverBuffer, .notice, sender: from,
                      text: "wants to start a DCC chat (\(o.host):\(o.port)). "
-                         + "DCC chat isn't available yet — coming soon.")
+                         + "Open DCC Transfers (⌘⇧D) to accept.")
             case .send:
                 let sz = ByteCountFormatter.string(fromByteCount: Int64(o.size ?? 0), countStyle: .file)
                 line(serverBuffer, .notice, sender: from,
                      text: "offers a file via DCC SEND: “\(o.filename ?? "?")” (\(sz)) "
                          + "from \(o.host):\(o.port). Open DCC Transfers (⌘⇧D) to accept.")
-                onDCCOffer?(o, from)
             }
+            onDCCOffer?(o, from)
             NSApplication.shared.requestUserAttention(.informationalRequest)
         case .rejectedUnsafeAddress(let token):
             line(serverBuffer, .error,

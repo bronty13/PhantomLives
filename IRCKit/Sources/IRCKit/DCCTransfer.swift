@@ -125,3 +125,85 @@ public final class DCCDownload {
         onState?(s)
     }
 }
+
+/// A DCC CHAT session (the *accept* side): connects out to the peer's validated
+/// `host:port` and exchanges newline-delimited text lines. Pure Network — the
+/// app owns the conversation buffer and UI. Connects out only, never listens.
+public final class DCCChat {
+
+    public enum State: Equatable, Sendable { case connecting, connected, closed, failed(String) }
+
+    public var onState: ((State) -> Void)?
+    public var onLine: ((String) -> Void)?
+
+    private let host: String
+    private let port: UInt16
+    private let queue = DispatchQueue(label: "IRCKit.dcc.chat")
+    private var connection: NWConnection?
+    private var inbuf = Data()
+    private var done = false
+
+    public init(host: String, port: UInt16) {
+        self.host = host
+        self.port = port
+    }
+
+    public func start() {
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            finish(.failed("Invalid port \(port).")); return
+        }
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        connection = conn
+        onState?(.connecting)
+        conn.stateUpdateHandler = { [weak self] st in
+            guard let self else { return }
+            switch st {
+            case .ready: self.onState?(.connected); self.receiveLoop()
+            case .failed(let e): self.finish(.failed(e.localizedDescription))
+            case .cancelled: break
+            default: break
+            }
+        }
+        conn.start(queue: queue)
+    }
+
+    /// Send a line (a trailing newline is appended).
+    public func send(_ line: String) {
+        guard !done, let data = (line + "\n").data(using: .utf8) else { return }
+        connection?.send(content: data, completion: .contentProcessed { _ in })
+    }
+
+    public func close() { finish(.closed) }
+
+    private func receiveLoop() {
+        connection?.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            if let error { self.finish(.failed(error.localizedDescription)); return }
+            if let data, !data.isEmpty {
+                self.inbuf.append(data)
+                self.drainLines()
+            }
+            if isComplete { self.finish(.closed); return }
+            self.receiveLoop()
+        }
+    }
+
+    /// Split the inbound buffer on `\n`, deliver complete lines (CR-trimmed).
+    private func drainLines() {
+        while let nl = inbuf.firstIndex(of: 0x0A) {
+            let lineData = inbuf[inbuf.startIndex..<nl]
+            inbuf.removeSubrange(inbuf.startIndex...nl)
+            var line = String(decoding: lineData, as: UTF8.self)
+            if line.hasSuffix("\r") { line.removeLast() }
+            onLine?(line)
+        }
+    }
+
+    private func finish(_ s: State) {
+        guard !done else { return }
+        done = true
+        connection?.cancel()
+        connection = nil
+        onState?(s)
+    }
+}

@@ -17,6 +17,8 @@ All notable changes to IRCKit are documented here.
 - **`DCCDownload`** — the DCC GET/accept transport: connects out to a vetted
   peer, streams to a destination URL, sends 4-byte big-endian acks, and stops at
   the advertised size (no over-write). Pure Network+Foundation; no listening.
+- **`DCCChat`** — the DCC CHAT accept transport: connect-out, newline-framed
+  line exchange. Pure Network; no listening.
 
 ## 0.2.0 — 2026-06-18
 

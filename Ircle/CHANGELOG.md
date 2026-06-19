@@ -2,6 +2,19 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.15.0 — 2026-06-19
+
+### Added
+
+- **DCC — Stage 3: chat.** Incoming `DCC CHAT` offers now appear in the DCC
+  Transfers window (⌘⇧D) alongside file offers; **Accept** connects out and
+  opens a dedicated DCC chat window (one per conversation) with a live message
+  view and an input line; **Decline**/**Close** as well. Runs on IRCKit's new
+  `DCCChat` transport (connect-out only, to a vetted address; newline-framed
+  line exchange). Initiating a DCC chat/send (listening + advertising your IP)
+  is still to come. 2 tests added; the socket exchange is covered by the
+  two-client smoke test.
+
 ## 0.14.0 — 2026-06-19
 
 ### Added

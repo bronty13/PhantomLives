@@ -43,7 +43,7 @@ struct DCCTransferTests {
         #expect(url.deletingLastPathComponent().path == dir.path)
     }
 
-    @Test func addOfferRecordsSendButIgnoresChat() {
+    @Test func addOfferRoutesSendToFilesAndChatToChats() {
         let dcc = IrcleDCC()
         dcc.addOffer(DCC.Offer(kind: .send, filename: "a.bin", host: "1.2.3.4", port: 5000, size: 100), from: "bob")
         dcc.addOffer(DCC.Offer(kind: .chat, filename: nil, host: "1.2.3.4", port: 5001, size: nil), from: "sue")
@@ -51,6 +51,28 @@ struct DCCTransferTests {
         #expect(dcc.items.first?.filename == "a.bin")
         #expect(dcc.items.first?.peer == "bob")
         #expect(dcc.items.first?.state == .offered)
+        #expect(dcc.chats.count == 1)
+        #expect(dcc.chats.first?.peer == "sue")
+        #expect(dcc.chats.first?.state == .offered)
+    }
+
+    @Test func declineChatAndClearRemovesIt() {
+        let dcc = IrcleDCC()
+        dcc.addOffer(DCC.Offer(kind: .chat, filename: nil, host: "1.2.3.4", port: 5001, size: nil), from: "sue")
+        let chat = dcc.chats[0]
+        dcc.declineChat(chat)
+        #expect(chat.state == .declined)
+        #expect(chat.state.isTerminal)
+        dcc.clearFinished()
+        #expect(dcc.chats.isEmpty)
+    }
+
+    @Test func sendChatBeforeConnectedIsIgnored() {
+        let dcc = IrcleDCC()
+        dcc.addOffer(DCC.Offer(kind: .chat, filename: nil, host: "1.2.3.4", port: 5001, size: nil), from: "sue")
+        let chat = dcc.chats[0]
+        dcc.sendChat(chat, "hello")          // still .offered → no local echo, no send
+        #expect(chat.lines.isEmpty)
     }
 
     @Test func declineMovesOfferToTerminal() {

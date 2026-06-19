@@ -6,6 +6,7 @@ import AppKit
 struct DCCTransfersView: View {
     @EnvironmentObject var dcc: IrcleDCC
     @EnvironmentObject var settingsStore: SettingsStore
+    @Environment(\.openWindow) private var openWindow
 
     private var palette: PlatinumPalette { .forAppearance(settingsStore.settings.appearance) }
 
@@ -15,15 +16,15 @@ struct DCCTransfersView: View {
                 Text("DCC Transfers").font(palette.chromeFontBold())
                 Spacer()
                 Button("Clear finished") { dcc.clearFinished() }
-                    .disabled(!dcc.items.contains { $0.state.isTerminal })
+                    .disabled(!hasFinished)
             }
             .padding(8).background(palette.paneBG)
             Divider().overlay(palette.hairline)
 
-            if dcc.items.isEmpty {
+            if dcc.items.isEmpty && dcc.chats.isEmpty {
                 VStack(spacing: 6) {
                     Text("No transfers.").font(palette.chromeFontBold())
-                    Text("When someone offers you a file via DCC SEND, it appears here to accept.")
+                    Text("DCC SEND offers (files) and DCC CHAT offers appear here to accept.")
                         .font(palette.chromeFont()).foregroundColor(palette.timestamp)
                         .multilineTextAlignment(.center)
                 }
@@ -31,6 +32,11 @@ struct DCCTransfersView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        ForEach(dcc.chats) { chat in
+                            DCCChatRow(session: chat, palette: palette,
+                                       open: { openWindow(id: "dccchat", value: chat.id) })
+                            Divider().overlay(palette.hairline)
+                        }
                         ForEach(dcc.items) { item in
                             DCCRow(item: item, palette: palette)
                             Divider().overlay(palette.hairline)
@@ -40,6 +46,53 @@ struct DCCTransfersView: View {
             }
         }
         .background(palette.windowBG)
+    }
+
+    private var hasFinished: Bool {
+        dcc.items.contains { $0.state.isTerminal } || dcc.chats.contains { $0.state.isTerminal }
+    }
+}
+
+private struct DCCChatRow: View {
+    @EnvironmentObject var dcc: IrcleDCC
+    @ObservedObject var session: DCCChatSession
+    let palette: PlatinumPalette
+    let open: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Chat with \(session.peer)").font(palette.chromeFontBold())
+                Text(statusText).font(palette.chromeFont()).foregroundColor(palette.timestamp)
+            }
+            Spacer()
+            switch session.state {
+            case .offered:
+                HStack(spacing: 6) {
+                    Button("Accept") { dcc.acceptChat(session); open() }
+                    Button("Decline") { dcc.declineChat(session) }
+                }
+            case .connecting, .connected:
+                HStack(spacing: 6) {
+                    Button("Open") { open() }
+                    Button("Close") { dcc.closeChat(session) }
+                }
+            default:
+                EmptyView()
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+    }
+
+    private var statusText: String {
+        switch session.state {
+        case .offered: return "Chat offered"
+        case .connecting: return "Connecting…"
+        case .connected: return "Connected"
+        case .closed: return "Closed"
+        case .declined: return "Declined"
+        case .failed(let m): return "Failed: \(m)"
+        }
     }
 }
 
