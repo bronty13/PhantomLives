@@ -2,6 +2,27 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.8.3 — 2026-06-18
+
+### Fixed
+
+- **Downloaded releases no longer trip Gatekeeper's "Apple could not verify…"
+  malware prompt.** The release zip was built with a plain `ditto -c -k`, which
+  stores codesign's `com.apple.provenance` extended attributes as AppleDouble
+  (`._name`) entries. macOS's own extractors merge and discard them, but `unzip`
+  and several browser/third-party extractors leave them behind — dropping
+  `._Autoupdate`, `._Sparkle`, … into `Sparkle.framework`'s root, which a clean
+  Mac rejects as *"unsealed contents present in the root directory of an embedded
+  framework."* `Scripts/release.sh` now strips xattrs and zips with
+  `--norsrc --noextattr`, so the zip carries no AppleDouble and **every**
+  extractor yields a Gatekeeper-valid, notarized+stapled bundle. Added an
+  extractor-agnostic release gate (unzip → assert no `._*`, staple valid, strict
+  codesign) so this can't regress silently. (Incident: 1.0.979.)
+- **Channel tabs read "# channel", not "# #channel".** The Channelbar button
+  already shows a `#` glyph for a joined channel, so the duplicate leading
+  `#`/`&` is now dropped from the channel name in the tab label. Queries and
+  server tabs are unaffected.
+
 ## 0.8.2 — 2026-06-18
 
 ### Fixed

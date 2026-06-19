@@ -123,8 +123,15 @@ struct ChannelbarButton: View {
         }
     }
 
-    /// Channel buffers drop the leading server label for brevity.
-    private var displayName: String { buffer.name }
+    /// The glyph already shows the channel sigil ("#"/"✕"), so drop a duplicate
+    /// leading "#"/"&" from a channel's name — it should read "# channel", not
+    /// "# #channel". Queries/servers are unaffected.
+    private var displayName: String {
+        if buffer.kind == .channel, let first = buffer.name.first, first == "#" || first == "&" {
+            return String(buffer.name.dropFirst())
+        }
+        return buffer.name
+    }
 }
 
 // MARK: - Topic bar
