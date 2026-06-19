@@ -136,6 +136,9 @@ final class IrcleSession: ObservableObject, Identifiable {
         system(buffer ?? serverBuffer, text)
     }
 
+    /// Send a raw line over the IRC connection (used to emit DCC CTCP offers).
+    func sendRaw(_ line: String) { client.send(line) }
+
     private func wireClient() {
         client.onState = { [weak self] st in
             Task { @MainActor in self?.handleState(st) }

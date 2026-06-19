@@ -171,6 +171,24 @@ final class IrcleModel: ObservableObject {
         }
     }
 
+    // MARK: - Initiating DCC
+
+    /// Offer a DCC chat to `nick` on `session`: bind a listener, advertise our
+    /// IP+port via CTCP, and add the (outgoing) chat to the DCC store.
+    func startDCCChat(to nick: String, on session: IrcleSession) {
+        guard let ip = DCC.primaryIPv4() else {
+            session.announce("Can't offer DCC chat to \(nick): no routable network address found."); return
+        }
+        guard let (_, port, wildcard) = dcc.offerChat(to: nick, advertiseIP: ip) else {
+            session.announce("Can't offer DCC chat to \(nick): no free port in the DCC range."); return
+        }
+        if wildcard {
+            session.announce("⚠️ DCC chat is listening on all interfaces (couldn't bind \(ip)); any host reaching port \(port) could connect before \(nick).")
+        }
+        session.sendRaw("PRIVMSG \(nick) :\u{01}\(DCC.chatOfferCommand(ip: ip, port: port))\u{01}")
+        session.announce("Offered DCC chat to \(nick) (listening on \(ip):\(port)). Open DCC Transfers (⌘⇧D).")
+    }
+
     // MARK: - Notify (friends) list
 
     /// The global Notify list (friends). Mutating it persists to settings and
@@ -192,18 +210,36 @@ final class IrcleModel: ObservableObject {
     /// session) rather than a single connection. Returns true if consumed.
     private func handleGlobalCommand(_ raw: String, in buffer: IrcleBuffer) -> Bool {
         let parts = raw.dropFirst().split(separator: " ").map(String.init)
-        guard let cmd = parts.first?.lowercased(), cmd == "notify" else { return false }
-        let sub = parts.count > 1 ? parts[1].lowercased() : "list"
+        guard let cmd = parts.first?.lowercased() else { return false }
+        let sub = parts.count > 1 ? parts[1].lowercased() : ""
         let arg = parts.count > 2 ? parts[2] : ""
-        switch sub {
-        case "add":                 addNotify(arg)
-        case "del", "remove", "rm": removeNotify(arg)
-        default:                    break   // "list" / unknown → just report below
+        switch cmd {
+        case "notify":
+            switch sub {
+            case "add":                 addNotify(arg)
+            case "del", "remove", "rm": removeNotify(arg)
+            default:                    break   // "list" / unknown → just report below
+            }
+            let list = settingsStore.settings.notifyNicks
+            session(for: buffer)?.announce(
+                "Notify list: " + (list.isEmpty ? "(empty)" : list.joined(separator: ", ")),
+                in: buffer)
+            return true
+        case "dcc":
+            guard let session = session(for: buffer) else { return true }
+            switch sub {
+            case "chat":
+                if arg.isEmpty { session.announce("Usage: /dcc chat <nick>", in: buffer) }
+                else { startDCCChat(to: arg, on: session) }
+            case "send":
+                session.announce("DCC SEND from Ircle isn't available yet — coming soon. "
+                                 + "(You can already receive files others send you.)", in: buffer)
+            default:
+                session.announce("Usage: /dcc chat <nick>   (DCC send: coming soon)", in: buffer)
+            }
+            return true
+        default:
+            return false
         }
-        let list = settingsStore.settings.notifyNicks
-        session(for: buffer)?.announce(
-            "Notify list: " + (list.isEmpty ? "(empty)" : list.joined(separator: ", ")),
-            in: buffer)
-        return true
     }
 }

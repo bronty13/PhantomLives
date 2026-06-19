@@ -140,12 +140,20 @@ public final class DCCChat {
     private let port: UInt16
     private let queue = DispatchQueue(label: "IRCKit.dcc.chat")
     private var connection: NWConnection?
+    private var listener: NWListener?
     private var inbuf = Data()
     private var done = false
 
+    /// Connect-out (accept side): dial the peer's `host:port`.
     public init(host: String, port: UInt16) {
         self.host = host
         self.port = port
+    }
+
+    /// Listen side (initiate): we don't dial — we await an incoming connection.
+    public init() {
+        self.host = ""
+        self.port = 0
     }
 
     public func start() {
@@ -153,8 +161,39 @@ public final class DCCChat {
             finish(.failed("Invalid port \(port).")); return
         }
         let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
-        connection = conn
         onState?(.connecting)
+        adopt(conn)
+        conn.start(queue: queue)
+    }
+
+    /// Listen for an inbound DCC chat on a port (initiate side). Binds to
+    /// `bindHost` (the advertised IP) so we don't accept on every interface;
+    /// returns the chosen port and whether it fell back to the wildcard (a
+    /// security footgun the caller should warn about), or nil if no port was
+    /// free. The first incoming connection is adopted; the listener then closes.
+    public func listen(bindHost: String,
+                       portRange: ClosedRange<UInt16> = 49152...49200) -> (port: UInt16, wildcard: Bool)? {
+        guard let (l, port, wildcard) = Self.makeListener(bindHost: bindHost, range: portRange) else {
+            return nil
+        }
+        listener = l
+        onState?(.connecting)   // "waiting for peer"
+        l.newConnectionHandler = { [weak self] conn in
+            guard let self else { conn.cancel(); return }
+            self.queue.async {
+                self.listener?.cancel()
+                self.listener = nil
+                self.adopt(conn)
+                conn.start(queue: self.queue)
+            }
+        }
+        l.start(queue: queue)
+        return (port, wildcard)
+    }
+
+    /// Wire an established/accepted connection: ready → connected + receive.
+    private func adopt(_ conn: NWConnection) {
+        connection = conn
         conn.stateUpdateHandler = { [weak self] st in
             guard let self else { return }
             switch st {
@@ -164,7 +203,27 @@ public final class DCCChat {
             default: break
             }
         }
-        conn.start(queue: queue)
+    }
+
+    /// Bind a listener to `bindHost`, scanning `range`; fall back to the
+    /// wildcard (reported via the `wildcard` flag) only if no host-bound port
+    /// is available. (Lifted from PurpleIRC's hardened createListener.)
+    private static func makeListener(bindHost: String,
+                                     range: ClosedRange<UInt16>) -> (NWListener, UInt16, Bool)? {
+        for p in range {
+            guard let port = NWEndpoint.Port(rawValue: p) else { continue }
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(bindHost), port: port)
+            if let l = try? NWListener(using: params, on: port) { return (l, p, false) }
+        }
+        for p in range {
+            guard let port = NWEndpoint.Port(rawValue: p) else { continue }
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
+            if let l = try? NWListener(using: params, on: port) { return (l, p, true) }
+        }
+        return nil
     }
 
     /// Send a line (a trailing newline is appended).
@@ -202,6 +261,8 @@ public final class DCCChat {
     private func finish(_ s: State) {
         guard !done else { return }
         done = true
+        listener?.cancel()
+        listener = nil
         connection?.cancel()
         connection = nil
         onState?(s)

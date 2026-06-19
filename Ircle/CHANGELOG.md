@@ -2,6 +2,20 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.16.0 — 2026-06-19
+
+### Added
+
+- **DCC — Stage 4a: initiate a DCC chat.** You can now *start* a DCC chat:
+  **right-click a nick → Start DCC Chat**, or **`/dcc chat <nick>`**. Ircle binds
+  a listener (to your real interface, advertising your routable IPv4 via
+  `getifaddrs`; warns loudly if it can only bind the wildcard), sends the CTCP
+  offer, and opens the chat window when the peer connects. Lifts PurpleIRC's
+  hardened port-range/bind logic. `/dcc` is now a recognized command (no more
+  "Unknown command" from the server). **DCC SEND from Ircle** (offering a file)
+  is the remaining piece — coming next. 2 engine tests for the offer encoders;
+  the listen/connect path is covered by the two-client smoke test.
+
 ## 0.15.0 — 2026-06-19
 
 ### Added

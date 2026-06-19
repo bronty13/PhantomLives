@@ -66,12 +66,15 @@ final class DCCChatSession: ObservableObject, Identifiable {
     let peer: String
     let host: String
     let port: UInt16
+    /// True when WE offered the chat (we listen + advertise); false when the
+    /// peer offered and we dial them.
+    let isOutgoing: Bool
     @Published var state: DCCChatState = .offered
     @Published var lines: [DCCChatLine] = []
     var chat: DCCChat?
 
-    init(peer: String, host: String, port: UInt16) {
-        self.peer = peer; self.host = host; self.port = port
+    init(peer: String, host: String, port: UInt16, isOutgoing: Bool = false) {
+        self.peer = peer; self.host = host; self.port = port; self.isOutgoing = isOutgoing
     }
 
     func apply(_ s: DCCChat.State) {
@@ -116,6 +119,23 @@ final class IrcleDCC: ObservableObject {
         s.chat = chat
         s.state = .connecting
         chat.start()
+    }
+
+    /// Offer a DCC chat (we listen + advertise). Binds to `advertiseIP`,
+    /// inserts a session, and returns the listening port + whether it fell back
+    /// to the wildcard (caller should warn), or nil if no port was free.
+    func offerChat(to peer: String, advertiseIP: String) -> (session: DCCChatSession, port: UInt16, wildcard: Bool)? {
+        let s = DCCChatSession(peer: peer, host: advertiseIP, port: 0, isOutgoing: true)
+        let chat = DCCChat()
+        guard let (port, wildcard) = chat.listen(bindHost: advertiseIP) else { return nil }
+        chat.onState = { [weak s] st in Task { @MainActor in s?.apply(st) } }
+        chat.onLine = { [weak s] line in
+            Task { @MainActor in s?.lines.append(DCCChatLine(text: line, fromSelf: false)) }
+        }
+        s.chat = chat
+        s.state = .connecting   // waiting for the peer to connect
+        chats.insert(s, at: 0)
+        return (s, port, wildcard)
     }
 
     func declineChat(_ s: DCCChatSession) { if s.state == .offered { s.state = .declined } }

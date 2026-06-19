@@ -109,6 +109,22 @@ struct DCCTests {
         #expect(DCC.parseOffer("SEND x 0 5000 10") == .rejectedUnsafeAddress("0"))                    // 0.0.0.0
     }
 
+    // MARK: - Offer command building (initiate side)
+
+    @Test func chatOfferCommandEncodesIntegerIP() {
+        #expect(DCC.chatOfferCommand(ip: "1.2.3.4", port: 5000) == "DCC CHAT chat 16909060 5000")
+    }
+
+    @Test func sendOfferCommandQuotesAndSanitizes() {
+        #expect(DCC.sendOfferCommand(filename: "photo.jpg", ip: "1.2.3.4", port: 5000, size: 2048)
+                == "DCC SEND photo.jpg 16909060 5000 2048")
+        // Spaces → quoted.
+        #expect(DCC.sendOfferCommand(filename: "my file.txt", ip: "1.2.3.4", port: 5000, size: 10)
+                == "DCC SEND \"my file.txt\" 16909060 5000 10")
+        // Traversal stripped before advertising.
+        #expect(!DCC.sendOfferCommand(filename: "../../x.bin", ip: "1.2.3.4", port: 5000, size: 1).contains(".."))
+    }
+
     @Test func malformedOrUnknownIsUnsupported() {
         #expect(DCC.parseOffer("CHAT chat 16909060") == .unsupported)   // missing port
         #expect(DCC.parseOffer("RESUME x 5000 0") == .unsupported)      // not handled here

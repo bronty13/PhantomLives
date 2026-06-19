@@ -87,7 +87,7 @@ private struct DCCChatRow: View {
     private var statusText: String {
         switch session.state {
         case .offered: return "Chat offered"
-        case .connecting: return "Connecting…"
+        case .connecting: return session.isOutgoing ? "Waiting for \(session.peer)…" : "Connecting…"
         case .connected: return "Connected"
         case .closed: return "Closed"
         case .declined: return "Declined"

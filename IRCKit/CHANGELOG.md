@@ -19,6 +19,9 @@ All notable changes to IRCKit are documented here.
   the advertised size (no over-write). Pure Network+Foundation; no listening.
 - **`DCCChat`** — the DCC CHAT accept transport: connect-out, newline-framed
   line exchange. Pure Network; no listening.
+- **DCC initiate support**: `DCCChat.listen(bindHost:)` (hardened port-range
+  bind + wildcard-fallback flag), `DCC.primaryIPv4()` (advertised address), and
+  `DCC.chatOfferCommand`/`sendOfferCommand` offer encoders.
 
 ## 0.2.0 — 2026-06-18
 

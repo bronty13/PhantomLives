@@ -127,6 +127,47 @@ public enum DCC {
         return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
     }
 
+    // MARK: - Initiating (advertising)
+
+    /// The CTCP body to offer a DCC chat: `DCC CHAT chat <ip-int> <port>`.
+    public static func chatOfferCommand(ip: String, port: UInt16) -> String {
+        "DCC CHAT chat \(ipv4StringToInt(ip)) \(port)"
+    }
+
+    /// The CTCP body to offer a file: `DCC SEND <name> <ip-int> <port> <size>`.
+    /// The filename is sanitized (and, if it contains spaces, quoted).
+    public static func sendOfferCommand(filename: String, ip: String, port: UInt16, size: UInt64) -> String {
+        let name = sanitizeFilename(filename)
+        let field = name.contains(" ") ? "\"\(name)\"" : name
+        return "DCC SEND \(field) \(ipv4StringToInt(ip)) \(port) \(size)"
+    }
+
+    /// Our primary routable IPv4 to advertise in an offer (prefers `en0`).
+    /// Returns nil if only loopback is up.
+    public static func primaryIPv4() -> String? {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
+        defer { freeifaddrs(first) }
+        var candidate: String?
+        var cursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let c = cursor {
+            let name = String(cString: c.pointee.ifa_name)
+            let flags = Int32(c.pointee.ifa_flags)
+            if let addrPtr = c.pointee.ifa_addr, addrPtr.pointee.sa_family == UInt8(AF_INET),
+               (flags & IFF_LOOPBACK) == 0, (flags & IFF_UP) != 0 {
+                var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(addrPtr, socklen_t(addrPtr.pointee.sa_len),
+                               &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 {
+                    let addr = String(cString: host)
+                    if name == "en0" { return addr }
+                    if candidate == nil { candidate = addr }
+                }
+            }
+            cursor = c.pointee.ifa_next
+        }
+        return candidate
+    }
+
     // MARK: - Internal
 
     /// Split a DCC argument string on spaces, honoring "double quotes" (so a

@@ -69,6 +69,16 @@ struct NickListView: View {
                     NickRow(user: user, palette: palette,
                             selected: user.nick == selectedNick)
                         .onTapGesture { selectedNick = user.nick }
+                        .contextMenu {
+                            Button("Query") { openQuery(user.nick) }
+                            Button("Whois") { send("WHOIS \(user.nick)") }
+                            Divider()
+                            Button("Start DCC Chat") {
+                                if let s = model.session(for: buffer) {
+                                    model.startDCCChat(to: user.nick, on: s)
+                                }
+                            }
+                        }
                 }
             }
             .padding(.vertical, 2)
