@@ -18,6 +18,12 @@ All notable changes to Ircle are documented here.
   extractor yields a Gatekeeper-valid, notarized+stapled bundle. Added an
   extractor-agnostic release gate (unzip → assert no `._*`, staple valid, strict
   codesign) so this can't regress silently. (Incident: 1.0.979.)
+- **Release pre-flight tolerates a flaky notary probe.** `Scripts/release.sh`
+  probes the notarytool profile with `notarytool history`, which hits Apple's
+  API and can fail transiently (printing a misleading "No Keychain password item
+  found"). It now retries before declaring the profile missing, so a network
+  blip can't abort an otherwise-good release. (Incident: a 1.0.981 attempt died
+  here; the next call succeeded.)
 - **Channel tabs read "# channel", not "# #channel".** The Channelbar button
   already shows a `#` glyph for a joined channel, so the duplicate leading
   `#`/`&` is now dropped from the channel name in the tab label. Queries and

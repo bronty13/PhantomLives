@@ -78,8 +78,23 @@ DEVID="$(security find-identity -v -p codesigning 2>/dev/null \
 note "signing identity: $DEVID"
 
 # 1b. Notary profile must exist (unless explicitly overridden). Probe it with a
-# cheap `notarytool history` call — it fails fast if the profile is missing.
-if xcrun notarytool history --keychain-profile "$NOTARIZE_PROFILE" >/dev/null 2>&1; then
+# `notarytool history` call. NOTE: this call hits Apple's API, so a transient
+# network/service blip makes it fail (and misleadingly print "No Keychain
+# password item found …") even when the profile is perfectly fine. Retry a few
+# times before believing the profile is actually missing — a flaky probe must
+# not abort an otherwise-good release. (Incident: a 1.0.981 attempt died here on
+# a transient failure; the very next call succeeded.)
+notary_profile_ok() {
+    local i
+    for i in 1 2 3; do
+        if xcrun notarytool history --keychain-profile "$NOTARIZE_PROFILE" >/dev/null 2>&1; then
+            return 0
+        fi
+        [ "$i" -lt 3 ] && sleep 3
+    done
+    return 1
+}
+if notary_profile_ok; then
     note "notary profile: $NOTARIZE_PROFILE ✓"
 elif [ "${ALLOW_UNNOTARIZED:-0}" = "1" ]; then
     echo "  ! notary profile '$NOTARIZE_PROFILE' not found — ALLOW_UNNOTARIZED=1, continuing."
