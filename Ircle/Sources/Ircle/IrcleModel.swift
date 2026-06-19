@@ -177,6 +177,9 @@ final class IrcleModel: ObservableObject {
     /// Offer a DCC chat to `nick` on `session`: bind a listener, advertise our
     /// IP+port via CTCP, and add the (outgoing) chat to the DCC store.
     func startDCCChat(to nick: String, on session: IrcleSession) {
+        guard !isSelfNick(nick, session) else {
+            session.announce("You can't DCC yourself — “\(nick)” is your own nick on this server."); return
+        }
         guard let ip = DCC.primaryIPv4() else {
             session.announce("Can't offer DCC chat to \(nick): no routable network address found."); return
         }
@@ -190,8 +193,16 @@ final class IrcleModel: ObservableObject {
         session.announce("Offered DCC chat to \(nick) (listening on \(ip):\(port)). Open DCC Transfers (⌘⇧D).")
     }
 
+    /// True if `nick` is our own nick on `session` (DCC to self is a no-op).
+    private func isSelfNick(_ nick: String, _ session: IrcleSession) -> Bool {
+        IRCCase.equal(nick, session.nick)
+    }
+
     /// Pick a file (NSOpenPanel) and offer it to `nick` via DCC SEND.
     func promptAndSendFile(to nick: String, on session: IrcleSession) {
+        guard !isSelfNick(nick, session) else {
+            session.announce("You can't DCC yourself — “\(nick)” is your own nick on this server."); return
+        }
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -206,6 +217,9 @@ final class IrcleModel: ObservableObject {
     /// Offer a specific file to `nick`: bind a listener, advertise via CTCP DCC
     /// SEND, and add the outgoing transfer to the DCC store.
     func startDCCSend(to nick: String, fileURL: URL, on session: IrcleSession) {
+        guard !isSelfNick(nick, session) else {
+            session.announce("You can't DCC yourself — “\(nick)” is your own nick on this server."); return
+        }
         guard let ip = DCC.primaryIPv4() else {
             session.announce("Can't send to \(nick): no routable network address found."); return
         }

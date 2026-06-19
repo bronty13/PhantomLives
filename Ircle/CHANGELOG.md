@@ -2,6 +2,17 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.17.1 — 2026-06-19
+
+### Fixed
+
+- **DCC to yourself is now refused with a clear message** instead of silently
+  binding a listener that no one connects to. This is the trap when two copies
+  of Ircle share the default nick `ircle-user` on one network: the server
+  renames the second client, so a DCC offer aimed at `ircle-user` targets *your
+  own* machine. Ircle now says "You can't DCC yourself — '<nick>' is your own
+  nick on this server." (Give each machine a distinct nick in Settings.) 1 test.
+
 ## 0.17.0 — 2026-06-19
 
 ### Added

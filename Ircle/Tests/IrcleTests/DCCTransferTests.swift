@@ -67,6 +67,20 @@ struct DCCTransferTests {
         #expect(dcc.chats.isEmpty)
     }
 
+    @Test func dccToSelfIsRefusedWithoutBindingASocket() {
+        let storeDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
+        let store = SettingsStore(directory: storeDir, secretStore: InMemorySecretStore())
+        let model = IrcleModel(settingsStore: store, runLaunchBackup: false)
+        guard let profile = model.settingsStore.settings.servers.first else {
+            Issue.record("expected a seeded server profile"); return
+        }
+        let session = model.openSession(for: profile, autoConnect: false)
+        model.startDCCChat(to: session.nick, on: session)   // offering to our own nick
+        #expect(model.dcc.chats.isEmpty)                     // self-guard fired; no listener
+    }
+
     @Test func sendChatBeforeConnectedIsIgnored() {
         let dcc = IrcleDCC()
         dcc.addOffer(DCC.Offer(kind: .chat, filename: nil, host: "1.2.3.4", port: 5001, size: nil), from: "sue")
