@@ -2,6 +2,19 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.9.1 — 2026-06-19
+
+### Added
+
+- **Classic mode-toggle row** (`t n i p s m l k r`) on the channel nick list —
+  the next piece of the Classic interface style. Each cell lights when that
+  channel flag is active and clicking toggles it (`+t`/`-t`, …); `l`/`k`, which
+  need a value, can be cleared here but not set. Backed by new channel-mode
+  state on `IrcleBuffer`: modes are parsed from inbound `MODE` changes and
+  requested on join via `MODE #chan` (numeric **324 RPL_CHANNELMODEIS**), with
+  parameters and untracked user/list modes (o/v/b/…) ignored. Only shown in
+  Classic style, channels only. 5 tests added.
+
 ## 0.9.0 — 2026-06-19
 
 ### Added

@@ -21,10 +21,42 @@ final class IrcleBuffer: ObservableObject, Identifiable {
     /// channelbar dims them, like classic Ircle).
     @Published var joined: Bool
 
+    /// Channel-flag modes currently active — drives the Classic nick-list
+    /// mode-toggle row. Only *presence* is tracked, not values (so `k`/`l`
+    /// appear lit when set, without storing the key/limit).
+    @Published var channelModes: Set<Character> = []
+
     init(kind: BufferKind, name: String, joined: Bool = true) {
         self.kind = kind
         self.name = name
         self.joined = joined
+    }
+
+    /// The channel-flag mode letters Ircle's Classic mode row surfaces.
+    static let trackedModes: Set<Character> = ["t", "n", "i", "p", "s", "m", "l", "k", "r"]
+
+    /// Apply an IRC mode token (e.g. `+nt`, `+l`, `-k`) to `channelModes`.
+    /// Parameters and untracked modes (o/v/b/e/I/…) are ignored — we only care
+    /// whether each tracked channel flag is on. Pass ONLY the mode token, not
+    /// its parameter arguments.
+    func applyModeChange(_ token: String) {
+        var adding = true
+        for ch in token {
+            switch ch {
+            case "+": adding = true
+            case "-": adding = false
+            case " ": return          // parameter section begins; stop
+            default:
+                guard Self.trackedModes.contains(ch) else { continue }
+                if adding { channelModes.insert(ch) } else { channelModes.remove(ch) }
+            }
+        }
+    }
+
+    /// Replace the flag set from a RPL_CHANNELMODEIS (324) mode token.
+    func setModes(_ token: String) {
+        channelModes.removeAll()
+        applyModeChange(token.hasPrefix("+") || token.hasPrefix("-") ? token : "+" + token)
     }
 
     /// Cap retained scrollback so a long-lived channel can't grow unbounded.

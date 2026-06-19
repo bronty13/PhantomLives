@@ -97,6 +97,8 @@ struct NickListView: View {
         let nick = selectedNick
         let on = nick != nil
         return VStack(spacing: 4) {
+            // One-click channel-mode toggles (lit = active). Channels only.
+            if buffer.kind == .channel { modeToggleRow }
             HStack(spacing: 4) {
                 NickActionButton("Op", palette: palette, enabled: on) { ifNick { send("MODE \(buffer.name) +o \($0)") } }
                 NickActionButton("Kick", palette: palette, enabled: on) { ifNick { send("KICK \(buffer.name) \($0)") } }
@@ -113,6 +115,34 @@ struct NickListView: View {
                 NickActionButton("Query", palette: palette, enabled: on) { ifNick { openQuery($0) } }
             }
         }
+    }
+
+    /// The classic `t n i p s m l k r` one-click channel-mode row. A lit cell =
+    /// that mode is active; click toggles it. Parameterless modes can be set or
+    /// cleared; `l`/`k` (which need a value) can only be cleared from here.
+    private var modeToggleRow: some View {
+        HStack(spacing: 2) {
+            ForEach(Array("tnipsmlkr"), id: \.self) { m in
+                let active = buffer.channelModes.contains(m)
+                let needsParam = (m == "l" || m == "k")
+                Button { toggleMode(m, active: active) } label: {
+                    Text(String(m))
+                        .font(palette.chromeFontBold())
+                        .frame(maxWidth: .infinity, minHeight: 16)
+                        .foregroundColor(active ? .white : palette.chromeText)
+                        .platinumBevel(palette, raised: !active,
+                                       fill: active ? palette.selection : palette.paneBG)
+                }
+                .buttonStyle(.plain)
+                .disabled(!active && needsParam)   // l/k need a value to set
+                .help("Channel mode \(active ? "−" : "+")\(m)")
+            }
+        }
+    }
+
+    private func toggleMode(_ m: Character, active: Bool) {
+        if active { send("MODE \(buffer.name) -\(m)") }
+        else if m != "l" && m != "k" { send("MODE \(buffer.name) +\(m)") }
     }
 
     /// Run `body` with the selected nick if there is one.
