@@ -2,6 +2,21 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.14.0 — 2026-06-19
+
+### Added
+
+- **DCC — Stage 2: accept & receive files.** A **DCC Transfers** window (⌘⇧D, or
+  the Window menu) lists inbound file offers; **Accept** downloads to
+  `~/Downloads/Ircle/DCC/` with a live progress bar, **Decline**/**Cancel**, and
+  **Reveal** when done. Saves never clobber (auto `name (1).ext`) and the
+  filename is re-sanitized so a transfer can't escape the folder. Downloads run
+  on IRCKit's new `DCCDownload` (connect-out only, to an address the SSRF guard
+  already vetted; sends the classic 4-byte acks; stops at the advertised size so
+  a peer can't over-write). **Never auto-accepts.** 6 tests for the save-path /
+  offer logic; the socket transfer itself is verified by a two-client smoke test.
+  DCC **chat** and **initiating** transfers are still to come.
+
 ## 0.13.0 — 2026-06-19
 
 ### Added

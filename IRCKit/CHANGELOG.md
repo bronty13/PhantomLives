@@ -14,6 +14,9 @@ All notable changes to IRCKit are documented here.
   `ipv4StringToInt`. No sockets/UI — transport + orchestration live in the app.
   12 tests ported from PurpleIRC's DCCSecurityTests + offer-parse/sanitize cases.
   (PurpleIRC keeps its own DCCService copy for now; converge later.)
+- **`DCCDownload`** — the DCC GET/accept transport: connects out to a vetted
+  peer, streams to a destination URL, sends 4-byte big-endian acks, and stops at
+  the advertised size (no over-write). Pure Network+Foundation; no listening.
 
 ## 0.2.0 — 2026-06-18
 

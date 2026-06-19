@@ -36,6 +36,7 @@ struct IrcleApp: App {
             CommandGroup(after: .toolbar) {
                 FacesMenuItem()
                 LogsMenuItem()
+                DCCMenuItem()
             }
             CommandMenu("Servers") {
                 ForEach(settingsStore.settings.servers) { profile in
@@ -63,6 +64,14 @@ struct IrcleApp: App {
         }
         .defaultSize(width: 640, height: 460)
 
+        // DCC Transfers — accept/decline inbound file offers, with progress.
+        Window("DCC Transfers", id: "dcc") {
+            DCCTransfersView()
+                .environmentObject(model.dcc)
+                .environmentObject(settingsStore)
+        }
+        .defaultSize(width: 520, height: 360)
+
         Settings {
             SettingsView()
                 .environmentObject(model)
@@ -87,5 +96,14 @@ private struct LogsMenuItem: View {
     var body: some View {
         Button("Chat Logs") { openWindow(id: "logs") }
             .keyboardShortcut("l", modifiers: [.command, .shift])
+    }
+}
+
+/// Menu item that opens the DCC Transfers window.
+private struct DCCMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("DCC Transfers") { openWindow(id: "dcc") }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
     }
 }

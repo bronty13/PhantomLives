@@ -11,6 +11,8 @@ final class IrcleModel: ObservableObject {
     @Published var selectedBufferID: UUID?
 
     let settingsStore: SettingsStore
+    /// Inbound DCC transfers (offered + active). Surfaced in the DCC window.
+    let dcc = IrcleDCC()
     /// One republish subscription per session, keyed by identity so it can be
     /// torn down when a session is removed.
     private var subs: [ObjectIdentifier: AnyCancellable] = [:]
@@ -80,6 +82,7 @@ final class IrcleModel: ObservableObject {
                              profileID: profile.id)
         s.notifyNicks = settingsStore.settings.notifyNicks
         s.notificationsEnabled = settingsStore.settings.notificationsEnabled
+        s.onDCCOffer = { [weak self] offer, from in self?.dcc.addOffer(offer, from: from) }
         // Re-publish the session's changes so SwiftUI views observing the model
         // refresh when buffers/lines mutate.
         subs[ObjectIdentifier(s)] = s.objectWillChange

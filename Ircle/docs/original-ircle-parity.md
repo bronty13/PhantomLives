@@ -94,7 +94,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 | Feature | Type | Original |
 |---|---|---|
 | DCC Chat (`/dcc chat nick`) | cmd/eng | ✅ |
-| DCC Send / Get, modes Text / Binary / MacBinary | cmd/eng | ✅ |
+| DCC Send / Get (**receive/accept done** — Stage 2) | cmd/eng | ✅→🟡 |
 | DCC RESUME (incl. with PC clients) | eng | ✅ |
 | Drag-and-drop send | win | ✅ |
 | MacBinary recognition on GET | eng | ✅ |

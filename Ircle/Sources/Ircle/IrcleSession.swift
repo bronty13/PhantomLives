@@ -35,6 +35,8 @@ final class IrcleSession: ObservableObject, Identifiable {
     @Published private(set) var isAway = false
     /// Mirror of `settings.notificationsEnabled`, kept in sync by the model.
     var notificationsEnabled = true
+    /// Set by the model to receive validated inbound DCC offers.
+    var onDCCOffer: ((DCC.Offer, String) -> Void)?
     private var notifyTimer: Timer?
     /// How often to re-poll friend presence (seconds).
     static let notifyPollInterval: TimeInterval = 45
@@ -259,12 +261,13 @@ final class IrcleSession: ObservableObject, Identifiable {
             case .chat:
                 line(serverBuffer, .notice, sender: from,
                      text: "wants to start a DCC chat (\(o.host):\(o.port)). "
-                         + "Accepting DCC isn't available yet — coming soon.")
+                         + "DCC chat isn't available yet — coming soon.")
             case .send:
                 let sz = ByteCountFormatter.string(fromByteCount: Int64(o.size ?? 0), countStyle: .file)
                 line(serverBuffer, .notice, sender: from,
                      text: "offers a file via DCC SEND: “\(o.filename ?? "?")” (\(sz)) "
-                         + "from \(o.host):\(o.port). Accepting DCC isn't available yet — coming soon.")
+                         + "from \(o.host):\(o.port). Open DCC Transfers (⌘⇧D) to accept.")
+                onDCCOffer?(o, from)
             }
             NSApplication.shared.requestUserAttention(.informationalRequest)
         case .rejectedUnsafeAddress(let token):
