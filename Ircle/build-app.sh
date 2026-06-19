@@ -68,6 +68,11 @@ if [ -f "Resources/Ircle.sdef" ]; then
     cp "Resources/Ircle.sdef" "$RESOURCES/Ircle.sdef"
 fi
 
+# In-app manual (rendered by ManualView via the lightweight Markdown reader).
+if [ -f "Resources/Manual.md" ]; then
+    cp "Resources/Manual.md" "$RESOURCES/Manual.md"
+fi
+
 # Sparkle config:
 #  - SUFeedURL points at appcast.xml committed to the repo, served via
 #    raw.githubusercontent.com.

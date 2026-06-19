@@ -45,6 +45,9 @@ struct IrcleApp: App {
                 Divider()
                 Button("Disconnect Current") { model.disconnectSelected() }
             }
+            CommandGroup(replacing: .help) {
+                ManualMenuItem()
+            }
         }
 
         // The Faces window — a separate window like classic Ircle. Single
@@ -63,6 +66,13 @@ struct IrcleApp: App {
                 .environmentObject(settingsStore)
         }
         .defaultSize(width: 640, height: 460)
+
+        // The in-app manual (history + research + feature reference).
+        Window("Ircle Manual", id: "manual") {
+            ManualView()
+                .environmentObject(settingsStore)
+        }
+        .defaultSize(width: 720, height: 640)
 
         // DCC Transfers — accept/decline inbound file + chat offers.
         Window("DCC Transfers", id: "dcc") {
@@ -115,5 +125,14 @@ private struct DCCMenuItem: View {
     var body: some View {
         Button("DCC Transfers") { openWindow(id: "dcc") }
             .keyboardShortcut("d", modifiers: [.command, .shift])
+    }
+}
+
+/// Help-menu item that opens the in-app manual.
+private struct ManualMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Ircle Manual") { openWindow(id: "manual") }
+            .keyboardShortcut("?", modifiers: [.command])
     }
 }
