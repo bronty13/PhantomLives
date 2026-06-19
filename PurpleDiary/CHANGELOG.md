@@ -3,6 +3,12 @@
 All notable changes to PurpleDiary are documented here. Versions are
 git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
+## [1.0.1022] — 2026-06-19 — Journal Settings: drop the ID line
+
+### Changed
+- Removed the raw journal **ID** from the bottom of the Journal Settings sheet —
+  it was a reference-screenshot artifact with no user value.
+
 ## [1.0.1021] — 2026-06-19 — Rich Journal Settings sheet
 
 ### Added

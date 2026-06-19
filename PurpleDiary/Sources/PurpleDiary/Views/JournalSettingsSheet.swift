@@ -112,9 +112,6 @@ struct JournalSettingsSheet: View {
                 if !draft.isDefault {
                     Button("Delete Journal", role: .destructive) { confirmingDelete = true }
                 }
-                Text("ID: \(draft.id)")
-                    .font(.caption2).foregroundStyle(.secondary)
-                    .textSelection(.enabled).lineLimit(1).truncationMode(.middle)
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
