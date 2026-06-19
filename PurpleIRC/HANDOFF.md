@@ -56,6 +56,16 @@ Requires macOS 14+, Swift 5.9+. Tests run via Command Line Tools' bundled
 
 ## Architecture at a glance
 
+> **IRCKit Phase 2 (engine moved out):** the IRC wire engine now lives in the
+> shared `../IRCKit` package (used by both PurpleIRC and Ircle). The files
+> `IRCMessage.swift`, `IRCClient.swift`, `ProxyFramer.swift`, and
+> `SASLNegotiator.swift` — plus the `IRCConnectionEvent` and `SASLMechanism`
+> enums — were **deleted from PurpleIRC**; `import IRCKit` brings them back, and
+> `IRCFormatter.stripCodes` delegates to `IRCText.stripFormatting`. Any file
+> inventory / source tree below that still lists those files predates the
+> migration. `IRCConnection` (the session layer) and everything UI-side stay in
+> PurpleIRC.
+
 - `ChatModel` — `@MainActor` top-level store. Holds the connection list,
   the shared `WatchlistService`, `SettingsStore`, `LogStore`, `BotHost`,
   `BotEngine`, `KeyStore`, `DCCService`, and `SessionHistoryStore`.
