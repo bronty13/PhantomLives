@@ -2,6 +2,17 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.20.0 — 2026-06-19
+
+### Added
+
+- **Command aliases.** Define your own slash commands: **`/alias <name>
+  <expansion>`** (e.g. `/alias j /join`), `/alias del <name>`, `/alias` to list,
+  `/unalias <name>`. Templates support `$1`…`$9` (positional), `$2-`/`$*` (rest);
+  with no `$`, args are appended. Typing `/<name> …` expands and re-runs (so an
+  alias can map to a command or text), with a recursion guard. Persisted; 6
+  tests (expander + management + persistence + an end-to-end alias→command echo).
+
 ## 0.19.0 — 2026-06-19
 
 ### Added

@@ -150,6 +150,10 @@ struct AppSettings: Codable {
     var ignoreMasks: [String] = []
     /// Play incoming CTCP SOUND clips (from ~/Downloads/Ircle/Sounds/).
     var ctcpSoundsEnabled: Bool = true
+    /// User command aliases: name (lowercase, no slash) → expansion template.
+    /// `$1`…`$9` are positional args, `$2-`/`$*` the rest; with no `$` the args
+    /// are appended. See `AliasExpander`.
+    var aliases: [String: String] = [:]
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
@@ -163,7 +167,7 @@ struct AppSettings: Codable {
     var lastBackupAt: String = ""
 
     enum CodingKeys: String, CodingKey {
-        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, ctcpSoundsEnabled, showTimestamps, fontSize
+        case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, ctcpSoundsEnabled, aliases, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
     }
 
@@ -180,6 +184,7 @@ struct AppSettings: Codable {
         loggingEnabled = (try? c.decode(Bool.self, forKey: .loggingEnabled)) ?? false
         ignoreMasks = (try? c.decode([String].self, forKey: .ignoreMasks)) ?? []
         ctcpSoundsEnabled = (try? c.decode(Bool.self, forKey: .ctcpSoundsEnabled)) ?? true
+        aliases = (try? c.decode([String: String].self, forKey: .aliases)) ?? [:]
         showTimestamps = (try? c.decode(Bool.self, forKey: .showTimestamps)) ?? true
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 12
         autoBackupEnabled = (try? c.decode(Bool.self, forKey: .autoBackupEnabled)) ?? true

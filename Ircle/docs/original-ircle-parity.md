@@ -132,7 +132,7 @@ inserts, `Commands` ≈ IRC actions, `Shortcuts` ≈ user macros/aliases.)
 |---|---|---|---|---|
 | mIRC colour + formatting rendering | eng | ✅ | ✅ | Ours adds background-contrast clamping. |
 | Adjustable text/background colours | pref | ✅ | 🟡 | Theme presets, not free colour pickers. |
-| IRC macros (ircII-style) / aliases | cmd | ✅ | ❌ | No user-defined macros/aliases. |
+| IRC macros (ircII-style) / aliases | cmd | ✅ | ✅ | /alias with $1/$2-/$* templates; persisted. |
 | Per-event sounds (MP3/AIFF in 3.5) | pref | ✅ | 🟡 | CTCP SOUND clips play; no per-event (join/etc.) sound mapping yet. |
 | Notifications (Growl in 3.5) | — | ✅ | ✅ 🆕 | macOS notifications for mentions/PMs; Settings toggle. |
 | Themes | — | (colours only) | ✅ | We exceed the original here (Platinum/Graphite). |

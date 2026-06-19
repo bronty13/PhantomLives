@@ -161,18 +161,35 @@ final class IrcleModel: ObservableObject {
 
     /// Send whatever the user typed in the input bar of `buffer`, to the session
     /// that owns it.
-    func submitInput(_ text: String, in buffer: IrcleBuffer) {
+    func submitInput(_ text: String, in buffer: IrcleBuffer, depth: Int = 0) {
         guard let session = session(for: buffer) else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if trimmed.hasPrefix("/") && !trimmed.hasPrefix("//") {
             if handleGlobalCommand(trimmed, in: buffer) { return }
+            // Built-ins win; otherwise expand a user alias and re-process (with
+            // a recursion guard so a self-referential alias can't loop forever).
+            if depth < 8, let expanded = aliasExpansion(for: trimmed) {
+                submitInput(expanded, in: buffer, depth: depth + 1)
+                return
+            }
             session.runCommand(trimmed, in: buffer)
         } else {
             // "//" escapes a literal leading slash.
             let body = trimmed.hasPrefix("//") ? String(trimmed.dropFirst()) : trimmed
             session.sendText(body, to: buffer)
         }
+    }
+
+    /// If `/name …` names a user alias, return its expansion (which may itself be
+    /// a command or text); otherwise nil.
+    private func aliasExpansion(for raw: String) -> String? {
+        let parts = raw.dropFirst().split(separator: " ", maxSplits: 1).map(String.init)
+        guard let name = parts.first?.lowercased(),
+              let template = settingsStore.settings.aliases[name] else { return nil }
+        let argStr = parts.count > 1 ? parts[1] : ""
+        let args = argStr.isEmpty ? [] : argStr.split(separator: " ").map(String.init)
+        return AliasExpander.expand(template, args: args)
     }
 
     // MARK: - Initiating DCC
@@ -254,6 +271,18 @@ final class IrcleModel: ObservableObject {
         settingsStore.settings.notifyNicks.removeAll { IRCCase.equal($0, nick) }
     }
 
+    // MARK: - Aliases
+
+    func setAlias(_ name: String, _ expansion: String) {
+        let key = name.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !key.isEmpty, !expansion.isEmpty else { return }
+        settingsStore.settings.aliases[key] = expansion
+    }
+
+    func removeAlias(_ name: String) {
+        settingsStore.settings.aliases[name.trimmingCharacters(in: .whitespaces).lowercased()] = nil
+    }
+
     // MARK: - Ignore list
 
     var ignoreMasks: [String] { settingsStore.settings.ignoreMasks }
@@ -305,6 +334,25 @@ final class IrcleModel: ObservableObject {
             session(for: buffer)?.announce(
                 "Ignore list: " + (list.isEmpty ? "(empty)" : list.joined(separator: ", ")),
                 in: buffer)
+            return true
+        case "alias":
+            // /alias <name> <expansion…>  ·  /alias del <name>  ·  /alias (list)
+            if sub == "del" || sub == "remove" || sub == "rm" {
+                if !arg.isEmpty { removeAlias(arg) }
+            } else if !sub.isEmpty {
+                // Everything after the name is the expansion template.
+                let rest = raw.dropFirst().split(separator: " ", maxSplits: 2).map(String.init)
+                if rest.count >= 3 { setAlias(sub, rest[2]) }
+                else { session(for: buffer)?.announce("Usage: /alias <name> <expansion>   (e.g. /alias j /join)", in: buffer) ; return true }
+            }
+            let aliases = settingsStore.settings.aliases
+            let listing = aliases.isEmpty ? "(none)"
+                : aliases.sorted { $0.key < $1.key }.map { "\($0.key) → \($0.value)" }.joined(separator: "; ")
+            session(for: buffer)?.announce("Aliases: \(listing)", in: buffer)
+            return true
+        case "unalias":
+            if !sub.isEmpty { removeAlias(sub) }
+            session(for: buffer)?.announce("Removed alias \(sub).", in: buffer)
             return true
         case "dcc":
             guard let session = session(for: buffer) else { return true }
