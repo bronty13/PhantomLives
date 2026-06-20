@@ -80,6 +80,14 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// when true, every purge run still previews (dry-run) and is gated on the verify check.
     public var purgeEnabled: Bool
 
+    /// When true (and `purgeEnabled`), the nightly run not only *plans* the purge but also stages
+    /// the verified-deletable photos into the "To Delete" album automatically — via the GUI
+    /// stage-agent the CLI launches after a successful archive. **Staging is non-destructive** (it
+    /// only adds to an album; macOS asks no confirmation), so it is safe to run unattended; the
+    /// actual deletion still happens only when the user empties that album in Photos. Default false:
+    /// enabling it is the deliberate "flip the switch" step after watching the plan in the dashboard.
+    public var purgeAutoStage: Bool
+
     /// On each **incremental** run, also copy the newly-added items into a dated batch under
     /// `reviewFolderPath` ("NEW PHOTOS TO REVIEW") so they can be handed off or deleted after
     /// review. On by default. Never runs on the baseline population (everything is "new" then).
@@ -112,6 +120,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         excludeSharedAndSyndicated: Bool = true,
         retention: RetentionPolicy = RetentionPolicy(),
         purgeEnabled: Bool = false,
+        purgeAutoStage: Bool = false,
         archiveSubfolder: String = "Photos Archive",
         reviewNewItems: Bool = true,
         reviewFolderPath: String? = nil,
@@ -132,6 +141,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.excludeSharedAndSyndicated = excludeSharedAndSyndicated
         self.retention = retention
         self.purgeEnabled = purgeEnabled
+        self.purgeAutoStage = purgeAutoStage
         self.archiveSubfolder = archiveSubfolder
         self.reviewNewItems = reviewNewItems
         self.reviewFolderPath = reviewFolderPath
@@ -160,6 +170,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         excludeSharedAndSyndicated = try c.decodeIfPresent(Bool.self, forKey: .excludeSharedAndSyndicated) ?? true
         retention = try c.decodeIfPresent(RetentionPolicy.self, forKey: .retention) ?? RetentionPolicy()
         purgeEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeEnabled) ?? false
+        purgeAutoStage = try c.decodeIfPresent(Bool.self, forKey: .purgeAutoStage) ?? false
         archiveSubfolder = try c.decodeIfPresent(String.self, forKey: .archiveSubfolder) ?? "Photos Archive"
         reviewNewItems = try c.decodeIfPresent(Bool.self, forKey: .reviewNewItems) ?? true
         reviewFolderPath = try c.decodeIfPresent(String.self, forKey: .reviewFolderPath)

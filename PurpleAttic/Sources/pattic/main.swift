@@ -178,10 +178,52 @@ struct Export: ParsableCommand {
             if let report = summary.writeReport() {
                 print("\nReport: \(report.path)")
             }
+            // Persist a structured run record for the monitoring dashboard (real runs only).
+            if !dryRun { summary.writeRunRecord(trigger: "scheduled") }
+
+            // Auto-stage: after a fully-successful archive+verify, if the profile opts in, hand off
+            // to the GUI app's stage-agent, which has the PhotoKit grants the CLI deliberately lacks.
+            // The CLI itself never touches Photos — it only launches the app to do the (non-destructive)
+            // album staging. A failed/partial run never stages.
+            if !dryRun && summary.allSucceeded && profile.purgeEnabled && profile.purgeAutoStage {
+                Self.launchStageAgent(logger: logger)
+            }
             if !summary.allSucceeded { throw ExitCode.failure }
         } catch let e as ExportEngine.EngineError {
             FileHandle.standardError.write(Data((e.description + "\n").utf8))
             throw ExitCode.failure
+        }
+    }
+
+    /// Launch the GUI app in headless `--stage-agent` mode to stage the freshly-written purge
+    /// manifest into the "To Delete" album. Resolves the `.app` bundle from this `pattic` binary's
+    /// own location (it lives at `<App>.app/Contents/MacOS/pattic`), so it works regardless of where
+    /// the app is installed. Fire-and-forget; if no GUI session is active the launch simply fails and
+    /// the manifest waits for the next run.
+    static func launchStageAgent(logger: AtticLogger) {
+        guard let exe = Bundle.main.executableURL else { return }
+        let appURL = exe.deletingLastPathComponent()   // …/Contents/MacOS
+            .deletingLastPathComponent()               // …/Contents
+            .deletingLastPathComponent()               // …/<App>.app
+        guard appURL.pathExtension == "app",
+              FileManager.default.fileExists(atPath: appURL.path) else {
+            logger.warn("Auto-stage: couldn't locate the app bundle from \(exe.path) — skipping staging.")
+            return
+        }
+        logger.info("→ Auto-stage: launching \(appURL.lastPathComponent) stage-agent to stage the purge manifest…")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        p.arguments = ["-g", "-j", appURL.path, "--args", "--stage-agent"]
+        do {
+            try p.run()
+            p.waitUntilExit()
+            if p.terminationStatus == 0 {
+                logger.info("← Auto-stage: stage-agent launched (it runs headless, stages to the album, then quits).")
+            } else {
+                logger.warn("← Auto-stage: `open` exited \(p.terminationStatus) — no active GUI session? Manifest kept for next run.")
+            }
+        } catch {
+            logger.warn("← Auto-stage: couldn't launch the stage-agent: \(error.localizedDescription)")
         }
     }
 }

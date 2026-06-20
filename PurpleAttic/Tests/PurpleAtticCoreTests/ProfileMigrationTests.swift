@@ -88,6 +88,21 @@ final class ProfileMigrationTests: XCTestCase {
         XCTAssertEqual(p.primaryArchiveRoot, "/Volumes/X/Backups/Photos")
     }
 
+    func testPurgeAutoStageDefaultsOffForOldProfiles() throws {
+        // A profile predating auto-stage must default to OFF — enabling automated staging is a
+        // deliberate opt-in, never inherited silently from an older file.
+        let p = try decode(#"{"primaryDestination":"/Volumes/X","purgeEnabled":true}"#)
+        XCTAssertFalse(p.purgeAutoStage)
+    }
+
+    func testPurgeAutoStageOverridePreservedAndRoundTrips() throws {
+        let p = try decode(#"{"purgeEnabled":true,"purgeAutoStage":true}"#)
+        XCTAssertTrue(p.purgeAutoStage)
+        let back = try JSONDecoder().decode(ArchiveProfile.self, from: JSONEncoder().encode(p))
+        XCTAssertTrue(back.purgeAutoStage)
+        XCTAssertEqual(back, p)
+    }
+
     func testRoundTripPreservesSubfolder() throws {
         var p = ArchiveProfile(name: "RT", primaryDestination: "/Volumes/X")
         p.archiveSubfolder = "Photos Archive"

@@ -189,16 +189,24 @@ inline *Grant…* / *Settings…* buttons in the Archive pane:
   from Photos it lives only in the archive — so purge is gated on the photo
   being present and matching in **≥2 on-disk copies**, the keep window gives a
   year-plus buffer, and Photos' 30-day *Recently Deleted* is the final net.
-- **Purge is shipped disabled.** It will require an affirmative Settings toggle,
-  a per-run dry-run preview, and macOS's own delete confirmation — and it is not
-  in the CLI at all.
+- **Purge requires an affirmative toggle and stays human at the delete step.**
+  Deletion lives only in the app (`PhotoKitPurger`), never the CLI. macOS shows an
+  un-suppressible confirmation on every delete, so even the automated path can only
+  *stage* (add verified photos to a "To Delete" album, non-destructively) — you
+  empty that album in Photos yourself.
+- **Automated nightly staging is opt-in.** With purge enabled **and** "Automatically
+  stage nightly" on, a successful scheduled archive identifies the verified-deletable
+  set and stages it for you each night; deletion remains a one-click human action.
 
 ## The app
 
 `./build-app.sh` builds, signs (Photos entitlements), installs to
-`/Applications/PurpleAttic.app`, and relaunches. The GUI has four panes —
-**Archive** (run + live log), **Settings** (profile editor), **Backup**, and
-**Purge** (shipped disabled). The `pattic` CLI is bundled inside the app at
+`/Applications/PurpleAttic.app`, and relaunches. The GUI panes are
+**Dashboard** (the landing pane — end-to-end monitoring: archive health, purge /
+space reclaimed, new items, off-site B2, with charts + drill-down), **Archive**
+(run + live log), **Schedule**, **Settings** (profile editor), **Off-site**,
+**Backup**, and **Purge** (preview + stage/delete + the auto-stage toggle, shipped
+OFF). The `pattic` CLI is bundled inside the app at
 `PurpleAttic.app/Contents/MacOS/pattic`.
 
 ## Roadmap
@@ -210,6 +218,9 @@ inline *Grant…* / *Settings…* buttons in the Archive pane:
 - [x] Previews-only / Optimize-Storage library guard (warns + gates real runs).
 - [x] Cryptomator vault unlock status in the UI.
 - [x] Guarded PhotoKit purge (osxphotos metadata + ≥2-copy verify + PhotoKit delete), default OFF.
-- [x] launchd scheduler (Schedule pane): automated archive, daily/weekly. Purge stays manual.
+- [x] launchd scheduler (Schedule pane): automated archive, daily/weekly.
 - [x] Permissions preflight: Full Disk Access + Photos Automation + Photos Library, hard-gated before a run.
 - [x] "Photos Archive" subfolder on physical drives (vault exempt); free-space sanity warning.
+- [x] Automated nightly purge **staging** (opt-in): plan in the CLI → app stage-agent → "To Delete" album. Deletion stays human.
+- [x] Structured run history + purge audit (`run-history.jsonl` / `purge-audit.jsonl`).
+- [x] Monitoring **Dashboard**: archive health, purge / space, new items, off-site B2 — numbers, charts, drill-down.

@@ -185,14 +185,48 @@ only on the Mac with the complete archive.
    - Plus space freed, date range, and a sample list.
 2. Want to protect something? Add it to your **"Save" album** (or tag it `save`),
    then **Preview** again — it drops out of "eligible."
-3. When the numbers look right: **Purge → Enable** (confirm), then **Delete N
-   Verified Photos…** → confirm in-app → **macOS asks once more** → done. Deleted
-   photos go to Photos' **Recently Deleted (30 days)** and disappear from all your
-   devices.
+3. When the numbers look right: **Purge → Enable** (confirm), then either:
+   - **Stage to "To Delete" album** (recommended, any size) — adds the verified
+     photos to an album with no prompts; you then open that album in Photos, Select
+     All, and delete once. Apple's engine paces the bulk delete + iCloud sync.
+   - **Delete N directly…** (small sets) → confirm in-app → **macOS asks once
+     more** → done.
+   Deleted photos go to Photos' **Recently Deleted (30 days)** and disappear from
+   all your devices.
+
+### Automatic nightly staging (flip the switch)
+
+Once you trust the preview, turn on **Purge → Automatically stage nightly**. From
+then on, each scheduled archive that finishes cleanly will **stage the verified
+photos into the "PurpleAttic — To Delete" album for you** — automatically, with no
+prompts. **Nothing is ever auto-deleted** (macOS doesn't allow a background job to
+delete photos): the album just fills up, and you empty it in Photos whenever you
+like — Select All → right-click ▸ "Delete N Photos" → confirm once.
+
+Watch the **Dashboard** for a night or two first (with auto-stage still off) to be
+sure the "ready to purge" count and the photos look right before flipping it on.
 
 > **Don't enable purge on a Mac with only a partial archive** (e.g. a laptop on
 > Optimize Storage, or against a throwaway test archive). Preview there all you
 > like; just don't delete.
+
+---
+
+## 5a. The Dashboard — monitoring the whole process
+
+The **Dashboard** is the first pane you see. It reads PurpleAttic's own history and
+shows, with numbers, charts, and expandable drill-downs:
+
+- **3-copy archive health** — files verified each run, any discrepancies (should
+  always be 0), when the archive last verified clean, and a recent-runs list.
+- **Purge & space reclaimed** — how many photos are queued and verified-safe right
+  now, totals staged/deleted over time, space reclaimed, and a purge history.
+- **New items archived** — new photos captured per run, and the running total.
+- **Off-site backup (B2)** — last restic snapshot, last integrity check, and bytes
+  uploaded over time.
+
+It updates after every run and every stage/delete; the **↻** button reloads on
+demand. Nothing here runs the engine — it's instant and safe to open any time.
 
 ---
 
@@ -205,6 +239,10 @@ only on the Mac with the complete archive.
 | Detailed logs | `~/Library/Logs/PurpleAttic/` |
 | Scheduler logs | `~/Library/Logs/PurpleAttic/scheduler.*.log` |
 | Profile + settings | `~/Library/Application Support/PurpleAttic/` |
+| Run history (dashboard) | `~/Library/Application Support/PurpleAttic/run-history.jsonl` |
+| Purge plan (latest) | `~/Library/Application Support/PurpleAttic/purge-plan.json` |
+| Purge audit log | `~/Library/Application Support/PurpleAttic/purge-audit.jsonl` |
+| Stage-agent log | `~/Library/Logs/PurpleAttic/pattic-stage-agent-*.log` |
 | Config backups | `~/Downloads/PurpleAttic backup/` |
 | Your archive | wherever you set Primary / Mirror |
 | Off-site (restic) | the restic repo you configure (e.g. a Backblaze B2 bucket) |

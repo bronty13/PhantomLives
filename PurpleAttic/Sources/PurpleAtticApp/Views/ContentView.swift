@@ -79,6 +79,7 @@ struct ContentView: View {
     @ViewBuilder
     private var detail: some View {
         switch appState.selectedPane {
+        case .dashboard: DashboardView()
         case .run: RunView()
         case .schedule: ScheduleView()
         case .profile: ProfileSettingsView(store: appState.store)

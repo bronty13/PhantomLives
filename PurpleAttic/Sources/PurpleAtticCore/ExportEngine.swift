@@ -31,12 +31,15 @@ public final class ExportEngine {
         public let reviewStagedCount: Int
         /// The dated review-batch folder, if anything was staged.
         public let reviewPath: String?
+        /// Typed, machine-readable metrics for the monitoring dashboard (counts/bytes per phase).
+        public let metrics: RunMetrics
         public var allSucceeded: Bool { steps.allSatisfy { $0.success } }
         public var duration: TimeInterval { finishedAt.timeIntervalSince(startedAt) }
 
         public init(profileName: String, startedAt: Date, finishedAt: Date, steps: [StepResult],
                     logFile: String?, metadataEmbedSkips: [String] = [],
-                    reviewStagedCount: Int = 0, reviewPath: String? = nil) {
+                    reviewStagedCount: Int = 0, reviewPath: String? = nil,
+                    metrics: RunMetrics = RunMetrics()) {
             self.profileName = profileName
             self.startedAt = startedAt
             self.finishedAt = finishedAt
@@ -45,6 +48,7 @@ public final class ExportEngine {
             self.metadataEmbedSkips = metadataEmbedSkips
             self.reviewStagedCount = reviewStagedCount
             self.reviewPath = reviewPath
+            self.metrics = metrics
         }
     }
 
@@ -153,6 +157,7 @@ public final class ExportEngine {
         }
 
         var steps: [StepResult] = []
+        var metrics = RunMetrics()
         embedSkipFiles = []
         reviewStagedCount = 0
         reviewBatchPath = nil
@@ -239,13 +244,13 @@ public final class ExportEngine {
                                 detail: ok ? "exit 0\(stagedThisPass > 0 ? " · \(stagedThisPass) staged" : "")" : "exit \(result.exitCode)")
             if !ok {
                 logger.error("Export failed — skipping mirror/verify/cloud to avoid propagating a partial archive.")
-                return self.finishRun(profile: profile, started: started, steps: steps, tracker: tracker)
+                return self.finishRun(profile: profile, started: started, steps: steps, tracker: tracker, metrics: metrics)
             }
         }
 
         if dryRun {
             logger.info("Dry run — skipping mirror, verify, and cloud sync.")
-            return self.finishRun(profile: profile, started: started, steps: steps, tracker: tracker)
+            return self.finishRun(profile: profile, started: started, steps: steps, tracker: tracker, metrics: metrics)
         }
 
         // 2 + 3. Mirror then verify, per mirror. The archive lives in `archiveSubfolder`
@@ -286,6 +291,9 @@ public final class ExportEngine {
                 steps.append(.init(name: "Mirror → \(mirror)", success: result.exitCode == 0,
                                    detail: "exit \(result.exitCode)", duration: Date().timeIntervalSince(mt0)))
             }
+            metrics.mirrorsCopied = mirrorOK
+            metrics.mirrorsSkipped = mirrorSkipped
+            metrics.mirrorsFailed = mirrorFailed
             let mState: RunProgress.State = mirrorFailed > 0 ? .failed : (mirrorOK == 0 ? .skipped : .done)
             tracker.finishPhase(.mirror, state: mState,
                                 detail: "\(mirrorOK) ok, \(mirrorSkipped) skipped, \(mirrorFailed) failed")
@@ -300,6 +308,7 @@ public final class ExportEngine {
                 let report = VerifyService.compare(primary: primaryRoot, mirror: mirror, deep: deepVerify) { n in
                     tracker.update(detail: "\(n.formatted()) files checked")
                 }
+                metrics.primaryFileCount = max(metrics.primaryFileCount, report.primaryFileCount)
                 if report.matches {
                     verifyMatched += 1
                     logger.info("← Verify OK: \(report.primaryFileCount) files match")
@@ -316,6 +325,8 @@ public final class ExportEngine {
                 steps.append(.init(name: "Verify \(mirror)", success: report.matches,
                                    detail: "\(report.discrepancies.count) discrepancies", duration: Date().timeIntervalSince(vt0)))
             }
+            metrics.mirrorsVerified = verifyMatched
+            metrics.verifyDiscrepancies = verifyDiscrepancies
             tracker.finishPhase(.verify, state: verifyDiscrepancies > 0 ? .failed : .done,
                                 detail: verifyDiscrepancies > 0 ? "\(verifyDiscrepancies) discrepancies" : "\(verifyMatched) mirror(s) OK")
         }
@@ -349,6 +360,7 @@ public final class ExportEngine {
                     switch outcome {
                     case .backedUp, .checked, .restored:
                         okCount += 1
+                        metrics.applyCloudDetail(outcome.detail)
                         logger.info("← Off-site (\(dest.name)) OK: \(outcome.detail) in \(Self.fmt(dur))")
                     case .skipped:
                         skipCount += 1
@@ -368,13 +380,58 @@ public final class ExportEngine {
             }
         }
 
-        return self.finishRun(profile: profile, started: started, steps: steps, tracker: tracker)
+        // 5. Purge PLANNING (no deletion — Core never touches Photos). When purge is enabled, after
+        // the archive is verified we compute which aged, un-pinned photos are present in ≥2 copies and
+        // write the manifest the GUI stage-agent consumes. The actual album-staging/deletion lives in
+        // the app target; this step only records what *would* be purgeable, so it is safe to run
+        // headless from the scheduler. Failures here are non-fatal — they never fail an archive run.
+        if !dryRun && profile.purgeEnabled {
+            planPurge(profile: profile, steps: &steps, metrics: &metrics)
+        }
+
+        return self.finishRun(profile: profile, started: started, steps: steps, tracker: tracker, metrics: metrics)
+    }
+
+    /// Compute the purge plan and persist the manifest (no deletion). Best-effort: any failure is
+    /// logged and recorded as a non-failing step so it can never break the archive run.
+    private func planPurge(profile: ArchiveProfile, steps: inout [StepResult], metrics: inout RunMetrics) {
+        guard let osx = Tooling.osxphotos else {
+            logger.warn("Purge plan skipped — osxphotos not found.")
+            steps.append(.init(name: "Purge plan", success: true,
+                               detail: "skipped (osxphotos not found)", duration: 0))
+            return
+        }
+        let t0 = Date()
+        logger.info("→ Purge plan: computing aged, un-pinned, ≥2-copy-verified photos…")
+        do {
+            let plan = try PurgePlanner.compute(osxphotos: osx, profile: profile, now: Date(), logger: logger)
+            metrics.purgeEligible = plan.candidates.count
+            metrics.purgeVerified = plan.verified.count
+            metrics.purgeUnverified = plan.unverified.count
+            metrics.purgeVerifiedBytes = Int64(plan.verifiedBytes)
+            let manifest = PurgeManifest(from: plan, profileName: profile.name,
+                                         keepWindowDays: profile.retention.keepWindowDays, computedAt: Date())
+            let wrote = PurgeManifestStore.write(manifest)
+            let dur = Date().timeIntervalSince(t0)
+            logger.info("← Purge plan: \(plan.verified.count) verified-deletable of \(plan.candidates.count) eligible "
+                        + "(\(plan.unverified.count) unverified)\(wrote ? "" : " — manifest write FAILED") in \(Self.fmt(dur))")
+            steps.append(.init(name: "Purge plan", success: true,
+                               detail: "\(plan.verified.count) deletable / \(plan.candidates.count) eligible / \(plan.unverified.count) unverified",
+                               duration: dur))
+        } catch {
+            let dur = Date().timeIntervalSince(t0)
+            let message = (error as? PhotoMetadataQuery.QueryError)?.description ?? error.localizedDescription
+            logger.warn("← Purge plan skipped — \(message)")
+            steps.append(.init(name: "Purge plan", success: true,
+                               detail: "skipped — \(message)", duration: dur))
+        }
     }
 
     // MARK: - Helpers
 
     private func finishRun(profile: ArchiveProfile, started: Date,
-                           steps: [StepResult], tracker: RunProgressTracker) -> RunSummary {
+                           steps: [StepResult], tracker: RunProgressTracker,
+                           metrics: RunMetrics = RunMetrics()) -> RunSummary {
         if !embedSkipFiles.isEmpty {
             logger.info("ℹ️ \(embedSkipFiles.count) photo(s) archived with sidecar-only metadata "
                         + "(in-file embed skipped — damaged EXIF; the file + .xmp are fine). Listed in the report.")
@@ -386,7 +443,8 @@ public final class ExportEngine {
                                  finishedAt: Date(), steps: steps,
                                  logFile: logger.logFileURL?.path,
                                  metadataEmbedSkips: embedSkipFiles,
-                                 reviewStagedCount: reviewStagedCount, reviewPath: reviewBatchPath)
+                                 reviewStagedCount: reviewStagedCount, reviewPath: reviewBatchPath,
+                                 metrics: metrics)
         logger.info("=== Run finished in \(Self.fmt(summary.duration)) — \(summary.allSucceeded ? "ALL OK" : "WITH FAILURES") ===")
         tracker.finishRun()
         return summary

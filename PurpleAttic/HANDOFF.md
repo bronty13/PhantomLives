@@ -27,9 +27,20 @@ photo:
 5. Deletions land in Photos' **Recently Deleted (30 days)**.
 
 Reinforcing properties: the 12-month window is itself a buffer (a just-taken
-photo can't be purge-eligible for a year); the **CLI and the scheduler have no
-purge path at all** — deletion exists only in the GUI; the **Optimize-Storage
-guard** blocks archiving an incomplete library.
+photo can't be purge-eligible for a year); **deletion exists only in the app
+target** (`PhotoKitPurger`) — the CLI links no Photos code and can never delete;
+the **Optimize-Storage guard** blocks archiving an incomplete library.
+
+**Automated staging vs. deletion (0.22).** The scheduler can now *stage*
+automatically but still cannot *delete*. macOS shows an un-suppressible
+confirmation on every `deleteAssets`, so unattended deletion is impossible by
+design. Instead, when `purgeAutoStage` is on, a successful nightly archive writes
+the verified-deletable set to `purge-plan.json` and the CLI launches the app's
+**headless `--stage-agent`**, which adds that set to the "To Delete" album — a
+*non-destructive* album-add (no confirmation). The album only ever *grows*; a
+human emptying it in Photos is the sole deletion path. So the gate chain above is
+intact: auto-staging is gate 1–3 done for you; gates 4–5 (the actual delete +
+macOS's confirmation) remain human, every time.
 
 ## Module map
 
@@ -56,10 +67,19 @@ PurpleAtticCore (library)   — pure logic + IO; NO Photos framework, NO deletio
   RunProgress / RunProgressTracker   live phase-stepper progress model (engine → GUI callback)
   ReviewStaging              copy each incremental run's NEW items → "NEW PHOTOS TO REVIEW"
                              (snapshot dest before/after, set-difference, copy; baseline-safe)
+  RunRecord / RunMetrics     typed per-run metrics + RunHistoryStore (run-history.jsonl) — the
+                             machine-readable run history the dashboard charts
+  PurgeManifest              the verified-deletable set a run computes (purge-plan.json) for the
+                             stage-agent + dashboard; PurgeManifestStore read/write + staleness
+  PurgeAuditRecord           one staged/deleted action (auto|manual) → PurgeAuditStore (purge-audit.jsonl)
+  DashboardMetrics           pure roll-ups (summary + time-series) over the three stores above
+  AtticJSON                  shared ISO-8601 JSONL/document coders for the stores
   Tooling / ProcessRunner / AtticLogger   tool locator, subprocess, logging
 
-pattic (executable)         — CLI front-end. Subcommands: doctor/init/plan/export.
-                              NO purge path. Safe to run headless / from the scheduler.
+pattic (executable)         — CLI front-end. Subcommands: doctor/init/plan/export. Still links NO
+                              Photos code: it PLANS the purge (pure Core → purge-plan.json) and,
+                              when purgeAutoStage is on, LAUNCHES the app's stage-agent — but never
+                              deletes/stages itself. Safe to run headless / from the scheduler.
 
 PurpleAtticApp (executable) — the SwiftUI app (PurpleAttic.app). Imports Core.
   AppState                   view-model; runs the engine off-main, streams log lines;
@@ -68,7 +88,10 @@ PurpleAtticApp (executable) — the SwiftUI app (PurpleAttic.app). Imports Core.
   Services/PermissionsService preflight: FDA (Core probe) + Photos Automation
                              (AEDeterminePermissionToAutomateTarget) + Photos (PhotoKit)
   Services/PhotoKitPurger    the ONLY deletion code (import Photos) — GUI-only
+  Services/StagingAgent      headless `--stage-agent` mode: read purge-plan.json → re-check drives →
+                             stageToAlbum (non-destructive) → write audit → quit. App-target (PhotoKit)
   Services/SchedulerService  writes the LaunchAgent + launchctl bootstrap/kickstart
+  Views/DashboardView        the monitoring dashboard (landing pane) — Swift Charts over the stores
   Services/BackupService     launch-time backup of config (PhantomLives standard)
   Services/WindowStateGuard  copied-verbatim split-view state fix
   Views/                     ContentView (manual HStack sidebar) + 5 panes:
@@ -102,6 +125,18 @@ it is structurally incapable of purging.
   choke when iCloud is digesting a large deletion backlog (`cloudd` pegged). (Incident 2026-06-11.)
 - **Scheduler:** `SchedulerService` installs `~/Library/LaunchAgents/com.bronty13.
   PurpleAttic.archive.plist` running the bundled `pattic export` on a calendar.
+- **Auto-stage (0.22, opt-in via `purgeAutoStage`):** after a fully-successful
+  scheduled archive, `ExportEngine` runs `PurgePlanner.compute` (pure Core; the
+  same query/verify as the GUI preview) and writes `purge-plan.json`. The CLI then
+  `open -gj <App>.app --args --stage-agent`. The app launches with activation
+  policy `.prohibited` (no window/Dock), `StagingAgent.run` re-checks the manifest
+  is fresh + the primary and ≥1 mirror are mounted, calls `PhotoKitPurger.stageToAlbum`,
+  appends a `PurgeAuditRecord(trigger: .auto)`, then `NSApp.terminate`. A failed/partial
+  archive never stages; no GUI session → `open` fails and the manifest waits.
+- **Instrumentation (0.22):** every real run appends a `RunRecord` (typed metrics)
+  to `run-history.jsonl`; every stage/delete appends a `PurgeAuditRecord` to
+  `purge-audit.jsonl`. `DashboardView` charts both + the latest manifest. All three
+  stores live in `~/Library/Application Support/PurpleAttic/`.
 
 ## Topology (operational)
 
@@ -248,10 +283,17 @@ found to time out and kill Photos on indeterminate iCloud stragglers. The full
 including on **production drives** (ROG_WHITE primary + LACIE mirror + vault),
 Verify 350,522 files match, 0 discrepancies. **0.10** excludes shared/syndicated
 ("Shared with You") items from the export so non-owned content stops showing as
-bogus "missing" originals. 93 tests passing.
+bogus "missing" originals. **0.22** added automated nightly purge **staging**
+(opt-in `purgeAutoStage`: plan in the CLI → `purge-plan.json` → app `--stage-agent`
+adds the verified set to the "To Delete" album, non-destructively), structured
+**run history + purge audit** stores (`run-history.jsonl` / `purge-audit.jsonl`),
+and a **monitoring Dashboard** (the new landing pane: archive health, purge/space,
+new-items, off-site B2 — Swift Charts + drill-down). 167 tests passing.
 
 Not yet done / possible next:
 - First real **complete** archive on Vortex (gated on its iCloud download).
-- Real-world purge run (only after the archive is complete + trusted).
-- Possible: osxphotos export-DB-based correlation (currently filename+size), a
-  `USER_MANUAL.md` Vortex first-run walkthrough, Sparkle auto-update.
+- Watch the Dashboard's "ready to purge" for a night or two (auto-stage OFF) to
+  confirm the criteria pick the right photos, THEN flip `purgeAutoStage` on.
+- Possible: a retention/prune policy for the JSONL stores (currently unbounded —
+  fine for years of daily runs, but trim eventually); osxphotos export-DB-based
+  correlation (currently filename+size); Sparkle auto-update.

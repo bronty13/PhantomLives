@@ -4,6 +4,7 @@ import PurpleAtticCore
 
 /// Which detail pane the sidebar is showing.
 enum Pane: String, CaseIterable, Identifiable {
+    case dashboard = "Dashboard"
     case run = "Archive"
     case schedule = "Schedule"
     case profile = "Settings"
@@ -13,6 +14,7 @@ enum Pane: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var icon: String {
         switch self {
+        case .dashboard: return "chart.bar.xaxis"
         case .run: return "externaldrive.badge.timemachine"
         case .schedule: return "clock.arrow.2.circlepath"
         case .profile: return "slider.horizontal.3"
@@ -35,7 +37,7 @@ struct LogLine: Identifiable {
 final class AppState: ObservableObject {
     let store = SettingsStore()
 
-    @Published var selectedPane: Pane = .run
+    @Published var selectedPane: Pane = .dashboard
     @Published var isRunning = false
     @Published var logLines: [LogLine] = []
     @Published var lastSummaryText: String? = nil
@@ -73,6 +75,13 @@ final class AppState: ObservableObject {
     @Published var schedulerLoaded = false
     @Published var schedulerMessage: String? = nil
 
+    // Dashboard (monitoring) — loaded from the persistent stores; refreshed on launch, when the
+    // Dashboard pane appears, and after any run/stage/delete.
+    @Published var runHistory: [RunRecord] = []
+    @Published var purgeAudits: [PurgeAuditRecord] = []
+    @Published var latestManifest: PurgeManifest? = nil
+    @Published var dashboardSummary = DashboardMetrics.Summary()
+
     /// Cap the in-memory log so a long run can't balloon memory; the full log is on disk.
     private let maxLogLines = 5000
 
@@ -87,6 +96,28 @@ final class AppState: ObservableObject {
         refreshVaultStatus()
         refreshPermissions()
         schedulerLoaded = SchedulerService.isLoaded()
+        refreshDashboard()
+    }
+
+    // MARK: - Dashboard (monitoring)
+
+    /// Reload the persisted run history / purge audit / latest manifest off-main and republish the
+    /// rolled-up summary. Cheap (a few hundred small records), but kept off the main queue so a long
+    /// history can never hitch the UI.
+    func refreshDashboard() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let runs = RunHistoryStore.load()
+            let audits = PurgeAuditStore.load()
+            let manifest = PurgeManifestStore.read()
+            let summary = DashboardMetrics.summarize(runs: runs, audits: audits, manifest: manifest)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.runHistory = runs
+                self.purgeAudits = audits
+                self.latestManifest = manifest
+                self.dashboardSummary = summary
+            }
+        }
     }
 
     // MARK: - Permissions preflight
@@ -213,11 +244,14 @@ final class AppState: ObservableObject {
             do {
                 let summary = try engine.run(profile: profile, dryRun: dryRun)
                 let reportURL = summary.writeReport()
+                // Persist a structured run record for the dashboard (real runs only).
+                if !dryRun { summary.writeRunRecord(trigger: "manual") }
                 DispatchQueue.main.async {
                     self.isRunning = false
                     var text = summary.reportText()
                     if let reportURL { text += "\nReport saved to: \(reportURL.path)" }
                     self.lastSummaryText = text
+                    self.refreshDashboard()
                 }
             } catch {
                 let message = (error as? ExportEngine.EngineError)?.description ?? error.localizedDescription
@@ -261,6 +295,8 @@ final class AppState: ObservableObject {
         }
         guard let plan = purgePlan, !plan.verified.isEmpty, !isPurging else { return }
         let uuids = plan.verified.map { $0.uuid }
+        let plannedBytes = Int64(plan.verifiedBytes)
+        let plannedCount = plan.verified.count
         let token = PurgeCancellation()
         purgeCancellation = token
         isPurging = true
@@ -286,6 +322,14 @@ final class AppState: ObservableObject {
                 self.purgeCancellation = nil
                 switch result {
                 case .success(let outcome):
+                    let bytes = plannedCount > 0
+                        ? Int64(Double(plannedBytes) * Double(outcome.deleted) / Double(plannedCount)) : 0
+                    PurgeAuditStore.append(PurgeAuditRecord(
+                        timestamp: Date(), trigger: .manual, action: .delete,
+                        requested: outcome.requested, resolved: outcome.resolved,
+                        succeeded: outcome.deleted, failed: outcome.failed, bytes: bytes,
+                        note: outcome.cancelled ? "cancelled by user" : nil))
+                    self.refreshDashboard()
                     var msg = "Deleted \(outcome.deleted) photo(s) — now in Photos → Recently Deleted for 30 days."
                     if outcome.failed > 0 {
                         msg += " \(outcome.failed) couldn't be deleted this pass and were skipped — re-run the purge to retry them."
@@ -320,6 +364,8 @@ final class AppState: ObservableObject {
     func stageForDeletion() {
         guard let plan = purgePlan, !plan.verified.isEmpty, !isStaging, !isPurging else { return }
         let uuids = plan.verified.map { $0.uuid }
+        let plannedBytes = Int64(plan.verifiedBytes)
+        let plannedCount = plan.verified.count
         let album = Self.toDeleteAlbumName
         let token = PurgeCancellation()
         purgeCancellation = token
@@ -347,6 +393,14 @@ final class AppState: ObservableObject {
                 self.purgeCancellation = nil
                 switch result {
                 case .success(let o):
+                    let bytes = plannedCount > 0
+                        ? Int64(Double(plannedBytes) * Double(o.added) / Double(plannedCount)) : 0
+                    PurgeAuditStore.append(PurgeAuditRecord(
+                        timestamp: Date(), trigger: .manual, action: .stage,
+                        requested: o.requested, resolved: o.resolved, succeeded: o.added,
+                        failed: max(0, o.resolved - o.added), bytes: bytes, album: o.albumName,
+                        note: o.cancelled ? "cancelled by user" : nil))
+                    self.refreshDashboard()
                     var msg = "Staged \(o.added) photo(s) into the album “\(o.albumName)”. "
                     msg += "Now in Photos.app: open that album → Edit ▸ Select All → right-click ▸ "
                     msg += "“Delete \(o.added) Photos” (or the Image menu) — NOT the Delete key (that only removes them from the album). "

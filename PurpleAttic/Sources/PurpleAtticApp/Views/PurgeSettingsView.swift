@@ -62,6 +62,21 @@ struct PurgeSettingsView: View {
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange)
             }
+
+            Divider()
+
+            Toggle("Automatically stage nightly", isOn: Binding(
+                get: { profile.purgeAutoStage },
+                set: { store.profile.purgeAutoStage = $0; store.save() }))
+                .disabled(!profile.purgeEnabled)
+            Text(profile.purgeAutoStage
+                 ? "ON — after each scheduled archive, the verified-deletable photos are added to the “\(AppState.toDeleteAlbumName)” album automatically (no prompt). Nothing is deleted: open that album in Photos and delete when you’re ready."
+                 : "OFF — the nightly run computes the purge plan (shown on the Dashboard) but stages nothing. Turn this on once the plan looks right to have PurpleAttic queue photos for you each night.")
+                .font(.caption).foregroundStyle(profile.purgeAutoStage ? .orange : .secondary)
+            if profile.purgeAutoStage && !profile.purgeEnabled {
+                Text("Enable purge above for auto-staging to take effect.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 

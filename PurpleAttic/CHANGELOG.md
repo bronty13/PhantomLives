@@ -3,6 +3,48 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.22.0] — 2026-06-20
+
+Automated criteria-based purge + a comprehensive monitoring dashboard. This is the release
+that "flips the switch": the nightly run now identifies aged, un-pinned, ≥2-copy-verified
+photos and (when you opt in) stages them for deletion automatically — and a new Dashboard pane
+charts the whole end-to-end process over time.
+
+### Added
+- **Automatic nightly purge staging (opt-in).** When `purgeEnabled` AND the new `purgeAutoStage`
+  are on, a successful scheduled archive now (1) computes the purge plan — photos older than
+  `keepWindowDays`, not Favorite/Save-pinned, **verified present in the primary + a mirror** — and
+  writes a `purge-plan.json` manifest, then (2) launches the GUI app in a headless `--stage-agent`
+  mode that adds the verified set to the **"PurpleAttic — To Delete"** album. Staging is a
+  *non-destructive* PhotoKit album-add (no macOS confirmation, safe unattended); **nothing is ever
+  auto-deleted** — you empty that album in Photos when ready. macOS does not permit unattended
+  deletion (every `deleteAssets` shows an un-suppressible confirmation), so staging is the correct,
+  honest ceiling for automation.
+  - **The deletion firewall is preserved.** The CLI (`pattic`) still links no Photos code; it only
+    *plans* (pure Core) and *launches* the app, which holds the PhotoKit grants. Deletion lives
+    only in the app target, exactly as before.
+- **Monitoring Dashboard (new landing pane).** Numbers, trend charts (Swift Charts), and
+  drill-down across four areas: **3-copy archive health** (files verified, discrepancies, last
+  clean verify, archive-growth trend, recent-runs list), **purge & space reclaimed** (ready-to-purge
+  backlog, totals staged/deleted, space reclaimed, cumulative-purged chart, purge history),
+  **new items archived** (per-run trend + totals), and **off-site B2** (last snapshot, last
+  `restic check`, bytes uploaded over time).
+- **Structured run history + purge audit.** Every real run now appends a typed `RunRecord` to
+  `run-history.jsonl` (per-phase counts, bytes, durations, outcomes), and every staging/deletion —
+  automatic or manual — appends a `PurgeAuditRecord` to `purge-audit.jsonl`. This closes the
+  long-standing gap of having **no machine-readable record** of what was purged. (JSONL, no new
+  dependency.)
+- **`purgeAutoStage` profile flag** + a "Automatically stage nightly" toggle in the Purge pane
+  (defaults OFF; decodes to OFF for older profiles).
+
+### Notes
+- **Safe on-ramp:** because `purgeEnabled` is already on for the main profile, this release begins
+  *planning* the purge nightly immediately (writing the manifest + dashboard metrics) while
+  `purgeAutoStage` stays OFF — so you can watch exactly what *would* be staged on the Dashboard
+  before flipping auto-staging on.
+- Tests: +24 (167 total) covering the stores, restic-detail/byte parsing, the run-record builder,
+  manifest build/staleness/round-trip, profile migration, and the dashboard roll-ups.
+
 ## [0.21.4] — 2026-06-18
 
 Docs only — no code change.
