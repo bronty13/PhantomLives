@@ -37,6 +37,19 @@ All notable changes to Ircle are documented here.
 - The nick-list action grid, channel-mode row, and full input formatting toolbar
   (previously Classic-only) also appear in the Floating style.
 
+### Fixed
+
+- **Connections window — Nick…** now sets the connection's nickname: it updates
+  the saved server profile (persists, shows in the list, used on connect) and
+  also sends a live `/NICK` when that server is connected. Previously it only
+  attempted a live change and did nothing on a disconnected server, so the nick
+  appeared to revert to the default.
+- **Connections window — Edit… / Server…** now open Settings reliably (via
+  `SettingsLink` instead of the unreliable `showSettingsWindow:` selector);
+  **Edit…** jumps to the Servers tab and pre-selects the chosen server.
+- Connection rows observe their session directly, so **nick + status update
+  live**.
+
 ### Tests
 
 - 164 total (+8): the `.floating` style (selectable / Codable / displayName),
