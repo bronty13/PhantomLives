@@ -43,6 +43,12 @@ DEFAULT_INCLUDE_GROUPS = ("album", "single", "compilation", "appears_on")
 # Groups that are the artist's *own* releases — every track on these is kept.
 OWN_GROUPS = frozenset({"album", "single", "compilation"})
 
+# Max page size the live /artists/{id}/albums endpoint accepts. Spotify's docs
+# say 50, but as of 2026-06 the API rejects anything >10 with "Invalid limit"
+# (verified empirically). Pagination still fetches everything; it just takes more
+# round-trips. Other endpoints (album_tracks, playlist_items) are unaffected.
+ALBUMS_PAGE_LIMIT = 10
+
 
 def track_is_by_artist(track: dict, artist_id: str) -> bool:
     """True if `artist_id` is credited anywhere on the track."""
@@ -92,6 +98,28 @@ def dedupe_by_uri(tracks: Iterable[dict]) -> list[dict]:
         if not uri or uri in seen:
             continue
         seen.add(uri)
+        out.append(t)
+    return out
+
+
+def dedupe_by_name(tracks: Iterable[dict]) -> list[dict]:
+    """
+    Collapse tracks that share an identical title, keeping the first occurrence.
+    Because group order is own-releases-first, the artist's own version of a song
+    wins over a guest/compilation copy. Crucially this dedupes by the FULL title,
+    so distinct versions whose titles differ — "(Taylor's Version)",
+    "(From The Vault)", "- Live", "- Acoustic Version", remixes — are preserved;
+    only true title-collisions (the same song re-released on deluxe/anniversary
+    editions) are merged. Use when you want one entry per distinct song rather
+    than every available recording/edition.
+    """
+    seen: set[str] = set()
+    out: list[dict] = []
+    for t in tracks:
+        key = (t.get("name") or "").strip().casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
         out.append(t)
     return out
 
@@ -207,7 +235,9 @@ def _client():
     import spotipy
     from spotipy.oauth2 import SpotifyOAuth
 
-    scope = "playlist-modify-public playlist-modify-private"
+    # modify: to add tracks / create the playlist; read-private: to find an
+    # existing playlist by name (GET /me/playlists) so re-runs are idempotent.
+    scope = "playlist-modify-public playlist-modify-private playlist-read-private"
     auth = SpotifyOAuth(
         scope=scope,
         cache_path=os.path.join(_HERE, ".cache"),
@@ -237,14 +267,18 @@ def fetch_all_albums(sp, artist_id: str, include_groups: tuple[str, ...], market
         offset = 0
         while True:
             page = sp.artist_albums(
-                artist_id, include_groups=group, limit=50, offset=offset, country=market
+                artist_id,
+                include_groups=group,
+                limit=ALBUMS_PAGE_LIMIT,
+                offset=offset,
+                country=market,
             )
             items = page.get("items", [])
             for alb in items:
                 yield alb, group
-            if len(items) < 50:
+            if len(items) < ALBUMS_PAGE_LIMIT:
                 break
-            offset += 50
+            offset += ALBUMS_PAGE_LIMIT
 
 
 def fetch_album_tracks(sp, album_id: str, market: str) -> list[dict]:
@@ -282,24 +316,28 @@ def existing_playlist_uris(sp, playlist_id: str) -> list[str]:
     return uris
 
 
-def find_or_create_playlist(sp, user_id: str, name: str, public: bool):
-    """Find a playlist OWNED by the user with this exact name, else create one."""
+def find_playlist(sp, user_id: str, name: str) -> str | None:
+    """Return the id of a playlist OWNED by the user with this exact name, else None."""
     offset = 0
     while True:
         page = sp.current_user_playlists(limit=50, offset=offset)
         for pl in page.get("items", []):
             if pl["name"] == name and pl["owner"]["id"] == user_id:
-                return pl["id"], False
+                return pl["id"]
         if not page.get("next"):
             break
         offset += 50
+    return None
+
+
+def create_playlist(sp, user_id: str, name: str, public: bool) -> str:
     created = sp.user_playlist_create(
         user_id,
         name,
         public=public,
         description="Complete catalog incl. features — built by build_playlist.py",
     )
-    return created["id"], True
+    return created["id"]
 
 
 # --------------------------------------------------------------------------- #
@@ -327,6 +365,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-features",
         action="store_true",
         help="Skip 'appears_on' — only the artist's own releases.",
+    )
+    p.add_argument(
+        "--dedupe-by-name",
+        action="store_true",
+        help="Collapse same-title recordings to one entry per distinct song "
+        "(keeps Taylor's Version / vault / live / remix, since their titles differ).",
     )
     p.add_argument("--public", action="store_true", help="Make a new playlist public (default private).")
     p.add_argument(
@@ -369,24 +413,41 @@ def run(args: argparse.Namespace) -> int:
             print(f"  …scanned {album_count} albums, {len(collected)} candidate tracks")
 
     deduped = dedupe_by_uri(collected)
+    uniq_recordings = len(deduped)
+    if args.dedupe_by_name:
+        deduped = dedupe_by_name(deduped)
     desired_uris = [t["uri"] for t in deduped]
+    extra = (
+        f" → {len(desired_uris)} distinct songs (by title)"
+        if args.dedupe_by_name
+        else ""
+    )
     print(
         f"Scanned {album_count} albums → {len(collected)} candidate tracks "
-        f"→ {len(desired_uris)} unique recordings."
+        f"→ {uniq_recordings} unique recordings{extra}."
     )
 
-    playlist_id, created = find_or_create_playlist(
-        sp, user_id, args.playlist_name, args.public
-    )
-    print(f"Playlist '{args.playlist_name}': {'created' if created else 'found existing'} ({playlist_id})")
-
-    existing = [] if created else existing_playlist_uris(sp, playlist_id)
-    to_add = plan_additions(desired_uris, existing)
-    print(f"Already in playlist: {len(existing)}   To add: {len(to_add)}")
+    playlist_id = find_playlist(sp, user_id, args.playlist_name)
 
     if args.dry_run:
+        existing = existing_playlist_uris(sp, playlist_id) if playlist_id else []
+        to_add = plan_additions(desired_uris, existing)
+        where = f"found existing ({playlist_id})" if playlist_id else "would be created"
+        print(f"Playlist '{args.playlist_name}': {where}")
+        print(f"Already in playlist: {len(existing)}   Would add: {len(to_add)}")
         print("--dry-run: no changes made.")
         return 0
+
+    if playlist_id:
+        print(f"Playlist '{args.playlist_name}': found existing ({playlist_id})")
+        existing = existing_playlist_uris(sp, playlist_id)
+    else:
+        playlist_id = create_playlist(sp, user_id, args.playlist_name, args.public)
+        print(f"Playlist '{args.playlist_name}': created ({playlist_id})")
+        existing = []
+
+    to_add = plan_additions(desired_uris, existing)
+    print(f"Already in playlist: {len(existing)}   To add: {len(to_add)}")
 
     for batch in chunked(to_add, 100):
         sp.playlist_add_items(playlist_id, batch)

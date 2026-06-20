@@ -18,8 +18,13 @@ TSWIFT = "06HL4z0CvFAxyc27GXpf02"  # Taylor Swift's real artist id (label only)
 OTHER = "4F84IBURUo98rz4r61KF70"   # some other artist id
 
 
-def track(uri, artists, is_local=False):
-    return {"uri": uri, "is_local": is_local, "artists": [{"id": a} for a in artists]}
+def track(uri, artists, is_local=False, name=None):
+    return {
+        "uri": uri,
+        "is_local": is_local,
+        "name": name,
+        "artists": [{"id": a} for a in artists],
+    }
 
 
 class CreditHelpers(unittest.TestCase):
@@ -68,6 +73,29 @@ class DedupeByUri(unittest.TestCase):
         # "Cruel Summer" vs "Cruel Summer (Taylor's Version)" => different URIs => both kept.
         ts = [track("orig", [TSWIFT]), track("tv", [TSWIFT])]
         self.assertEqual(len(bp.dedupe_by_uri(ts)), 2)
+
+
+class DedupeByName(unittest.TestCase):
+    def test_collapses_same_title_keeps_first(self):
+        ts = [
+            track("a", [TSWIFT], name="Love Story"),
+            track("b", [TSWIFT], name="love story"),  # case-insensitive dupe
+            track("c", [TSWIFT], name="Love Story"),
+        ]
+        out = bp.dedupe_by_name(ts)
+        self.assertEqual([t["uri"] for t in out], ["a"])
+
+    def test_preserves_version_variants(self):
+        # Different titles -> kept, so re-records/vault/live survive name-dedupe.
+        ts = [
+            track("a", [TSWIFT], name="Love Story"),
+            track("b", [TSWIFT], name="Love Story (Taylor's Version)"),
+            track("c", [TSWIFT], name="Love Story - Live"),
+        ]
+        self.assertEqual(len(bp.dedupe_by_name(ts)), 3)
+
+    def test_skips_untitled(self):
+        self.assertEqual(bp.dedupe_by_name([track("a", [TSWIFT], name=None)]), [])
 
 
 class PlanAdditions(unittest.TestCase):

@@ -83,11 +83,11 @@ Example output:
 ```
 Artist: Taylor Swift (06HL4z0CvFAxyc27GXpf02)
 Market: US   Groups: album, single, compilation, appears_on
-  …scanned 25 albums, 312 candidate tracks
-Scanned 88 albums → 540 candidate tracks → 421 unique recordings.
+  …scanned 25 albums, 528 candidate tracks
+Scanned 266 albums → 836 candidate tracks → 836 unique recordings.
 Playlist 'Taylor Swift Complete': created (xxxxxxxx)
-Already in playlist: 0   To add: 421
-Done. Added 421 tracks. Playlist now has 421 tracks.
+Already in playlist: 0   To add: 836
+Done. Added 836 tracks. Playlist now has 836 tracks.
 Open: https://open.spotify.com/playlist/xxxxxxxx
 ```
 
@@ -112,9 +112,33 @@ duplicated or reshuffled.
 --market CC             Market/country code (default: your account's country)
 --include-groups LIST   Album groups (default: album,single,compilation,appears_on)
 --no-features           Only the artist's own releases (drop "appears_on")
+--dedupe-by-name        One entry per distinct song instead of every edition
+                        (keeps Taylor's Version / vault / live / remix — their
+                        titles differ — but collapses standard/deluxe/anniversary
+                        re-releases of the same song)
 --public                Make a newly-created playlist public (default: private)
 --dry-run               Compute & report counts, but don't modify the playlist
 ```
+
+### Choosing how "complete" you want it
+
+Spotify assigns a **distinct track ID to the same song on every edition**
+(standard / deluxe / anniversary / "3am" / target-exclusive…), so the default
+"every available recording" run is large — for Taylor it lands around **800+**.
+That's literally every recording, but it means several copies of, say, "Shake It
+Off". Two honest flavors:
+
+```bash
+# Every available recording / edition (default) — ~800+ for Taylor
+python3 build_playlist.py --dry-run
+
+# One entry per distinct song, but re-records & vault tracks kept — much closer
+# to a fan's "complete songs" count
+python3 build_playlist.py --dry-run --dedupe-by-name
+```
+
+Run both with `--dry-run` first, pick the count you like, then run for real
+(drop `--dry-run`).
 
 Build a different artist's complete playlist:
 
@@ -144,7 +168,9 @@ python3 build_playlist.py --dry-run
 ### Caveats / honest limits
 
 - The exact count depends on Spotify's catalog **in your market** at run time; it
-  drifts as Spotify adds/removes releases. ~421 is a target, not a guarantee.
+  drifts as Spotify adds/removes releases. The default run is "every recording"
+  (~800+ for Taylor); `--dedupe-by-name` gives "every distinct song". Neither is
+  a fixed guarantee — it tracks Spotify's live catalog.
 - `appears_on` is only as complete as Spotify's own crediting. A guest spot that
   Spotify doesn't credit to the artist won't be found automatically; add those by
   hand in the app and they'll be preserved on future runs.
