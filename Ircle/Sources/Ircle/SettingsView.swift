@@ -53,8 +53,8 @@ struct ConnectionSettingsView: View {
             }
         }
         .onAppear {
-            consumePendingEdit()
-            if selectedID == nil { selectedID = servers.first?.id }
+            if model.pendingEditServerID != nil { consumePendingEdit() }
+            else if selectedID == nil { selectedID = servers.first?.id }
         }
         // The Connections window's "Edit…" pre-selects a profile here, even if
         // the Settings window was already open.
@@ -62,8 +62,12 @@ struct ConnectionSettingsView: View {
     }
 
     /// If the Connections window asked to edit a specific server, select it.
+    /// Applied on the next runloop tick so the List is laid out and the
+    /// selection reliably "takes" (a synchronous set was flaky on first open).
     private func consumePendingEdit() {
-        if let pend = model.pendingEditServerID {
+        guard let pend = model.pendingEditServerID,
+              servers.contains(where: { $0.id == pend }) else { return }
+        DispatchQueue.main.async {
             selectedID = pend
             model.pendingEditServerID = nil
         }

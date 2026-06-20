@@ -113,9 +113,11 @@ struct ConnectionsView: View {
     private func applyNick(_ profile: ServerProfile) {
         let nick = nickDraft.trimmingCharacters(in: .whitespaces)
         guard !nick.isEmpty, let s = session(for: profile) else { nickTarget = nil; return }
-        // Live session → send /NICK; the row reflects it when the server confirms
-        // (the row observes the session, so it refreshes automatically).
-        model.submitInput("/nick \(nick)", in: s.serverBuffer)
+        // Send NICK straight through the session (not via submitInput, which
+        // would first run global-command + alias expansion that could intercept
+        // a "/nick"). The row observes the session, so it refreshes when the
+        // server echoes the change.
+        s.runCommand("/nick \(nick)", in: s.serverBuffer)
         nickTarget = nil
     }
 }
