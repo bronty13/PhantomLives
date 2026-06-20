@@ -211,6 +211,7 @@ struct StatusBar: View {
 
 struct WelcomePane: View {
     @EnvironmentObject var model: IrcleModel
+    @Environment(\.openWindow) private var openWindow
     let palette: PlatinumPalette
 
     var body: some View {
@@ -222,12 +223,16 @@ struct WelcomePane: View {
             Text("A nostalgic Mac IRC client")
                 .font(palette.chromeFont(13))
                 .foregroundColor(palette.timestamp)
-            Button("Connect") { model.connectDefault() }
+            Button("Connect") {
+                // Single server → connect it; otherwise open the Connections hub.
+                if model.canQuickConnect { model.connectDefault() }
+                else { openWindow(id: "connections") }
+            }
                 .font(palette.chromeFontBold())
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
-            Text("⌘K to connect · ⌘, for settings")
+            Text("⌘K to connect · ⌘⇧K for connections · ⌘, for settings")
                 .font(palette.chromeFont(11))
                 .foregroundColor(palette.timestamp)
             Spacer()

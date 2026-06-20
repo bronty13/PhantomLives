@@ -14,7 +14,8 @@ and the history and research behind the app.*
 - **Channels & conversations** — joining, queries, topics, switching
 - **The nick list** — prefixes, hostnames, right-click actions
 - **Sending messages & formatting** — colours, actions, links
-- **Interface styles** — Clean vs Classic
+- **Interface styles** — Clean, Classic, Floating (windows)
+- **Connections window** — connecting to multiple servers
 - **Modern mode** — themes & custom fonts (opt-in)
 - **Faces**, **Notify (friends)**, **Ignore**
 - **DCC** — files & chat, sending & receiving, security
@@ -163,16 +164,39 @@ In **Classic** style the nick list also shows (see *Interface styles*):
 
 ---
 
-## Interface styles: Clean vs Classic
+## Interface styles: Clean, Classic, Floating
 
-**Settings → Interface** chooses how much chrome the windows show:
-- **Clean** *(default)* — the minimal modern layout.
-- **Classic** — the dense original-Ircle "power IRC" cockpit: the nick-list
-  action grid, the channel-mode toggle row, the Users/Notify tabs, the input
-  formatting toolbar, and IRCop ✪ markers.
+**Settings → Interface** chooses the window layout:
+- **Clean** *(default)* — the minimal modern single-window layout.
+- **Classic** — the dense original-Ircle "power IRC" cockpit in one window: the
+  nick-list action grid, the channel-mode toggle row, the Users/Notify tabs, the
+  input formatting toolbar, and IRCop ✪ markers.
+- **Floating** — a faithful recreation of classic Ircle 3.5's **separate
+  windows**: a **Console** window (the active server's messages), a window **per
+  channel/query**, a detached **Userlist** (nick list) window, and a floating
+  **Inputline** window. Whichever channel window you bring to the front becomes
+  the target — the Userlist and Inputline follow it, and the **Window** menu
+  lists every buffer so you can reopen a channel window you've closed. (Channels
+  and queries each get their own window; the Console window follows whichever
+  server you're currently using.)
 
-Switching is instant and affects only how much is shown; everything works in
-both styles.
+Switching is instant; everything works in all three styles.
+
+---
+
+## Connecting to multiple servers (the Connections window)
+
+Ircle can hold several networks open at once. The easy way is the **Connections
+window** — press **⌘⇧K** or choose **Window → Connections**. It lists every saved
+server with live status (online / connecting / offline / error) and buttons to
+**Connect**, **Disconnect**, **Edit…** (jumps to Settings), and **Nick…**.
+Double-click a row to connect. Bring up as many networks as you like, all from
+one window — no need to dig through Settings.
+
+**⌘K** still does the quick thing: with a single saved server it connects right
+away; with several, it opens the Connections window so you choose (so it never
+silently connects only the first server). The per-server **Servers** menu is
+still there too.
 
 ---
 
@@ -392,8 +416,9 @@ server.
 
 ## Keyboard shortcuts
 
-- **⌘K** — Connect (default network)
-- **⌘⇧K** — Disconnect current
+- **⌘K** — Connect (single server) / open Connections (several)
+- **⌘⇧K** — Connections window
+- **⌥⌘K** — Disconnect current
 - **⌘⇧F** — Faces window
 - **⌘⇧L** — Chat Logs window
 - **⌘⇧D** — DCC Transfers window
@@ -411,7 +436,10 @@ server.
   and other modern features; off = the classic look.
 - **Classic appearance** — Platinum (classic light) or Graphite (dark); applies
   when Modern mode is off.
-- **Interface** — Clean or Classic (how much chrome to show).
+- **Interface** — Clean, Classic, or Floating (single window vs. the classic
+  floating multi-window layout).
+- **Connections** *(⌘⇧K / Window menu)* — the multi-server hub: every saved
+  server with status + Connect/Disconnect/Edit/Nick.
 - **Themes** *(Modern mode)* — 20 built-in themes, a custom-theme editor with
   per-element fonts and a live preview, and `.ircletheme` export/import.
 - **Custom colours** — override message text/background; reset to theme.

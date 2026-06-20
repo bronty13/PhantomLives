@@ -38,12 +38,22 @@ plus **custom text/background colours** (Settings → Appearance). Want more? Fl
 on **Modern mode** for a library of 20 themes and fully customisable fonts (see
 below) — off by default, so the retro look is untouched until you ask for it.
 
-### Clean vs Classic
-A **Clean / Classic** interface toggle (Settings → Interface). Clean is minimal;
-**Classic** surfaces the dense original-Ircle cockpit: the nick-list action grid
-(Op/DeOp/Whois, Kick/Ban/BanKick, Msg/Cping/Query), the one-click channel-mode
-toggle row (`t n i p s m l k r`), the Users/Notify tabs, and the input
-formatting toolbar (B/I/U/S + a 16-colour menu).
+### Three interface styles (Settings → Interface)
+- **Clean** — the minimal modern single-window layout.
+- **Classic** — the dense original-Ircle cockpit in one window: the nick-list
+  action grid (Op/DeOp/Whois, Kick/Ban/BanKick, Msg/Cping/Query), the one-click
+  channel-mode toggle row (`t n i p s m l k r`), the Users/Notify tabs, and the
+  input formatting toolbar (B/I/U/S + a 16-colour menu).
+- **Floating** — a faithful recreation of classic Ircle 3.5's **separate
+  windows**: a Console window, a window **per channel/query**, a detached
+  **Userlist** window, and a floating **Inputline** window, all coordinating
+  through the focused channel. The Window menu lists every buffer.
+
+### Connecting to multiple servers — the Connections window
+Press **⌘⇧K** (or **Window → Connections**) for the **Connections window**: every
+saved server with live status and **Connect / Disconnect / Edit / Nick** — the
+easy way to bring up several networks at once, no Settings trip. **⌘K** connects a
+single configured server directly, or opens Connections when you have several.
 
 ### Modern mode (opt-in)
 A **Modern mode** toggle (Settings → Appearance, **default OFF**) is the umbrella
@@ -104,7 +114,7 @@ the server; prefix a literal message with `//`.
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (156 tests)
+./run-tests.sh        # swift-testing (164 tests)
 swift build           # debug build
 ```
 

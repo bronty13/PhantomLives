@@ -12,7 +12,9 @@ struct NickListView: View {
     @State private var tab: NickTab = .users
     @State private var newFriend: String = ""
 
-    private var isClassic: Bool { settingsStore.settings.interfaceStyle == .classic }
+    /// Classic *and* Floating surface the dense original-Ircle nick-list chrome
+    /// (action grid, mode row, Users/Notify tabs); only Clean is minimal.
+    private var isClassic: Bool { settingsStore.settings.interfaceStyle != .clean }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -157,8 +159,8 @@ struct NickListView: View {
     @ViewBuilder
     private var actionButtons: some View {
         switch settingsStore.settings.interfaceStyle {
-        case .clean:   cleanActionButtons
-        case .classic: classicActionButtons
+        case .clean:              cleanActionButtons
+        case .classic, .floating: classicActionButtons
         }
     }
 

@@ -2,6 +2,43 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.26.0 — 2026-06-20
+
+### Added
+
+- **Connections window** (**⌘⇧K**, or **Window → Connections**) — every saved
+  server in one place with live status (online / connecting / offline / error)
+  and **Connect / Disconnect / Edit / Nick** buttons. Double-click a row to
+  connect. This is the intuitive **multi-server hub**: connect to several
+  networks without opening Settings. Available in every interface style.
+- **Floating interface style** (**Settings → Appearance → Interface →
+  Floating**) — a faithful recreation of classic Ircle 3.5's separate-windows
+  layout: a **Console** window (the active session's server messages), a window
+  **per channel/query**, a detached **Userlist** window (with the Classic action
+  grid + `t n i p s m l k r` mode row), and a floating **Inputline** window
+  ("talking to <buffer>"). They coordinate through the selected buffer — focus a
+  channel window and the Userlist + Inputline + Console re-target to it. The
+  **Window menu** lists every buffer so you can (re)open a channel window you've
+  closed. Built on the existing per-value `WindowGroup` machinery; channels and
+  queries get their own windows while server consoles share the primary window.
+
+### Changed
+
+- **⌘K "Connect" is no longer confusing with multiple servers.** With one saved
+  server it connects directly; with none or several it opens the Connections
+  window so you choose, instead of silently connecting only the first server.
+  The Welcome screen's "Connect" button behaves the same way.
+- **Disconnect** moved to **⌥⌘K** (was ⌘⇧K, now used by Connections).
+- The nick-list action grid, channel-mode row, and full input formatting toolbar
+  (previously Classic-only) also appear in the Floating style.
+
+### Tests
+
+- 164 total (+8): the `.floating` style (selectable / Codable / displayName),
+  the Connections hub (`canQuickConnect`, `connectDefault` 0/1/many branching,
+  session dedup), and the Floating invariant that server buffers never get their
+  own window.
+
 ## 0.25.0 — 2026-06-19
 
 ### Added

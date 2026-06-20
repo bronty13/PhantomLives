@@ -16,7 +16,7 @@ struct IrcleApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .environmentObject(model)
                 .environmentObject(settingsStore)
                 .environmentObject(facesStore)
@@ -28,12 +28,12 @@ struct IrcleApp: App {
                 Button("Check for Updates…") { UpdaterController.shared.checkForUpdates() }
                     .disabled(!UpdaterController.shared.canCheckForUpdates)
                 Divider()
-                Button("Connect") { model.connectDefault() }
-                    .keyboardShortcut("k", modifiers: [.command])
+                ConnectMenuItem(model: model, settingsStore: settingsStore)
                 Button("Disconnect") { model.disconnectSelected() }
-                    .keyboardShortcut("k", modifiers: [.command, .shift])
+                    .keyboardShortcut("k", modifiers: [.command, .option])
             }
             CommandGroup(after: .toolbar) {
+                ConnectionsMenuItem()
                 FacesMenuItem()
                 LogsMenuItem()
                 DCCMenuItem()
@@ -44,6 +44,9 @@ struct IrcleApp: App {
                 }
                 Divider()
                 Button("Disconnect Current") { model.disconnectSelected() }
+            }
+            CommandGroup(after: .windowList) {
+                BufferWindowsMenu(model: model)
             }
             CommandGroup(replacing: .help) {
                 ManualMenuItem()
@@ -74,6 +77,46 @@ struct IrcleApp: App {
         }
         .defaultSize(width: 720, height: 640)
 
+        // The Connections window — every saved server with live status +
+        // Connect/Disconnect/Edit/Nick. The intuitive multi-server hub; opens in
+        // every interface style (⌘⇧K).
+        Window("Connections", id: "connections") {
+            ConnectionsView()
+                .environmentObject(model)
+                .environmentObject(settingsStore)
+        }
+        .defaultSize(width: 460, height: 300)
+
+        // ── Floating ("Workspace") interface style: classic Ircle 3.5 windows ──
+        // One window per channel/query, addressed by buffer UUID.
+        WindowGroup("Channel", id: "buffer", for: UUID.self) { $id in
+            if let id {
+                BufferWindowView(bufferID: id)
+                    .environmentObject(model)
+                    .environmentObject(settingsStore)
+                    .environmentObject(facesStore)
+            }
+        }
+        .defaultSize(width: 560, height: 420)
+
+        // The detached nick-list window (follows the selected channel).
+        Window("Userlist", id: "userlist") {
+            UserlistWindowView()
+                .environmentObject(model)
+                .environmentObject(settingsStore)
+                .environmentObject(facesStore)
+        }
+        .defaultSize(width: 240, height: 380)
+
+        // The floating Inputline window (routes to the selected buffer).
+        Window("Inputline", id: "inputline") {
+            InputlineWindowView()
+                .environmentObject(model)
+                .environmentObject(settingsStore)
+                .environmentObject(facesStore)
+        }
+        .defaultSize(width: 560, height: 120)
+
         // DCC Transfers — accept/decline inbound file + chat offers.
         Window("DCC Transfers", id: "dcc") {
             DCCTransfersView()
@@ -97,6 +140,50 @@ struct IrcleApp: App {
                 .environmentObject(model)
                 .environmentObject(settingsStore)
         }
+    }
+}
+
+/// Smart Connect (⌘K): with a single configured server, connect it directly;
+/// with none or several, open the Connections window so the user chooses (fixes
+/// the old behavior of silently grabbing only the first server).
+private struct ConnectMenuItem: View {
+    let model: IrcleModel
+    let settingsStore: SettingsStore
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Connect") {
+            if model.canQuickConnect { model.connectDefault() }
+            else { openWindow(id: "connections") }
+        }
+        .keyboardShortcut("k", modifiers: [.command])
+    }
+}
+
+/// Window-menu entries for every open buffer: a channel/query opens (or focuses)
+/// its own window; a server console selects it in the shared Console window. This
+/// is how you (re)open a channel window you've closed in the Floating style.
+private struct BufferWindowsMenu: View {
+    @ObservedObject var model: IrcleModel
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        if !model.allBuffers.isEmpty {
+            Divider()
+            ForEach(model.allBuffers) { buffer in
+                Button(buffer.name) {
+                    if buffer.kind == .server { model.select(buffer) }
+                    else { openWindow(id: "buffer", value: buffer.id) }
+                }
+            }
+        }
+    }
+}
+
+/// Menu item that opens the Connections window (the multi-server hub).
+private struct ConnectionsMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Connections") { openWindow(id: "connections") }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
     }
 }
 

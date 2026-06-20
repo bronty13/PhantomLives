@@ -19,7 +19,7 @@ struct InputBarView: View {
                 formatButton("U", code: "\u{1F}")
                 // Classic style surfaces the rest of the original Inputline
                 // toolbar: strikethrough, plain/reset, and the mIRC colour menu.
-                if settingsStore.settings.interfaceStyle == .classic {
+                if settingsStore.settings.interfaceStyle != .clean {
                     formatButton("S", code: "\u{1E}")   // strikethrough
                     formatButton("P", code: "\u{0F}")   // plain / reset all formatting
                     colorMenu

@@ -51,11 +51,19 @@ final class IrcleModel: ObservableObject {
 
     // MARK: - Connection
 
-    /// Connect using the first saved server profile.
+    /// One-keystroke connect: only acts directly when there's exactly ONE saved
+    /// server. With none (nothing to do) or several (don't silently grab the
+    /// first — the old, confusing behavior), the caller should open the
+    /// Connections window instead; see `canQuickConnect`.
     func connectDefault() {
-        guard let profile = settingsStore.settings.servers.first else { return }
-        connect(to: profile)
+        guard settingsStore.settings.servers.count == 1,
+              let only = settingsStore.settings.servers.first else { return }
+        connect(to: only)
     }
+
+    /// Whether ⌘K / the Welcome "Connect" button should connect directly (a
+    /// single configured server) vs. open the Connections window to choose.
+    var canQuickConnect: Bool { settingsStore.settings.servers.count == 1 }
 
     /// Open (or focus) a connection for `profile`. If a session for this profile
     /// already exists it is selected — and reconnected if it had dropped —

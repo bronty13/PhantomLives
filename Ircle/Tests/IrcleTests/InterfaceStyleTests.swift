@@ -28,9 +28,18 @@ struct InterfaceStyleTests {
         #expect(s.appearance == .graphite)   // sanity: other fields still decode
     }
 
-    @Test func bothStylesAreSelectable() {
-        #expect(InterfaceStyle.allCases.count == 2)
+    @Test func allStylesAreSelectable() {
+        #expect(InterfaceStyle.allCases.count == 3)
         #expect(InterfaceStyle.allCases.contains(.clean))
         #expect(InterfaceStyle.allCases.contains(.classic))
+        #expect(InterfaceStyle.allCases.contains(.floating))
+    }
+
+    @Test func floatingRoundTripsAndHasName() throws {
+        var s = AppSettings()
+        s.interfaceStyle = .floating
+        let back = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(s))
+        #expect(back.interfaceStyle == .floating)
+        #expect(!InterfaceStyle.floating.displayName.isEmpty)
     }
 }

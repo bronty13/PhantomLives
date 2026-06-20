@@ -7,12 +7,14 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sizeObserver: NSObjectProtocol?
 
-    /// Below this in either dimension, a window is "degenerate" — SwiftUI gave
-    /// it no real size. Our smallest real window (Settings, 460×420) sits above
-    /// this, so the heuristic never touches a legitimately-sized window.
-    private static let degenerate = NSSize(width: 400, height: 360)
+    /// A "degenerate" window is one SwiftUI gave no real size — it comes up at a
+    /// tiny ~100×110 frame in BOTH dimensions. We require both dimensions to be
+    /// small so the Floating-style slim panels (the Inputline is short-but-wide,
+    /// the Userlist narrow-but-tall, Connections small-but-legit) are never
+    /// mistaken for degenerate and force-grown.
+    private static let degenerate = NSSize(width: 180, height: 180)
     private static let recovery   = NSSize(width: 940, height: 620)
-    private static let floorSize  = NSSize(width: 600, height: 400)
+    private static let floorSize  = NSSize(width: 320, height: 200)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -33,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { note in
             guard let window = note.object as? NSWindow else { return }
             if window.frame.width < Self.degenerate.width
-                || window.frame.height < Self.degenerate.height {
+                && window.frame.height < Self.degenerate.height {
                 window.minSize = Self.floorSize
                 window.setContentSize(Self.recovery)
                 window.center()

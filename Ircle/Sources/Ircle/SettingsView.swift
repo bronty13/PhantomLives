@@ -255,7 +255,7 @@ struct AppearanceSettingsView: View {
                     }
                 }
                 .pickerStyle(.radioGroup)
-                Text("Classic surfaces the dense original-Ircle nick-list action buttons (Op, Kick, Ban, Whois, …). Clean keeps a minimal set.")
+                Text("Clean is a minimal single window. Classic adds the dense original-Ircle cockpit (action grid, mode row, formatting toolbar). Floating recreates Ircle 3.5's separate windows — a Console, a window per channel, a Userlist, and an Inputline.")
                     .font(.caption).foregroundColor(.secondary)
             }
             Section("Custom colours") {

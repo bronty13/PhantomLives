@@ -121,11 +121,13 @@ enum IrcleAppearance: String, Codable, CaseIterable, Identifiable {
 enum InterfaceStyle: String, Codable, CaseIterable, Identifiable {
     case clean      // minimal (default)
     case classic    // elaborate, original-Ircle-style chrome
+    case floating   // classic Ircle 3.5 floating multi-window layout
     var id: String { rawValue }
     var displayName: String {
         switch self {
-        case .clean:   return "Clean (minimal)"
-        case .classic: return "Classic (elaborate)"
+        case .clean:    return "Clean (minimal)"
+        case .classic:  return "Classic (elaborate)"
+        case .floating: return "Floating (windows)"
         }
     }
 }
