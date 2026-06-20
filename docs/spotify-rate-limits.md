@@ -67,6 +67,18 @@ app. Approval lifts Development-Mode restrictions (higher limits; also removes t
 the cache + throttle keep you under the dev quota. Request it if you genuinely
 need higher throughput or write access the dev tier denies.
 
+### ⛔ Do NOT spin up / delete-and-recreate an app to dodge a cooldown
+It is tempting to think "a new app = a fresh quota, build today." **Don't.**
+Real incident (MusicJournal, 2026): the account is effectively limited to one
+app, and **deleting an app and creating another triggered a *multi-day* cooldown
+on app *creation* itself** — strictly worse than waiting out the request cooldown.
+A support ticket about it **was never answered**. Conclusion:
+- **Waiting out the 429 cooldown is the fastest reliable path.** The `Retry-After`
+  is the ETA; the on-disk cache makes the post-cooldown run cheap.
+- If you ever *do* want a second app to isolate quotas (below), create it
+  **proactively while not limited** — **never** delete a working app, and never
+  treat app-creation as a cooldown escape hatch.
+
 ## Shared-app caveat (important)
 
 `spotify-complete-playlist` currently **reuses MusicJournal's Spotify Developer
@@ -75,9 +87,13 @@ and `http://127.0.0.1:8888/callback`). **The quota is per *app*, so heavy use in
 one tool eats the other's budget** — building big playlists here can rate-limit
 MusicJournal, and vice-versa.
 
-If this becomes a problem, give `spotify-complete-playlist` its **own** Developer
-app (separate Client ID/secret in its `config.local.json`) to isolate the quotas.
-The trade-off is a second one-time OAuth setup.
+If this becomes a problem, you *could* give `spotify-complete-playlist` its **own**
+Developer app (separate Client ID/secret in its `config.local.json`) to isolate
+the quotas — **but only set it up proactively, while nothing is rate-limited, and
+never by deleting the existing app** (see the ⛔ warning above: app
+deletion/recreation has its own multi-day lockout, and the account is effectively
+capped at one app). In practice, the cache + throttle keep usage low enough that a
+single shared app is fine; prefer that over juggling apps.
 
 ## Related Development-Mode restrictions (not rate limits, same root cause)
 
@@ -96,3 +112,4 @@ The trade-off is a second one-time OAuth setup.
 | Script hangs silently for ages | Client is sleeping for `Retry-After` | Use `status_retries=0` / fail-fast; kill & wait |
 | `403` on playlist **create** | Dev-mode write restriction | Pre-create empty playlist in app; or Extended Quota |
 | Cooldown keeps growing | Retrying into the wall | Stop all requests; let it reset |
+| "I'll just make a new app" | App create/delete has its OWN multi-day cooldown; ~1 app/account | **Don't.** Wait out the 429 instead |

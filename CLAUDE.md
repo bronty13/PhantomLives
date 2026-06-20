@@ -114,7 +114,8 @@ Incident reference: SideMolly v0.13.1 (2026-05-24) — edited migration 013 in p
 Spotify Developer apps in **Development Mode** have a tight, undocumented request quota. Blowing past it returns **HTTP 429 with a `Retry-After` of *hours*** (≈24 h has happened **twice** in this repo — MusicJournal and `spotify-complete-playlist` — each costing a full day). Two non-obvious traps: client libraries (e.g. spotipy) will **sleep** for the whole `Retry-After` by default, and **retrying near the wall can extend the cooldown**. Affected subprojects share learnings via **`docs/spotify-rate-limits.md`**:
 
 - **Cache discovery** (scan once, reuse), **throttle** every request, **fail-fast on 429** (don't sleep), and when limited **STOP and wait** — the `Retry-After` is the ETA.
-- `spotify-complete-playlist` **reuses MusicJournal's Spotify app Client ID, so they share one quota** — heavy use in one rate-limits the other. Give the playlist tool its own Developer app to isolate, or be mindful.
+- `spotify-complete-playlist` **reuses MusicJournal's Spotify app Client ID, so they share one quota** — heavy use in one rate-limits the other.
+- **⛔ NEVER create/delete-and-recreate a Spotify app to dodge a cooldown.** The account is effectively capped at one app, and deleting+recreating triggers its OWN *multi-day* lockout on app creation (MusicJournal incident, 2026; support ticket unanswered) — strictly worse than waiting out the 429. Waiting is the fastest reliable cure; the catalog cache makes the next run cheap.
 - Permanent fix: **Extended Quota Mode** (Dashboard request; server-side, no code change). Also resolves dev-mode write restrictions (e.g. 403 on playlist *create*).
 
 → Read the doc before any change that increases Spotify request volume.
