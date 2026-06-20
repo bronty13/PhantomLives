@@ -213,7 +213,10 @@ struct Export: ParsableCommand {
         logger.info("→ Auto-stage: launching \(appURL.lastPathComponent) stage-agent to stage the purge manifest…")
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        p.arguments = ["-g", "-j", appURL.path, "--args", "--stage-agent"]
+        // -n: force a NEW instance — without it `open` reuses an already-running GUI instance and
+        //     drops --args, so the stage-agent would never fire when the app is already open.
+        // -g: don't bring it to the foreground.  -j: launch hidden.
+        p.arguments = ["-n", "-g", "-j", appURL.path, "--args", "--stage-agent"]
         do {
             try p.run()
             p.waitUntilExit()
