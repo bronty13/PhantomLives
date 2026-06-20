@@ -33,8 +33,10 @@ The classic single-window arrangement, consolidated and resizable:
   ⌘⇧F.
 - **Input line** + **status bar**.
 
-Two themes — **Platinum** (light, default) and **Graphite** (dark) — plus
-**custom text/background colours** (Settings → Appearance).
+Two classic themes — **Platinum** (light, default) and **Graphite** (dark) —
+plus **custom text/background colours** (Settings → Appearance). Want more? Flip
+on **Modern mode** for a library of 20 themes and fully customisable fonts (see
+below) — off by default, so the retro look is untouched until you ask for it.
 
 ### Clean vs Classic
 A **Clean / Classic** interface toggle (Settings → Interface). Clean is minimal;
@@ -42,6 +44,26 @@ A **Clean / Classic** interface toggle (Settings → Interface). Clean is minima
 (Op/DeOp/Whois, Kick/Ban/BanKick, Msg/Cping/Query), the one-click channel-mode
 toggle row (`t n i p s m l k r`), the Users/Notify tabs, and the input
 formatting toolbar (B/I/U/S + a 16-colour menu).
+
+### Modern mode (opt-in)
+A **Modern mode** toggle (Settings → Appearance, **default OFF**) is the umbrella
+for modern quality-of-life features. Its first feature is full UI customisation,
+in the new **Themes** tab:
+
+- **20 hand-tuned themes** — darks (Midnight, Dracula, Nord, Tokyo Night, Gruvbox,
+  Solarized Dark, Graphite Pro, Twilight, Carbon), lights (Paper, Solarized Light,
+  Sepia, Lavender, Snow, Mint, High Contrast), and a few **recoloured-bevel**
+  retro-modern looks (Platinum Plus, Aqua, Slate, Noir). Each theme is **flat** or
+  **beveled** — Ircle's 3D chrome, recoloured, when you want it.
+- **Rich per-element fonts** — pick the family, size, weight, italic, ligatures
+  and tracking for the **message body**, **nicknames**, **timestamps**, **system
+  lines** and **interface chrome** independently.
+- **Make it yours** — duplicate / create / rename / edit / delete custom themes in
+  a WYSIWYG editor with a live preview, and **export / import `.ircletheme`**
+  files to share a look with other Ircle users.
+
+When Modern mode is off, Ircle renders exactly as the classic recreation always
+has — same Platinum/Graphite, Monaco/Geneva, and 3D bevels.
 
 ## Features
 
@@ -82,7 +104,7 @@ the server; prefix a literal message with `//`.
 ```sh
 ./build-app.sh        # release → Ircle.app → /Applications → relaunch (+verify fresh)
 ./build-app.sh --no-install   # build only
-./run-tests.sh        # swift-testing (135 tests)
+./run-tests.sh        # swift-testing (156 tests)
 swift build           # debug build
 ```
 

@@ -56,17 +56,30 @@ struct MessageRow: View {
     let showTimestamps: Bool
     var copyAll: (() -> Void)? = nil
 
-    private var font: Font { palette.messageFont(fontSize) }
+    // Per-element fonts. In the classic look every slot resolves to Monaco at
+    // `fontSize`, so retro renders byte-identical; a Modern theme can give each
+    // its own family/size/weight/italic/tracking.
+    private var bodyFont: ResolvedFont {
+        switch line.kind {
+        case .join, .part, .quit, .nickChange, .mode, .topic, .motd, .system, .error:
+            return palette.font(.systemLine, fallbackSize: fontSize)
+        default:
+            return palette.font(.messageBody, fallbackSize: fontSize)
+        }
+    }
+    private var nickFont: ResolvedFont { palette.font(.nick, fallbackSize: fontSize) }
+    private var stampFont: ResolvedFont { palette.font(.timestamp, fallbackSize: fontSize) }
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             if showTimestamps {
                 Text(Self.time(line.timestamp))
-                    .font(font).foregroundColor(palette.timestamp)
+                    .ircleFont(stampFont).foregroundColor(palette.timestamp)
             }
             // Per-run fonts/colors live inside the AttributedString (mIRC
             // rendering), so no outer .font/.foregroundColor here.
             Text(attributed)
+                .tracking(bodyFont.tracking)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -102,23 +115,35 @@ struct MessageRow: View {
     /// Classic line prefix per kind + the body rendered with mIRC colors. The
     /// prefix is client-generated (plain); only the body carries mIRC codes.
     private var attributed: AttributedString {
+        let body = bodyFont
+        let nick = nickFont
         var out = AttributedString()
         switch line.kind {
         case .message:
-            out += MircRenderer.plain("<\(line.sender ?? "?")> ", size: fontSize,
+            out += MircRenderer.plain("<\(line.sender ?? "?")> ", family: nick.family,
+                                      size: Double(nick.size), weight: nick.weight, italic: nick.italic,
                                       color: line.isSelf ? palette.ownNick : palette.otherNick)
         case .action:
-            out += MircRenderer.plain("* \(line.sender ?? "?") ", size: fontSize, color: palette.actionText)
+            out += MircRenderer.plain("* \(line.sender ?? "?") ", family: body.family,
+                                      size: Double(body.size), weight: body.weight, italic: body.italic,
+                                      color: palette.actionText)
         case .notice:
-            out += MircRenderer.plain("-\(line.sender ?? "?")- ", size: fontSize, color: palette.noticeText)
+            out += MircRenderer.plain("-\(line.sender ?? "?")- ", family: body.family,
+                                      size: Double(body.size), weight: body.weight, italic: body.italic,
+                                      color: palette.noticeText)
         case .join, .part, .quit, .nickChange, .mode, .topic:
-            out += MircRenderer.plain("*** ", size: fontSize, color: palette.color(for: line.kind))
+            out += MircRenderer.plain("*** ", family: body.family,
+                                      size: Double(body.size), weight: body.weight, italic: body.italic,
+                                      color: palette.color(for: line.kind))
         case .error:
-            out += MircRenderer.plain("!!! ", size: fontSize, color: palette.errorText)
+            out += MircRenderer.plain("!!! ", family: body.family,
+                                      size: Double(body.size), weight: body.weight, italic: body.italic,
+                                      color: palette.errorText)
         case .motd, .system:
             break
         }
-        out += MircRenderer.attributed(line.text, size: fontSize,
+        out += MircRenderer.attributed(line.text, family: body.family, size: Double(body.size),
+                                       baseWeight: body.weight, baseItalic: body.italic,
                                        baseColor: palette.color(for: line.kind),
                                        backgroundLuminance: palette.messageBackgroundLuminance)
         return out

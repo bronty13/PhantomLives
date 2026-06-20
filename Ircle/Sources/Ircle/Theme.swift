@@ -32,6 +32,22 @@ struct PlatinumPalette {
     /// legible against the message-area background.
     var messageBackgroundLuminance: Double
 
+    // MARK: Modern-mode additions (defaults reproduce the classic retro look)
+
+    /// Flat panels (hairline borders) vs the classic two-tone 3D bevels. Only a
+    /// Modern theme ever sets this true; the classic factories stay beveled.
+    var flatChrome: Bool = false
+    /// True when this palette came from a Modern theme. Views use it to gate the
+    /// rich font path so the retro render stays byte-identical.
+    var isModern: Bool = false
+    /// Family backing `messageFont(_:)` — Monaco in the classic look, or the
+    /// Modern theme's message-body font.
+    var messageFontName: String = "Monaco"
+    /// Family backing `chromeFont(_:)` — Geneva classically.
+    var chromeFontName: String = "Geneva"
+    /// Fully-resolved per-element fonts for Modern themes (empty in retro).
+    var resolvedFonts: [FontSlot: ResolvedFont] = [:]
+
     static func platinum() -> PlatinumPalette {
         PlatinumPalette(
             windowBG:   Color(white: 0.866),               // #DDDDDD
@@ -111,10 +127,39 @@ struct PlatinumPalette {
     }
 
     // Fonts: Monaco (classic Mac monospace) for messages; Geneva (classic Mac
-    // UI font) for chrome. Both ship with macOS, so no proprietary fonts.
-    func messageFont(_ size: Double) -> Font { .custom("Monaco", size: size) }
-    func chromeFont(_ size: Double = 11) -> Font { .custom("Geneva", size: size) }
-    func chromeFontBold(_ size: Double = 11) -> Font { .custom("Geneva", size: size).bold() }
+    // UI font) for chrome — both ship with macOS. A Modern theme swaps in its
+    // own families via `messageFontName` / `chromeFontName`; the per-call size
+    // is preserved so the chrome's visual hierarchy (9/11/13/40pt) stays intact.
+    func messageFont(_ size: Double) -> Font { Self.makeFont(messageFontName, size: size) }
+    func chromeFont(_ size: Double = 11) -> Font { Self.makeFont(chromeFontName, size: size) }
+    func chromeFontBold(_ size: Double = 11) -> Font { Self.makeFont(chromeFontName, size: size).bold() }
+
+    /// Build a `Font` from a family name, honouring the built-in tokens used by
+    /// Modern themes ("system-mono" / "system-proportional") so they never hit
+    /// `Font.custom` with a non-existent family name.
+    static func makeFont(_ family: String, size: Double,
+                         weight: Font.Weight = .regular, italic: Bool = false) -> Font {
+        var f: Font
+        switch family {
+        case "system-mono":         f = .system(size: size, design: .monospaced)
+        case "system-proportional", "": f = .system(size: size)
+        default:                    f = .custom(family, size: size)
+        }
+        f = f.weight(weight)
+        return italic ? f.italic() : f
+    }
+
+    /// The fully-resolved font for a slot. Modern palettes carry these; the
+    /// classic look synthesises one from the family names so callers can use a
+    /// single path. `fallbackSize` seeds non-chrome slots in the classic case.
+    func font(_ slot: FontSlot, fallbackSize: Double) -> ResolvedFont {
+        if let rf = resolvedFonts[slot] { return rf }
+        let isChrome = slot == .chrome
+        return ResolvedFont(family: isChrome ? chromeFontName : messageFontName,
+                            size: CGFloat(isChrome ? 11 : fallbackSize),
+                            weight: .regular, italic: false,
+                            ligaturesEnabled: false, tracking: 0)
+    }
 
     func color(for kind: LineKind) -> Color {
         switch kind {
@@ -142,9 +187,18 @@ struct PlatinumBevel: ViewModifier {
     var fill: Color? = nil
 
     func body(content: Content) -> some View {
-        content
-            .background(fill ?? palette.paneBG)
-            .overlay(BevelEdges(palette: palette, raised: raised))
+        // Modern flat themes drop the two-tone 3D edges for a clean hairline
+        // border; every bevel in the app routes through here, so this single
+        // switch reskins the whole window's chrome.
+        if palette.flatChrome {
+            content
+                .background(fill ?? palette.paneBG)
+                .overlay(Rectangle().strokeBorder(palette.hairline, lineWidth: 1))
+        } else {
+            content
+                .background(fill ?? palette.paneBG)
+                .overlay(BevelEdges(palette: palette, raised: raised))
+        }
     }
 }
 

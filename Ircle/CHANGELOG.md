@@ -2,6 +2,41 @@
 
 All notable changes to Ircle are documented here.
 
+## 0.25.0 — 2026-06-19
+
+### Added
+
+- **Modern mode** (**Settings → Appearance**, **default OFF**) — an opt-in
+  umbrella for modern quality-of-life features that leaves the classic retro
+  look completely untouched until you enable it. Its first feature is full UI
+  customisation, surfaced in a new **Themes** tab:
+  - **20 hand-tuned built-in themes** spanning darks (Midnight, Dracula, Nord,
+    Tokyo Night, Graphite Pro, Solarized Dark, Gruvbox Dark, Twilight, Carbon),
+    lights (Paper, Solarized Light, Sepia, Lavender, Snow, Mint, High Contrast)
+    and recoloured-bevel retro-modern looks (Platinum Plus, Aqua, Slate, Noir).
+    Each theme is **flat** or **beveled** — Ircle's signature 3D chrome,
+    recoloured, is a per-theme choice.
+  - **Rich per-element fonts** — family, size, weight, italic, ligatures and
+    tracking, set independently for the **message body**, **nicknames**,
+    **timestamps**, **system lines** and **interface chrome**. Empty fields
+    inherit (root slots fall back to Monaco / the system UI font).
+  - **Custom-theme library** — duplicate, create, rename, edit and delete your
+    own themes in a WYSIWYG editor with a live mock-chat preview, and **export /
+    import `.ircletheme`** files to share a look with other Ircle users.
+  - Implemented through the existing `settingsStore.palette` seam: a Modern
+    theme materialises a full `PlatinumPalette`, so every view re-skins with no
+    per-view changes. New types: `ModernTheme` (+ 20 built-ins),
+    `FontStyle`/`FontSlot`/`ResolvedFont`, `ThemeBuilderView`, `ThemeImporter`,
+    `ModernSettingsView`. The flat-vs-beveled switch lives in one place
+    (`PlatinumBevel`). 21 new tests (modern themes, fonts, settings round-trip +
+    legacy-decode + export/import).
+
+### Unchanged
+
+- With Modern mode **off** (the default, and for every existing
+  `settings.json`), Ircle renders byte-identical to before — Platinum/Graphite,
+  Monaco/Geneva, and the classic two-tone 3D bevels.
+
 ## 0.24.0 — 2026-06-19
 
 ### Added

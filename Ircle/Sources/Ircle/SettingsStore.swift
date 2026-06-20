@@ -164,6 +164,16 @@ struct AppSettings: Codable {
     var showTimestamps: Bool = true
     var fontSize: Double = 12
 
+    // ── Modern mode (opt-in; default OFF) ───────────────────────────────────
+    /// The umbrella gate for modern quality-of-life features. OFF = the app
+    /// renders and behaves exactly as the classic retro Ircle.
+    var modernModeEnabled: Bool = false
+    /// Selected Modern theme: a built-in slug (`ModernTheme.all`) or a custom
+    /// theme's UUID string (`userThemes`). Ignored when Modern mode is off.
+    var modernThemeID: String = ModernTheme.defaultID
+    /// The user's custom Modern theme library (created / duplicated / imported).
+    var userThemes: [ModernTheme] = []
+
     // Auto-backup-on-launch (repo standard field names; see BackupService).
     var autoBackupEnabled: Bool = true
     /// Override for the backup directory; empty = the convention path.
@@ -177,6 +187,7 @@ struct AppSettings: Codable {
         case servers, appearance, interfaceStyle, notifyNicks, notificationsEnabled, loggingEnabled, ignoreMasks, ctcpSoundsEnabled, aliases
         case eventSoundsEnabled, eventSounds, customTextColorHex, customBackgroundColorHex, showTimestamps, fontSize
         case autoBackupEnabled, backupPath, backupRetentionDays, lastBackupAt
+        case modernModeEnabled, modernThemeID, userThemes
     }
 
     init() {}
@@ -203,6 +214,10 @@ struct AppSettings: Codable {
         backupPath = (try? c.decode(String.self, forKey: .backupPath)) ?? ""
         backupRetentionDays = (try? c.decode(Int.self, forKey: .backupRetentionDays)) ?? 14
         lastBackupAt = (try? c.decode(String.self, forKey: .lastBackupAt)) ?? ""
+        // Modern mode defaults OFF so a legacy settings.json renders unchanged.
+        modernModeEnabled = (try? c.decode(Bool.self, forKey: .modernModeEnabled)) ?? false
+        modernThemeID = (try? c.decode(String.self, forKey: .modernThemeID)) ?? ModernTheme.defaultID
+        userThemes = (try? c.decode([ModernTheme].self, forKey: .userThemes)) ?? []
     }
 }
 
@@ -218,9 +233,21 @@ final class SettingsStore: ObservableObject {
     /// colour overrides applied. Views should read this rather than calling
     /// `forAppearance` directly, so custom colours take effect everywhere.
     var palette: PlatinumPalette {
-        .forAppearance(settings.appearance)
-            .applying(textHex: settings.customTextColorHex,
-                      backgroundHex: settings.customBackgroundColorHex)
+        let base: PlatinumPalette
+        if settings.modernModeEnabled {
+            base = ModernTheme.resolve(id: settings.modernThemeID, userThemes: settings.userThemes)
+                .palette(baseFontSize: settings.fontSize)
+        } else {
+            base = .forAppearance(settings.appearance)
+        }
+        return base.applying(textHex: settings.customTextColorHex,
+                             backgroundHex: settings.customBackgroundColorHex)
+    }
+
+    /// The currently-active Modern theme (built-in or custom). Used by the
+    /// Settings UI to drive the editor and "New from current".
+    var activeModernTheme: ModernTheme {
+        ModernTheme.resolve(id: settings.modernThemeID, userThemes: settings.userThemes)
     }
 
     static let appName = "Ircle"

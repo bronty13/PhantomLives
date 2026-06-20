@@ -81,7 +81,9 @@ enum MircRenderer {
     /// Color codes override `baseColor` (clamped for contrast against
     /// `backgroundLuminance`, the message area's background); absent codes leave
     /// text in `baseColor` (already a legible theme color).
-    static func attributed(_ raw: String, size: Double, baseColor: Color,
+    static func attributed(_ raw: String, family: String = "Monaco", size: Double,
+                           baseWeight: Font.Weight = .regular, baseItalic: Bool = false,
+                           baseColor: Color,
                            backgroundLuminance: Double = 1.0) -> AttributedString {
         var out = AttributedString()
         var style = Style()
@@ -114,7 +116,8 @@ enum MircRenderer {
                 while i < raw.endIndex && !controlSet.contains(raw[i]) {
                     i = raw.index(after: i)
                 }
-                appendChunk(String(raw[runStart..<i]), style: style, size: size,
+                appendChunk(String(raw[runStart..<i]), style: style,
+                            family: family, size: size, weight: baseWeight, italic: baseItalic,
                             baseColor: baseColor, backgroundLuminance: backgroundLuminance,
                             into: &out)
             }
@@ -146,22 +149,27 @@ enum MircRenderer {
     }
 
     /// A plain attributed run (no code parsing) — for client-generated prefixes.
-    static func plain(_ text: String, size: Double, color: Color,
-                      bold: Bool = false) -> AttributedString {
+    static func plain(_ text: String, family: String = "Monaco", size: Double,
+                      weight: Font.Weight = .regular, italic: Bool = false,
+                      color: Color, bold: Bool = false) -> AttributedString {
         var s = AttributedString(text)
-        s.font = bold ? Font.custom("Monaco", size: size).bold() : Font.custom("Monaco", size: size)
+        var font = PlatinumPalette.makeFont(family, size: size, weight: weight, italic: italic)
+        if bold { font = font.bold() }
+        s.font = font
         s.foregroundColor = color
         return s
     }
 
     // MARK: - Internals
 
-    private static func appendChunk(_ text: String, style: Style, size: Double,
+    private static func appendChunk(_ text: String, style: Style,
+                                    family: String = "Monaco", size: Double,
+                                    weight: Font.Weight = .regular, italic: Bool = false,
                                     baseColor: Color, backgroundLuminance: Double,
                                     into out: inout AttributedString) {
         guard !text.isEmpty else { return }
         var chunk = AttributedString(text)
-        var font = Font.custom("Monaco", size: size)
+        var font = PlatinumPalette.makeFont(family, size: size, weight: weight, italic: italic)
         if style.bold { font = font.bold() }
         if style.italic { font = font.italic() }
         chunk.font = font

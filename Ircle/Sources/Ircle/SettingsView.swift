@@ -9,10 +9,12 @@ struct SettingsView: View {
                 .tabItem { Label("Servers", systemImage: "network") }
             AppearanceSettingsView()
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
+            ModernSettingsView()
+                .tabItem { Label("Themes", systemImage: "paintbrush.pointed") }
             BackupSettingsView()
                 .tabItem { Label("Backup", systemImage: "externaldrive") }
         }
-        .frame(width: 600, height: 460)
+        .frame(width: 640, height: 500)
     }
 }
 
@@ -228,13 +230,23 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Theme") {
+            Section("Modern mode") {
+                Toggle("Enable Modern mode", isOn: $settingsStore.settings.modernModeEnabled)
+                Text("Off keeps the classic Ircle look below. On lets the Themes tab drive the whole window with a theme and custom fonts.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+            Section("Classic appearance") {
                 Picker("Appearance", selection: $settingsStore.settings.appearance) {
                     ForEach(IrcleAppearance.allCases) { a in
                         Text(a.displayName).tag(a)
                     }
                 }
                 .pickerStyle(.radioGroup)
+                .disabled(settingsStore.settings.modernModeEnabled)
+                if settingsStore.settings.modernModeEnabled {
+                    Text("A Modern theme is active — this classic Platinum/Graphite choice applies when Modern mode is off.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
             }
             Section("Interface") {
                 Picker("Style", selection: $settingsStore.settings.interfaceStyle) {

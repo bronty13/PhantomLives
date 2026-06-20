@@ -15,6 +15,7 @@ and the history and research behind the app.*
 - **The nick list** — prefixes, hostnames, right-click actions
 - **Sending messages & formatting** — colours, actions, links
 - **Interface styles** — Clean vs Classic
+- **Modern mode** — themes & custom fonts (opt-in)
 - **Faces**, **Notify (friends)**, **Ignore**
 - **DCC** — files & chat, sending & receiving, security
 - **Sounds**, **Logging**, **Notifications**
@@ -172,6 +173,65 @@ In **Classic** style the nick list also shows (see *Interface styles*):
 
 Switching is instant and affects only how much is shown; everything works in
 both styles.
+
+---
+
+## Modern mode: themes & custom fonts
+
+Ircle's default look is a faithful recreation of classic Mac *Ircle* — Platinum
+(or Graphite) chrome, Monaco/Geneva fonts, two-tone 3D bevels — and it stays
+exactly that way unless you ask for more.
+
+**Modern mode** (**Settings → Appearance → Enable Modern mode**, *off by
+default*) is an opt-in switch that unlocks modern quality-of-life features. The
+first one is full control over how Ircle looks. Turn it off any time to return to
+the classic look — nothing is lost.
+
+### The Themes tab
+
+With Modern mode on, a **Themes** tab appears in Settings:
+
+- **20 built-in themes.** Darks (Midnight, Dracula, Nord, Tokyo Night, Graphite
+  Pro, Solarized Dark, Gruvbox Dark, Twilight, Carbon), lights (Paper, Solarized
+  Light, Sepia, Lavender, Snow, Mint, High Contrast), and a few retro-modern
+  looks that keep Ircle's 3D bevels in fresh colours (Platinum Plus, Aqua, Slate,
+  Noir). Click any tile to apply it — the whole window re-skins instantly.
+- **Flat or beveled.** Each theme is either **flat** (clean panels with a hairline
+  border) or **beveled** (Ircle's classic 3D edges, recoloured). It's a per-theme
+  choice, so the gallery has both.
+
+### Custom fonts (per element)
+
+A theme can set fonts independently for each part of the window — the **message
+body**, **nicknames**, **timestamps**, **system lines** (joins/parts/topics), and
+the **interface chrome**. For each you can choose the family (any installed font;
+filter to monospaced), size, weight, italic, ligatures, and letter-spacing.
+Leave a field on **Inherit** to fall back — the message body falls back to
+Monaco, the chrome to the system UI font, and the others inherit the message
+body. The global **Font size** (Settings → Appearance) sets the message
+baseline.
+
+### Making your own themes
+
+In the Themes tab, under **My themes**:
+
+- **New from current theme** opens the **theme editor** on a copy of whatever's
+  active. Right-click any built-in tile → **Duplicate & Edit…** to start from it.
+- The **editor** is split: colour wells, the flat/beveled toggle, and the
+  per-element font controls on the left; a **live preview** of a mock channel on
+  the right that updates as you edit.
+- **Save** stores it in *My themes* and makes it active. **Save as Copy** forks
+  it. **Duplicate**, rename (just edit the name) and **Delete** are in the list.
+
+### Sharing themes
+
+In the editor, **Export…** writes a small **`.ircletheme`** file you can send to
+another Ircle user. They use **Import…** (in *My themes*) to add it to their
+library — it comes in with a fresh identity, so it never clobbers a theme they
+already have.
+
+> **Custom colours** (Settings → Appearance) still apply on top of any theme, in
+> both classic and Modern mode.
 
 ---
 
@@ -347,8 +407,13 @@ server.
 
 - **Servers** — add/edit/remove network profiles: host, port, TLS, identity,
   SASL, proxy, auto-join.
-- **Theme** — Platinum (classic light) or Graphite (dark).
+- **Modern mode** — opt-in switch (off by default) that unlocks the Themes tab
+  and other modern features; off = the classic look.
+- **Classic appearance** — Platinum (classic light) or Graphite (dark); applies
+  when Modern mode is off.
 - **Interface** — Clean or Classic (how much chrome to show).
+- **Themes** *(Modern mode)* — 20 built-in themes, a custom-theme editor with
+  per-element fonts and a live preview, and `.ircletheme` export/import.
 - **Custom colours** — override message text/background; reset to theme.
 - **Sounds** — CTCP sounds on/off, per-event sounds on/off and their clip names,
   Reveal Sounds Folder.
