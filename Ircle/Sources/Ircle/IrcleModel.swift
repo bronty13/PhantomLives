@@ -10,6 +10,9 @@ import IRCKit
 final class IrcleModel: ObservableObject {
     @Published private(set) var sessions: [IrcleSession] = []
     @Published var selectedBufferID: UUID?
+    /// Transient: the Connections window's "Edit…" sets this so the Settings
+    /// Servers tab pre-selects that profile when it opens. Cleared once consumed.
+    @Published var pendingEditServerID: UUID?
 
     let settingsStore: SettingsStore
     /// Inbound DCC transfers (offered + active). Surfaced in the DCC window.

@@ -3,18 +3,26 @@ import AppKit
 import IRCKit
 
 struct SettingsView: View {
+    @EnvironmentObject var model: IrcleModel
+    @State private var tab: SettingsTab = .servers
+
+    enum SettingsTab: Hashable { case servers, appearance, themes, backup }
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             ConnectionSettingsView()
-                .tabItem { Label("Servers", systemImage: "network") }
+                .tabItem { Label("Servers", systemImage: "network") }.tag(SettingsTab.servers)
             AppearanceSettingsView()
-                .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                .tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(SettingsTab.appearance)
             ModernSettingsView()
-                .tabItem { Label("Themes", systemImage: "paintbrush.pointed") }
+                .tabItem { Label("Themes", systemImage: "paintbrush.pointed") }.tag(SettingsTab.themes)
             BackupSettingsView()
-                .tabItem { Label("Backup", systemImage: "externaldrive") }
+                .tabItem { Label("Backup", systemImage: "externaldrive") }.tag(SettingsTab.backup)
         }
         .frame(width: 640, height: 500)
+        // The Connections window's "Edit…"/"Server…" jumps straight to Servers.
+        .onAppear { if model.pendingEditServerID != nil { tab = .servers } }
+        .onChange(of: model.pendingEditServerID) { _, new in if new != nil { tab = .servers } }
     }
 }
 
@@ -44,7 +52,21 @@ struct ConnectionSettingsView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .onAppear { if selectedID == nil { selectedID = servers.first?.id } }
+        .onAppear {
+            consumePendingEdit()
+            if selectedID == nil { selectedID = servers.first?.id }
+        }
+        // The Connections window's "Edit…" pre-selects a profile here, even if
+        // the Settings window was already open.
+        .onChange(of: model.pendingEditServerID) { _, _ in consumePendingEdit() }
+    }
+
+    /// If the Connections window asked to edit a specific server, select it.
+    private func consumePendingEdit() {
+        if let pend = model.pendingEditServerID {
+            selectedID = pend
+            model.pendingEditServerID = nil
+        }
     }
 
     private var serverList: some View {

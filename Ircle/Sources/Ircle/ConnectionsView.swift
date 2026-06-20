@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import IRCKit
 
 /// The classic Ircle **Connections** window: every saved server in one place
 /// with live status and Connect / Disconnect / Edit / Nick buttons. This is the
@@ -23,11 +24,11 @@ struct ConnectionsView: View {
     var body: some View {
         let palette = palette
         VStack(spacing: 0) {
-            headerRow(palette)
+            ConnectionsRow.header(palette)
             Divider().overlay(palette.hairline)
             List(selection: $selectedID) {
                 ForEach(Array(servers.enumerated()), id: \.element.id) { idx, server in
-                    row(idx + 1, server, palette).tag(server.id)
+                    rowView(idx + 1, server, palette).tag(server.id)
                 }
             }
             .listStyle(.plain)
@@ -40,59 +41,17 @@ struct ConnectionsView: View {
         .sheet(item: $nickTarget) { profile in nickSheet(profile, palette) }
     }
 
-    // MARK: Rows
-
-    private func headerRow(_ palette: PlatinumPalette) -> some View {
-        HStack(spacing: 6) {
-            Text("Nbr").frame(width: 30, alignment: .leading)
-            Text("Status").frame(width: 92, alignment: .leading)
-            Text("Nickname").frame(width: 110, alignment: .leading)
-            Text("Server")
-            Spacer()
-        }
-        .font(palette.chromeFontBold())
-        .foregroundColor(palette.chromeText)
-        .padding(.horizontal, 10).padding(.vertical, 4)
-        .background(palette.paneBG)
-    }
-
-    private func row(_ nbr: Int, _ server: ServerProfile, _ palette: PlatinumPalette) -> some View {
-        let s = session(for: server)
-        return HStack(spacing: 6) {
-            Text("\(nbr)").frame(width: 30, alignment: .leading)
-                .foregroundColor(palette.timestamp)
-            HStack(spacing: 5) {
-                Circle().fill(statusColor(s, palette)).frame(width: 8, height: 8)
-                Text(statusText(s)).foregroundColor(palette.chromeText)
-            }
-            .frame(width: 92, alignment: .leading)
-            Text(s?.nick ?? server.nick).frame(width: 110, alignment: .leading)
-                .foregroundColor(palette.chromeText).lineLimit(1)
-            Text(server.host).foregroundColor(palette.timestamp).lineLimit(1)
-            Spacer()
-        }
-        .font(palette.chromeFont())
-        .contentShape(Rectangle())
-        // Double-click connects, like the classic window.
-        .onTapGesture(count: 2) { model.connect(to: server) }
-    }
-
-    private func statusText(_ s: IrcleSession?) -> String {
-        switch s?.state {
-        case .connected:    return "online"
-        case .connecting:   return "connecting…"
-        case .failed:       return "error"
-        case .disconnected: return "offline"
-        case nil:           return "—"
-        }
-    }
-
-    private func statusColor(_ s: IrcleSession?, _ palette: PlatinumPalette) -> Color {
-        switch s?.state {
-        case .connected:  return palette.joinText
-        case .connecting: return palette.partText
-        case .failed:     return palette.errorText
-        default:          return palette.timestamp.opacity(0.5)
+    /// A connected server gets a row that observes its session (so the nick and
+    /// status update live); a disconnected server gets a static row.
+    @ViewBuilder
+    private func rowView(_ nbr: Int, _ server: ServerProfile, _ palette: PlatinumPalette) -> some View {
+        if let s = session(for: server) {
+            ConnectionsRow(nbr: nbr, host: server.host, session: s, palette: palette)
+                .onTapGesture(count: 2) { model.connect(to: server) }
+        } else {
+            ConnectionsRow.content(nbr: nbr, host: server.host, nick: server.nick,
+                                   state: nil, palette: palette)
+                .onTapGesture(count: 2) { model.connect(to: server) }
         }
     }
 
@@ -110,8 +69,11 @@ struct ConnectionsView: View {
             Button("Disconn.") {
                 if let p = selectedProfile { session(for: p)?.disconnect() }
             }
-            .disabled(session(forSelected: true)?.isConnected != true)
-            Button("Edit…") { ConnectionsView.openSettings() }
+            .disabled(selectedProfile.flatMap(session(for:))?.isConnected != true)
+            // SettingsLink opens the Settings scene reliably (macOS 14); the tap
+            // also tells the Servers tab which profile to pre-select.
+            SettingsLink { Text("Edit…") }
+                .simultaneousGesture(TapGesture().onEnded { model.pendingEditServerID = selectedID })
                 .disabled(selectedProfile == nil)
             Button("Nick…") {
                 if let p = selectedProfile {
@@ -121,17 +83,11 @@ struct ConnectionsView: View {
             }
             .disabled(selectedProfile == nil)
             Spacer()
-            Button("Server…") { ConnectionsView.openSettings() }
+            SettingsLink { Text("Server…") }
                 .help("Add or edit servers in Settings")
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(palette.paneBG)
-    }
-
-    /// Session for the selected profile (helper for the Disconnect enable check).
-    private func session(forSelected: Bool) -> IrcleSession? {
-        guard let p = selectedProfile else { return nil }
-        return session(for: p)
     }
 
     // MARK: Nick sheet
@@ -157,13 +113,78 @@ struct ConnectionsView: View {
     private func applyNick(_ profile: ServerProfile) {
         let nick = nickDraft.trimmingCharacters(in: .whitespaces)
         guard !nick.isEmpty, let s = session(for: profile) else { nickTarget = nil; return }
-        // Live session → send /NICK; the change reflects when the server confirms.
+        // Live session → send /NICK; the row reflects it when the server confirms
+        // (the row observes the session, so it refreshes automatically).
         model.submitInput("/nick \(nick)", in: s.serverBuffer)
         nickTarget = nil
     }
+}
 
-    /// Bring the Settings window forward (macOS 14 selector).
-    static func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+/// A single Connections row. When backed by a live session it's an
+/// `@ObservedObject` so the nick + status update the instant they change.
+struct ConnectionsRow: View {
+    let nbr: Int
+    let host: String
+    @ObservedObject var session: IrcleSession
+    let palette: PlatinumPalette
+
+    var body: some View {
+        ConnectionsRow.content(nbr: nbr, host: host, nick: session.nick,
+                               state: session.state, palette: palette)
+    }
+
+    // MARK: Shared layout (used by both the live and static rows)
+
+    static func header(_ palette: PlatinumPalette) -> some View {
+        HStack(spacing: 6) {
+            Text("Nbr").frame(width: 30, alignment: .leading)
+            Text("Status").frame(width: 92, alignment: .leading)
+            Text("Nickname").frame(width: 110, alignment: .leading)
+            Text("Server")
+            Spacer()
+        }
+        .font(palette.chromeFontBold())
+        .foregroundColor(palette.chromeText)
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(palette.paneBG)
+    }
+
+    @ViewBuilder
+    static func content(nbr: Int, host: String, nick: String,
+                        state: IRCConnectionState?, palette: PlatinumPalette) -> some View {
+        HStack(spacing: 6) {
+            Text("\(nbr)").frame(width: 30, alignment: .leading)
+                .foregroundColor(palette.timestamp)
+            HStack(spacing: 5) {
+                Circle().fill(statusColor(state, palette)).frame(width: 8, height: 8)
+                Text(statusText(state)).foregroundColor(palette.chromeText)
+            }
+            .frame(width: 92, alignment: .leading)
+            Text(nick).frame(width: 110, alignment: .leading)
+                .foregroundColor(palette.chromeText).lineLimit(1)
+            Text(host).foregroundColor(palette.timestamp).lineLimit(1)
+            Spacer()
+        }
+        .font(palette.chromeFont())
+        .contentShape(Rectangle())
+    }
+
+    static func statusText(_ state: IRCConnectionState?) -> String {
+        switch state {
+        case .connected:    return "online"
+        case .connecting:   return "connecting…"
+        case .failed:       return "error"
+        case .disconnected: return "offline"
+        case nil:           return "—"
+        }
+    }
+
+    static func statusColor(_ state: IRCConnectionState?, _ palette: PlatinumPalette) -> Color {
+        switch state {
+        case .connected:  return palette.joinText
+        case .connecting: return palette.partText
+        case .failed:     return palette.errorText
+        default:          return palette.timestamp.opacity(0.5)
+        }
     }
 }
