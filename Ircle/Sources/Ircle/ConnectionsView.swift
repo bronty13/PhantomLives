@@ -112,12 +112,16 @@ struct ConnectionsView: View {
 
     private func applyNick(_ profile: ServerProfile) {
         let nick = nickDraft.trimmingCharacters(in: .whitespaces)
-        guard !nick.isEmpty, let s = session(for: profile) else { nickTarget = nil; return }
-        // Send NICK straight through the session (not via submitInput, which
-        // would first run global-command + alias expansion that could intercept
-        // a "/nick"). The row observes the session, so it refreshes when the
-        // server echoes the change.
-        s.runCommand("/nick \(nick)", in: s.serverBuffer)
+        guard !nick.isEmpty else { nickTarget = nil; return }
+        // Set the nickname for this connection: update the saved profile (used
+        // on the next connect, shown in the list, and what the sheet pre-fills),
+        // and — if it's connected right now — change it live with /NICK too.
+        if let idx = settingsStore.settings.servers.firstIndex(where: { $0.id == profile.id }) {
+            settingsStore.settings.servers[idx].nick = nick
+        }
+        if let s = session(for: profile) {
+            s.runCommand("/nick \(nick)", in: s.serverBuffer)
+        }
         nickTarget = nil
     }
 }
