@@ -34,6 +34,7 @@ struct IrcleApp: App {
             }
             CommandGroup(after: .toolbar) {
                 ConnectionsMenuItem()
+                UserlistMenuItem()
                 FacesMenuItem()
                 LogsMenuItem()
                 DCCMenuItem()
@@ -184,6 +185,17 @@ private struct ConnectionsMenuItem: View {
     var body: some View {
         Button("Connections") { openWindow(id: "connections") }
             .keyboardShortcut("k", modifiers: [.command, .shift])
+    }
+}
+
+/// Menu item that floats the Userlist (nick list) window — the current channel's
+/// users with the action grid + mode row. Available in every interface style
+/// (⌘⇧U), so you can pop the user list out even in Clean/Classic.
+private struct UserlistMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Userlist") { openWindow(id: "userlist") }
+            .keyboardShortcut("u", modifiers: [.command, .shift])
     }
 }
 

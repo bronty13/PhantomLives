@@ -33,11 +33,16 @@ struct RootView: View {
     }
 
     /// Open or tear down the constellation when the interface style changes.
+    /// The opens are deferred to the next runloop tick: calling `openWindow`
+    /// synchronously while the primary window is mid-transition (ContentView →
+    /// FloatingConsoleView) can drop the singleton Userlist/Inputline windows.
     private func sync(to style: InterfaceStyle) {
         if style == .floating {
-            openWindow(id: "userlist")
-            openWindow(id: "inputline")
-            reconcileBufferWindows()
+            DispatchQueue.main.async {
+                openWindow(id: "userlist")
+                openWindow(id: "inputline")
+                reconcileBufferWindows()
+            }
         } else {
             dismissWindow(id: "userlist")
             dismissWindow(id: "inputline")
