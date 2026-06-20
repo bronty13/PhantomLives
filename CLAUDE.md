@@ -109,6 +109,16 @@ This applies even to comment-only edits — the file's bytes are what get hashed
 
 Incident reference: SideMolly v0.13.1 (2026-05-24) — edited migration 013 in place to change a `DEFAULT` value, broke launch for every install that had run v0.13.0. Fixed by reverting 013 to its v0.13.0 bytes; migration 014 already covered the data update.
 
+## Spotify Web API rate limits (read `docs/spotify-rate-limits.md` before touching Spotify code)
+
+Spotify Developer apps in **Development Mode** have a tight, undocumented request quota. Blowing past it returns **HTTP 429 with a `Retry-After` of *hours*** (≈24 h has happened **twice** in this repo — MusicJournal and `spotify-complete-playlist` — each costing a full day). Two non-obvious traps: client libraries (e.g. spotipy) will **sleep** for the whole `Retry-After` by default, and **retrying near the wall can extend the cooldown**. Affected subprojects share learnings via **`docs/spotify-rate-limits.md`**:
+
+- **Cache discovery** (scan once, reuse), **throttle** every request, **fail-fast on 429** (don't sleep), and when limited **STOP and wait** — the `Retry-After` is the ETA.
+- `spotify-complete-playlist` **reuses MusicJournal's Spotify app Client ID, so they share one quota** — heavy use in one rate-limits the other. Give the playlist tool its own Developer app to isolate, or be mindful.
+- Permanent fix: **Extended Quota Mode** (Dashboard request; server-side, no code change). Also resolves dev-mode write restrictions (e.g. 403 on playlist *create*).
+
+→ Read the doc before any change that increases Spotify request volume.
+
 ## Default output location
 
 Every PhantomLives tool that writes user-visible output (exports, transcripts, reports, generated files, baselines, etc.) **must** default its output path to:

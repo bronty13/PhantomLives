@@ -118,7 +118,27 @@ duplicated or reshuffled.
                         re-releases of the same song)
 --public                Make a newly-created playlist public (default: private)
 --dry-run               Compute & report counts, but don't modify the playlist
+--no-browser            Never open a browser for auth (headless/unattended runs).
+                        Fails clearly if the cached token is missing/expired.
+--log-dir DIR           Where to write timestamped run logs (default: ./logs)
+--verbose               Debug-level console output
 ```
+
+## Logs & unattended runs
+
+Every run writes a timestamped log to `logs/build_<YYYYMMDD_HHMMSS>.log` (full
+detail) in addition to console output. The file is **flushed per line**, so a
+long run can be tailed live even when launched in the background:
+
+```bash
+# launch in the background, then watch it live
+python3 build_playlist.py --no-browser &
+tail -f logs/$(ls -t logs | head -1)
+```
+
+After the **first** interactive authorization, the OAuth refresh token is cached
+in `.cache`, so subsequent runs need no browser — pass `--no-browser` to
+guarantee a run never blocks waiting for one (it errors clearly instead).
 
 ### Choosing how "complete" you want it
 
@@ -176,6 +196,62 @@ python3 build_playlist.py --dry-run
   hand in the app and they'll be preserved on future runs.
 - Removing tracks is intentionally **not** automated — the tool only adds, so a
   song you add manually is never wiped by a re-run.
+
+## Spotify rate limits (IMPORTANT — read before mass scanning)
+
+A Spotify Developer app in **Development Mode** has a tight request quota.
+Exceeding it returns **HTTP 429** with a `Retry-After` that can be **hours**
+(we once got ~24 h from repeated full scans). This has cost this repo a full day
+of downtime, twice. Full detail + cross-project policy:
+**`../docs/spotify-rate-limits.md`** — read it.
+
+How this tool protects you:
+
+- **Catalog cache** — the expensive discography scan runs **once** and is saved to
+  `cache_catalog/`. Fill/update runs reuse it (~20 calls, not ~800). Force a
+  re-scan only with `--refresh-catalog`.
+- **Throttle** — `--throttle` (default 0.3 s) pauses after each scan request.
+- **Fail-fast** — the client uses `status_retries=0`, so a 429 errors *immediately*
+  (rc 4) with the cooldown in hours, instead of silently sleeping for the whole
+  `Retry-After`.
+
+**If you get rate-limited: STOP. Don't retry** (retrying can extend the cooldown).
+Wait the stated time; the cache means the next run is cheap. The permanent fix is
+**Extended Quota Mode** (a request in the Spotify Developer Dashboard — server-side,
+no code change). Note: this tool **shares MusicJournal's Developer app**, so its
+quota is shared — see the cross-project doc.
+
+## Troubleshooting
+
+### `403 Forbidden` when creating the playlist
+
+Some Spotify app/account combinations can **read** and **add to existing**
+playlists but are not permitted to **create** new ones via the API (the
+`POST /users/{id}/playlists` endpoint returns 403 — typically an app in
+Development Mode, or a non-Premium account). The script detects this and tells
+you exactly what to do:
+
+1. In the Spotify app, create an **empty** playlist named *exactly* the same as
+   `--playlist-name` (e.g. `Taylor Swift Complete`).
+2. Re-run the command. The script finds that existing playlist and **fills it**
+   via the add path (which is not restricted).
+
+Because the tool is find-or-create, this is a one-time, ~5-second step per new
+playlist; every subsequent update run is fully unattended.
+
+> If you already "saved" an AI-generated playlist of the same name, that one is
+> *followed*, not *owned* — the script only matches playlists you **own**, so
+> create your own empty one and (optionally) unfollow the generated duplicate.
+
+### `Invalid limit` (400) on `/artists/{id}/albums`
+
+Handled in-code: that endpoint currently rejects `limit > 10` despite the docs
+saying 50. The page size is pinned to 10; no action needed.
+
+### `Insufficient client scope` (403) on `/me/playlists`
+
+Means the cached token predates a scope change. Delete `.cache` and re-run to
+re-authorize with the current scopes.
 
 ## Files
 

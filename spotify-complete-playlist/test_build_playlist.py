@@ -111,6 +111,19 @@ class PlanAdditions(unittest.TestCase):
         self.assertEqual(bp.plan_additions(["a", "b"], ["a", "b"]), [])
 
 
+class CatalogCacheKey(unittest.TestCase):
+    def test_stable_and_includes_artist_groups_market(self):
+        k = bp.catalog_cache_key("ABC", ("album", "single", "appears_on"), "US")
+        self.assertEqual(k, "ABC__album-single-appears_on__US.json")
+
+    def test_varies_by_market_and_groups(self):
+        a = bp.catalog_cache_key("ABC", ("album",), "US")
+        b = bp.catalog_cache_key("ABC", ("album",), "GB")
+        c = bp.catalog_cache_key("ABC", ("album", "single"), "US")
+        self.assertNotEqual(a, b)
+        self.assertNotEqual(a, c)
+
+
 class Chunked(unittest.TestCase):
     def test_chunks_respect_size(self):
         self.assertEqual(list(bp.chunked(list(range(5)), 2)), [[0, 1], [2, 3], [4]])

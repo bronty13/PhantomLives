@@ -239,6 +239,8 @@ Spotify imposes rate limits particularly aggressively on development-mode apps. 
 
 If a 429 occurs, `SpotifyAPIService.get()` throws `SpotifyError.rateLimited(retryAfter:)`. At the playlist level this is caught and the playlist is skipped (`continue`). At the top level it surfaces as a user-visible error with the `Retry-After` value.
 
+> **Cross-project policy: `docs/spotify-rate-limits.md`.** Dev-mode quota exhaustion can return a `Retry-After` of *hours* (≈24 h has happened here), and the only cure is to **stop and wait** — retrying extends the cooldown. The repo's other Spotify tool (`spotify-complete-playlist`) **shares this app's Client ID, so it shares this quota** — heavy playlist-building there can rate-limit MusicJournal. The permanent fix for both is **Extended Quota Mode** (Dashboard request). Read that doc before any change that increases request volume.
+
 ---
 
 ## Database schema

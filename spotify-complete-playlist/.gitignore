@@ -1,5 +1,7 @@
 .venv/
 .cache
 config.local.json
+logs/
+cache_catalog/
 __pycache__/
 *.pyc
