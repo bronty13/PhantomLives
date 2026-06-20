@@ -8,6 +8,9 @@ struct NickListView: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var buffer: IrcleBuffer
     let palette: PlatinumPalette
+    /// The floating Userlist window sets this to render a Nickname | Hostname
+    /// table (classic Ircle 3.5). The embedded nick list keeps the compact roster.
+    var hostnameColumns: Bool = false
     @State private var selectedNick: String?
     @State private var tab: NickTab = .users
     @State private var newFriend: String = ""
@@ -65,19 +68,34 @@ struct NickListView: View {
     }
 
     private var roster: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(buffer.users) { user in
-                    NickRow(user: user, palette: palette,
-                            selected: user.nick == selectedNick, showDetails: isClassic)
-                        .onTapGesture { selectedNick = user.nick }
-                        .contextMenu { nickMenu(for: user.nick) }
+        VStack(spacing: 0) {
+            if hostnameColumns {
+                HStack(spacing: 4) {
+                    Text("Nickname").frame(width: 130, alignment: .leading)
+                    Text("Hostname")
+                    Spacer()
                 }
+                .font(palette.chromeFontBold())
+                .foregroundColor(palette.chromeText)
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(palette.paneBG)
+                Divider().overlay(palette.hairline)
             }
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(buffer.users) { user in
+                        NickRow(user: user, palette: palette,
+                                selected: user.nick == selectedNick,
+                                showDetails: isClassic, hostnameColumns: hostnameColumns)
+                            .onTapGesture { selectedNick = user.nick }
+                            .contextMenu { nickMenu(for: user.nick) }
+                    }
+                }
+                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(palette.textBG)
         }
-        .background(palette.textBG)
     }
 
     /// The Notify (friends) tab: each friend with a green/grey online dot
@@ -267,6 +285,8 @@ struct NickRow: View {
     let selected: Bool
     /// Classic style surfaces the WHO-derived IRCop marker.
     var showDetails: Bool = false
+    /// The floating Userlist renders a Nickname | Hostname table.
+    var hostnameColumns: Bool = false
 
     private var prefixColor: Color {
         switch user.prefix.first {
@@ -277,6 +297,12 @@ struct NickRow: View {
         }
     }
 
+    private var nickColor: Color {
+        if selected { return .white }
+        // Colour op/voice nicks in the table view (like classic Ircle).
+        return hostnameColumns && !user.prefix.isEmpty ? prefixColor : palette.chromeText
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             Text(user.prefix.isEmpty ? " " : user.prefix)
@@ -284,17 +310,30 @@ struct NickRow: View {
                 .foregroundColor(prefixColor)
                 .frame(width: 8)
             AvatarView(nick: user.nick, size: 15)
-            Text(user.nick)
-                .font(palette.chromeFont())
-                .foregroundColor(selected ? .white : palette.chromeText)
-                .lineLimit(1)
-            if showDetails && user.isIrcOp {
-                Text("✪")
-                    .font(palette.chromeFont(10))
-                    .foregroundColor(palette.serverText)
-                    .help("IRC operator")
+            if hostnameColumns {
+                Text(user.nick)
+                    .font(palette.chromeFont())
+                    .foregroundColor(nickColor)
+                    .lineLimit(1)
+                    .frame(width: 118, alignment: .leading)
+                Text(user.host ?? "")
+                    .font(palette.chromeFont())
+                    .foregroundColor(palette.timestamp)
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+            } else {
+                Text(user.nick)
+                    .font(palette.chromeFont())
+                    .foregroundColor(nickColor)
+                    .lineLimit(1)
+                if showDetails && user.isIrcOp {
+                    Text("✪")
+                        .font(palette.chromeFont(10))
+                        .foregroundColor(palette.serverText)
+                        .help("IRC operator")
+                }
+                Spacer()
             }
-            Spacer()
         }
         .padding(.horizontal, 6).padding(.vertical, 1)
         .background(selected ? palette.selection : .clear)

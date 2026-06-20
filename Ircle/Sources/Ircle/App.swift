@@ -107,7 +107,7 @@ struct IrcleApp: App {
                 .environmentObject(settingsStore)
                 .environmentObject(facesStore)
         }
-        .defaultSize(width: 240, height: 380)
+        .defaultSize(width: 340, height: 420)
 
         // The floating Inputline window (routes to the selected buffer).
         Window("Inputline", id: "inputline") {

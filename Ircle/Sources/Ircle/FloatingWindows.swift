@@ -137,7 +137,7 @@ struct UserlistWindowView: View {
         let palette = settingsStore.palette
         Group {
             if let buffer = model.selectedBuffer, buffer.kind == .channel {
-                NickListView(buffer: buffer, palette: palette)
+                NickListView(buffer: buffer, palette: palette, hostnameColumns: true)
             } else {
                 VStack {
                     Spacer()
@@ -149,7 +149,7 @@ struct UserlistWindowView: View {
                 .background(palette.paneBG)
             }
         }
-        .frame(minWidth: 200, minHeight: 240)
+        .frame(minWidth: 300, minHeight: 240)
         .background(WindowAccessor(title: userlistTitle))
     }
 

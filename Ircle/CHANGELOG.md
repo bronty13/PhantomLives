@@ -21,6 +21,11 @@ All notable changes to Ircle are documented here.
   **Window menu** lists every buffer so you can (re)open a channel window you've
   closed. Built on the existing per-value `WindowGroup` machinery; channels and
   queries get their own windows while server consoles share the primary window.
+- **Floating Userlist on demand** — **Window → Userlist** (**⌘⇧U**) pops the nick
+  list out into its own window in *any* interface style (Clean/Classic too), like
+  the Connections window. In the floating window the roster is a classic
+  **Nickname | Hostname** table (WHO-derived hosts), with op/voice nicks coloured,
+  above the action grid + mode row.
 
 ### Changed
 

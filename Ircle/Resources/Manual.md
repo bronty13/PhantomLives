@@ -418,6 +418,7 @@ server.
 
 - **⌘K** — Connect (single server) / open Connections (several)
 - **⌘⇧K** — Connections window
+- **⌘⇧U** — Userlist window (float the nick list, any style)
 - **⌥⌘K** — Disconnect current
 - **⌘⇧F** — Faces window
 - **⌘⇧L** — Chat Logs window
