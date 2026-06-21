@@ -10,6 +10,29 @@ Affected subprojects:
 - **`spotify-complete-playlist/`** — builds exhaustive per-artist playlists (Python).
 - Any future Spotify integration.
 
+## ⚠️ February 2026 Dev-Mode lockdown (READ FIRST — it explains almost everything)
+
+Spotify shipped sweeping **Development-Mode restrictions in February 2026**
+([official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide)).
+These are the *documented* root cause of nearly every error this repo hit — they
+are not quirks to reverse-engineer. **Read the migration guide before writing or
+debugging Spotify code.** The ones that bite us:
+
+| Dev-Mode change (Feb 2026) | Symptom we saw |
+|---|---|
+| **Batch fetch endpoints REMOVED** (`GET /albums`, `/tracks`, `/artists`, …) — "fetch items individually" | A 20×-fewer-calls batch optimization **does not work** in dev mode; you're forced into one call per album, which is what makes scans rate-limit-heavy |
+| **`limit` max cut 50 → 10**, default 20 → 5 | `400 Invalid limit` on `artist_albums`/search with `limit>10`; pagination costs ~5× more pages |
+| **`/playlists/{id}/tracks` → `/playlists/{id}/items`**; only for owned/collab playlists | Playlist responses use an `items` key, not `tracks` |
+| **`/users/{id}` and `/users/{id}/playlists` restricted to `/me`** | `403` creating a playlist via `POST /users/{id}/playlists` (the create-403); must pre-create the playlist in-app |
+| **User profile loses `country`, `email`, `product`, `explicit_content`** | `me()` returns `country=None`, `product=None` (NOT a missing-scope issue) |
+| **Dropped fields** on tracks/albums/artists: `popularity`, `available_markets`, `external_ids`, `followers` | Don't rely on these in dev mode |
+| **App rules**: owner must have **Premium**; max **1 Client ID per developer**; max **5 users/app** | Can't dodge limits by spinning up apps (also see ⛔ below) |
+
+**Bottom line:** the Feb-2026 changes make Development Mode *hostile* to bulk
+catalog work — no batch endpoints, tiny pagination, tight rate limits. **Extended
+Quota Mode apps are explicitly "unaffected" by all of the above.** If you need to
+do real volume, Extended Quota is not a nice-to-have, it's the prerequisite.
+
 ## The core problem
 
 A Spotify Developer app starts in **Development Mode**, which has a **tight,

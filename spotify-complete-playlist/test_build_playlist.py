@@ -111,6 +111,49 @@ class PlanAdditions(unittest.TestCase):
         self.assertEqual(bp.plan_additions(["a", "b"], ["a", "b"]), [])
 
 
+def album(track_dicts, total=None):
+    items = track_dicts
+    return {"id": "alb1", "tracks": {"items": items, "total": total if total is not None else len(items)}}
+
+
+class TracksFromAlbum(unittest.TestCase):
+    def test_extracts_kept_tracks_from_embedded_tracks(self):
+        alb = album([
+            track("a", [TSWIFT], name="One"),
+            track("b", [TSWIFT], name="Two"),
+        ])
+        out = bp.tracks_from_album(alb, TSWIFT, "album")
+        self.assertEqual([t["uri"] for t in out], ["a", "b"])
+        self.assertEqual(out[0]["name"], "One")
+
+    def test_applies_keep_rules_for_appears_on(self):
+        # On appears_on, only genuine features (credited, not primary) survive.
+        alb = album([
+            track("feat", [OTHER, TSWIFT], name="Guest"),     # keep
+            track("hers", [TSWIFT, OTHER], name="HerOwn"),     # drop (primary)
+            track("none", [OTHER], name="NotHers"),            # drop (absent)
+        ])
+        out = bp.tracks_from_album(alb, TSWIFT, "appears_on")
+        self.assertEqual([t["uri"] for t in out], ["feat"])
+
+    def test_empty_or_missing_tracks(self):
+        self.assertEqual(bp.tracks_from_album({}, TSWIFT, "album"), [])
+        self.assertEqual(bp.tracks_from_album({"tracks": {"items": None}}, TSWIFT, "album"), [])
+
+
+class AlbumNeedsPagination(unittest.TestCase):
+    def test_true_when_total_exceeds_embedded(self):
+        alb = {"tracks": {"items": [1] * 50, "total": 73}}
+        self.assertTrue(bp.album_needs_track_pagination(alb))
+
+    def test_false_when_complete(self):
+        alb = {"tracks": {"items": [1, 2, 3], "total": 3}}
+        self.assertFalse(bp.album_needs_track_pagination(alb))
+
+    def test_false_when_total_missing(self):
+        self.assertFalse(bp.album_needs_track_pagination({"tracks": {"items": [1]}}))
+
+
 class CatalogCacheKey(unittest.TestCase):
     def test_stable_and_includes_artist_groups_market(self):
         k = bp.catalog_cache_key("ABC", ("album", "single", "appears_on"), "US")

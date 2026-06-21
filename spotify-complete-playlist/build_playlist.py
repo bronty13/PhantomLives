@@ -133,6 +133,28 @@ def dedupe_by_name(tracks: Iterable[dict]) -> list[dict]:
     return out
 
 
+def tracks_from_album(album: dict, artist_id: str, group: str) -> list[dict]:
+    """
+    Pull the keep-worthy tracks ({"uri","name"}) out of a FULL album object's
+    embedded `tracks.items` (as returned by GET /albums?ids=). Pure: no network.
+    Whether each track is kept follows the same keep_track() rules.
+    """
+    out: list[dict] = []
+    for tr in ((album.get("tracks") or {}).get("items") or []):
+        if tr and keep_track(tr, artist_id, group):
+            out.append({"uri": tr["uri"], "name": tr.get("name")})
+    return out
+
+
+def album_needs_track_pagination(album: dict) -> bool:
+    """True if the album has more tracks than the embedded page returned, so the
+    remainder must be fetched separately (rare — only albums with >50 tracks)."""
+    tobj = album.get("tracks") or {}
+    items = tobj.get("items") or []
+    total = tobj.get("total")
+    return total is not None and total > len(items)
+
+
 def catalog_cache_key(artist_id: str, include_groups: Iterable[str], market: str) -> str:
     """Stable filename for a cached catalog scan, keyed by artist + groups + market."""
     groups = "-".join(include_groups)
@@ -325,25 +347,30 @@ def resolve_artist(sp, name: str, artist_id: str | None) -> tuple[str, str]:
 
 
 def fetch_all_albums(sp, artist_id, include_groups, market, throttle: float = 0.0):
-    """Yield (album_dict, group) for every album, paginating fully."""
-    for group in include_groups:
-        offset = 0
-        while True:
-            page = sp.artist_albums(
-                artist_id,
-                include_groups=group,
-                limit=ALBUMS_PAGE_LIMIT,
-                offset=offset,
-                country=market,
-            )
-            if throttle:
-                time.sleep(throttle)
-            items = page.get("items", [])
-            for alb in items:
-                yield alb, group
-            if len(items) < ALBUMS_PAGE_LIMIT:
-                break
-            offset += ALBUMS_PAGE_LIMIT
+    """
+    Yield (album_dict, group) for every album. Queries ALL requested groups in a
+    single paginated pass (Spotify accepts a comma-separated include_groups), and
+    reads each album's own `album_group` field so we still know which group it
+    belongs to. One combined pass = fewer pages than one pass per group.
+    """
+    groups = ",".join(include_groups)
+    offset = 0
+    while True:
+        page = sp.artist_albums(
+            artist_id,
+            include_groups=groups,
+            limit=ALBUMS_PAGE_LIMIT,
+            offset=offset,
+            country=market,
+        )
+        if throttle:
+            time.sleep(throttle)
+        items = page.get("items", [])
+        for alb in items:
+            yield alb, alb.get("album_group") or "album"
+        if len(items) < ALBUMS_PAGE_LIMIT:
+            break
+        offset += ALBUMS_PAGE_LIMIT
 
 
 def fetch_album_tracks(sp, album_id: str, market: str, throttle: float = 0.0) -> list[dict]:
@@ -506,29 +533,86 @@ def add_tracks(sp, playlist_id: str, to_add: list[str]) -> int:
     return added
 
 
+ALBUMS_BATCH = 20  # GET /albums?ids= accepts up to 20 full albums (with tracks) per call
+
+
 def scan_catalog(sp, artist_id, include_groups, market, throttle: float = 0.0) -> list[dict]:
     """
     Walk the artist's whole discography and return URI-deduped track dicts
-    [{"uri","name"}]. This is the EXPENSIVE step (hundreds of API calls), so its
-    result is cached to disk by load_or_build_catalog(). `throttle` adds a delay
-    after each paginated request to stay under Spotify's dev-mode rate limit.
+    [{"uri","name"}]. Cached to disk by load_or_build_catalog().
+
+    Rate-limit-critical design: rather than one /albums/{id}/tracks call PER album
+    (hundreds of calls), we (1) enumerate album ids+groups via paginated
+    artist_albums, then (2) fetch FULL album objects — which embed their tracks —
+    in **batches of 20** via GET /albums?ids=. That cuts the dominant cost ~20×.
+    Only albums with >50 tracks need a follow-up paginated fetch (rare).
+    `throttle` adds a delay after each request to stay under the dev-mode limit.
     """
-    collected: list[dict] = []
-    seen_albums: set[str] = set()
-    album_count = 0
+    # 1. Enumerate album ids and their group (first occurrence wins).
+    album_group: dict[str, str] = {}
+    order: list[str] = []
     for alb, group in fetch_all_albums(sp, artist_id, include_groups, market, throttle):
-        if alb["id"] in seen_albums:
+        aid = alb.get("id")
+        if not aid or aid in album_group:
             continue
-        seen_albums.add(alb["id"])
-        album_count += 1
-        for tr in fetch_album_tracks(sp, alb["id"], market, throttle):
-            if keep_track(tr, artist_id, group):
-                collected.append({"uri": tr["uri"], "name": tr.get("name")})
-        if album_count % 25 == 0:
-            log.info("  …scanned %d albums, %d candidate tracks", album_count, len(collected))
+        album_group[aid] = group
+        order.append(aid)
+    log.info("  enumerated %d albums; fetching tracks in batches of %d…",
+             len(order), ALBUMS_BATCH)
+
+    # 2. Fetch tracks. Prefer the BATCH endpoint (GET /albums?ids=, 20 full
+    #    albums-with-tracks per call → ~20× fewer calls). BUT Spotify's Feb-2026
+    #    Dev-Mode changes REMOVED batch-fetch endpoints, so in Development Mode
+    #    this 403/404s and we must fall back to one /albums/{id}/tracks call per
+    #    album. Extended Quota apps keep the batch endpoint, so this stays optimal
+    #    there. We probe once and switch modes; a 429 still propagates (fail-fast).
+    import spotipy
+
+    collected: list[dict] = []
+    done = 0
+    use_batch = True
+    i = 0
+    while i < len(order):
+        if use_batch:
+            batch_ids = order[i : i + ALBUMS_BATCH]
+            try:
+                resp = sp.albums(batch_ids, market=market)
+            except spotipy.SpotifyException as e:
+                if e.http_status in (403, 404):
+                    log.warning("Batch /albums unavailable (Feb-2026 Dev-Mode "
+                                "restriction) — falling back to per-album fetch.")
+                    use_batch = False
+                    continue  # retry the same albums individually
+                raise  # 429 etc. → propagate to fail-fast
+            if throttle:
+                time.sleep(throttle)
+            for alb in (resp.get("albums") or []):
+                if not alb:
+                    continue
+                group = album_group.get(alb.get("id"), "album")
+                if album_needs_track_pagination(alb):
+                    for tr in fetch_album_tracks(sp, alb["id"], market, throttle):
+                        if keep_track(tr, artist_id, group):
+                            collected.append({"uri": tr["uri"], "name": tr.get("name")})
+                else:
+                    collected.extend(tracks_from_album(alb, artist_id, group))
+            i += len(batch_ids)
+            done += len(batch_ids)
+        else:
+            aid = order[i]
+            group = album_group.get(aid, "album")
+            for tr in fetch_album_tracks(sp, aid, market, throttle):
+                if keep_track(tr, artist_id, group):
+                    collected.append({"uri": tr["uri"], "name": tr.get("name")})
+            i += 1
+            done += 1
+        if done % 25 < ALBUMS_BATCH or done >= len(order):
+            log.info("  …fetched tracks for %d/%d albums, %d candidate tracks",
+                     done, len(order), len(collected))
+
     deduped = dedupe_by_uri(collected)
     log.info("Scanned %d albums → %d candidate tracks → %d unique recordings.",
-             album_count, len(collected), len(deduped))
+             len(order), len(collected), len(deduped))
     return deduped
 
 
