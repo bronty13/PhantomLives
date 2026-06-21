@@ -31,7 +31,8 @@ log = bp.log
 # orchestral). Deliberately NOT a bare "instrumental" — that also matches jazz,
 # lo-fi, acoustic-guitar and karaoke "instrumental" releases, which aren't classical.
 SIGNALS = ("string quartet", "quartet", "piano", "orchestr", "symphon",
-           "classical", "cello", "violin", "strings", "chamber")
+           "classical", "cello", "violin", "strings", "chamber orchestra",
+           "chamber music")  # "chamber" alone false-matched the surname "Chambers"
 # Hard exclusions: a non-classical genre marker disqualifies even if "piano" appears.
 EXCLUDE = ("jazz", "lo-fi", "lofi", "8-bit", "8 bit", "karaoke", "reggae",
            "metal", "steel drum", "marimba", "kalimba", "vox freaks", "guitar")
