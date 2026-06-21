@@ -41,6 +41,14 @@ DECADES = {
             "Metal": ["80s Metal Essentials", "80s Thrash Essentials", "80s Hard Rock Essentials"],
         },
     },
+    "80s-country": {
+        "prefix": "80s Country — ",
+        "years": list(range(1980, 1990)),
+        "genre_templates": ["Country Hits: {y}"],
+        "essentials": {
+            "Essentials": ["80s Country Essentials"],
+        },
+    },
 }
 
 
