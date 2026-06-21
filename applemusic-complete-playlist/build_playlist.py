@@ -137,6 +137,25 @@ def chunked(seq: list, size: int) -> Iterable[list]:
         yield seq[i : i + size]
 
 
+# Service limits we care about. The binding one is Apple Music's library cap:
+# adding a song to a library playlist also adds it to your LIBRARY, and Apple
+# Music's sync misbehaves past 100,000 library songs. (Spotify caps a single
+# playlist at 10,000 tracks, but our playlists are far under that.)
+APPLE_LIBRARY_SONG_CAP = 100_000
+SPOTIFY_PLAYLIST_TRACK_CAP = 10_000
+LIB_WARN_FRACTION = 0.85
+LIB_CRIT_FRACTION = 0.95
+
+
+def library_status(total: int, cap: int = APPLE_LIBRARY_SONG_CAP,
+                   warn: float = LIB_WARN_FRACTION, crit: float = LIB_CRIT_FRACTION) -> dict:
+    """Classify a library song count against the cap. Pure (testable)."""
+    pct = (total / cap) if cap else 0.0
+    level = "CRITICAL" if pct >= crit else ("WARN" if pct >= warn else "OK")
+    return {"total": total, "cap": cap, "pct": pct,
+            "headroom": max(0, cap - total), "level": level}
+
+
 def catalog_cache_key(artist_id: str, storefront: str) -> str:
     return f"{storefront}__{artist_id}.json"
 
@@ -304,6 +323,13 @@ class AppleMusic:
             page = self.get(nxt, **{k: v for k, v in params.items() if k in ("limit", "include")})
 
     # -- high-level --------------------------------------------------------- #
+    def library_song_total(self) -> int | None:
+        """Total songs in the user's Apple Music library (meta.total)."""
+        if not self.has_user_token:
+            return None
+        meta = self.get("/v1/me/library/songs", limit=1).get("meta") or {}
+        return meta.get("total")
+
     def me_storefront(self) -> str | None:
         if not self.has_user_token:
             return None
@@ -572,7 +598,26 @@ def run(args) -> int:
     save_manifest(playlist_id, existing | set(to_add))
     log.info("Done. Added %d songs. Manifest now tracks %d catalog ids.",
              added, len(existing) + len(to_add))
+    warn_library_headroom(am)
     return 0
+
+
+def warn_library_headroom(am) -> None:
+    """After a build, surface where the Apple Music library stands vs the 100k cap."""
+    try:
+        total = am.library_song_total()
+    except Exception:  # noqa: BLE001 — never let a status check break a build
+        return
+    if total is None:
+        return
+    st = library_status(total)
+    msg = (f"Apple Music library: {total:,}/{st['cap']:,} "
+           f"({st['pct']*100:.1f}%), headroom {st['headroom']:,} songs")
+    if st["level"] == "OK":
+        log.info(msg)
+    else:
+        log.warning("⚠️  %s — %s. Consider --dedupe-by-name or splitting "
+                    "across your second service.", st["level"], msg)
 
 
 def main() -> int:

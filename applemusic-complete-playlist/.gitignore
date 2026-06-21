@@ -11,3 +11,4 @@ artwork/
 *_source.json
 matches_*.json
 sync_report_*.md
+limits_history.csv

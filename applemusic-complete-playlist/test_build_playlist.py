@@ -90,6 +90,23 @@ class Chunked(unittest.TestCase):
         self.assertEqual(list(bp.chunked([], 100)), [])
 
 
+class LibraryStatus(unittest.TestCase):
+    def test_ok_below_warn(self):
+        st = bp.library_status(17801)
+        self.assertEqual(st["level"], "OK")
+        self.assertEqual(st["headroom"], 100000 - 17801)
+
+    def test_warn_at_85pct(self):
+        self.assertEqual(bp.library_status(85000)["level"], "WARN")
+        self.assertEqual(bp.library_status(84999)["level"], "OK")
+
+    def test_critical_at_95pct(self):
+        self.assertEqual(bp.library_status(95000)["level"], "CRITICAL")
+
+    def test_headroom_never_negative(self):
+        self.assertEqual(bp.library_status(120000)["headroom"], 0)
+
+
 class CacheKey(unittest.TestCase):
     def test_includes_storefront_and_artist(self):
         self.assertEqual(bp.catalog_cache_key("123", "us"), "us__123.json")
