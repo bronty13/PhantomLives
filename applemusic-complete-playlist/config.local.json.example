@@ -1,0 +1,6 @@
+{
+  "team_id": "SRKV8T38CD",
+  "key_id": "PASTE_YOUR_10_CHAR_MUSICKIT_KEY_ID",
+  "private_key_path": "~/.secrets/AuthKey_XXXXXXXXXX.p8",
+  "storefront": "us"
+}

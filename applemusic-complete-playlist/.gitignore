@@ -1,0 +1,8 @@
+.venv/
+config.local.json
+music_user_token.json
+*.p8
+logs/
+cache_catalog/
+__pycache__/
+*.pyc
