@@ -49,6 +49,25 @@ DECADES = {
             "Essentials": ["80s Country Essentials"],
         },
     },
+    "90s": {
+        "prefix": "90s — ",
+        "years": list(range(1990, 2000)),
+        "genre_templates": [
+            "Pop Hits: {y}", "Rock Hits: {y}",
+            "Alternative Hits: {y}", "Hip-Hop/R&B Hits: {y}",
+        ],
+        "essentials": {
+            "Metal": ["90s Metal Essentials", "90s Thrash Essentials", "90s Hard Rock Essentials"],
+        },
+    },
+    "90s-country": {
+        "prefix": "90s Country — ",
+        "years": list(range(1990, 2000)),
+        "genre_templates": ["Country Hits: {y}"],
+        "essentials": {
+            "Essentials": ["90s Country Essentials"],
+        },
+    },
 }
 
 
