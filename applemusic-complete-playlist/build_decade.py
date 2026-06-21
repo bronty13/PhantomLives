@@ -68,6 +68,26 @@ DECADES = {
             "Essentials": ["90s Country Essentials"],
         },
     },
+    "2000s": {
+        "prefix": "2000s — ",
+        "years": list(range(2000, 2010)),
+        "genre_templates": [
+            "Pop Hits: {y}", "Rock Hits: {y}",
+            "Alternative Hits: {y}", "Hip-Hop/R&B Hits: {y}",
+        ],
+        "essentials": {
+            "Metal": ["2000s Metal Essentials", "2000s Thrash Essentials",
+                      "2000s Hard Rock Essentials", "Metalcore Essentials"],
+        },
+    },
+    "2000s-country": {
+        "prefix": "2000s Country — ",
+        "years": list(range(2000, 2010)),
+        "genre_templates": ["Country Hits: {y}"],
+        "essentials": {
+            "Essentials": ["2000s Country Essentials"],
+        },
+    },
 }
 
 
