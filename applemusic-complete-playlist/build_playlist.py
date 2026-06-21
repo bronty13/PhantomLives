@@ -95,6 +95,11 @@ def song_play_catalog_id(song: dict) -> str | None:
     cat = pp.get("catalogId") or pp.get("purchasedId")
     if cat:
         return cat
+    # Library song with the catalog relationship included (read with include=catalog):
+    rels = song.get("relationships") or {}
+    cdata = (rels.get("catalog") or {}).get("data") or []
+    if cdata and cdata[0].get("id"):
+        return cdata[0]["id"]
     # A catalog song resource: its own id IS the catalog id.
     if song.get("type") == "songs" and song.get("id"):
         return song["id"]
@@ -378,7 +383,7 @@ class AppleMusic:
             raise NeedsUserToken()
         out: list[str] = []
         for song in self.get_paginated(
-            f"/v1/me/library/playlists/{playlist_id}/tracks", limit=100
+            f"/v1/me/library/playlists/{playlist_id}/tracks", limit=100, include="catalog"
         ):
             cid = song_play_catalog_id(song)
             if cid:
@@ -428,6 +433,29 @@ def scan_catalog(am: AppleMusic, storefront: str, artist_id: str, throttle: floa
     log.info("Scanned %d albums → %d candidate songs → %d unique recordings.",
              len(album_map), len(collected), len(deduped))
     return deduped
+
+
+_STATE_DIR = os.path.join(_HERE, "playlist_state")
+
+
+def load_manifest(playlist_id: str) -> set[str]:
+    """Catalog ids we've previously added to this playlist (local source of truth).
+
+    Apple's library loses the catalog id for ~40% of added songs, so reading the
+    playlist back can't reliably tell us what's already there — this local record
+    can. Keyed by the stable Apple library playlist id.
+    """
+    p = os.path.join(_STATE_DIR, f"{playlist_id}.json")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as fh:
+            return set((json.load(fh) or {}).get("added", []))
+    return set()
+
+
+def save_manifest(playlist_id: str, ids: Iterable[str]) -> None:
+    os.makedirs(_STATE_DIR, exist_ok=True)
+    with open(os.path.join(_STATE_DIR, f"{playlist_id}.json"), "w", encoding="utf-8") as fh:
+        json.dump({"added": sorted(set(ids))}, fh)
 
 
 def load_or_build_catalog(am, args, storefront, artist_id, artist_name) -> list[dict]:
@@ -526,17 +554,24 @@ def run(args) -> int:
 
     if playlist_id:
         log.info("Playlist '%s': found existing (%s)", args.playlist_name, playlist_id)
-        existing = am.library_playlist_catalog_ids(playlist_id)
+        api_existing = set(am.library_playlist_catalog_ids(playlist_id))
     else:
         playlist_id = am.create_library_playlist(
             args.playlist_name, description="Complete catalog incl. features — build_playlist.py")
         log.info("Playlist '%s': created (%s)", args.playlist_name, playlist_id)
-        existing = []
+        api_existing = set()
 
+    # Use the local manifest as the reliable "already added" record (Apple's
+    # library loses catalog ids), unioned with whatever the API can confirm.
+    manifest = load_manifest(playlist_id)
+    existing = manifest | api_existing
     to_add = plan_additions(desired_ids, existing)
-    log.info("Already in playlist: %d   To add: %d", len(existing), len(to_add))
+    log.info("Already in playlist: %d (manifest %d, api %d)   To add: %d",
+             len(existing), len(manifest), len(api_existing), len(to_add))
     added = am.add_catalog_songs(playlist_id, to_add)
-    log.info("Done. Added %d songs. Playlist now has ~%d.", added, len(existing) + added)
+    save_manifest(playlist_id, existing | set(to_add))
+    log.info("Done. Added %d songs. Manifest now tracks %d catalog ids.",
+             added, len(existing) + len(to_add))
     return 0
 
 

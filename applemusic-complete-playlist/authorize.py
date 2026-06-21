@@ -50,41 +50,52 @@ def _ensure_venv() -> None:
 
 _PAGE = """<!doctype html>
 <html><head><meta charset="utf-8"><title>Authorize Apple Music</title>
-<style>body{{font-family:-apple-system,system-ui,sans-serif;max-width:40rem;margin:4rem auto;text-align:center;color:#222}}
-button{{font-size:1.2rem;padding:.8rem 1.6rem;border-radius:.6rem;border:0;background:#fa2d48;color:#fff;cursor:pointer}}
-.muted{{color:#888}}</style></head>
+<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:40rem;margin:4rem auto;text-align:center;color:#222}
+button{font-size:1.2rem;padding:.8rem 1.6rem;border-radius:.6rem;border:0;background:#fa2d48;color:#fff;cursor:pointer}
+.muted{color:#888}</style></head>
 <body>
 <h1>Complete Playlist Builder</h1>
 <p>Click below, sign in to Apple Music, and allow access.<br>
 <span class="muted">This grants a long-lived token so the tool can build your playlists.</span></p>
 <button id="go">Authorize Apple Music</button>
-<p id="status" class="muted"></p>
+<p id="status" class="muted">Loading MusicKit…</p>
 <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" data-web-components async></script>
 <script>
-document.addEventListener('musickitloaded', async function () {{
-  try {{
-    await MusicKit.configure({{
-      developerToken: "{DEV_TOKEN}",
-      app: {{ name: 'Complete Playlist Builder', build: '1.0.0' }}
-    }});
-  }} catch (e) {{ document.getElementById('status').textContent = 'Configure failed: ' + e; return; }}
-  const music = MusicKit.getInstance();
-  document.getElementById('go').addEventListener('click', async function () {{
-    document.getElementById('status').textContent = 'Opening Apple sign-in…';
-    try {{
-      const userToken = await music.authorize();
-      const r = await fetch('/capture', {{
-        method: 'POST', headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{ music_user_token: userToken }})
-      }});
+var statusEl = document.getElementById('status');
+function setStatus(t) { statusEl.textContent = t; }
+
+async function configureMusicKit() {
+  try {
+    await MusicKit.configure({
+      developerToken: "__DEV_TOKEN__",
+      app: { name: 'Complete Playlist Builder', build: '1.0.0' }
+    });
+    setStatus('Ready — click Authorize.');
+  } catch (e) {
+    setStatus('Configure failed: ' + e);
+    return;
+  }
+  var music = MusicKit.getInstance();
+  document.getElementById('go').addEventListener('click', async function () {
+    setStatus('Opening Apple sign-in…');
+    try {
+      var userToken = await music.authorize();
+      var r = await fetch('/capture', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ music_user_token: userToken })
+      });
       document.body.innerHTML = r.ok
         ? '<h1>✅ Authorized</h1><p>Token saved. You can close this tab and return to the terminal.</p>'
         : '<h1>⚠️ Capture failed</h1><p>See the terminal.</p>';
-    }} catch (e) {{
-      document.getElementById('status').textContent = 'Authorization cancelled/failed: ' + e;
-    }}
-  }});
-}});
+    } catch (e) {
+      setStatus('Authorization cancelled/failed: ' + e);
+    }
+  });
+}
+
+// MusicKit v3 may have already loaded before this script runs, or fire the event.
+document.addEventListener('musickitloaded', configureMusicKit);
+if (window.MusicKit && MusicKit.configure) { configureMusicKit(); }
 </script>
 </body></html>"""
 
@@ -95,7 +106,7 @@ def main() -> int:
 
     cfg = bp.load_config()
     dev_token = bp.sign_developer_token(cfg)
-    page = _PAGE.replace("{DEV_TOKEN}", dev_token)
+    page = _PAGE.replace("__DEV_TOKEN__", dev_token)
 
     captured: dict = {}
     stop = threading.Event()

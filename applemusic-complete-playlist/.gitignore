@@ -4,5 +4,6 @@ music_user_token.json
 *.p8
 logs/
 cache_catalog/
+playlist_state/
 __pycache__/
 *.pyc
