@@ -7,3 +7,7 @@ cache_catalog/
 playlist_state/
 __pycache__/
 *.pyc
+artwork/
+*_source.json
+matches_*.json
+sync_report_*.md
