@@ -155,6 +155,14 @@ year-end pages that fall back to serving the *current* chart for a missing year.
 - **Catalog vs library ids.** Adding catalog song ids creates library copies with
   different ids; re-run dedupe maps them back via `playParams.catalogId`. If Apple
   ever omits that, a re-run could re-add a few tracks — verify on first update.
+- **Editing playlist metadata.** The REST API can set a `description` only at
+  *create* time — PATCH/PUT/DELETE on a library playlist all return **401**. To
+  update an *existing* playlist's description, use **AppleScript** instead
+  (`set description of user playlist …`), which works and syncs to iCloud —
+  `enrich_descriptions.py` does this for every `[PL]` playlist. **Custom artwork
+  can't be set by either path** (the API has no upload endpoint; AppleScript's
+  playlist `artwork` is read-only) — Apple's auto-generated track mosaic is the only
+  programmatic option, and custom covers must be applied by hand in Music.app.
 
 ## Files
 
