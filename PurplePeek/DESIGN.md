@@ -63,11 +63,12 @@ scan is stamped with that scan's single timestamp, so any surviving, non-deleted
 an older `updated_at` is exactly the set that disappeared. One `UPDATE … WHERE updated_at < ?`
 reconciles a 65k-item library with O(1) memory. (See `DatabaseService.markMissingFiles`.)
 
-## Two refresh triggers, one scan path
+## Refresh triggers, one scan path
 
-Both **manual Refresh** (⌘R / toolbar) and **auto-watch** (FSEvents) funnel into the same
-`scanFolder` → `persistScan` path, so reconciliation behaves identically however it's
-triggered. Auto-watch uses **FSEvents** (not a `DispatchSource` vnode source, which only
+**Manual Refresh** (⌘R / toolbar, which rescans the *selected* root), the **sidebar row's
+right-click "Refresh"** (`rescanRoot(_:)`, which rescans the *clicked* root regardless of
+selection), and **auto-watch** (FSEvents) all funnel into the same `scanFolder` → `persistScan`
+path, so reconciliation behaves identically however it's triggered. Auto-watch uses **FSEvents** (not a `DispatchSource` vnode source, which only
 watches a single file descriptor) so it sees changes anywhere in the subtree; FSEvents' own
 `latency` window coalesces save-storms, making the debounce free. The watcher is only live
 while the setting is on *and* a root is selected.

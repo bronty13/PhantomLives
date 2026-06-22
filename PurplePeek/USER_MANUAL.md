@@ -54,8 +54,9 @@ By default every scanned folder lives in one **Folders** group. You can reorder 
 - **Manage a section**: use the **⋯** button on a section header (or right-click it) to
   **Rename** or **Delete** it. Deleting a section never touches its folders — they simply fall
   back to the default **Folders** group.
-- **Right-click a folder** also offers **Forget Folder** (clears its saved decisions; never
-  deletes files on disk).
+- **Right-click a folder** offers **Refresh** (re-scans just that folder in place — the same as
+  the toolbar Refresh / ⌘R, but aimed at the folder you clicked, even if it isn't the selected
+  one) and **Forget Folder** (clears its saved decisions; never deletes files on disk).
 - The **footer** at the bottom of the sidebar totals your library — e.g. *"12,431 items · 7
   folders"* (items = all photos/videos/audio across every scanned folder).
 
@@ -131,7 +132,8 @@ them, so you only triage the content once:
 PurplePeek shows what it found at scan time. If files change on disk afterward:
 
 - **Refresh** (toolbar button, or **⌘R**) re-scans the selected folder in place. New files
-  appear; your decisions are preserved.
+  appear; your decisions are preserved. You can also **right-click any folder in the sidebar →
+  Refresh** to re-scan that one specifically — useful when it isn't the currently selected folder.
 - Files that were **removed or moved** are flagged **missing** (orange badge) rather than
   silently dropped — your decisions on them survive in case the file comes back, and it
   un-flags automatically if it reappears on a later scan. A file you deleted *through

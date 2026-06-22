@@ -11,11 +11,12 @@ files (content hash, with a size pre-filter so it's fast), shows each set as one
 **×N** badge, applies your keep/skip to every copy, and imports only one copy of a kept set.
 Toggle it off in Settings → General.
 
-To keep the view in step with disk, **Refresh** (toolbar button / **⌘R**) re-scans the
-selected folder — picking up newly added files and flagging any that were removed or moved as
-**missing** (an orange grid badge; they reappear normally if the file comes back), all without
-disturbing your decisions. Turn on **Settings → General → "Watch folder for changes"** to have
-PurplePeek auto-refresh whenever the folder changes on disk.
+To keep the view in step with disk, **Refresh** (toolbar button / **⌘R**, or right-click any
+folder in the sidebar → **Refresh**) re-scans the selected folder — picking up newly added files
+and flagging any that were removed or moved as **missing** (an orange grid badge; they reappear
+normally if the file comes back), all without disturbing your decisions. Turn on **Settings →
+General → "Watch folder for changes"** to have PurplePeek auto-refresh whenever the folder
+changes on disk.
 
 Two views:
 
