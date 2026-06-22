@@ -416,16 +416,31 @@ class AppleMusic:
                 out.append(cid)
         return out
 
-    def add_catalog_songs(self, playlist_id: str, catalog_song_ids: list[str]) -> int:
-        """Append catalog songs to a library playlist (batches of 100)."""
+    def add_catalog_songs(self, playlist_id: str, catalog_song_ids: list[str],
+                          manifest_base: Iterable[str] | None = None) -> int:
+        """Append catalog songs to a library playlist (batches of 100).
+
+        If ``manifest_base`` (the ids already recorded for this playlist *before*
+        this call) is given, the manifest is checkpointed to disk after EVERY
+        successful batch. That way a mid-add failure — e.g. a transient Apple
+        ``500 Cloud Library`` between batches — still durably records the songs
+        that actually landed server-side, instead of leaving them added-but-
+        unrecorded for a lossy library read-back to (maybe) recover on retry.
+        On success the result is identical to a single end-of-call save.
+        """
         if not self.has_user_token:
             raise NeedsUserToken()
         added = 0
+        accepted: list[str] = []
+        base = set(manifest_base) if manifest_base is not None else None
         batches = list(chunked(catalog_song_ids, 100))
         for i, batch in enumerate(batches, 1):
             body = {"data": [{"id": cid, "type": "songs"} for cid in batch]}
             self.post(f"/v1/me/library/playlists/{playlist_id}/tracks", body)
             added += len(batch)
+            accepted.extend(batch)
+            if base is not None:                       # checkpoint after each landed batch
+                save_manifest(playlist_id, base | set(accepted))
             log.info("  batch %d/%d: +%d (%d/%d)", i, len(batches), len(batch),
                      added, len(catalog_song_ids))
         return added
@@ -594,7 +609,7 @@ def run(args) -> int:
     to_add = plan_additions(desired_ids, existing)
     log.info("Already in playlist: %d (manifest %d, api %d)   To add: %d",
              len(existing), len(manifest), len(api_existing), len(to_add))
-    added = am.add_catalog_songs(playlist_id, to_add)
+    added = am.add_catalog_songs(playlist_id, to_add, manifest_base=existing)
     save_manifest(playlist_id, existing | set(to_add))
     log.info("Done. Added %d songs. Manifest now tracks %d catalog ids.",
              added, len(existing) + len(to_add))

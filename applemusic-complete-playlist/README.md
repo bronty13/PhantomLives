@@ -88,7 +88,10 @@ python3 build_playlist.py --artist "Taylor Swift" --playlist-name "Taylor Swift 
 
 It scans the catalog (cached after the first run), creates the library playlist,
 and adds every song. Re-running **appends only what's missing** (idempotent), so
-updating after a new release is the same command.
+updating after a new release is the same command. Adds are **crash-safe**: the
+local manifest is checkpointed after every 100-song batch, so if Apple throws a
+transient `500 Cloud Library` mid-add, the songs that already landed are recorded
+and a re-run resumes cleanly instead of risking duplicates or orphans.
 
 Preview without writing anything:
 

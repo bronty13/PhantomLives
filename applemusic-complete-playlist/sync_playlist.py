@@ -305,7 +305,7 @@ def run(args) -> int:
     desired = [m["apple_id"] for m in matched]
     to_add = bp.plan_additions(desired, existing)
     log.info("Already in '%s': %d   To add: %d", dest, len(existing), len(to_add))
-    added = am.add_catalog_songs(pid, to_add)
+    added = am.add_catalog_songs(pid, to_add, manifest_base=existing)
     bp.save_manifest(pid, existing | set(to_add))
     log.info("Done. Added %d songs to '%s'. (%d/%d source tracks matched)",
              added, dest, len(matched), total)

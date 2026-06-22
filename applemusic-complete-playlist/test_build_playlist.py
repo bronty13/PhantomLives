@@ -113,5 +113,57 @@ class CacheKey(unittest.TestCase):
         self.assertNotEqual(bp.catalog_cache_key("123", "us"), bp.catalog_cache_key("123", "gb"))
 
 
+class _FakeAM:
+    """Minimal duck-typed stand-in for AppleMusic.add_catalog_songs — exercises the
+    method's batching/checkpoint logic without constructing the real client (no
+    requests/network). `fail_on_batch` simulates a transient Apple error."""
+    def __init__(self, fail_on_batch=None):
+        self.has_user_token = True
+        self.calls = 0
+        self.fail_on_batch = fail_on_batch
+
+    def post(self, path, body):
+        self.calls += 1
+        if self.calls == self.fail_on_batch:
+            raise RuntimeError("simulated 500 Cloud Library")
+        return {}
+
+
+class ManifestCheckpoint(unittest.TestCase):
+    PID = "p.TEST_CHECKPOINT_UNIT"
+
+    def setUp(self):
+        self.addCleanup(self._cleanup)
+
+    def _cleanup(self):
+        import os
+        p = os.path.join(bp._STATE_DIR, f"{self.PID}.json")
+        if os.path.exists(p):
+            os.remove(p)
+
+    def test_midadd_failure_checkpoints_landed_batches(self):
+        ids = [f"c{i}" for i in range(150)]            # -> two batches: 100 + 50
+        fake = _FakeAM(fail_on_batch=2)                # 2nd batch (the 50) explodes
+        with self.assertRaises(RuntimeError):
+            bp.AppleMusic.add_catalog_songs(fake, self.PID, ids, manifest_base={"base"})
+        # the manifest must already record base + the 100 that landed in batch 1
+        self.assertEqual(bp.load_manifest(self.PID), {"base"} | set(ids[:100]))
+
+    def test_full_success_records_everything(self):
+        ids = [f"c{i}" for i in range(150)]
+        fake = _FakeAM()
+        added = bp.AppleMusic.add_catalog_songs(fake, self.PID, ids, manifest_base={"base"})
+        self.assertEqual(added, 150)
+        self.assertEqual(bp.load_manifest(self.PID), {"base"} | set(ids))
+
+    def test_no_base_means_no_checkpoint_writes(self):
+        import os
+        ids = [f"c{i}" for i in range(50)]
+        fake = _FakeAM()
+        added = bp.AppleMusic.add_catalog_songs(fake, self.PID, ids)   # manifest_base=None
+        self.assertEqual(added, 50)
+        self.assertFalse(os.path.exists(os.path.join(bp._STATE_DIR, f"{self.PID}.json")))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -169,7 +169,7 @@ def fill_playlist(am, name: str, desired_ids: list[str], dry: bool) -> tuple[int
         existing = set(am.library_playlist_catalog_ids(pid))
     existing |= bp.load_manifest(pid)
     to_add = bp.plan_additions(desired_ids, existing)
-    added = am.add_catalog_songs(pid, to_add) if to_add else 0
+    added = am.add_catalog_songs(pid, to_add, manifest_base=existing) if to_add else 0
     bp.save_manifest(pid, existing | set(to_add))
     return added, len(existing) + len(to_add)
 
