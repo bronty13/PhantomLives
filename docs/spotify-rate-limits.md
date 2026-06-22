@@ -127,6 +127,31 @@ single shared app is fine; prefer that over juggling apps.
 - **Other users' playlists return no tracks.** MusicJournal hides non-owned
   playlists for this reason.
 
+### Gutted read endpoints — verified dead-end (2026-06-22 probe, applemusic-complete-playlist)
+
+After the ~24h cooldown cleared, a careful 6-call probe of the dev-mode app
+(`spotify-complete-playlist`, shared Client ID) found the *read* surface is
+hollowed out — **don't re-probe these, they won't come back without action:**
+
+- **`GET /audio-features/{id}` → 403.** The energy/valence/tempo/danceability data
+  (the one thing Apple Music doesn't expose) is **permanently deprecated** for apps
+  without prior extended access (Spotify's **Nov-2024 deprecation**, which also
+  killed `/recommendations`, `/audio-analysis`, related-artists, and
+  featured/category playlists). Waiting out a cooldown does **not** restore these.
+- **`GET /artists/{id}/top-tracks` → 403.** Blocked in dev mode.
+- **Artist `genres` and `popularity` come back `None`** — stripped from the objects
+  the same way `/me` loses `country`/`product`. So no genre/popularity enrichment.
+- **What still works:** `GET /me`, `search` (artist/track/playlist, 200 but with the
+  stripped fields), and track/album `release_date`. That's it — and with **no batch
+  endpoints + capped pagination**, any real audit is one-call-per-track = the
+  hundreds-of-calls pattern that triggers the 24h lockout. Not worth it.
+
+**Conclusion:** dev-mode Spotify cannot meaningfully *enrich or audit* a catalog —
+the useful signals are 403/stripped and the workable reads are lock-fragile. The
+Billboard-chart + Apple-Music foundation is strictly better for that work. Only
+**Extended Quota Mode** (Dashboard request, server-side) reopens create/batch/
+pagination/fields — but it will **not** revive the Nov-2024-deprecated endpoints.
+
 ## Quick reference
 
 | Symptom | Meaning | Action |
