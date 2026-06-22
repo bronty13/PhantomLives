@@ -1,159 +1,200 @@
 #!/usr/bin/env python3
-"""generate_covers.py — deterministic code-art cover images for every `[PL]` playlist.
+"""generate_covers.py — REAL-IMAGERY cover art for every `[PL]` playlist.
 
 Apple won't let custom playlist artwork be set via API or AppleScript, so these are
-generated to a folder for manual application in Music.app. Design is deterministic
-(same name -> same image): a category-derived gradient, a faint motif word, the
-playlist title (auto-fit) and the song count. Requires Pillow.
+generated to a folder for manual application in Music.app (Edit Playlist → photo
+option → choose file). Two styles, pulled from the Apple Music catalog:
 
-Output: ~/Downloads/applemusic-complete-playlist/covers/<safe-name>.png
+  * Artist `Complete` playlists  -> the artist's official Apple Music photo.
+  * Decade / genre / country / AC -> a grid collage of album covers from the
+    playlist's most-represented artists (one album per artist, deduped).
+
+Album/artist art comes from Apple's public mzstatic CDN (the `artwork.url` template
+on catalog resources). Downloaded tiles are cached under cover_cache/. Requires
+Pillow. Falls back to a plain gradient if no art is available.
+
+Usage:
+  python3 generate_covers.py --only "80s — Complete [PL]","Metallica Complete [PL]"
+  python3 generate_covers.py            # all [PL] playlists
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
+import io
 import os
 import re
+from collections import Counter
 
-from PIL import Image, ImageDraw, ImageFont
+import build_playlist as bp
 
+from PIL import Image
+
+log = bp.log
 SIZE = 1200
 OUT = os.path.expanduser("~/Downloads/applemusic-complete-playlist/covers")
+_CACHE = os.path.join(bp._HERE, "cover_cache")
 
-def _font(size, bold=True):
-    for path, idx in [("/System/Library/Fonts/Helvetica.ttc", 1 if bold else 0),
-                      ("/System/Library/Fonts/SFNS.ttf", 0),
-                      ("/System/Library/Fonts/Supplemental/Futura.ttc", 0)]:
+
+def art_url(template: str, size: int) -> str:
+    return (template or "").replace("{w}", str(size)).replace("{h}", str(size))
+
+
+def fetch_image(template: str, size: int):
+    """Download (cached) an mzstatic artwork URL -> square RGB PIL image, or None."""
+    if not template:
+        return None
+    key = hashlib.md5((template + f"|{size}").encode()).hexdigest() + ".jpg"
+    path = os.path.join(_CACHE, key)
+    if os.path.exists(path):
         try:
-            return ImageFont.truetype(path, size, index=idx)
+            return Image.open(path).convert("RGB")
         except Exception:
-            continue
-    return ImageFont.load_default()
-
-# category -> (top color, bottom color, motif word)
-PALETTE = {
-    "70s":  ((232, 93, 4),   (106, 4, 15),    "70s"),
-    "80s":  ((255, 0, 110),  (58, 12, 163),   "80s"),
-    "90s":  ((6, 214, 160),  (7, 59, 76),     "90s"),
-    "2000s":((67, 97, 238),  (34, 7, 80),     "00s"),
-    "2010s":((247, 37, 133), (76, 9, 138),    "10s"),
-    "country": ((200, 134, 11), (60, 40, 25), "COUNTRY"),
-    "ac":   ((229, 152, 155),(80, 60, 90),    "AC"),
-    "metal":((141, 153, 174),(11, 9, 10),     "METAL"),
-    "rock": ((230, 57, 70),  (29, 53, 87),    "ROCK"),
-    "classical": ((212, 175, 55), (20, 33, 61), "CLASSICAL"),
-    "standalone":((42, 157, 143),(38, 70, 70), "♪"),
-}
-ARTIST_PALETTES = [
-    ((239, 71, 111), (32, 6, 38)), ((255, 159, 28), (40, 20, 0)),
-    ((6, 214, 160), (5, 40, 35)),  ((17, 138, 178), (5, 20, 45)),
-    ((155, 93, 229), (25, 5, 50)), ((255, 99, 146), (40, 5, 30)),
-    ((46, 196, 182), (10, 40, 40)),((255, 209, 102), (45, 30, 0)),
-]
-
-def categorize(name: str):
-    """-> (palette_tuple, motif_word, tag, title)."""
-    title = re.sub(r"\s*\[PL\]$", "", name)
-    m = re.match(r"^(70s|80s|90s|2000s|2010s)", name)
-    dec = m.group(1) if m else None
-    if dec and "Country" in name:
-        p = PALETTE["country"]; return ((p[0], p[1]), dec, "Country", title)
-    if dec and "Adult Contemporary" in name:
-        p = PALETTE["ac"]; return ((p[0], p[1]), dec, "Adult Contemporary", title)
-    if dec and name.endswith("— Metal [PL]"):
-        p = PALETTE["metal"]; return ((p[0], p[1]), dec, "Metal", title)
-    if dec and name.endswith("— Rock [PL]"):
-        p = PALETTE["rock"]; return ((p[0], p[1]), dec, "Rock", title)
-    if dec:
-        p = PALETTE[dec]; return ((p[0], p[1]), p[2], "Decade", title)
-    if name == "Metal — Complete [PL]" or title.lower().endswith(("metal", "metalcore", "deathcore")):
-        p = PALETTE["metal"]; return ((p[0], p[1]), "METAL", "Metal", title)
-    if "Classical Renditions" in name:
-        p = PALETTE["classical"]; return ((p[0], p[1]), "♬", "Classical", title)
-    if name in ("Life in Music [PL]", "Brent Mason — Played On [PL]"):
-        p = PALETTE["standalone"]; return ((p[0], p[1]), "♪", "Collection", title)
-    # artist complete -> hash-derived palette + initials motif
-    h = int(hashlib.md5(name.encode()).hexdigest(), 16)
-    pal = ARTIST_PALETTES[h % len(ARTIST_PALETTES)]
-    initials = "".join(w[0] for w in re.sub(r"Complete$", "", title).split()[:3]).upper()
-    return (pal, initials or "★", "Artist", title)
-
-def gradient(c0, c1):
-    img = Image.new("RGB", (SIZE, SIZE), c0)
-    top = Image.new("RGB", (1, SIZE))
-    for y in range(SIZE):
-        t = y / (SIZE - 1)
-        top.putpixel((0, y), tuple(int(c0[i] + (c1[i] - c0[i]) * t) for i in range(3)))
-    return top.resize((SIZE, SIZE))
-
-def fit_font(draw, text_lines, max_w, max_h, start=150):
-    size = start
-    while size > 28:
-        f = _font(size)
-        widths = [draw.textbbox((0, 0), ln, font=f)[2] for ln in text_lines]
-        line_h = draw.textbbox((0, 0), "Ag", font=f)[3] + 12
-        if max(widths) <= max_w and line_h * len(text_lines) <= max_h:
-            return f, line_h
-        size -= 6
-    return _font(28), draw.textbbox((0, 0), "Ag", font=_font(28))[3] + 12
-
-def wrap(title, draw, font, max_w):
-    words, lines, cur = title.split(), [], ""
-    for w in words:
-        t = (cur + " " + w).strip()
-        if draw.textbbox((0, 0), t, font=font)[2] <= max_w or not cur:
-            cur = t
-        else:
-            lines.append(cur); cur = w
-    if cur:
-        lines.append(cur)
-    return lines
-
-def render(name, count):
-    (c0, c1), motif, tag, title = categorize(name)
-    img = gradient(c0, c1)
-    d = ImageDraw.Draw(img, "RGBA")
-    # faint oversized motif, top-right
-    mf = _font(520)
-    d.text((SIZE - 40, -60), motif, font=mf, fill=(255, 255, 255, 28), anchor="ra")
-    # title, auto-fit & wrapped, lower-left
-    margin = 90
-    probe = wrap(title, d, _font(110), SIZE - 2 * margin)
-    font, line_h = fit_font(d, probe, SIZE - 2 * margin, 560)
-    lines = wrap(title, d, font, SIZE - 2 * margin)
-    y = SIZE - margin - line_h * len(lines) - 130
-    for ln in lines:
-        d.text((margin, y), ln, font=font, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0, 90))
-        y += line_h
-    # accent bar + count/tag
-    d.rectangle([margin, SIZE - 175, margin + 120, SIZE - 168], fill=(255, 255, 255, 230))
-    sub = _font(46, bold=True)
-    d.text((margin, SIZE - 150), f"{count:,} songs  ·  {tag}", font=sub, fill=(255, 255, 255, 235))
+            pass
+    import requests
+    try:
+        r = requests.get(art_url(template, size), timeout=30)
+        if r.status_code != 200:
+            return None
+        img = Image.open(io.BytesIO(r.content)).convert("RGB")
+    except Exception:
+        return None
+    os.makedirs(_CACHE, exist_ok=True)
+    try:
+        img.save(path, "JPEG", quality=90)
+    except Exception:
+        pass
     return img
 
+
+def square(img, s):
+    """Center-crop to square and resize to s."""
+    w, h = img.size
+    m = min(w, h)
+    img = img.crop(((w - m) // 2, (h - m) // 2, (w - m) // 2 + m, (h - m) // 2 + m))
+    return img.resize((s, s))
+
+
+# --- gradient fallback (kept from the text-art version, used only when no art) ---
+def _grad(c0, c1):
+    col = Image.new("RGB", (1, SIZE))
+    for y in range(SIZE):
+        t = y / (SIZE - 1)
+        col.putpixel((0, y), tuple(int(c0[i] + (c1[i] - c0[i]) * t) for i in range(3)))
+    return col.resize((SIZE, SIZE))
+
+
+def collage(images, accent=(20, 20, 24)):
+    """Square grid collage from a list of square PIL images (best-fit NxN)."""
+    images = [im for im in images if im is not None]
+    if not images:
+        return _grad((40, 40, 50), (10, 10, 14))
+    import math
+    n = len(images)
+    grid = max(2, min(4, int(round(math.sqrt(n)))))
+    need = grid * grid
+    tiles = (images * ((need // n) + 1))[:need]      # repeat to fill if short
+    cell = SIZE // grid
+    canvas = Image.new("RGB", (SIZE, SIZE), accent)
+    for i, im in enumerate(tiles):
+        x, y = (i % grid) * cell, (i // grid) * cell
+        canvas.paste(square(im, cell), (x, y))
+    return canvas
+
+
+# --- classification ---
+def is_artist_complete(name: str):
+    if name.endswith("— Classical Renditions [PL]"):
+        return re.sub(r"\s*—\s*Classical Renditions \[PL\]$", "", name)
+    if re.match(r"^(70s|80s|90s|2000s|2010s)", name):
+        return None
+    if name in ("Life in Music [PL]", "Brent Mason — Played On [PL]", "Metal — Complete [PL]"):
+        return None
+    m = re.match(r"^(.+?) Complete \[PL\]$", name)
+    if m and not m.group(1).lower().endswith(("metal", "metalcore", "deathcore")):
+        return m.group(1)
+    return None
+
+
+def artist_photo(am, sf, artist_name):
+    try:
+        aid, _ = am.resolve_artist(sf, artist_name)
+        r = am.get(f"/v1/catalog/{sf}/artists/{aid}")
+        tmpl = (r["data"][0]["attributes"].get("artwork") or {}).get("url")
+        img = fetch_image(tmpl, SIZE)
+        return square(img, SIZE) if img else None
+    except Exception:
+        return None
+
+
+def top_artist_albums(am, sf, pid, n=16):
+    """Album covers for the playlist's most-represented artists (one per artist)."""
+    ids = sorted(bp.load_manifest(pid))
+    if not ids:
+        return []
+    by_artist = {}          # artistName -> artwork template (first seen)
+    freq = Counter()
+    for chunk in bp.chunked(ids, 300):
+        r = am.get(f"/v1/catalog/{sf}/songs", ids=",".join(chunk))
+        for d in r.get("data", []):
+            a = d.get("attributes", {})
+            an = a.get("artistName", "")
+            freq[an] += 1
+            if an and an not in by_artist:
+                by_artist[an] = (a.get("artwork") or {}).get("url")
+    top = [a for a, _ in freq.most_common() if by_artist.get(a)][:n]
+    return [fetch_image(by_artist[a], SIZE // 4) for a in top]
+
+
+def render(am, sf, name, count):
+    artist = is_artist_complete(name)
+    if artist:
+        img = artist_photo(am, sf, artist)
+        if img:
+            return img, "artist-photo"
+    pid = am.find_library_playlist(name)
+    if pid:
+        tiles = top_artist_albums(am, sf, pid)
+        if tiles:
+            return collage(tiles), "collage"
+    return _grad((50, 30, 70), (10, 10, 20)), "fallback"
+
+
 def safe(name):
-    return re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_")[:120] + ".png"
+    # JPEG: photographic covers (artist photos / album collages) compress ~10x
+    # smaller than PNG, and Apple Music accepts JPEG for custom artwork.
+    return re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_")[:120] + ".jpg"
+
 
 def main():
-    import argparse, json
-    p = argparse.ArgumentParser(description="Generate code-art covers for [PL] playlists.")
-    p.add_argument("--inventory", default="/tmp/playlist_inventory.json",
-                   help="JSON [{name,count}] (else queries the library).")
-    p.add_argument("--limit", type=int, default=0, help="only first N (for sampling).")
+    p = argparse.ArgumentParser(description="Generate real-imagery covers for [PL] playlists.")
+    p.add_argument("--only", default=None, help="comma list of exact playlist names")
+    p.add_argument("--throttle", type=float, default=0.05)
     args = p.parse_args()
     os.makedirs(OUT, exist_ok=True)
-    if os.path.exists(args.inventory):
-        rows = json.load(open(args.inventory))
+    cfg = bp.load_config()
+    am = bp.AppleMusic(bp.sign_developer_token(cfg), bp.load_user_token(), throttle=args.throttle)
+    sf = am.me_storefront() or cfg.get("storefront") or "us"
+
+    if args.only:
+        names = [s.strip() for s in args.only.split(",")]
+        rows = [(nm, len(bp.load_manifest(am.find_library_playlist(nm) or ""))) for nm in names]
     else:
-        import build_playlist as bp
-        cfg = bp.load_config(); am = bp.AppleMusic(bp.sign_developer_token(cfg), bp.load_user_token(), throttle=0.04)
-        rows = [{"name": pl["attributes"]["name"], "count": len(bp.load_manifest(pl["id"]))}
+        rows = [(pl["attributes"]["name"], len(bp.load_manifest(pl["id"])))
                 for pl in am.get_paginated("/v1/me/library/playlists", limit=100)
                 if pl.get("attributes", {}).get("name", "").endswith("[PL]")]
-    if args.limit:
-        rows = rows[:args.limit]
-    for r in rows:
-        render(r["name"], r["count"]).save(os.path.join(OUT, safe(r["name"])), "PNG")
-    print(f"Wrote {len(rows)} covers to {OUT}")
+
+    done = Counter()
+    for nm, count in rows:
+        try:                                  # one transient 500 shouldn't kill the run
+            img, kind = render(am, sf, nm, count)
+            img.save(os.path.join(OUT, safe(nm)), "JPEG", quality=88)
+            done[kind] += 1
+        except Exception as e:                # noqa: BLE001
+            done["error"] += 1
+            log.warning("  %-44s ERROR %s", nm[:44], str(e)[:60])
+    print(f"Wrote {sum(v for k,v in done.items() if k!='error')} covers to {OUT}  ({dict(done)})")
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

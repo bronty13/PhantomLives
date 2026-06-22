@@ -1,38 +1,32 @@
 #!/usr/bin/env python3
-"""Unit tests for generate_covers.categorize() (deterministic, no rendering)."""
+"""Unit tests for generate_covers pure helpers (no network/rendering)."""
 import unittest
 import generate_covers as gc
 
 
-class Categorize(unittest.TestCase):
-    def test_decade_master(self):
-        pal, motif, tag, title = gc.categorize("80s — Complete [PL]")
-        self.assertEqual(motif, "80s")
-        self.assertEqual(tag, "Decade")
-        self.assertEqual(title, "80s — Complete")        # [PL] stripped
+class IsArtistComplete(unittest.TestCase):
+    def test_artist_completes(self):
+        self.assertEqual(gc.is_artist_complete("Metallica Complete [PL]"), "Metallica")
+        self.assertEqual(gc.is_artist_complete("The Beatles Complete [PL]"), "The Beatles")
 
-    def test_decade_country_vs_ac_vs_metal(self):
-        self.assertEqual(gc.categorize("90s Country — 1994 [PL]")[2], "Country")
-        self.assertEqual(gc.categorize("80s Adult Contemporary — Complete [PL]")[2], "Adult Contemporary")
-        self.assertEqual(gc.categorize("2010s — Metal [PL]")[2], "Metal")
-        self.assertEqual(gc.categorize("70s — Rock [PL]")[2], "Rock")
+    def test_classical_uses_base_artist(self):
+        self.assertEqual(gc.is_artist_complete("Taylor Swift — Classical Renditions [PL]"), "Taylor Swift")
 
-    def test_metal_master_and_subgenre(self):
-        self.assertEqual(gc.categorize("Metal — Complete [PL]")[2], "Metal")
-        self.assertEqual(gc.categorize("Thrash Metal [PL]")[2], "Metal")
+    def test_non_artist_playlists_are_none(self):
+        for nm in ["80s — Complete [PL]", "80s Country — Complete [PL]", "Metal — Complete [PL]",
+                   "Thrash Metal [PL]", "Life in Music [PL]", "Brent Mason — Played On [PL]",
+                   "90s — 1994 [PL]"]:
+            self.assertIsNone(gc.is_artist_complete(nm), nm)
 
-    def test_artist_initials_and_determinism(self):
-        a = gc.categorize("Metallica Complete [PL]")
-        self.assertEqual(a[1], "M")           # initials motif
-        self.assertEqual(a[2], "Artist")
-        self.assertEqual(a, gc.categorize("Metallica Complete [PL]"))   # deterministic
 
-    def test_classical_and_standalone(self):
-        self.assertEqual(gc.categorize("Taylor Swift — Classical Renditions [PL]")[2], "Classical")
-        self.assertEqual(gc.categorize("Life in Music [PL]")[2], "Collection")
+class Helpers(unittest.TestCase):
+    def test_art_url_substitutes_size(self):
+        self.assertEqual(gc.art_url("https://x/{w}x{h}bb.jpg", 600), "https://x/600x600bb.jpg")
+        self.assertEqual(gc.art_url("", 600), "")
 
-    def test_safe_filename(self):
-        self.assertEqual(gc.safe("80s — Complete [PL]"), "80s_Complete_PL.png")
+    def test_safe_is_jpg(self):
+        self.assertEqual(gc.safe("80s — Complete [PL]"), "80s_Complete_PL.jpg")
+        self.assertEqual(gc.safe("Guns N' Roses Complete [PL]"), "Guns_N_Roses_Complete_PL.jpg")
 
 
 if __name__ == "__main__":

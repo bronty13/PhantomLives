@@ -163,9 +163,11 @@ year-end pages that fall back to serving the *current* chart for a missing year.
   can't be set by either path** (the API has no upload endpoint; AppleScript's
   playlist `artwork` is read-only) — Apple's auto-generated track mosaic is the only
   programmatic option, and custom covers must be applied by hand in Music.app.
-  `generate_covers.py` makes deterministic code-art covers (category-derived
-  gradient + motif + title/count, via Pillow) to `~/Downloads/applemusic-complete-playlist/covers/`
-  for that manual application.
+  `generate_covers.py` makes real-imagery covers (via Pillow) to
+  `~/Downloads/applemusic-complete-playlist/covers/` for that manual application:
+  the artist's official Apple Music photo for `<Artist> Complete` lists, and a grid
+  collage of album art from the most-represented artists for decade/genre/country/AC
+  lists. To apply one: Music.app → Edit Playlist → the photo option → choose the file.
 
 ## Files
 
