@@ -75,6 +75,15 @@ enum JobRegistry {
                 scheduling: .plist,
                 group: "Bots", shortName: "ATW Repost"
             ),
+            // Favorites→My Picks harvester (AppleScript via launchd). Single-pass per run; its log
+            // surfaces "OK favorited=M added=N mypicks_total=T" — the running My Picks total + new adds.
+            "com.bronty13.harvest-favorites": JobProfile(
+                displayName: "Favorites Harvest",
+                logKind: .harvestFavorites,
+                activityLogPathOverride: home("Library/Logs/PhantomLives/harvest-favorites.log"),
+                scheduling: .plist,
+                group: "Bots", shortName: "Favorites"
+            ),
             // brew-autoupdate (Bash + launchd). Outside the repo namespaces, so explicitly profiled.
             // Calendar-scheduled (StartCalendarInterval), so its "Run every" interval isn't meaningful —
             // enable/disable, Run Now, and View Log all work. Stdout log has bracketed timestamps.

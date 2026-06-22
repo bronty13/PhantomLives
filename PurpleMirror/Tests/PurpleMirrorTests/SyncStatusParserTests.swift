@@ -484,6 +484,17 @@ import Foundation
         """
         #expect(SyncStatusParser.itemsLast24h(log, kind: .atwRepost, now: now) == 11)
     }
+
+    @Test func harvestFavoritesSumsAddedWithin24h() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let log = """
+        \(ts(now.addingTimeInterval(-90000))) OK favorited=10 added=10 mypicks_total=10
+        \(ts(now.addingTimeInterval(-7200))) OK favorited=14 added=4 mypicks_total=14
+        \(ts(now.addingTimeInterval(-1800))) OK favorited=17 added=3 mypicks_total=17
+        """
+        // the -90000s (25h-ago) run is excluded; 4 + 3 = 7 within the window
+        #expect(SyncStatusParser.itemsLast24h(log, kind: .harvestFavorites, now: now) == 7)
+    }
 }
 
 /// The ATW repost bot log (timestamped "submitted N of M slot(s)" / "Nothing to repost").
@@ -512,6 +523,37 @@ import Foundation
         #expect(s?.ok == false)
         #expect(s?.headline == "Run failed")
         #expect(s?.detail == "login timed out")
+    }
+}
+
+/// The favorites→My Picks harvester log ("OK favorited=M added=N mypicks_total=T" / SKIP / FAIL).
+@Suite struct HarvestFavoritesLogTests {
+    private let kind = SyncStatusParser.LogKind.harvestFavorites
+
+    @Test func reportsPicksTotalAndNewAdds() {
+        let s = SyncStatusParser.summary("2026-06-22 13:58:10 OK favorited=14 added=14 mypicks_total=14", kind: kind)
+        #expect(s?.headline == "14 picks in My Picks")
+        #expect(s?.ok == true)
+        #expect(s?.detail == "+14 new")
+    }
+
+    @Test func noNewAddsHasNoDetail() {
+        let s = SyncStatusParser.summary("2026-06-22 13:58:11 OK favorited=14 added=0 mypicks_total=14", kind: kind)
+        #expect(s?.headline == "14 picks in My Picks")
+        #expect(s?.detail == nil)
+    }
+
+    @Test func reportsSkipWhenMusicClosed() {
+        let s = SyncStatusParser.summary("2026-06-22 14:00:00 SKIP: Music.app not running", kind: kind)
+        #expect(s?.headline == "Idle — Music not running")
+        #expect(s?.ok == nil)
+    }
+
+    @Test func reportsFailure() {
+        let s = SyncStatusParser.summary("2026-06-22 14:00:00 FAIL rc=1: something broke", kind: kind)
+        #expect(s?.ok == false)
+        #expect(s?.headline == "Harvest failed")
+        #expect(s?.detail == "something broke")
     }
 }
 

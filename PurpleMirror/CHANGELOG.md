@@ -4,6 +4,13 @@ All notable changes to PurpleMirror are documented here.
 
 ## Unreleased
 
+- **New monitored bot: Favorites Harvest.** Profiles `com.bronty13.harvest-favorites`
+  (the AppleScript agent that copies newly-Favorited Apple Music tracks into the
+  "My Picks [PL]" playlist) under the **Bots** group. A tailored `.harvestFavorites`
+  log parser surfaces its `OK favorited=M added=N mypicks_total=T` lines as
+  "*T picks in My Picks*" (with a "*+N new*" detail), an "*Idle — Music not running*"
+  skip, or a failure; the 24-hour tally sums new favorites harvested. (5 tests.)
+
 - **Release zip opens cleanly on any Mac, however it's unzipped.** A plain
   `ditto -c -k` stored codesign's `com.apple.provenance` xattrs as AppleDouble
   (`._name`) sidecars; `unzip`/browser extractors leave them as `._Autoupdate`,

@@ -19,6 +19,7 @@ enum SyncStatusParser {
         case purpleAttic       // local Photo Archive run (pattic): phase + per-destination + off-site
         case atwRepost         // ATW repost bot: "submitted N of M slot(s)" / "Nothing to repost"
         case brewAutoupdate    // brew-autoupdate: bracketed "[ts] [LEVEL] …" — finished / ERRORS (N)
+        case harvestFavorites  // favorites harvester: "OK favorited=M added=N mypicks_total=T"
         case generic           // unknown job: show the last meaningful line
     }
 
@@ -39,6 +40,7 @@ enum SyncStatusParser {
         case .purpleAttic:     return purpleAtticArchiveSummary(log)
         case .atwRepost:       return atwRepostSummary(log)
         case .brewAutoupdate:  return brewAutoupdateSummary(log)
+        case .harvestFavorites: return harvestFavoritesSummary(log)
         case .generic:         return genericSummary(log)
         }
     }
@@ -326,6 +328,35 @@ enum SyncStatusParser {
                           ok: true, detail: detail)
     }
 
+    // MARK: Favorites harvester log
+
+    /// Parse the favorites→My Picks harvester log (bare-timestamp lines:
+    /// "OK favorited=M added=N mypicks_total=T", "SKIP: …", "FAIL rc=… : …").
+    /// Surfaces the freshest run: the My Picks total with a "+N new" detail, an
+    /// idle skip (Music not running), or a failure.
+    static func harvestFavoritesSummary(_ log: String) -> LogSummary? {
+        func intAfter(_ marker: String, _ line: String) -> Int? {
+            guard let r = line.range(of: marker) else { return nil }
+            return Int(line[r.upperBound...].prefix { $0.isNumber })
+        }
+        var chosen: LogSummary?
+        for line in log.split(whereSeparator: \.isNewline).map(String.init) {
+            let date = leadingTimestamp(line)
+            if line.contains("OK "), let total = intAfter("mypicks_total=", line) {
+                let added = intAfter("added=", line) ?? 0
+                chosen = LogSummary(date: date,
+                                    headline: "\(grouped(total)) pick\(total == 1 ? "" : "s") in My Picks",
+                                    ok: true, detail: added > 0 ? "+\(added) new" : nil)
+            } else if line.contains("SKIP") {
+                chosen = LogSummary(date: date, headline: "Idle — Music not running", ok: nil, detail: nil)
+            } else if line.contains("FAIL") {
+                let msg = line.range(of: ": ").map { String(line[$0.upperBound...]).trimmingCharacters(in: .whitespaces) }
+                chosen = LogSummary(date: date, headline: "Harvest failed", ok: false, detail: msg)
+            }
+        }
+        return chosen
+    }
+
     // MARK: Generic fallback
 
     /// For unknown jobs: surface the last non-empty log line (minus its leading
@@ -408,6 +439,17 @@ enum SyncStatusParser {
                     total += Int(line[r.upperBound...].prefix { $0.isNumber }) ?? 0; saw = true
                 } else if line.contains("Nothing to repost") {
                     saw = true
+                }
+            }
+            return saw ? total : nil
+
+        case .harvestFavorites:
+            // Sum new favorites copied into My Picks per run: "… added=N …".
+            var total = 0, saw = false
+            for line in lines {
+                guard let d = leadingTimestamp(line), d >= cutoff else { continue }
+                if let r = line.range(of: "added=") {
+                    total += Int(line[r.upperBound...].prefix { $0.isNumber }) ?? 0; saw = true
                 }
             }
             return saw ? total : nil
