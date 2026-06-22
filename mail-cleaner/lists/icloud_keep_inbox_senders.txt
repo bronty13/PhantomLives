@@ -50,3 +50,12 @@ fedexdeliverymanagermail@fedex.com
 accounts.google.com
 account-security
 accountprotection.microsoft
+#
+# ===== Cloud/account/legal notices (keep in inbox) =====
+backblaze.com
+legal.spotify.com
+#
+# ===== active services / payment accounts (keep in inbox) =====
+soundiiz.com
+@link.com
+e.link.com
