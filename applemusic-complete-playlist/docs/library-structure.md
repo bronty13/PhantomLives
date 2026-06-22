@@ -135,10 +135,48 @@ Carpenter (72).
 
 | Playlist | Songs | What |
 |---|---:|---|
-| `Life in Music [PL]` | 416 | The legacy music diary — synced from a Spotify playlist (the point of MusicJournal). |
+| `Life in Music [PL]` | 416 | The legacy music diary — **public, shared on Spotify**. Curated autobiography, not a likes pile. |
 | `Brent Mason — Played On [PL]` | 603 | Session-guitarist discography assembled from a curated Spotify playlist (Exportify → match). |
+| `My Picks [PL]` | review | **Keepers** — the curated best of what you favorite while reviewing. Private, portable. |
+| `Life in Music — Candidates [PL]` | review | **Staging** for Life in Music — diary-worthy songs to vet before they go public. |
 
 ---
+
+## Review workflow — marking what you like
+
+How to go through the curated collections (decades / genres / specific years) and
+capture what you like, in a way that flows to Spotify and to the public diary.
+
+**The one concept that shapes it:** ♥ **Favorites are Apple-only and don't cross to
+Spotify; playlists are the portable layer Soundiiz syncs.** So Favorites are your
+fast private signal, and *playlists* are what actually reach Spotify / get shared.
+
+**The flow:**
+
+```
+♥ Favorite  ──►  My Picks [PL]  ──►  Life in Music — Candidates [PL]  ──►  Life in Music [PL]  ──►  Spotify (shared)
+(fast triage,     (curated keepers,    (vet diary-worthy ones)            (public autobiography)     (via Soundiiz)
+ Apple-side)       private/portable)
+```
+
+1. **Triage while listening** — go decade-by-decade / year-by-year (this doc is the
+   map) and **♥ Favorite** anything you like. One tap, works everywhere, syncs,
+   trains Apple's recs. Don't overthink it.
+2. **Curate keepers** — promote the best Favorites into **`My Picks [PL]`** (the
+   private, portable keepers list — also what you'd transfer to Spotify for yourself).
+3. **Stage diary candidates** — when a song really resonates, add it to
+   **`Life in Music — Candidates [PL]`** (a parking lot).
+4. **Promote to the diary** — periodically vet Candidates and move the ones that
+   truly belong into **`Life in Music [PL]`**, which Soundiiz then syncs to Spotify,
+   shared with others.
+
+**Why two tiers:** `Life in Music` is **public** — it's your musical autobiography,
+a higher bar than "I like it." Keep the broad like-pool (Favorites / `My Picks`)
+separate from the curated, shared diary.
+
+**Tagging options in Apple Music are thin** — ♥ Favorite, star ratings (Mac only),
+playlist membership, and the Comments field (Mac only, clunky). Lean on Favorite +
+playlists; skip the rest.
 
 ## Library accounting
 
