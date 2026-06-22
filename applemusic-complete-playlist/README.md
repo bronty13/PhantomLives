@@ -114,6 +114,33 @@ python3 build_playlist.py --artist "Taylor Swift" --playlist-name "Taylor Swift 
 --verbose               Debug-level console output
 ```
 
+## Build decade playlists from the charts
+
+`build_decade_charts.py` builds a whole decade from independent **Billboard chart**
+data (not Apple's editorial "Hits" lists), so coverage is measured against the
+charts — typically ~95–98% of the Year-End Hot 100, vs ~60% editorial-only.
+
+```bash
+python3 build_decade_charts.py --decade 90s            # pop, country, AC, metal, rock
+python3 build_decade_charts.py --decade 90s --only pop,country,ac
+python3 build_decade_charts.py --decade 80s --dry-run
+```
+
+Per genre it builds a per-year set + a master, fuzzy-matching each charting song to
+Apple Music (`sync_playlist`'s matcher):
+
+| Genre | Source |
+|---|---|
+| Pop | Billboard Year-End Hot 100 (Wikipedia) |
+| Country | Billboard.com Year-End Hot Country Songs ∪ weekly #1s (Wikipedia) |
+| Adult Contemporary | weekly AC #1s (Wikipedia) — folds into the decade master |
+| Metal / Rock | Apple editorial "Essentials" (Billboard never charted these singles) — folds into the master |
+
+Idempotent (per-playlist manifest) and crash-safe (per-batch checkpoint). AC's
+year-end isn't archived online so it's #1s-depth; metal/rock have no historical
+chart at all, hence Apple editorial. A guard (`era_plausible`) drops Billboard.com
+year-end pages that fall back to serving the *current* chart for a missing year.
+
 ## Honest limitations
 
 - **"Complete incl. features" is *near*-complete.** Apple has no single
@@ -133,16 +160,21 @@ python3 build_playlist.py --artist "Taylor Swift" --playlist-name "Taylor Swift 
 
 | File | Purpose |
 |---|---|
-| `build_playlist.py` | The tool (self-bootstrapping venv; pure logic is import-clean for tests). |
+| `build_playlist.py` | The artist-complete tool (self-bootstrapping venv; pure logic is import-clean for tests). |
+| `build_decade.py` | Decade playlists from Apple editorial "Hits: YYYY" lists. |
+| `build_decade_charts.py` | Decade playlists from Billboard charts (pop/country/AC) + editorial metal/rock. |
+| `sync_playlist.py` | Variant-tolerant matcher: any `[{artist,title}]` source → Apple Music playlist. |
 | `authorize.py` | One-time MusicKit-JS browser auth → saves the Music User Token. |
-| `test_build_playlist.py` | Unit tests for the filtering/dedupe/planning helpers. |
+| `test_*.py` | Unit tests (no network/tokens) for each tool's pure logic. |
 | `config.local.json.example` | Credential template (copy → `config.local.json`). |
 
 ## Tests
 
 ```bash
-python3 test_build_playlist.py
+python3 test_build_playlist.py        # 23 — keep/drop, dedupe, planning, manifest checkpoint
+python3 test_build_decade_charts.py   # 10 — chart parsers, era guard, decade math
+python3 test_sync_playlist.py         # 16 — title/artist normalization + matching
 ```
 
-16 tests covering the keep/drop rules (own vs appears-on), credit detection,
-catalog-id resolution, dedupe, and add-planning — no network or tokens needed.
+No network or tokens needed — all suites exercise the pure logic with plain dicts
+and inline HTML fixtures.
