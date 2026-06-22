@@ -9,6 +9,14 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with embed-then-import metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Sidebar: right-click "Refresh" on a folder
+
+- **Added a "Refresh" item to a scanned folder's right-click menu in the sidebar.** It re-scans
+  that folder in place — the same action as the toolbar's refresh icon, but targeted at the
+  folder you right-clicked regardless of which one is selected. Decision-preserving (the same
+  upsert + missing-file reconciliation as a normal scan); disabled while a scan is already
+  running. New `AppState.rescanRoot(_:)` delegates to the existing `scanFolder` machinery.
+
 ### No more "control Photos" prompt — video metadata is now embed-then-import
 
 - **Removed the recurring "PurplePeek wants to control Photos" automation (TCC) prompt.**

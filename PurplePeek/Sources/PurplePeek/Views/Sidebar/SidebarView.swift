@@ -210,6 +210,15 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func rootMenu(_ root: ScanRoot) -> some View {
+        // Refresh: re-scan this folder in place — the same action as the toolbar's refresh icon,
+        // targeted at the right-clicked root. Disabled while a scan is already running.
+        Button {
+            appState.rescanRoot(root.path)
+        } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+            .disabled(appState.isScanning)
+
+        Divider()
+
         // Flat, titled section rather than a nested `Menu` — submenu buttons inside a
         // `.contextMenu` don't reliably fire their actions on macOS.
         Section("Move to Section") {

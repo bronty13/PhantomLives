@@ -428,6 +428,13 @@ final class AppState: ObservableObject {
         scanFolder(URL(fileURLWithPath: root))
     }
 
+    /// Re-scan a specific root in place — the sidebar row's right-click "Refresh". Same machinery
+    /// as the toolbar refresh, but targeted at `path` regardless of which root is selected, so
+    /// right-clicking any folder re-scans that one (decision-preserving upsert + missing sweep).
+    func rescanRoot(_ path: String) {
+        scanFolder(URL(fileURLWithPath: path))
+    }
+
     /// FSEvents callback target: auto-rescan the selected root when its contents change on
     /// disk. Guarded so an in-flight scan (or the scan's own writes, which the export folders
     /// can trigger) doesn't kick off a re-entrant pass.
