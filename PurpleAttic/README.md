@@ -168,8 +168,9 @@ inline *Grant…* / *Settings…* buttons in the Archive pane:
   for reading the library. The Schedule pane's *Reveal pattic in Finder* button
   drops you onto the binary to drag into the list. (Separately, macOS Sequoia pops
   a recurring *"…access data from other apps"* prompt on scheduled runs that FDA
-  does **not** suppress — see HANDOFF.md "Scheduled-run … KNOWN macOS LIMITATION";
-  the schedule defaults to daily to minimize it.)
+  does **not** suppress — see HANDOFF.md "Scheduled-run … KNOWN macOS LIMITATION".
+  It's daily to minimize it, and **should be scheduled for a waking-hours time** —
+  an unattended overnight run just parks on the prompt until you click *Allow*.)
 - **Photos Automation** (Apple Events → Photos) — so download-missing / edited
   exports can drive Photos. *Without it osxphotos thrashes ("AppleScript export
   failed 10 consecutive times, restarting Photos app").*

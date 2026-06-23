@@ -190,8 +190,15 @@ re-triggers it, and there is **no documented way to make it stick** without MDM.
 **Why Warp (a terminal) is silent but PurpleAttic isn't:** unresolved, but irrelevant — the
 consent is non-persistent by design, so chasing app-side parity is a dead end.
 
-**Mitigation in place:** schedule defaulted from **hourly → daily** (cadence `daily`, 02:00),
-so the prompt is seen at most ~once/day instead of once/hour. The only true eliminations are
+**Mitigation in place:** schedule is **daily** (was hourly), so the prompt is seen ~once/day.
+**Crucially, schedule it for a WAKING-HOURS time, not overnight.** An *unattended* run (the old
+02:00 default) blocks osxphotos on the consent dialog with nobody to click it — the run sits
+parked for hours until someone clicks *Allow* in the morning (the multi-hour "run durations" seen
+in the logs were almost entirely this wait; the real export work is ~20 min). A waking-hours time
+turns it into a quick once-a-day click. **Vortex is set to `12:00` noon** (2026-06-23; in
+`settings.json` `schedule.hour` + the launchd plist `StartCalendarInterval:Hour`, machine-local —
+not committed). NOTE: the code's *default* schedule hour is still 02:00 — a poor default given
+this; consider changing it for fresh installs. The only true eliminations of the prompt itself are
 MDM (overkill) or osxphotos not touching the shared-library container (no flag for it).
 
 Diagnostic recipe if this resurfaces: `log show --predicate 'process == "tccd"' --info --debug`

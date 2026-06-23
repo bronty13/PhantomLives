@@ -46,9 +46,12 @@ in place. The **Archive pane shows a Permissions panel** with a row per grant an
    *(Separately:* macOS Sequoia shows a recurring *"PurpleAttic would like to access
    data from other apps"* prompt on scheduled runs. Full Disk Access does **not**
    stop it — it's an intentional, non-persistent macOS consent for reading the
-   Photos shared-library container, and the only practical mitigation is running the
-   archive less often, so the schedule defaults to **daily**. Click *Allow* when it
-   appears.)
+   Photos shared-library container, and it can't be made permanent without MDM. So
+   it's **daily**, and you should **schedule it for a time you're at the Mac** (see
+   *Automatic schedule* below): click *Allow* when it appears and the run finishes in
+   ~20 min. If it's scheduled for the middle of the night, it simply waits on that
+   prompt until you click it — no harm, but the run won't actually do anything until
+   then.)
 2. **Photos Automation** — lets the archive drive Photos.app to download/export
    images. Click **Grant…** and approve *"PurpleAttic wants to control Photos."*
    *Skip this and osxphotos thrashes — "AppleScript export failed 10 consecutive
@@ -149,9 +152,14 @@ batch once you've reviewed it.
 
 
 **Schedule pane** → turn on **Run the archive automatically**, pick **Daily** or
-**Weekly** and a time (a quiet hour like 2:00 AM is good), then **Apply**. Status
-shows **Loaded**, the next run, and the last run; **Run Now** fires it on demand
-and **Reveal Log** opens the scheduler log.
+**Weekly** and a time, then **Apply**. Status shows **Loaded**, the next run, and
+the last run; **Run Now** fires it on demand and **Reveal Log** opens the scheduler log.
+
+**Pick a time you're usually at the Mac** (e.g. midday) — *not* the middle of the
+night. Because of the macOS *"access data from other apps"* consent prompt (see §1),
+each run waits for you to click *Allow* before it can read your library; at a
+waking-hours time that's a quick once-a-day click, whereas an overnight run just
+sits parked on the prompt until morning. The actual archive then takes ~20 minutes.
 
 Notes:
 - The schedule runs only on **this** Mac and only while it's **awake**.
