@@ -1,0 +1,52 @@
+{
+  "_comment": "Optional external tools for the macOS IR Toolkit. The dependency-free collect-triage.sh needs NONE of these. Fetch with get-tools.sh on a clean analysis Mac. Verify vendor signatures/hashes before evidentiary use.",
+  "categories": {
+    "acquisition": "Volatile-state / process-core capture (full RAM not available on Apple Silicon)",
+    "live_triage": "Volatile-state and artifact collection on a running host",
+    "heavy_collection": "Deep, parsed artifact collection",
+    "ioc_scanning": "YARA / IOC / malware signature scanning",
+    "live_query": "Ad-hoc SQL over live host state"
+  },
+  "tools": [
+    {
+      "name": "Aftermath",
+      "category": "heavy_collection",
+      "license": "MIT",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/jamf/aftermath/releases/latest",
+      "asset_pattern": "*.zip",
+      "notes": "Jamf Threat Labs' Swift IR framework -- the macOS analogue of Velociraptor/KAPE. Run as root: 'aftermath -o <dir>' to collect; 'aftermath --analyze <archive>' to parse. Code-signed; on a managed Mac may need a Privacy & Security allow."
+    },
+    {
+      "name": "YARA",
+      "category": "ioc_scanning",
+      "license": "BSD-3-Clause",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/VirusTotal/yara/releases/latest",
+      "install": "brew install yara",
+      "notes": "Pattern-matching engine. Pair with rules in iocs/yara/. Scans files; process-memory scans on macOS are constrained by SIP/entitlements."
+    },
+    {
+      "name": "osquery",
+      "category": "live_query",
+      "license": "Apache-2.0 / GPLv2",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://www.osquery.io/downloads",
+      "install": "brew install --cask osquery",
+      "notes": "SQL over live host state (processes, launchd, users, sockets, kexts). 'osqueryi' for an interactive shell. Signed pkg from osquery.io for field kits."
+    },
+    {
+      "name": "Volatility3",
+      "category": "acquisition",
+      "license": "Volatility Software License (BSD-like)",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/volatilityfoundation/volatility3/releases/latest",
+      "install": "pip install volatility3",
+      "notes": "Memory ANALYSIS. Of limited use on macOS: full RAM images are essentially unobtainable on Apple Silicon, and Volatility's macOS symbol coverage lags. Listed for completeness / Intel + legacy images."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Downloaded optional tools (fetched by get-tools.sh from official sources).
+tools/
+
+# Collected evidence / case output — never commit acquired data.
+output/
+*.logarchive
+*.core
+*_TRIAGE_*/
+Evidence/
+
+# macOS cruft
+.DS_Store
+._*
