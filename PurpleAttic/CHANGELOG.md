@@ -3,6 +3,18 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.22.1] — 2026-06-23
+
+### Changed
+- **Default scheduled-archive time moved from 02:00 to 12:00 noon.** A scheduled run blocks on
+  the macOS *"access data from other apps"* consent prompt until someone clicks Allow (a transient,
+  per-process TCC privilege that can't be made persistent without MDM). An unattended 2 AM run just
+  parks on that prompt for hours — the real export is ~20 min. The new waking-hours default makes
+  it a quick once-a-day click for fresh installs / a second Mac. (`ArchiveSchedule.init`, plus the
+  ScheduleView time-picker fallback; existing installs keep whatever time they've set.) Locked by a
+  new `testDefaultScheduleIsWakingHours` test. Docs (README / USER_MANUAL / HANDOFF) updated to
+  recommend a waking-hours time and stop suggesting 2 AM.
+
 ## [0.22.0] — 2026-06-20
 
 Automated criteria-based purge + a comprehensive monitoring dashboard. This is the release

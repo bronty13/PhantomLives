@@ -197,9 +197,11 @@ parked for hours until someone clicks *Allow* in the morning (the multi-hour "ru
 in the logs were almost entirely this wait; the real export work is ~20 min). A waking-hours time
 turns it into a quick once-a-day click. **Vortex is set to `12:00` noon** (2026-06-23; in
 `settings.json` `schedule.hour` + the launchd plist `StartCalendarInterval:Hour`, machine-local —
-not committed). NOTE: the code's *default* schedule hour is still 02:00 — a poor default given
-this; consider changing it for fresh installs. The only true eliminations of the prompt itself are
-MDM (overkill) or osxphotos not touching the shared-library container (no flag for it).
+not committed). The code's *default* schedule hour is now **12:00 noon** (was 02:00) for exactly
+this reason — so a fresh install / second Mac gets a waking-hours default instead of repeating the
+overnight hang (`ArchiveSchedule.init` default; locked by `testDefaultScheduleIsWakingHours`). The
+only true eliminations of the prompt itself are MDM (overkill) or osxphotos not touching the
+shared-library container (no flag for it).
 
 Diagnostic recipe if this resurfaces: `log show --predicate 'process == "tccd"' --info --debug`
 and grep `SystemPolicyAppData` / `AUTHREQ_ATTRIBUTION` for the `responsible`/`accessing` pair;

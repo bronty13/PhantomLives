@@ -16,8 +16,13 @@ public struct ArchiveSchedule: Codable, Sendable, Equatable {
     public var minute: Int        // 0–59
     public var weekday: Int       // 0=Sun … 6=Sat (launchd convention), used when weekly
 
+    // Default to NOON, not the wee hours: a scheduled run blocks on the macOS
+    // "access data from other apps" consent prompt until a human clicks Allow (a
+    // transient, per-process TCC privilege that can't be made persistent without MDM —
+    // see HANDOFF "KNOWN macOS LIMITATION"). An unattended 2 AM run just parks on that
+    // prompt for hours; a waking-hours default makes it a quick once-a-day click.
     public init(enabled: Bool = false, cadence: Cadence = .daily,
-                hour: Int = 2, minute: Int = 0, weekday: Int = 0) {
+                hour: Int = 12, minute: Int = 0, weekday: Int = 0) {
         self.enabled = enabled
         self.cadence = cadence
         self.hour = hour

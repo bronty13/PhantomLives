@@ -129,7 +129,7 @@ struct ScheduleView: View {
             },
             set: { newDate in
                 let c = Calendar.current.dateComponents([.hour, .minute], from: newDate)
-                store.settings.schedule.hour = c.hour ?? 2
+                store.settings.schedule.hour = c.hour ?? 12   // noon fallback (see ArchiveSchedule default)
                 store.settings.schedule.minute = c.minute ?? 0
             }
         )

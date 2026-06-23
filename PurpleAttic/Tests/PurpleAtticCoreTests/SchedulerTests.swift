@@ -3,6 +3,16 @@ import XCTest
 
 final class SchedulerTests: XCTestCase {
 
+    /// The default schedule must land in WAKING HOURS, never overnight: an unattended run
+    /// parks on the macOS "access data from other apps" consent prompt until a human clicks
+    /// Allow, so a 2 AM default sat blocked for hours. Lock the default to a daytime hour.
+    func testDefaultScheduleIsWakingHours() {
+        let s = ArchiveSchedule()
+        XCTAssertEqual(s.hour, 12, "default archive hour should be noon, not the wee hours")
+        XCTAssertTrue((8...18).contains(s.hour), "default must be a waking-hours time")
+        XCTAssertEqual(s.cadence, .daily)
+    }
+
     func testDailyCalendarKeysOmitWeekday() {
         let s = ArchiveSchedule(enabled: true, cadence: .daily, hour: 2, minute: 30)
         let keys = s.calendarKeys
