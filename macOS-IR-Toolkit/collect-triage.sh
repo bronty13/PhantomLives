@@ -227,7 +227,10 @@ if [ "$SKIP_ARTIFACTS" -ne 1 ]; then
   # Install history + system logs
   copy "/Library/Receipts/InstallHistory.plist"  "InstallHistory"
   copy "/var/log/install.log"                    "SystemLogs"
-  copy "/var/db/diagnostics"                     "Diagnostics"   # raw unified log (large; root)
+  # NOTE: the raw /var/db/diagnostics tracev3 store is intentionally NOT copied -- the
+  # 'log collect' archive above is the analyst-friendly capture of the same data, and
+  # the raw store can be multiple GB. Add it back only if you need raw tracev3 for a
+  # tool like UnifiedLogReader/mac_apt.
   for l in /var/log/system.log*; do [ -e "$l" ] && copy "$l" "SystemLogs"; done
   copy "/etc/hosts"   "Network"
   copy "/etc/passwd"  "AccountDB"
