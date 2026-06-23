@@ -187,6 +187,35 @@ playlists; skip the rest.
   heavy consumers (artist completes alone are ~44k of the tracked slots).
 - `check_limits.py` reports headroom; `build_playlist` warns at 85% / 95%.
 
+## Spotify mirror (via Soundiiz) — 2026-06-22
+
+The collection was **mirrored to Spotify** as a one-time batch transfer via
+**Soundiiz** (Premium, ~8 hours). Spotify is **not** built programmatically: its Web
+API can't create playlists in Development Mode, and **Extended Quota Mode is
+organizations-only** (250k+ MAU, company email; individuals are barred and 95% of
+applications rejected — see `docs/spotify-rate-limits.md`). Soundiiz works because
+*it* holds that elevated access. **Apple Music stays the system of record;** Spotify
+is a listening/sharing mirror.
+
+**Result: ~99% track-level match.** Across the `[PL]` playlists, **66,949 / 67,552
+tracks (99.1%)** carried over — 80 of 113 at a perfect 100%, only 5 below 95%.
+
+- **Size did NOT predict quality.** The giant Flavor-A discographies matched nearly
+  perfectly (Pearl Jam 99%, Ella 100%, Motörhead 100%, Metallica 100%, Beatles 98%) —
+  every studio recording exists on both platforms.
+- **Remix-heavy *pop* catalogs lost the most:** My Chemical Romance 77% (−85),
+  Billie Eilish 83%, P!nk 92%, Lady Gaga 93%, Belinda Carlisle 93% — the skipped
+  tracks are edition-level variants (remixes, sped-up, deluxe) that exist on Apple
+  but not 1:1 on Spotify. Flavor-A *helped* rock/metal/jazz, *hurt* variant-pop.
+- **Curated playlists** (decade / country / AC / genre / metal) transferred
+  essentially flawless — almost all 100%. Non-playlist library items: Library Tracks
+  95% (526 of 10k skipped), Library Music Videos 62% (videos rarely map to tracks).
+
+**Maintenance model:** auto-sync only the handful you actively rebuild (decade
+masters, `Life in Music`) within Soundiiz's 20 Premium sync slots; the rest are
+static snapshots — re-transfer occasionally. **`Life in Music` is the one shared
+publicly** on Spotify (the diary).
+
 ## Which tool builds what
 
 | Tool | Builds |
