@@ -1,0 +1,12 @@
+# Downloaded third-party tool binaries (fetched by Get-Tools.ps1 from official
+# sources; never redistributed — see LICENSE-NOTES.md). Keep the source out only.
+tools/
+# But keep the tool list / provenance scaffolding that IS source:
+!tools.manifest.json
+
+# Case output / collected evidence — never commit acquired data.
+output/
+
+# macOS cruft (this kit is staged on removable media that mounts on macOS).
+.DS_Store
+._*

@@ -1,0 +1,177 @@
+{
+  "_comment": "Source of truth for Get-Tools.ps1. URLs point to official upstream releases only. 'redistributable' indicates whether the license permits bundling the binary in this zip (it does NOT for several free-but-proprietary tools, which is why this toolkit downloads instead of bundling). Verify hashes/signatures yourself for evidentiary work.",
+  "categories": {
+    "acquisition": "Disk/memory/triage image capture",
+    "live_triage": "Volatile-state and artifact collection on a running host",
+    "artifact_parsing": "Offline parsing of registry/MFT/event logs/etc.",
+    "memory_analysis": "RAM image analysis",
+    "log_hunting": "EVTX / Sigma-based detection",
+    "ioc_scanning": "YARA / IOC / malware signature scanning",
+    "utility": "Hashing, hex, decoding, mounting, viewing"
+  },
+  "tools": [
+    {
+      "name": "Velociraptor",
+      "category": "live_triage",
+      "license": "Apache-2.0",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/Velocidex/velociraptor/releases/latest",
+      "asset_pattern": "velociraptor-*-windows-amd64.exe",
+      "notes": "Swiss-army knife for endpoint triage; offline collector builds a single self-contained .exe. Preferred primary triage engine."
+    },
+    {
+      "name": "KAPE",
+      "category": "live_triage",
+      "license": "Kroll EULA (free, NON-redistributable)",
+      "redistributable": false,
+      "open_source": false,
+      "url": "https://www.kroll.com/en/services/cyber-risk/incident-response-litigation-support/kroll-artifact-parser-extractor-kape",
+      "notes": "Targets+Modules artifact collection & parsing. Requires a free email registration to download. Cannot be auto-downloaded headlessly; script prints instructions."
+    },
+    {
+      "name": "EricZimmermanTools",
+      "category": "artifact_parsing",
+      "license": "Free per-tool, NON-redistributable as a bundle policy",
+      "redistributable": false,
+      "open_source": true,
+      "url": "https://download.ericzimmermantools.com/Get-ZimmermanTools.zip",
+      "notes": "MFTECmd, PECmd, AmcacheParser, AppCompatCacheParser, RegistryExplorer/RECmd, JLECmd, LECmd, SBECmd, EvtxECmd, Timeline Explorer, SrumECmd, WxTCmd, RBCmd. Get-ZimmermanTools.ps1 self-updates them."
+    },
+    {
+      "name": "WinPmem",
+      "category": "acquisition",
+      "license": "Apache-2.0",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/Velocidex/WinPmem/releases/latest",
+      "asset_pattern": "go-winpmem_amd64*signed.exe",
+      "notes": "Physical-memory acquisition, x86/x64 ONLY (no ARM64 driver -- use DumpIt on ARM64). Run elevated. Capture to EXTERNAL media, never the suspect disk. Uses the Go userland build (go-winpmem) with signed drivers, invoked as 'acquire <img>'; the legacy winpmem_mini_x64_rc2.exe writes a 0-byte image on modern Win10/11 (Velocidex issue #55) -- do NOT use it."
+    },
+    {
+      "name": "DumpIt",
+      "category": "acquisition",
+      "license": "Magnet Forensics EULA (free, NON-redistributable)",
+      "redistributable": false,
+      "open_source": false,
+      "url": "https://www.magnetforensics.com/resources/magnet-dumpit-for-windows/",
+      "notes": "PREFERRED memory acquirer -- the only free tool covering x86, x64 AND ARM64, each with a signed kernel driver. Writes a Microsoft crash dump (.dmp, WinDbg + Volatility 3 readable); CLI 'DumpIt.exe /O <file> /Q'. Free but email-registration-gated, so it cannot be auto-downloaded; script prints instructions. Place the per-arch builds at tools\\DumpIt\\ARM64\\, tools\\DumpIt\\x64\\, tools\\DumpIt\\x86\\ (or a single tools\\DumpIt\\DumpIt.exe)."
+    },
+    {
+      "name": "Volatility3",
+      "category": "memory_analysis",
+      "license": "Volatility Software License (BSD-like)",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/volatilityfoundation/volatility3/releases/latest",
+      "asset_pattern": "*.whl",
+      "notes": "Memory image analysis. Needs Python 3.8+. 'pip install volatility3' also works."
+    },
+    {
+      "name": "Hayabusa",
+      "category": "log_hunting",
+      "license": "GPL-3.0",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/Yamato-Security/hayabusa/releases/latest",
+      "asset_pattern": "hayabusa-*-win-x64.zip",
+      "notes": "Fast Sigma-based Windows EVTX timeline & detection. Ships with curated rules."
+    },
+    {
+      "name": "Chainsaw",
+      "category": "log_hunting",
+      "license": "GPL-3.0",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/WithSecureLabs/chainsaw/releases/latest",
+      "asset_pattern": "chainsaw_*windows*.zip",
+      "notes": "EVTX/MFT/registry hunting with Sigma + built-in detections."
+    },
+    {
+      "name": "Loki",
+      "category": "ioc_scanning",
+      "license": "GPL-3.0",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/Neo23x0/Loki/releases/latest",
+      "asset_pattern": "loki_*.zip",
+      "notes": "Simple IOC & YARA scanner (Florian Roth). Run loki-upgrader first to pull current signatures."
+    },
+    {
+      "name": "YARA",
+      "category": "ioc_scanning",
+      "license": "BSD-3-Clause",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/VirusTotal/yara/releases/latest",
+      "asset_pattern": "yara-*-win64.zip",
+      "notes": "Pattern-matching engine. Pair with rules in iocs/yara/."
+    },
+    {
+      "name": "Sysinternals",
+      "category": "live_triage",
+      "license": "Microsoft Sysinternals EULA (free, NON-redistributable)",
+      "redistributable": false,
+      "open_source": false,
+      "url": "https://download.sysinternals.com/files/SysinternalsSuite.zip",
+      "notes": "Autoruns, Process Explorer, Procmon, Sigcheck, TCPView, Handle, PsList, ListDLLs, Strings, Sysmon. Downloadable directly; EULA forbids re-hosting."
+    },
+    {
+      "name": "Sysmon",
+      "category": "live_triage",
+      "license": "Microsoft Sysinternals EULA",
+      "redistributable": false,
+      "open_source": false,
+      "url": "https://download.sysinternals.com/files/Sysmon.zip",
+      "notes": "If not already deployed, install with a curated config (SwiftOnSecurity / Olaf Hartong) for richer telemetry going forward. NOT retroactive."
+    },
+    {
+      "name": "RegRipper",
+      "category": "artifact_parsing",
+      "license": "open source (per-repo)",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/keydet89/RegRipper3.0/archive/refs/heads/master.zip",
+      "notes": "Registry hive plugin parser."
+    },
+    {
+      "name": "CyberChef",
+      "category": "utility",
+      "license": "Apache-2.0",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/gchq/CyberChef/releases/latest",
+      "asset_pattern": "CyberChef_*.zip",
+      "notes": "Offline-capable decode/deobfuscate web app (single HTML). Great for base64/XOR/encoded PowerShell."
+    },
+    {
+      "name": "DB-Browser-SQLite",
+      "category": "utility",
+      "license": "GPL/MPL",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/sqlitebrowser/sqlitebrowser/releases/latest",
+      "asset_pattern": "*win64*.zip",
+      "notes": "Inspect browser history, app SQLite stores (e.g., WebCacheV01, History)."
+    },
+    {
+      "name": "Autopsy",
+      "category": "artifact_parsing",
+      "license": "Apache-2.0",
+      "redistributable": true,
+      "open_source": true,
+      "url": "https://github.com/sleuthkit/autopsy/releases/latest",
+      "asset_pattern": "autopsy-*-64bit.msi",
+      "notes": "Full GUI dead-disk forensic platform (Sleuth Kit front-end). Large; install on the analysis workstation, not the endpoint."
+    },
+    {
+      "name": "FTKImager",
+      "category": "acquisition",
+      "license": "Exterro EULA (free, NON-redistributable)",
+      "redistributable": false,
+      "open_source": false,
+      "url": "https://www.exterro.com/digital-forensics-software/ftk-imager",
+      "notes": "Forensic disk/logical imaging (E01). Requires free registration. Script prints instructions."
+    }
+  ]
+}
