@@ -47,7 +47,9 @@ function Invoke-Yara([string]$target,[switch]$isPid) {
 }
 
 if ($Processes) {
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrator')) { throw "Process scan needs Administrator." }
+    # Enum overload -- the string 'Administrator' matches the built-in user, not the
+    # Administrators group, and returns $false even when elevated.
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Process scan needs Administrator." }
     Write-Host "[*] YARA-scanning live process memory..." -ForegroundColor Cyan
     foreach ($p in Get-Process) {
         Write-Progress -Activity 'YARA process scan' -Status "$($p.Name) ($($p.Id))"

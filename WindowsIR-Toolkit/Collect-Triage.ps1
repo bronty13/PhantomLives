@@ -131,13 +131,19 @@ Step $caseDir 'patches_qfe.csv'   { Get-CimInstance Win32_QuickFixEngineering | 
 Section "01 Volatile state"
 
 Step $volDir 'processes.csv' {
-    $signs = @{}
+    # Cache hash + signature per unique exe path -- the same binary (svchost, etc.)
+    # backs many processes, so hashing once per path instead of once per process is
+    # a large speedup on a busy host.
+    $signs = @{}; $hashes = @{}
     Get-CimInstance Win32_Process | ForEach-Object {
         $p = $_
         $exe = $p.ExecutablePath
         $hash=$null; $sig=$null
         if ($exe -and (Test-Path $exe)) {
-            try { $hash = (Get-FileHash -Algorithm SHA256 $exe -ErrorAction Stop).Hash } catch {}
+            if (-not $hashes.ContainsKey($exe)) {
+                try { $hashes[$exe] = (Get-FileHash -Algorithm SHA256 $exe -ErrorAction Stop).Hash } catch { $hashes[$exe] = $null }
+            }
+            $hash = $hashes[$exe]
             try {
                 if (-not $signs.ContainsKey($exe)) {
                     $s = Get-AuthenticodeSignature $exe -ErrorAction Stop
@@ -156,16 +162,38 @@ Step $volDir 'processes.csv' {
 } csv
 
 Step $volDir 'process_tree.txt' {
-    $procs = Get-CimInstance Win32_Process
+    $procs    = Get-CimInstance Win32_Process
     $byParent = $procs | Group-Object ParentProcessId -AsHashTable -AsString
-    function Show($procId,$depth){
-        $procs | Where-Object ProcessId -eq $procId | ForEach-Object {
-            ('  ' * $depth) + ("{0} (PID {1})  {2}" -f $_.Name,$_.ProcessId,$_.CommandLine)
+    $livePids = @{}; foreach ($p in $procs) { $livePids[[string]$p.ProcessId] = $true }
+
+    # Iterative DFS with a visited-set -- NOT recursion. Windows reuses PIDs, so a
+    # child's ParentProcessId can point to a since-recycled PID and form a CYCLE
+    # (A->B->A); the old recursive walker followed it forever -> "call depth overflow".
+    # $seen breaks cycles; visiting true roots first, then any still-unseen process,
+    # guarantees every process prints exactly once even if trapped in a cycle.
+    $seen  = @{}
+    $out   = New-Object System.Collections.Generic.List[string]
+    $order = @($procs | Where-Object { $_.ParentProcessId -eq 0 -or -not $livePids.ContainsKey([string]$_.ParentProcessId) } | Sort-Object ProcessId)
+    $order += @($procs | Sort-Object ProcessId)
+
+    foreach ($start in $order) {
+        if ($seen.ContainsKey([string]$start.ProcessId)) { continue }
+        $stack = New-Object System.Collections.Stack
+        $stack.Push(@{ P=$start; D=0 })
+        while ($stack.Count) {
+            $n = $stack.Pop(); $p = $n.P; $key = [string]$p.ProcessId
+            if ($seen.ContainsKey($key)) { continue }
+            $seen[$key] = $true
+            $out.Add(('  ' * $n.D) + ("{0} (PID {1})  {2}" -f $p.Name,$p.ProcessId,$p.CommandLine))
+            $kids = $byParent[$key]
+            if ($kids) {
+                foreach ($c in ($kids | Sort-Object ProcessId -Descending)) {
+                    if (-not $seen.ContainsKey([string]$c.ProcessId)) { $stack.Push(@{ P=$c; D=$n.D+1 }) }
+                }
+            }
         }
-        if ($byParent[[string]$procId]) { $byParent[[string]$procId] | ForEach-Object { Show $_.ProcessId ($depth+1) } }
     }
-    $roots = $procs | Where-Object { $_.ParentProcessId -eq 0 -or -not ($procs.ProcessId -contains $_.ParentProcessId) }
-    foreach ($r in $roots) { Show $r.ProcessId 0 }
+    $out
 }
 
 Step $volDir 'netstat_connections.csv' {
