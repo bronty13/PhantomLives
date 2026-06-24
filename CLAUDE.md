@@ -44,22 +44,25 @@ whole monorepo rather than inside one subproject:
   rationale, why git-tracked precision over an rsync `*.md` filter, cross-Mac
   setup, operational commands) is in **`docs/obsidian-sync.md`**.
 
-- **Reboot hangs on Vortex (RESOLVED 2026-06-24)** — the primary Mac
-  intermittently hung on Restart. Root cause (proven by `*.shutdownStall`
-  stackshots, not theory): **`diskarbitrationd` stuck in `unmount()`** trying to
-  unmount an **external drive with in-flight PurpleAttic backup I/O** — `SIGKILL`
-  can't interrupt an in-kernel unmount wait, so shutdown stalls. **Fix: the
-  PurpleAttic schedule is disabled on Vortex** (`launchctl disable …
-  PurpleAttic.archive`/`.restic-check`); archiving is run manually + drives
-  ejected after. Other agents (Rachel `external-*` syncs, ATW bot, Obsidian
-  mirror) write internally/over the network, don't touch the externals, and keep
-  running. **Two debunked theories** (recorded so they aren't repeated): macFUSE
-  was *not* the cause (removed anyway as obsolete hygiene); and a
-  `com.apple.loginwindow` **LogoutHook does not fire on a Tahoe Restart** — that
-  quiesce tooling was removed. Operating rule: **don't run unattended scheduled
-  writes to external drives on the primary Mac.** → Full post-mortem (evidence,
-  wrong turns, how to read a stall report with `spindump -i`) in
-  **`docs/reboot-quiesce.md`**.
+- **`eject-externals.sh`** / **`reboot-safe.sh`** — the guard against Vortex's
+  **reboot hangs** (RESOLVED + confirmed 2026-06-24). Root cause (proven by
+  `*.shutdownStall` stackshots + `lsof`, not theory): on **macOS Tahoe 26**,
+  `diskarbitrationd` wedges in-kernel in **`unmount()` → `vnode_iterate`** trying
+  to unmount **any indexed external volume mounted at shutdown** — Spotlight
+  (`mds`/`mds_stores`) and `revisiond` hold vnodes, the flush never completes, and
+  `SIGKILL` can't interrupt an in-kernel wait, so shutdown stalls (→ hard
+  power-off). It is **not** about PhantomLives backups — a single idle-but-indexed
+  external is enough. **Fix: don't have external volumes mounted at shutdown.**
+  `eject-externals` unmounts every external (discovered dynamically — any count,
+  modifies nothing on the drive, so it's safe for **client media**);
+  `reboot-safe` runs it then restarts only on success. Both symlinked into
+  `/usr/local/bin`. **Operating rule: run `reboot-safe` (or `eject-externals` then
+  Restart) before every reboot.** Debunked along the way (don't re-chase): macFUSE
+  (removed as obsolete hygiene, not the cause); "active backup I/O" (incomplete —
+  an idle indexed drive still hangs; PurpleAttic's schedule stays disabled on
+  Vortex anyway, but that was not the fix); and a `com.apple.loginwindow`
+  **LogoutHook, which is inert on a Tahoe Restart**. → Full post-mortem (evidence,
+  wrong turns, the `spindump -i` diagnostic recipe) in **`docs/reboot-hangs.md`**.
 
 ## Obsidian vault sync (DATA-LOSS-SENSITIVE — read `docs/obsidian-setup.md` first)
 
