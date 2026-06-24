@@ -4,6 +4,17 @@ All notable changes to PurpleMirror are documented here.
 
 ## Unreleased
 
+- **New menu actions: Eject Drives + Restart Safely…** A one-click guard against
+  the macOS Tahoe 26 shutdown hang, where `diskarbitrationd` wedges in-kernel
+  trying to unmount a still-mounted external drive (see `docs/reboot-hangs.md`).
+  **Eject Drives** unmounts every external volume (discovered dynamically — any
+  count of client drives — and *graceful only*, never forced, so client media is
+  never yanked mid-write). **Restart Safely…** confirms, unmounts all externals,
+  then restarts (falls back to "restart manually" if Automation access isn't
+  granted). If a drive is busy it reports which and refuses to restart, rather
+  than restart into a hang. `RebootSafeService` with pure, unit-tested parsers
+  (5 tests). This is the GUI equivalent of the repo-root `reboot-safe` CLI.
+
 - **New monitored bot: Favorites Harvest.** Profiles `com.bronty13.harvest-favorites`
   (the AppleScript agent that copies newly-Favorited Apple Music tracks into the
   "My Picks [PL]" playlist) under the **Bots** group. A tailored `.harvestFavorites`

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The popover panel shown when the menu-bar icon is clicked: a row per managed
 /// background job, plus app-wide actions.
@@ -6,6 +7,7 @@ struct MenuView: View {
     @ObservedObject var model: JobsModel
     @ObservedObject var updater: UpdaterViewModel
     @Environment(\.openWindow) private var openWindow
+    @State private var ejecting = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -94,6 +96,24 @@ struct MenuView: View {
             }
             .disabled(!updater.canCheckForUpdates)
 
+            Divider()
+
+            // Reboot-safe shortcut: macOS Tahoe 26 hangs shutdown when an external
+            // drive is still mounted (diskarbitrationd wedges in unmount()); these
+            // unmount everything external first. See docs/reboot-hangs.md.
+            HStack(spacing: 8) {
+                Button { Task { await ejectExternals() } } label: {
+                    Label("Eject Drives", systemImage: "eject").frame(maxWidth: .infinity)
+                }
+                .help("Unmount all external drives — do this before unplugging one, or before restarting")
+
+                Button { Task { await restartSafely() } } label: {
+                    Label("Restart Safely…", systemImage: "restart").frame(maxWidth: .infinity)
+                }
+                .help("Unmount all external drives, then restart — avoids the macOS Tahoe shutdown hang")
+            }
+            .disabled(ejecting)
+
             HStack {
                 Text("v\(updater.appVersion)").font(.caption2).foregroundStyle(.tertiary)
                 Spacer()
@@ -108,6 +128,65 @@ struct MenuView: View {
         if let id { model.selectedJobID = id }
         openWindow(id: "log")
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Unmount every external drive (graceful only — never forced, to protect
+    /// client media), then report the result.
+    @MainActor private func ejectExternals() async {
+        NSApp.activate(ignoringOtherApps: true)
+        ejecting = true
+        let outcome = await RebootSafeService.ejectAll()
+        ejecting = false
+
+        let a = NSAlert()
+        if outcome.ok {
+            a.messageText = "External drives unmounted"
+            a.informativeText = "It's now safe to restart, or to physically disconnect them."
+            a.alertStyle = .informational
+        } else {
+            a.messageText = "Some drives are still in use"
+            a.informativeText = "Couldn't unmount:\n\n• "
+                + outcome.stillMounted.joined(separator: "\n• ")
+                + "\n\nClose any app using them (e.g. a copy in progress) and try again."
+            a.alertStyle = .warning
+        }
+        a.runModal()
+    }
+
+    /// Confirm, unmount all externals, then restart — the GUI `reboot-safe`.
+    @MainActor private func restartSafely() async {
+        NSApp.activate(ignoringOtherApps: true)
+
+        let intro = NSAlert()
+        intro.messageText = "Restart safely?"
+        intro.informativeText = "PurpleMirror will unmount all external drives first — so the restart can't hang on macOS Tahoe — then restart your Mac."
+        intro.addButton(withTitle: "Unmount & Restart")
+        intro.addButton(withTitle: "Cancel")
+        intro.alertStyle = .informational
+        guard intro.runModal() == .alertFirstButtonReturn else { return }
+
+        ejecting = true
+        let outcome = await RebootSafeService.ejectAll()
+        ejecting = false
+
+        guard outcome.ok else {
+            let busy = NSAlert()
+            busy.messageText = "Restart cancelled — a drive is busy"
+            busy.informativeText = "These external drives wouldn't unmount:\n\n• "
+                + outcome.stillMounted.joined(separator: "\n• ")
+                + "\n\nClose whatever is using them, then try again."
+            busy.alertStyle = .warning
+            busy.runModal()
+            return
+        }
+
+        if await RebootSafeService.restart() == false {
+            let fallback = NSAlert()
+            fallback.messageText = "Drives unmounted — restart manually"
+            fallback.informativeText = "All external drives are unmounted, so it's now safe to restart from the Apple menu.\n\n(PurpleMirror couldn't trigger the restart itself — grant it Automation access in System Settings → Privacy & Security → Automation for one-click restart.)"
+            fallback.alertStyle = .informational
+            fallback.runModal()
+        }
     }
 }
 
