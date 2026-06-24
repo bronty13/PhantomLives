@@ -111,6 +111,7 @@ quiesce() {
 
 install_hook() {
   [[ $EUID -eq 0 ]] || { echo "error: --install needs sudo" >&2; exit 1; }
+  /bin/mkdir -p "$(/usr/bin/dirname "$INSTALL_PATH")" || exit 1
   /bin/cp -f "${BASH_SOURCE[0]}" "$INSTALL_PATH" || exit 1
   /usr/sbin/chown root:wheel "$INSTALL_PATH"
   /bin/chmod 744 "$INSTALL_PATH"   # root-writable only; root-executable (LogoutHook runs as root)
