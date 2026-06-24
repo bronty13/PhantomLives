@@ -44,20 +44,21 @@ whole monorepo rather than inside one subproject:
   rationale, why git-tracked precision over an rsync `*.md` filter, cross-Mac
   setup, operational commands) is in **`docs/obsidian-sync.md`**.
 
-- **`reboot-quiesce.sh`** — makes **reboot-on-demand reliable** despite the fleet
-  of heavy background launchd agents (the multi-hour PurpleAttic archive to three
-  external drives + restic→B2, 14 Rachel `external-*` rsync-over-SSH syncs, the
-  ATW Playwright bot, the hourly Obsidian mirror). macOS shutdown SIGKILLs jobs
-  but **can't interrupt a process stuck in uninterruptible I/O** — so restarting
-  mid-archive can hang the shutdown until that I/O returns. The script installs a
-  macOS **LogoutHook** (`--install` / `--uninstall` / `--status`) that, before the
-  kernel tears down, stops the heavy agents and force-kills the in-flight writers
-  (`rsync`/`osxphotos`/`restic`/`rclone`/`exiftool`/`pattic`) so the external
-  volumes go idle and unmount cleanly. Per-machine setup (`sudo … --install` on
-  each Mac). A related one-time fix: **uninstall the obsolete macFUSE kext +
-  Cryptomator.app** (left over from PurpleAttic's pre-restic off-site design) —
-  a third-party FS kext is the classic hard-hang source. → Full detail
-  (root-cause, the LogoutHook golden rules, the macFUSE removal commands) is in
+- **Reboot hangs on Vortex (RESOLVED 2026-06-24)** — the primary Mac
+  intermittently hung on Restart. Root cause (proven by `*.shutdownStall`
+  stackshots, not theory): **`diskarbitrationd` stuck in `unmount()`** trying to
+  unmount an **external drive with in-flight PurpleAttic backup I/O** — `SIGKILL`
+  can't interrupt an in-kernel unmount wait, so shutdown stalls. **Fix: the
+  PurpleAttic schedule is disabled on Vortex** (`launchctl disable …
+  PurpleAttic.archive`/`.restic-check`); archiving is run manually + drives
+  ejected after. Other agents (Rachel `external-*` syncs, ATW bot, Obsidian
+  mirror) write internally/over the network, don't touch the externals, and keep
+  running. **Two debunked theories** (recorded so they aren't repeated): macFUSE
+  was *not* the cause (removed anyway as obsolete hygiene); and a
+  `com.apple.loginwindow` **LogoutHook does not fire on a Tahoe Restart** — that
+  quiesce tooling was removed. Operating rule: **don't run unattended scheduled
+  writes to external drives on the primary Mac.** → Full post-mortem (evidence,
+  wrong turns, how to read a stall report with `spindump -i`) in
   **`docs/reboot-quiesce.md`**.
 
 ## Obsidian vault sync (DATA-LOSS-SENSITIVE — read `docs/obsidian-setup.md` first)
