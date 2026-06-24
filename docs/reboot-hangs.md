@@ -1,69 +1,96 @@
-# Reboot hangs on Vortex — post-mortem & resolution
+# Reboot hangs on Vortex — post-mortem & fix (RESOLVED 2026-06-24)
 
 **Symptom:** the primary Mac (Vortex, `Mac17,6`, macOS 26.5.1 Tahoe) intermittently
-**hung on Restart/Shut Down** and had to be force-powered-off.
+**hung on Restart / Shut Down** and had to be force-powered-off (which truncates
+the unified log, so the hangs looked like they left no trail).
 
-**Resolution (2026-06-24):** the recurring cause was **`diskarbitrationd`
-stuck in the `unmount()` syscall** trying to unmount an **external drive that
-still had in-flight backup I/O**. The PurpleAttic scheduled archive writes to
-three externals (ROG_WHITE / LACIE / PRO-G40) for hours; rebooting mid-write
-left the volume busy, `unmount()` blocked uninterruptibly in the kernel, and
-`SIGKILL` can't touch an in-kernel wait — so shutdown stalled forever.
-**Fix: the PurpleAttic schedule is disabled on Vortex** (the primary machine);
-photo archiving is run **manually** and the drives ejected afterward. The other
-launchd agents (Rachel `external-*` syncs, ATW bot, Obsidian mirror) write to the
-**internal** disk or over the network and were confirmed *not* to touch the
-external volumes, so they keep running.
+## Root cause (proven)
 
-## The evidence that settled it
+**`diskarbitrationd` wedges in the `unmount()` syscall — in-kernel,
+uninterruptible — while trying to unmount a mounted external drive at shutdown.**
+The kernel enters `vnode_iterate` to flush the volume's open files, but
+**Spotlight (`mds`/`mds_stores`) and `revisiond` still hold vnodes on the
+volume**, and on macOS Tahoe 26 that flush never completes. `SIGKILL` can't
+interrupt an in-kernel wait, so the shutdown sequence stalls forever.
 
-macOS captured `shutdown_stall_*.shutdownStall` reports (binary spindump;
-`sudo spindump -i <file> -o out.txt` to read). Every one of them — Jun 20,
-Jun 24 10:46, Jun 24 12:18 — showed the same blocking thread:
+This is a **known macOS Tahoe 26 external-drive eject bug** — not specific to
+this machine or to any PhantomLives tooling. The trigger is simply **any indexed
+external volume mounted at shutdown.** An external whose volume is already
+*unmounted* has nothing for `diskarbitrationd` to hang on.
 
+### The evidence (three independent confirmations)
+
+1. **Kernel stack** (from `*.shutdownStall`, converted with `sudo spindump -i <f> -o out.txt`):
+   ```
+   diskarbitrationd:  unmount (libsystem_kernel)
+     → kernel → vnode_iterate + 704 → … (100/100 samples, in-kernel)
+   ```
+   Identical across every stall report (Jun 20, Jun 24 10:46, 12:18, 13:09).
+2. **Who held the vnodes** (`sudo lsof -- /Volumes/PRO-G40`): `mds`, `mds_store`,
+   `revisiond` — with `mdutil -as` confirming Spotlight indexing was ON for the
+   external.
+3. **Documented Tahoe reports** of the same external-eject failure, same fix
+   (exclude the drive from Spotlight / don't shut down with externals mounted).
+
+## The fix
+
+**Don't have external volumes mounted at shutdown.** Two repo-root helpers
+(installed to `/usr/local/bin`):
+
+- **`eject-externals`** — unmounts **every** external volume, discovered
+  dynamically (any count, any name). Modifies **nothing** on the drives (no
+  marker files, no Spotlight config) — safe for **client media**. Success
+  criterion is *"no external volume mounted"*, not *"no device attached"* (a
+  bus-powered fixed SSD legitimately re-enumerates as a bare, volume-less device,
+  which is harmless). `--list` / `--force` modes.
+- **`reboot-safe`** — runs `eject-externals`, and **only** `sudo shutdown -r now`
+  if it succeeds **and** you confirm. Never restarts into the known hang.
+
+**Operating procedure:** plug in / work with externals (incl. client drives)
+normally; before any restart run **`reboot-safe`** (or `eject-externals` then
+Restart from the Apple menu). There is **no reliable auto-at-shutdown hook on
+Tahoe** (see wrong turns), so this is a deliberate pre-reboot step.
+
+Confirmed working 2026-06-24: with zero external volumes mounted, Vortex restarted
+cleanly for the first time that day.
+
+### Extra insurance for the maintainer's own recurring drives
+
+For **ROG_WHITE / LACIE / PRO-G40** only (never client media), disabling Spotlight
+reduces the indexer's vnode hold:
+```sh
+sudo mdutil -i off -d /Volumes/<NAME>          # disable Spotlight on the volume
+touch /Volumes/<NAME>/.metadata_never_index    # persistent on-drive marker
 ```
-Process: diskarbitrationd [377]
-  Thread …  101 samples (1-101)   last ran 1.867s ago
-    101  unmount + 8 (libsystem_kernel.dylib)      ← all samples, in-kernel
-```
-
-The backup log confirmed `pattic`/`osxphotos`/`rsync` were writing to ROG_WHITE
-at 12:15; the reboot was at 12:18. Other processes flagged in the report
-(Razer `com.razer.appengine.driver`, AppleCentauri dexts) were **idle red
-herrings** — their threads hadn't run since boot.
+This is secondary — `eject-externals`/`reboot-safe` is the actual guard, and the
+only one appropriate for arbitrary client drives.
 
 ## Wrong turns (documented so they aren't repeated)
 
-- **macFUSE was NOT the cause.** It was removed first on the (reasonable but
-  unverified) theory that a third-party FS kext stalls shutdown — the hang
-  recurred unchanged afterward. Removing it was still good hygiene (obsolete
-  since off-site moved to restic/B2, and FS kexts *are* a real hazard class),
-  just not *this* bug. It stays removed.
-- **A LogoutHook does NOT fire on a Tahoe Restart.** An earlier fix installed a
-  `com.apple.loginwindow` LogoutHook to quiesce I/O before shutdown; the stall
-  report and logs proved **it never ran**. LogoutHooks are deprecated to the
-  point of being inert on macOS 26 — do not rely on them. That tooling
-  (`reboot-quiesce.sh` + `/usr/local/sbin/phantomlives-reboot-quiesce.sh`) has
-  been removed.
-- **Read the stall report first.** These hangs *do* leave
-  `/Library/Logs/DiagnosticReports/*.shutdownStall` reports (a force-power-off
-  truncates the unified *log*, but the stall stackshot is written before that).
-  Converting one with `spindump -i` names the blocking process in seconds and
-  would have skipped both wrong turns.
+- **macFUSE was NOT the cause.** Removed first on the theory that a third-party
+  FS kext stalls shutdown; the hang recurred unchanged. Removal was still good
+  hygiene (obsolete since off-site moved to restic/B2), just not this bug.
+- **"Active backup I/O to externals" was incomplete.** Disabling the PurpleAttic
+  schedule and ejecting two drives didn't fix it — a *third* idle-but-indexed
+  external (PRO-G40) still hung the unmount. The cause is a mounted indexed
+  external, period; active I/O just makes it more frequent. (PurpleAttic's
+  schedule stays disabled on Vortex regardless — see [[project-purpleattic]] — but
+  that was not the fix.)
+- **A LogoutHook does NOT fire on a Tahoe Restart.** An earlier `reboot-quiesce.sh`
+  installed a `com.apple.loginwindow` LogoutHook to quiesce I/O pre-shutdown; the
+  stall report + logs proved it **never ran**. LogoutHooks are inert on macOS 26.
+  That tooling was removed.
+- **Read the `*.shutdownStall` report FIRST.** These hangs *do* leave
+  `/Library/Logs/DiagnosticReports/*.shutdownStall` stackshots (written before the
+  log truncates). `spindump -i` names the blocking process in seconds and would
+  have skipped every wrong turn above.
 
-## Operating rule going forward
-
-**On the primary Mac, don't run unattended scheduled writes to external drives.**
-If you must reboot while an external is busy, the only reliable pre-reboot step
-is to make the volume idle first (stop the writer, then `diskutil eject <name>` —
-which is instant once idle). PurpleAttic's schedule is therefore disabled here:
+## Quick diagnostic recipe (next time any Mac hangs on shutdown)
 
 ```sh
-# state today (reversible):
-launchctl disable gui/$(id -u)/com.bronty13.PurpleAttic.archive
-launchctl disable gui/$(id -u)/com.bronty13.PurpleAttic.restic-check
-# re-enable later with:  launchctl enable gui/$(id -u)/<label>
+ls -t /Library/Logs/DiagnosticReports/*.shutdownStall | head -1
+sudo spindump -i <that file> -o /tmp/stall.txt          # binary → text
+grep -A20 '^Process: .*diskarbitrationd' /tmp/stall.txt # what's it blocked in?
+# if unmount()/vnode_iterate on an external → who holds it:
+sudo lsof -- /Volumes/<name>
 ```
-
-Run archives by hand from PurpleAttic.app when you choose, and eject the drives
-when the run finishes.
