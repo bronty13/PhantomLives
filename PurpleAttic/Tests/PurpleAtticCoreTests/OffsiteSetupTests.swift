@@ -11,9 +11,14 @@ final class OffsiteSetupTests: XCTestCase {
 
     func testUpsertArgumentsUpsertsAndOmitsValue() {
         let args = KeychainStore.upsertArguments(service: "PurpleAttic Restic B2", account: "b2-account-id")
-        XCTAssertEqual(args, ["add-generic-password", "-U", "-s", "PurpleAttic Restic B2", "-a", "b2-account-id", "-w"])
+        XCTAssertEqual(args, ["add-generic-password", "-U", "-s", "PurpleAttic Restic B2", "-a", "b2-account-id",
+                              "-T", "/usr/bin/security", "-w"])
         // The secret is never baked into the argv builder — it's appended by set(...).
         XCTAssertEqual(args.last, "-w")
+        // The reader (`/usr/bin/security`) is trusted at creation time so the unattended off-site
+        // read does not raise a Keychain prompt; -w must stay last so set(...) appends the value.
+        XCTAssertEqual(args[args.count - 2], "/usr/bin/security")
+        XCTAssertTrue(args.contains("-T"))
     }
 
     func testReadAndDeleteArguments() {

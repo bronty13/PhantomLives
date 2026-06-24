@@ -3,6 +3,29 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [0.22.2] — 2026-06-24
+
+### Fixed
+- **Scheduled off-site backups no longer block on a Keychain password prompt.** The off-site
+  (restic/B2) step reads three secrets — `b2-account-id`, `b2-account-key`, `restic-password` —
+  under the `"PurpleAttic Restic B2"` Keychain service via `/usr/bin/security`. Items created
+  before this fix were ACL-bound such that each unattended read raised a *"… wants to use
+  confidential information stored in your keychain"* password dialog (one per secret — so the noon
+  run prompted two-to-three times). `KeychainStore.upsertArguments` now passes
+  `-T /usr/bin/security`, putting the reader on each new item's trusted-application list at creation
+  time, so freshly-saved credentials read non-interactively. Unlike the TCC/Photos consent prompt
+  (transient, un-persistable — see 0.22.1), Keychain trust *is* persistable, so this is a real
+  fix, not a workaround.
+  - **One-time step for existing installs** (items keep their old ACL until re-saved): authorize
+    the reader on the current items, which silences it without re-entering credentials —
+    ```
+    for a in b2-account-id b2-account-key restic-password; do
+      security set-generic-password-partition-list -S apple-tool:,apple: \
+        -s "PurpleAttic Restic B2" -a "$a"
+    done
+    ```
+    (prompts for the login-keychain password once per item, then never again).
+
 ## [0.22.1] — 2026-06-23
 
 ### Changed

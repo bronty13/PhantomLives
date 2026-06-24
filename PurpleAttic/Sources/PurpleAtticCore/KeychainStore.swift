@@ -30,8 +30,19 @@ public enum KeychainStore {
 
     /// `security add-generic-password -U …` upserts (creates or replaces) one item. The `-w`
     /// flag's value (the secret) is appended by `set(...)`, not here, so this argv is safe to test.
+    ///
+    /// `-T /usr/bin/security` puts the *reader* — `ResticService`'s
+    /// `security find-generic-password … -w` child — on the new item's trusted-application list at
+    /// creation time, so the unattended off-site read does **not** raise a Keychain authorization
+    /// prompt. Without it, even a CLI-created item prompts the first time a fresh `security` process
+    /// reads it (macOS's per-item ACL / partition-list check), which blocks the scheduled backup on
+    /// a dialog nobody is there to click. Keep `-w` LAST so `set(...)` can append the secret value.
+    ///
+    /// NOTE: this only governs items created *after* this change. Items saved by an earlier build
+    /// keep their old ACL until re-saved; clear them in one shot with
+    /// `security set-generic-password-partition-list -S apple-tool:,apple: -s <service> -a <account>`.
     public static func upsertArguments(service: String, account: String) -> [String] {
-        ["add-generic-password", "-U", "-s", service, "-a", account, "-w"]
+        ["add-generic-password", "-U", "-s", service, "-a", account, "-T", "/usr/bin/security", "-w"]
     }
 
     public static func readArguments(service: String, account: String) -> [String] {
