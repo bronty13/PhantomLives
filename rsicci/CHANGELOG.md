@@ -2,6 +2,21 @@
 
 All notable changes to the R-SICCI SPA are documented here.
 
+## 0.2.0 — 2026-06-24
+
+- **SRI is now scored as an individual, researcher-facing index** (at the
+  maintainer's direction, relaxing the draft instrument's aggregate-only stance).
+  Adds an overall 0–100 index, thought-frequency and severity (unwantedness +
+  impact) sub-scores, a per-theme breakdown across the 8 sensitive themes, and
+  the prevalence of non-zero thought-frequency. Computed only when the participant
+  opted into Module J. The misuse guardrails are kept intact: SRI stays
+  restricted/researcher-only, never participant-facing, and is explicitly **not**
+  a risk, dangerousness, or likelihood-of-offending measure. The classification's
+  9th axis now presents SRI instead of withholding it.
+- New tests for SRI (opt-in gating, overall/sub-score/prevalence math, axis
+  presentation) and the populated SRI report render; 35 tests total. README +
+  CHANGELOG document SRI as a locally-defined, locally-banded index.
+
 ## 0.1.0 — 2026-06-24
 
 Initial release.

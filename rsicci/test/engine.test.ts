@@ -175,15 +175,40 @@ describe('Selected-theme (Module E) contributions', () => {
   })
 })
 
-describe('SRI / Module J are never individually scored', () => {
-  it('classify() emits a withheld SRI axis with no value or tag', () => {
-    const axes = classify(score({}))
-    const sri = axes.find((x) => x.basis === 'SRI')!
-    expect(sri.value).toBeNull()
-    expect(sri.tag).toBeNull()
-    expect(sri.note).toMatch(/aggregate/i)
+describe('SRI — Restricted Sensitive-Theme Research Index', () => {
+  it('is not computed unless the participant opted into Module J', () => {
+    // Answers present but no opt-in → not computed.
+    const a: AnswersInput = { SEN_ANIMALS_THOUGHT: shown(2), SEN_ANIMALS_UNWANTED: shown(2), SEN_ANIMALS_IMPACT: shown(2) }
+    const s = score(a)
+    expect(s.sri.eligible).toBe(false)
+    expect(s.sri.value).toBeNull()
+    expect(s.sri.optedIn).toBe(false)
   })
-  it('the scoring output exposes no SRI field at all', () => {
-    expect('sri' in score({})).toBe(false)
+
+  it('computes an overall index, sub-scores, and prevalence when opted in', () => {
+    const a: AnswersInput = {
+      SEN_OPTIN: shown(1),
+      // theme 1: all 4s → contributes 4,4,4
+      SEN_ANIMALS_THOUGHT: shown(4), SEN_ANIMALS_UNWANTED: shown(4), SEN_ANIMALS_IMPACT: shown(4),
+      // theme 2: thought 0 (no prevalence), severity 2s
+      SEN_BELOW_LEGAL_AGE_THOUGHT: shown(0), SEN_BELOW_LEGAL_AGE_UNWANTED: shown(2), SEN_BELOW_LEGAL_AGE_IMPACT: shown(2),
+    }
+    const s = score(a)
+    expect(s.sri.eligible).toBe(true)
+    // 6 valid cells: 4,4,4,0,2,2 → mean 16/6 = 2.667 → /4*100 = 66.67
+    expect(s.sri.value).toBeCloseTo((16 / 6 / 4) * 100, 4)
+    // thought mean: (4+0)/2 = 2 → 50
+    expect(s.sri.thoughtMean).toBeCloseTo(50, 6)
+    // severity mean: (4+4+2+2)/4 = 3 → 75
+    expect(s.sri.severityMean).toBeCloseTo(75, 6)
+    expect(s.sri.prevalence).toBe(1) // only theme 1 has thought ≥ 1
+    expect(s.sri.tag).toMatch(/descriptive/i)
+  })
+
+  it('classify() presents the SRI axis as a researcher-only, non-risk index', () => {
+    const a: AnswersInput = { SEN_OPTIN: shown(1), SEN_ANIMALS_THOUGHT: shown(3), SEN_ANIMALS_UNWANTED: shown(1), SEN_ANIMALS_IMPACT: shown(1) }
+    const axis = classify(score(a)).find((x) => x.basis === 'SRI')!
+    expect(axis.value).not.toBeNull()
+    expect(axis.note).toMatch(/not a risk|researcher-access/i)
   })
 })

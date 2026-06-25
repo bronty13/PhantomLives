@@ -86,8 +86,22 @@ describe('headless render smoke test', () => {
     expect(html).toContain('Descriptive research profile')
     expect(html).toContain('50.0') // CII
     expect(html).toContain('Focused (2–4)') // CIB band
-    expect(html).toMatch(/aggregate research analysis only/i) // SRI withheld
+    expect(html).toContain('Restricted Sensitive-Theme Research Index') // SRI section present
+    expect(html).toMatch(/risk, dangerousness/i) // SRI misuse guardrail kept
     expect(html).toContain('Prohibited uses')
+  })
+
+  it('Report renders the populated SRI breakdown when Module J was opted into', () => {
+    const payload = buildPayload()
+    payload.moduleJOptIn = true
+    payload.answers['SEN_OPTIN'] = shown(1)
+    payload.answers['SEN_ANIMALS_THOUGHT'] = shown(2)
+    payload.answers['SEN_ANIMALS_UNWANTED'] = shown(3)
+    payload.answers['SEN_ANIMALS_IMPACT'] = shown(1)
+    const html = renderToStaticMarkup(createElement(Report, { payload }))
+    expect(html).toContain('SRI — overall index')
+    expect(html).toContain('Thought-frequency sub-score')
+    expect(html).toMatch(/prevalence \d+\/8/)
   })
 
   // The home-only App render leaves the whole admin UI unexercised; render the

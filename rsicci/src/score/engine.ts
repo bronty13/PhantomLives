@@ -11,7 +11,7 @@
 //     rule sums the SOC worry items RAW (higher worry = higher strain).
 //   • SRI / Module J are NEVER individually scored or labelled.
 
-import { themes, TOP_THEME_SLOTS } from '../instrument/instrument'
+import { themes, sensitiveThemes, TOP_THEME_SLOTS } from '../instrument/instrument'
 import {
   AnswerValue,
   resolveNumeric,
@@ -294,6 +294,87 @@ function consentExperience(answers: AnswersInput) {
   }
 }
 
+// ---- SRI: Restricted Sensitive-Theme Research Index -------------------------
+//
+// Per the instrument, Module J retains thought-frequency, unwantedness, and
+// impact for each sensitive theme. This computes an individual, researcher-facing
+// SRI index from those items (overall 0–100, plus thought/severity sub-scores, a
+// per-theme breakdown, and the prevalence of non-zero thought-frequency).
+//
+// IMPORTANT — this is a DESCRIPTIVE research index, not a risk, dangerousness, or
+// likelihood-of-offending measure, and it is never participant-facing. It must
+// not be exposed to recruiters, instructors, payment staff, or app admins. The
+// items are thoughts/urges only (no behavior, target, or event).
+
+export interface SensitiveThemeScore {
+  stem: string
+  label: string
+  thought: number | null // frequency 0–4
+  unwanted: number | null // distress 0–4
+  impact: number | null // distress 0–4
+}
+
+export interface SRIResult extends ScoreResult {
+  /** Mean thought-frequency as 0–100. */
+  thoughtMean: number | null
+  /** Mean of unwantedness + impact (distress) as 0–100. */
+  severityMean: number | null
+  /** Number of themes with thought-frequency ≥ 1. */
+  prevalence: number
+  /** Whether the participant opted into Module J. */
+  optedIn: boolean
+  themes: SensitiveThemeScore[]
+}
+
+function scoreSRI(answers: AnswersInput, optedIn: boolean): SRIResult {
+  const rows: SensitiveThemeScore[] = sensitiveThemes.map((t) => ({
+    stem: t.stem,
+    label: t.label,
+    thought: resolveNumeric(t.thought, value(answers, t.thought)),
+    unwanted: resolveNumeric(t.unwanted, value(answers, t.unwanted)),
+    impact: resolveNumeric(t.impact, value(answers, t.impact)),
+  }))
+
+  const allCells = rows.flatMap((r) => [r.thought, r.unwanted, r.impact])
+  const validCount = allCells.filter((v) => v !== null).length
+  const prevalence = rows.filter((r) => r.thought !== null && r.thought >= 1).length
+
+  // Optional module, no missingness penalty: compute whenever there is any data.
+  if (!optedIn || validCount === 0) {
+    return {
+      value: null,
+      eligible: false,
+      validCount,
+      considered: allCells.length,
+      tag: null,
+      note: optedIn ? 'Opted in but no restricted-theme items answered.' : 'Participant did not opt into Module J.',
+      thoughtMean: null,
+      severityMean: null,
+      prevalence,
+      optedIn,
+      themes: rows,
+    }
+  }
+
+  const overall = (meanValid(allCells)! / 4) * 100
+  const thoughtMean = meanValid(rows.map((r) => r.thought))
+  const severityMean = meanValid(rows.flatMap((r) => [r.unwanted, r.impact]))
+
+  return {
+    value: overall,
+    eligible: true,
+    validCount,
+    considered: allCells.length,
+    // Local descriptive bands (the instrument gives SRI no numeric anchors).
+    tag: band(overall, [24, 49, 74], ['Minimal', 'Low', 'Moderate', 'High']) + ' endorsement (descriptive)',
+    thoughtMean: thoughtMean === null ? null : (thoughtMean / 4) * 100,
+    severityMean: severityMean === null ? null : (severityMean / 4) * 100,
+    prevalence,
+    optedIn,
+    themes: rows,
+  }
+}
+
 // ---- Top-level scoring ------------------------------------------------------
 
 export interface ScoringOutput {
@@ -309,6 +390,8 @@ export interface ScoringOutput {
   dfi: ScoreResult & { supportTrigger: boolean }
   ewi: ScoreResult
   role: ReturnType<typeof roleOrientation>
+  /** Restricted Sensitive-Theme Research Index — researcher-only, descriptive. */
+  sri: SRIResult
 }
 
 export function score(answers: AnswersInput): ScoringOutput {
@@ -368,5 +451,6 @@ export function score(answers: AnswersInput): ScoringOutput {
     dfi: scoreDFI(answers),
     ewi,
     role: roleOrientation(answers),
+    sri: scoreSRI(answers, value(answers, 'SEN_OPTIN') === 1),
   }
 }

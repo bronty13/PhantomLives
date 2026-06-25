@@ -47,9 +47,14 @@ correctness rules:
   Only `CON_PRESSURE` (CCS) and `WB_STRESS` (EWI) are reversed inside composites.
   The SDS rule sums the SOC worry items **raw** (higher worry = higher strain),
   even though those items carry an intrinsic `reverse_coded` flag in the bank.
-- **SRI / Module J are never individually scored or labelled** — Module J raw
-  values are retained as researcher-only data and surfaced as a deliberately
-  *withheld* axis; they are never folded into a participant-facing profile.
+- **SRI is computed as an individual, researcher-facing index** (overall 0–100,
+  thought-frequency and severity sub-scores, a per-theme breakdown, and the
+  prevalence of non-zero thought-frequency across the 8 sensitive themes). It
+  stays **restricted**: researcher-access only, never participant-facing, and
+  explicitly **not** a risk, dangerousness, or likelihood-of-offending measure.
+  It is computed only when the participant opted into Module J. (This relaxes the
+  draft instrument's aggregate-only stance at the maintainer's direction; the
+  misuse guardrails from `prohibited_uses` are kept intact.)
 
 The xlsx specification's "Scoring Example" (CII = 50, CIB = 2, CAP = 40, max
 practice = 4) is used verbatim as a unit-test fixture.
@@ -68,6 +73,11 @@ are called out so a researcher reconciling against a preregistration can see the
   rule names three tags (Limited / Some / Substantial self-reported impact) with
   **no numeric anchors**, so the 0–33 / 34–66 / 67–100 bands are a local choice.
   CII / KIS / CCS bands, by contrast, come from the instrument's own anchors.
+- **SRI is defined and banded locally.** The draft instrument specifies SRI as
+  aggregate-only and gives it no individual formula or anchors. The individual
+  index here is `mean of all valid Module-J cells / 4 × 100`, with sub-scores for
+  thought-frequency and severity (unwantedness + impact) and Minimal/Low/Moderate/
+  High (0–24/25–49/50–74/75–100) descriptive bands — all a local design choice.
 
 ## Develop / build / test
 

@@ -1,13 +1,12 @@
 // Build the 9 descriptive classification axes from a ScoringOutput.
 //
 // These are a multi-axis *descriptive research profile only* — never a
-// diagnosis, risk label, or any of the prohibited uses. Two axes are
-// deliberately label-free:
-//   • Stigma/disclosure strain (SDS) — continuous score only, avoid labels.
-//   • Restricted sensitive module (SRI) — aggregate research analysis only;
-//     it is NEVER emitted as an individual profile axis. We surface it here as
-//     an explicit "withheld" entry so a reader sees it was intentionally not
-//     computed, not merely forgotten.
+// diagnosis, risk label, or any of the prohibited uses.
+//   • Stigma/disclosure strain (SDS) is deliberately label-free (continuous only).
+//   • Restricted sensitive module (SRI) is computed as an individual, researcher-
+//     facing descriptive index (per the maintainer's directive). It remains
+//     restricted: never participant-facing, and never a risk/dangerousness/
+//     offending measure — only a descriptive research index over thoughts/urges.
 
 import { ScoringOutput } from './engine'
 
@@ -95,9 +94,11 @@ export function classify(s: ScoringOutput): AxisResult[] {
   axes.push({
     axis: 'Restricted sensitive module',
     basis: 'SRI',
-    value: null,
-    tag: null,
-    note: 'Withheld by design: aggregate research analysis only; never an individual profile axis.',
+    value: s.sri.value,
+    tag: s.sri.tag,
+    note: s.sri.eligible
+      ? `Prevalence: ${s.sri.prevalence}/8 themes with any thoughts. Descriptive research index only — not a risk, dangerousness, or offending measure; researcher-access only.`
+      : s.sri.note,
   })
 
   return axes

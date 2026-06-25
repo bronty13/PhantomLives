@@ -132,3 +132,9 @@ table.scores thead th { color: var(--muted); font-weight: 600; font-size: 0.8rem
 .prohibited { margin-top: 28px; }
 .prohibited summary { cursor: pointer; color: var(--accent); font-weight: 500; }
 .report section { margin-bottom: 18px; }
+.report section.restricted {
+  border: 1px solid #e3b7b3; background: #fcf4f3; border-radius: var(--radius);
+  padding: 12px 16px;
+}
+.sri-themes { margin-top: 12px; font-size: 0.85rem; }
+.sri-themes td:not(.theme-col) { text-align: center; font-variant-numeric: tabular-nums; }

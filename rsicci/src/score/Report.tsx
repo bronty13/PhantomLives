@@ -104,14 +104,44 @@ export function Report({ payload }: { payload: PlainPayload }) {
         </div>
       </section>
 
-      <section>
-        <h3>Module J — restricted</h3>
-        <p className="muted">
-          Opt-in: <strong>{payload.moduleJOptIn ? 'yes' : 'no'}</strong>. {moduleJAnswered.length} of{' '}
-          {moduleJVars.length} restricted items answered. Per the instrument, Module J is retained as
-          raw research data only and is <strong>never</strong> turned into an individual SRI score,
-          label, or profile axis.
+      <section className="restricted">
+        <h3>SRI — Restricted Sensitive-Theme Research Index</h3>
+        <p className="muted small">
+          Opt-in: <strong>{payload.moduleJOptIn ? 'yes' : 'no'}</strong> · {moduleJAnswered.length} of{' '}
+          {moduleJVars.length} restricted items answered. <strong>Restricted, researcher-access only.</strong>{' '}
+          This is a descriptive research index over thoughts/urges — <strong>not</strong> a risk,
+          dangerousness, or likelihood-of-offending measure, and never participant-facing.
         </p>
+
+        {!s.sri.eligible ? (
+          <p className="muted">SRI not computed — {s.sri.note}</p>
+        ) : (
+          <>
+            <table className="scores">
+              <tbody>
+                <ScoreRow label="SRI — overall index" value={s.sri.value} tag={s.sri.tag} note={`prevalence ${s.sri.prevalence}/8 themes`} />
+                <ScoreRow label="Thought-frequency sub-score" value={s.sri.thoughtMean} tag={null} />
+                <ScoreRow label="Severity (unwantedness + impact) sub-score" value={s.sri.severityMean} tag={null} />
+              </tbody>
+            </table>
+
+            <table className="matrix sri-themes">
+              <thead>
+                <tr><th>Sensitive theme</th><th>Thought freq.</th><th>Unwantedness</th><th>Impact</th></tr>
+              </thead>
+              <tbody>
+                {s.sri.themes.map((t) => (
+                  <tr key={t.stem}>
+                    <td className="theme-col">{t.label}</td>
+                    <td>{t.thought ?? '—'}</td>
+                    <td>{t.unwanted ?? '—'}</td>
+                    <td>{t.impact ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </section>
 
       <section className="qa">

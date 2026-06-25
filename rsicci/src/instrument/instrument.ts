@@ -169,6 +169,39 @@ export const themes: Theme[] = items
 
 export const themeByStem: Map<string, Theme> = new Map(themes.map((t) => [t.stem, t]))
 
+// ---- Module J sensitive-theme model ----------------------------------------
+//
+// The optional restricted module: 8 sensitive themes, each with a thought-
+// frequency item (FREQUENCY_0_4) and two distress items — unwantedness and
+// impact (DISTRESS_0_4). Thoughts/urges only; no behavior, target, or event.
+
+export interface SensitiveTheme {
+  stem: string // e.g. SEN_ANIMALS
+  label: string
+  thought: string // FREQUENCY_0_4 variable
+  unwanted: string // DISTRESS_0_4 variable
+  impact: string // DISTRESS_0_4 variable
+}
+
+function sensitiveLabelFromPrompt(prompt: string): string {
+  const i = prompt.lastIndexOf(': ')
+  const tail = i >= 0 ? prompt.slice(i + 2) : prompt
+  return tail.replace(/\?\s*$/, '').trim()
+}
+
+export const sensitiveThemes: SensitiveTheme[] = items
+  .filter((i) => i.module === 'J' && i.variable.endsWith('_THOUGHT'))
+  .map((thoughtItem) => {
+    const stem = thoughtItem.variable.replace(/_THOUGHT$/, '')
+    return {
+      stem,
+      label: sensitiveLabelFromPrompt(thoughtItem.participant_prompt),
+      thought: `${stem}_THOUGHT`,
+      unwanted: `${stem}_UNWANTED`,
+      impact: `${stem}_IMPACT`,
+    }
+  })
+
 /** The five Module-E theme slots, in order. */
 export const TOP_THEME_SLOTS = ['TOP_THEME_01', 'TOP_THEME_02', 'TOP_THEME_03', 'TOP_THEME_04', 'TOP_THEME_05']
 
