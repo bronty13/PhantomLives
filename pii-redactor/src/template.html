@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<!--
+  CSP: structural offline guarantee. connect-src 'none' means no fetch/XHR/
+  WebSocket/beacon can ever leave the machine; default-src 'none' denies
+  everything not explicitly re-allowed. blob: is needed for the two Web Workers
+  (detection engine + pdf.js), data: for the inlined fonts.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; font-src data:; img-src data:; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PII Redactor</title>
+<style>
+/*INLINE:fontface*/
+:root {
+  --navy:       #1B2A4A;
+  --navy-light: #243558;
+  --navy-dark:  #141f38;
+  --teal:       #00B4D8;
+  --teal-dark:  #009bb8;
+  --green:      #00D084;
+  --amber:      #FCB900;
+  --red:        #CF2E2E;
+  --orange:     #FF6900;
+  --bg:         #F5F7FA;
+  --card:       #FFFFFF;
+  --body:       #333333;
+  --muted:      #888888;
+  --border:     #E2E8F0;
+  --radius:     8px;
+  --radius-sm:  6px;
+  --radius-lg:  12px;
+  --shadow:     0 2px 8px rgba(0,0,0,.08);
+  --font:       'Inter','Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font: 15px/1.5 var(--font);
+  color: var(--body);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- App bar ---------- */
+header.appbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 22px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.brandmark {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: linear-gradient(135deg, var(--navy), var(--navy-light));
+  display: grid; place-items: center; flex: none;
+  box-shadow: var(--shadow);
+}
+.brandmark span { width: 12px; height: 12px; border-radius: 50%; background: var(--teal); }
+.appbar .titles h1 { font-size: 18px; font-weight: 700; color: var(--navy); margin: 0; letter-spacing: -.2px; }
+.appbar .titles p  { font-size: 12.5px; color: var(--muted); margin: 1px 0 0; }
+.appbar .spacer { flex: 1; }
+#dataStatus { font-size: 12px; color: var(--muted); }
+#dataStatus.ready { color: var(--green); }
+#dataStatus.error { color: var(--red); }
+.ver { font-size: 11px; color: var(--muted); margin-left: 12px; }
+
+/* ---------- Privacy banner ---------- */
+.privacy {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 22px;
+  background: color-mix(in srgb, var(--teal) 9%, white);
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px; color: var(--navy);
+}
+.privacy svg { flex: none; }
+.privacy b { font-weight: 600; }
+
+/* ---------- Toolbar ---------- */
+.toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 22px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.toolbar .group { display: flex; align-items: center; gap: 8px; }
+.toolbar .sep { width: 1px; height: 24px; background: var(--border); }
+.toolbar .spacer { flex: 1; }
+button, label.btn, select {
+  font: 500 13.5px var(--font);
+  color: var(--navy);
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+button:hover, label.btn:hover, select:hover { border-color: var(--teal); }
+button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+button.primary:hover { background: var(--teal-dark); border-color: var(--teal-dark); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+select { padding-right: 28px; }
+input[type=file] { display: none; }
+label.field { font-size: 12px; color: var(--muted); margin-right: 2px; }
+
+/* ---------- Workspace ---------- */
+main {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px 22px 20px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  min-height: 0; min-width: 0;
+}
+.card-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.card-head h2 { font-size: 13px; font-weight: 700; color: var(--navy); margin: 0; text-transform: uppercase; letter-spacing: .5px; }
+.card-head .count { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--teal-dark); }
+
+/* tabs (right card) */
+.tabs { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.tabs button { border: 0; border-radius: 0; background: transparent; padding: 6px 14px; font-size: 12.5px; }
+.tabs button.active { background: var(--teal); color: #fff; }
+
+/* editor */
+.editor-wrap { position: relative; flex: 1; min-height: 240px; }
+.editor-wrap.drop-active::after {
+  content: "Drop file to load";
+  position: absolute; inset: 10px; z-index: 5;
+  border: 2px dashed var(--teal); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  color: var(--teal-dark); font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.editor, .overlay {
+  position: absolute; inset: 0; margin: 0;
+  padding: 16px;
+  font: 13.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border: 0; background: transparent;
+  white-space: pre-wrap; word-wrap: break-word; overflow: auto;
+  tab-size: 4;
+}
+.editor { resize: none; outline: none; color: var(--body); caret-color: var(--navy); }
+.editor::placeholder { color: var(--muted); }
+.editor-wrap.highlighted .editor { color: transparent; caret-color: var(--navy); }
+.overlay { pointer-events: none; color: var(--body); }
+.editor-wrap:not(.highlighted) .overlay { display: none; }
+
+mark.pii {
+  --mc: var(--muted);
+  background: color-mix(in srgb, var(--mc) 15%, white);
+  color: var(--navy);
+  border-bottom: 2px solid var(--mc);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+mark.pii.token { background: color-mix(in srgb, var(--mc) 22%, white); font-weight: 600; }
+
+/* big-file notice */
+.bigfile-note {
+  margin: 0; padding: 10px 16px;
+  background: color-mix(in srgb, var(--amber) 14%, white);
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px; color: var(--navy);
+}
+.bigfile-note[hidden] { display: none; }
+
+/* type panel */
+.typepanel { border-top: 1px solid var(--border); padding: 10px 14px; }
+.typepanel .row { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 9px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--bg);
+  font-size: 11.5px; color: var(--navy); cursor: pointer; user-select: none;
+}
+.chip input { display: none; }
+.chip .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--mc); flex: none; }
+.chip .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip.off { opacity: .42; }
+.chip.off .n { color: var(--muted); }
+.typepanel .meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
+
+/* output panes */
+.outwrap { flex: 1; min-height: 240px; position: relative; }
+.redacted, .summary { position: absolute; inset: 0; margin: 0; padding: 16px; overflow: auto; }
+.redacted {
+  font: 13.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; word-wrap: break-word; color: var(--body);
+}
+.summary { font-size: 13px; }
+.summary[hidden], .redacted[hidden] { display: none; }
+.summary .group { margin-bottom: 14px; }
+.summary .group h3 {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--muted); margin: 0 0 6px;
+}
+.summary .group h3 .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--mc); }
+.summary .group h3 .gc { color: var(--navy); font-weight: 700; }
+.summary ul { list-style: none; margin: 0; padding: 0; }
+.summary li {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg); border-left: 3px solid var(--mc);
+  padding: 6px 10px; border-radius: 4px; margin-bottom: 4px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.summary li .val { flex: 1; word-break: break-all; color: var(--navy); }
+.summary li .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--mc); }
+.empty { color: var(--muted); font-style: italic; padding: 24px; text-align: center; }
+.scanning { position: absolute; top: 10px; right: 14px; font-size: 11.5px; color: var(--teal-dark); }
+.scanning[hidden] { display: none; }
+
+@media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="brandmark"><span></span></div>
+  <div class="titles">
+    <h1>PII Redactor</h1>
+    <p>Local PII scrubbing — nothing leaves your machine.</p>
+  </div>
+  <div class="spacer"></div>
+  <span id="dataStatus">Loading reference data…</span>
+  <span class="ver">v<!--INLINE:version--></span>
+</header>
+
+<div class="privacy">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1B2A4A" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+  <span><b>100% local.</b> No upload, no network — enforced by a Content-Security-Policy that blocks all outbound connections.</span>
+</div>
+
+<div class="toolbar">
+  <div class="group">
+    <label class="btn" for="file">Load file…</label>
+    <input id="file" type="file" accept=".txt,.text,.csv,.tsv,.log,.md,.markdown,.json,.xml,.yaml,.yml,.html,.htm,.pdf,.docx,text/*" />
+    <button id="sample">Load sample</button>
+    <button id="clear">Clear</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <label class="field" for="style">Redaction style</label>
+    <select id="style">
+      <option value="labeled">Labeled — [NAME]</option>
+      <option value="numbered">Numbered — [NAME_1]</option>
+      <option value="mask">Full mask — ████</option>
+    </select>
+  </div>
+  <div class="spacer"></div>
+  <div class="group">
+    <button id="copy">Copy redacted</button>
+    <button id="download" class="primary">Download</button>
+  </div>
+</div>
+
+<main>
+  <section class="card" id="sourceCard">
+    <div class="card-head">
+      <h2>Source</h2>
+      <span class="count" id="leftCount">0 found</span>
+    </div>
+    <p class="bigfile-note" id="bigfileNote" hidden></p>
+    <div class="editor-wrap highlighted" id="leftWrap">
+      <textarea class="editor" id="input" spellcheck="false" placeholder="Paste text here, drop a file, or use Load file… (text, PDF, or Word .docx)"></textarea>
+      <div class="overlay" id="overlay" aria-hidden="true"></div>
+    </div>
+    <div class="typepanel">
+      <div class="row" id="typeRow"></div>
+      <div class="meta" id="typeMeta">Toggle a type to include or exclude it from detection &amp; redaction.</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div class="tabs" id="tabs">
+        <button data-view="redacted" class="active">Redacted</button>
+        <button data-view="summary">Detected PII</button>
+      </div>
+      <span class="count" id="rightCount"></span>
+    </div>
+    <div class="outwrap">
+      <span class="scanning" id="scanning" hidden>Scanning…</span>
+      <pre class="redacted" id="redacted"></pre>
+      <div class="summary" id="summary" hidden></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================================================= -->
+<!-- Detection worker source. The 2 MB reference data lives ONLY    -->
+<!-- here (inside the worker), so the main/UI thread never holds it -->
+<!-- and never blocks on a scan. Built into a Blob URL at runtime.  -->
+<!-- ============================================================= -->
+<script type="text/js-worker" id="detectWorkerSrc">
+"use strict";
+// Worker global is `self`; the data files assign to `window.*`, so alias it.
+var window = self;
+
+/*INLINE:data*/
+
+// ---------- Reference data hookups ----------
+var FIRST_NAMES = (self.PII_FIRST_NAMES instanceof Set) ? self.PII_FIRST_NAMES : new Set();
+var LAST_NAMES  = (self.PII_LAST_NAMES  instanceof Set) ? self.PII_LAST_NAMES  : new Set();
+var PLACES      = (self.PII_PLACES && typeof self.PII_PLACES === "object") ? self.PII_PLACES : {};
+
+// ---------- Static regex / data ----------
+var STATES_FULL = {
+  "alabama":"AL","alaska":"AK","arizona":"AZ","arkansas":"AR","california":"CA",
+  "colorado":"CO","connecticut":"CT","delaware":"DE","florida":"FL","georgia":"GA",
+  "hawaii":"HI","idaho":"ID","illinois":"IL","indiana":"IN","iowa":"IA",
+  "kansas":"KS","kentucky":"KY","louisiana":"LA","maine":"ME","maryland":"MD",
+  "massachusetts":"MA","michigan":"MI","minnesota":"MN","mississippi":"MS","missouri":"MO",
+  "montana":"MT","nebraska":"NE","nevada":"NV","new hampshire":"NH","new jersey":"NJ",
+  "new mexico":"NM","new york":"NY","north carolina":"NC","north dakota":"ND","ohio":"OH",
+  "oklahoma":"OK","oregon":"OR","pennsylvania":"PA","rhode island":"RI","south carolina":"SC",
+  "south dakota":"SD","tennessee":"TN","texas":"TX","utah":"UT","vermont":"VT",
+  "virginia":"VA","washington":"WA","west virginia":"WV","wisconsin":"WI","wyoming":"WY",
+  "district of columbia":"DC"
+};
+var STATE_ABBR = new Set(Object.values(STATES_FULL));
+var STATE_FULL_RE = new RegExp("\\b(" + Object.keys(STATES_FULL).join("|").replace(/ /g,"\\s+") + ")\\b", "gi");
+var STATE_ABBR_RE = new RegExp("\\b(" + [...STATE_ABBR].join("|") + ")\\b", "g"); // case-sensitive
+
+var STREET_SUFFIXES = [
+  "street","st","avenue","ave","road","rd","boulevard","blvd","lane","ln",
+  "drive","dr","court","ct","place","pl","way","parkway","pkwy","circle","cir",
+  "trail","trl","highway","hwy","terrace","ter","loop","square","sq","plaza","plz"
+];
+var STREET_RE = new RegExp(
+  "\\b\\d{1,6}\\s+(?:[NSEW]\\.?\\s+)?[A-Za-z0-9'\\-\\.]+(?:\\s+[A-Za-z0-9'\\-\\.]+){0,4}\\s+(?:" +
+  STREET_SUFFIXES.join("|") + ")\\b\\.?",
+  "gi"
+);
+var SECONDARY_RE = /\b(?:suite|ste|apt|apartment|unit|#|floor|fl|bldg|building|rm|room)\.?\s*[\w\d-]+\b/gi;
+var SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
+var PHONE_RE = /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}\b/g;
+var ZIP_RE = /\b\d{5}(?:-\d{4})?\b/g;
+var EMAIL_RE = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,24}\b/g;
+var NUMERIC_CANDIDATE_RE = /\b\d(?:[\s\-]?\d){4,18}\b/g;
+var VIN_RE = /\b[A-HJ-NPR-Z0-9]{17}\b/gi;
+
+// New PII value patterns
+var IPV4_RE = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g;
+var IPV6_RE = /\b(?:[A-Fa-f0-9]{1,4}:){3,7}[A-Fa-f0-9]{1,4}\b/g; // >=4 groups: avoids HH:MM:SS times
+var NINE_DIGIT_RE = /\b\d{9}\b/g;
+var DATE_RE = /\b(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})\b/gi;
+// Keyword-anchored capture (the keyword gate IS the pattern)
+var PASSPORT_RE = /passport\s*(?:no\.?|number|#|:)?\s*([A-Z0-9]{6,9})\b/gi;
+var DL_RE = /(?:driver'?s?\s+licen[cs]e|\bdl\b|license)\s*(?:no\.?|number|#|:)?\s*([A-Z0-9]{5,15})\b/gi;
+// Windowed keyword gates
+var ROUTING_KW = /\b(?:routing|aba|rtn|transit)\b/i;
+var DOB_KW = /\b(?:d\.?o\.?b\.?|date\s+of\s+birth|birth\s*date|born)\b/i;
+
+var NAME_STOPWORDS = new Set(`
+the a an and or but if then so as is are was were be been being am do does did have has had
+can could will would shall should may might must of for to in on at by with from into onto
+upon about over under between among through during before after since until while because
+although though however therefore however whether either neither both each every any some
+no not yes very just only also even still here there now today tomorrow yesterday
+i you he she it we they me him her us them my your his hers its our their mine yours ours theirs
+this that these those who whom whose which what where when why how
+loan title rate fee account amount balance payment due paid pay owe debt principal interest
+term period escrow taxes insurance premium charge charges deposit refund credit
+home auto vehicle car truck mortgage lease finance note bond
+will may must can shall should would could
+yes no okay ok sure thanks hello hi
+date time day month year week
+new old next last first second third
+high low more less most least best worst
+right left above below center side end front back top bottom
+true false unknown other none null void
+`.trim().toLowerCase().split(/\s+/));
+
+// ---------- Name detection ----------
+function isTitleCase(tok) { return /^[A-Z][a-z'’\-]*(?:[A-Z][a-z'’\-]*)*$/.test(tok) && /[a-z]/.test(tok); }
+function isAllCaps(tok)  { return /^[A-Z][A-Z'’\-]*$/.test(tok) && tok.length >= 2; }
+function nameTokenOk(tok){ if (NAME_STOPWORDS.has(tok.toLowerCase())) return false; return isTitleCase(tok) || isAllCaps(tok); }
+
+function findNames(text) {
+  var out = [];
+  if (!FIRST_NAMES.size || !LAST_NAMES.size) return out;
+  var re = /\b([A-Za-z][A-Za-z'’\-]+)(?:\s+([A-Za-z])\.?)?\s+([A-Za-z][A-Za-z'’\-]+)\b/g, m;
+  while ((m = re.exec(text)) !== null) {
+    var fnTok = m[1], lnTok = m[3];
+    if (!nameTokenOk(fnTok) || !nameTokenOk(lnTok)) continue;
+    if (!FIRST_NAMES.has(fnTok.toLowerCase())) continue;
+    if (!LAST_NAMES.has(lnTok.toLowerCase())) continue;
+    out.push({ start: m.index, end: m.index + m[0].length, type: "Name", value: m[0], priority: 20 });
+  }
+  var titledRe = /\b(Mr|Mrs|Ms|Miss|Dr|Prof|Rev|Sir|Madam)\.?\s+([A-Za-z][A-Za-z'’\-]+)\b/g;
+  while ((m = titledRe.exec(text)) !== null) {
+    var ln = m[2];
+    if (!nameTokenOk(ln)) continue;
+    if (!LAST_NAMES.has(ln.toLowerCase())) continue;
+    out.push({ start: m.index, end: m.index + m[0].length, type: "Name", value: m[0], priority: 20 });
+  }
+  return out;
+}
+
+// ---------- City detection (hash-lookup, not a megaregex) ----------
+// Scan TitleCase word-sequences and probe the PLACES map. O(1) per candidate
+// vs. running a 21k-branch alternation over the whole text. More precise too:
+// requiring TitleCase avoids the old case-insensitive false-positive surface.
+function findCities(text) {
+  var out = [];
+  if (!PLACES || !Object.keys(PLACES).length) return out;
+  var re = /\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\b/g, m;
+  while ((m = re.exec(text)) !== null) {
+    var phrase = m[1];
+    if (PLACES[phrase.toLowerCase()]) {
+      out.push({ start: m.index, end: m.index + phrase.length, type: "City", value: phrase, priority: 30 });
+      continue;
+    }
+    // shrink longest-first: "Milwaukee County" -> "Milwaukee"
+    var toks = phrase.split(/\s+/);
+    for (var n = toks.length - 1; n >= 1; n--) {
+      var sub = toks.slice(0, n).join(" ");
+      if (PLACES[sub.toLowerCase()]) {
+        out.push({ start: m.index, end: m.index + sub.length, type: "City", value: sub, priority: 30 });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+// ---------- Account / Credit Card ----------
+function luhnValid(d) {
+  var sum = 0, alt = false;
+  for (var i = d.length - 1; i >= 0; i--) {
+    var x = d.charCodeAt(i) - 48;
+    if (x < 0 || x > 9) return false;
+    if (alt) { x *= 2; if (x > 9) x -= 9; }
+    sum += x; alt = !alt;
+  }
+  return sum % 10 === 0;
+}
+function ccBrand(d) {
+  var n = d.length;
+  if (/^4/.test(d) && (n === 13 || n === 16 || n === 19)) return "Visa";
+  if (n === 16) { if (/^5[1-5]/.test(d)) return "Mastercard"; var p4 = parseInt(d.slice(0,4),10); if (p4 >= 2221 && p4 <= 2720) return "Mastercard"; }
+  if (/^3[47]/.test(d) && n === 15) return "Amex";
+  if ((n === 16 || n === 19) && (/^6011/.test(d) || /^65/.test(d) || /^64[4-9]/.test(d))) return "Discover";
+  if (n >= 14 && n <= 19 && (/^36/.test(d) || /^38/.test(d) || /^39/.test(d) || /^30[0-5]/.test(d))) return "Diners";
+  if (n >= 16 && n <= 19 && /^35(2[89]|[3-8]\d)/.test(d)) return "JCB";
+  return null;
+}
+function findCreditCardsAndAccounts(text) {
+  var out = [], m;
+  NUMERIC_CANDIDATE_RE.lastIndex = 0;
+  while ((m = NUMERIC_CANDIDATE_RE.exec(text)) !== null) {
+    var raw = m[0], digits = raw.replace(/[\s\-]/g, "");
+    var start = m.index, end = m.index + raw.length;
+    if (/^\d{3}-\d{2}-\d{4}$/.test(raw)) continue;            // SSN shape -> SSN_RE owns it
+    if (digits.length >= 13 && digits.length <= 19 && luhnValid(digits) && ccBrand(digits)) {
+      out.push({ start: start, end: end, type: "CreditCard", value: raw, priority: 95 });
+      continue;
+    }
+    if (digits.length >= 5 && digits.length <= 19) {
+      out.push({ start: start, end: end, type: "Account", value: raw, priority: 55 });
+    }
+  }
+  return out;
+}
+
+// ---------- ABA routing checksum ----------
+function abaValid(d) {
+  if (d.length !== 9) return false;
+  var n = [];
+  for (var i = 0; i < 9; i++) n.push(d.charCodeAt(i) - 48);
+  var sum = 3*(n[0]+n[3]+n[6]) + 7*(n[1]+n[4]+n[7]) + (n[2]+n[5]+n[8]);
+  return sum % 10 === 0;
+}
+function nearKeyword(text, start, end, re, before, after) {
+  var lo = Math.max(0, start - before);
+  var hi = Math.min(text.length, end + after);
+  return re.test(text.slice(lo, hi));
+}
+
+// ---------- New keyword-gated detectors ----------
+function findRouting(text) {
+  var out = [], m;
+  NINE_DIGIT_RE.lastIndex = 0;
+  while ((m = NINE_DIGIT_RE.exec(text)) !== null) {
+    var d = m[0];
+    if (!abaValid(d)) continue;
+    if (!nearKeyword(text, m.index, m.index + 9, ROUTING_KW, 20, 20)) continue;
+    out.push({ start: m.index, end: m.index + 9, type: "Routing", value: d, priority: 88 });
+  }
+  return out;
+}
+function findDOB(text) {
+  var out = [], m;
+  DATE_RE.lastIndex = 0;
+  while ((m = DATE_RE.exec(text)) !== null) {
+    var s = m.index, e = m.index + m[0].length;
+    // gate: a DOB keyword must PRECEDE the date within ~25 chars (avoids due-date noise)
+    if (!DOB_KW.test(text.slice(Math.max(0, s - 25), s))) continue;
+    out.push({ start: s, end: e, type: "DOB", value: m[0], priority: 78 });
+  }
+  return out;
+}
+function findIPs(text) {
+  var out = [], m;
+  IPV4_RE.lastIndex = 0;
+  while ((m = IPV4_RE.exec(text)) !== null) out.push({ start: m.index, end: m.index + m[0].length, type: "IPAddress", value: m[0], priority: 108 });
+  IPV6_RE.lastIndex = 0;
+  while ((m = IPV6_RE.exec(text)) !== null) out.push({ start: m.index, end: m.index + m[0].length, type: "IPAddress", value: m[0], priority: 108 });
+  return out;
+}
+// Keyword-anchored: token captured in group 1 sits at the END of the match.
+function findAnchored(text, re, type, prio, requireDigit) {
+  var out = [], m;
+  re.lastIndex = 0;
+  while ((m = re.exec(text)) !== null) {
+    var tok = m[1];
+    if (!tok) continue;
+    if (requireDigit && !/\d/.test(tok)) continue;       // cuts "License Agreement"
+    var end = m.index + m[0].length;
+    var start = end - tok.length;
+    out.push({ start: start, end: end, type: type, value: tok, priority: prio });
+  }
+  return out;
+}
+
+// ---------- detect() + overlap resolver ----------
+function detect(text) {
+  var matches = [];
+  function push(re, type, prio) { var m; re.lastIndex = 0; while ((m = re.exec(text)) !== null) matches.push({ start: m.index, end: m.index + m[0].length, type: type, value: m[0], priority: prio }); }
+
+  for (var x of findIPs(text)) matches.push(x);          // 108
+  push(EMAIL_RE, "Email", 105);
+  push(SSN_RE,   "SSN",   100);
+  push(VIN_RE,   "VIN",   90);
+  for (var r of findRouting(text)) matches.push(r);      // 88, gated
+  push(PHONE_RE, "Phone", 80);
+  for (var d of findDOB(text)) matches.push(d);          // 78, gated
+  for (var p of findAnchored(text, PASSPORT_RE, "Passport", 76, true)) matches.push(p);
+  for (var l of findAnchored(text, DL_RE, "DriversLicense", 74, true)) matches.push(l);
+  for (var c of findCreditCardsAndAccounts(text)) matches.push(c);  // CC 95 / Account 55
+  push(STREET_RE, "Address1", 70);
+  push(SECONDARY_RE, "Address2", 60);
+  push(ZIP_RE, "Zip", 58);   // above Account(55): a bare 5-digit ZIP must not read as [ACCOUNT]
+  push(STATE_FULL_RE, "State", 40);
+  push(STATE_ABBR_RE, "State", 35);
+  for (var ci of findCities(text)) matches.push(ci);     // 30
+  for (var nm of findNames(text)) matches.push(nm);      // 20
+
+  // Resolve overlaps: higher priority wins; ties -> longer span.
+  matches.sort(function(a,b){ return a.start - b.start || b.priority - a.priority || (b.end-b.start)-(a.end-a.start); });
+  var kept = [];
+  for (var i = 0; i < matches.length; i++) {
+    var mm = matches[i];
+    var conflict = null;
+    for (var k = 0; k < kept.length; k++) { if (!(mm.end <= kept[k].start || mm.start >= kept[k].end)) { conflict = kept[k]; break; } }
+    if (!conflict) { kept.push(mm); continue; }
+    var mScore = mm.priority * 1000 + (mm.end - mm.start);
+    var kScore = conflict.priority * 1000 + (conflict.end - conflict.start);
+    if (mScore > kScore) { kept.splice(kept.indexOf(conflict), 1); kept.push(mm); }
+  }
+  kept.sort(function(a,b){ return a.start - b.start; });
+  return kept;
+}
+
+// ---------- Worker protocol ----------
+var placeCount = Object.values(PLACES).reduce(function(a,v){ return a + v.length; }, 0);
+self.postMessage({ type: "ready", stats: { first: FIRST_NAMES.size, last: LAST_NAMES.size, places: Object.keys(PLACES).length, placeStates: placeCount } });
+
+self.onmessage = function(e) {
+  var msg = e.data;
+  if (!msg || msg.type !== "scan") return;
+  var matches;
+  try { matches = detect(msg.text || ""); }
+  catch (err) { self.postMessage({ type: "result", id: msg.id, error: String(err) }); return; }
+  self.postMessage({ type: "result", id: msg.id, matches: matches });
+};
+</script>
+
+<!-- pdf.js worker source, inlined for offline single-file use (Blob URL at runtime). -->
+<script type="text/js-worker" id="pdfWorkerSrc">/*INLINE:pdfworker*/</script>
+
+<!-- pdf.js (UMD) + mammoth, executed on the main thread for text extraction. -->
+<script>/*INLINE:pdfjs*/</script>
+<script>/*INLINE:mammoth*/</script>
+
+<!-- ============================ Main app ============================ -->
+<script>
+"use strict";
+
+var VERSION = "<!--INLINE:version-->";
+
+// type -> { label (redaction token), color }. Drives panel, legend, summary, marks.
+var TYPE_META = {
+  IPAddress:      { label: "IP",       color: "#2D6A4F" },
+  Email:          { label: "EMAIL",    color: "#0096C7" },
+  SSN:            { label: "SSN",      color: "#CF2E2E" },
+  VIN:            { label: "VIN",      color: "#7B5EA7" },
+  Routing:        { label: "ROUTING",  color: "#B8860B" },
+  Phone:          { label: "PHONE",    color: "#FF6900" },
+  DOB:            { label: "DOB",      color: "#00A878" },
+  Passport:       { label: "PASSPORT", color: "#6A4C93" },
+  DriversLicense: { label: "DL",       color: "#9C27B0" },
+  CreditCard:     { label: "CARD",     color: "#C2185B" },
+  Account:        { label: "ACCOUNT",  color: "#E0A800" },
+  Name:           { label: "NAME",     color: "#00B4D8" },
+  Address1:       { label: "ADDRESS",  color: "#E63946" },
+  Address2:       { label: "ADDRESS2", color: "#F4845F" },
+  City:           { label: "CITY",     color: "#00B050" },
+  State:          { label: "STATE",    color: "#0077B6" },
+  Zip:            { label: "ZIP",      color: "#5E60CE" }
+};
+var TYPE_ORDER = Object.keys(TYPE_META);
+
+// Performance thresholds for the live inline highlight (detection always runs).
+var HILITE_MAX_CHARS = 600000;   // ~600 KB of text
+var HILITE_MAX_MARKS = 6000;
+
+var $ = function(s){ return document.querySelector(s); };
+var input = $("#input"), overlay = $("#overlay"), leftWrap = $("#leftWrap");
+var redactedEl = $("#redacted"), summaryEl = $("#summary");
+var leftCount = $("#leftCount"), rightCount = $("#rightCount");
+var dataStatus = $("#dataStatus"), bigfileNote = $("#bigfileNote"), scanningEl = $("#scanning");
+var styleSel = $("#style"), typeRow = $("#typeRow");
+
+var state = {
+  text: "",
+  all: [],                 // raw matches from worker
+  matches: [],             // filtered by enabled types
+  rightMode: "redacted",
+  enabled: new Set(TYPE_ORDER),
+  fileBase: "",            // original base name (no extension)
+  fileExt: "txt",          // extension to use on download
+  extracted: false,        // true for PDF/DOCX (output is .redacted.txt)
+  highlightOn: true
+};
+
+function escapeHtml(s){ return s.replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); }
+function normVal(v){ return v.toLowerCase().replace(/\s+/g, " ").trim(); }
+
+// ---------- redaction token (the runtime style toggle) ----------
+function makeCounters(){ return {}; }
+function tokenFor(m, style, counters) {
+  var label = TYPE_META[m.type].label;
+  if (style === "mask") {
+    var len = Math.max(4, Math.min(16, m.value.replace(/\s/g, "").length));
+    return "█".repeat(len);
+  }
+  if (style === "numbered") {
+    var bucket = counters[m.type] || (counters[m.type] = { map: new Map(), n: 0 });
+    var key = normVal(m.value);
+    var idx = bucket.map.get(key);
+    if (idx === undefined) { idx = ++bucket.n; bucket.map.set(key, idx); }
+    return "[" + label + "_" + idx + "]";
+  }
+  return "[" + label + "]";
+}
+
+function buildRedactedText(text, matches, style) {
+  var counters = makeCounters(), out = "", cursor = 0;
+  for (var i = 0; i < matches.length; i++) {
+    var m = matches[i];
+    out += text.slice(cursor, m.start) + tokenFor(m, style, counters);
+    cursor = m.end;
+  }
+  return out + text.slice(cursor);
+}
+
+// ---------- rendering ----------
+function renderOverlay(text, matches) {
+  if (!matches.length) { overlay.innerHTML = escapeHtml(text); return; }
+  var html = "", cursor = 0;
+  for (var i = 0; i < matches.length; i++) {
+    var m = matches[i];
+    html += escapeHtml(text.slice(cursor, m.start));
+    html += '<mark class="pii" style="--mc:' + TYPE_META[m.type].color + '">' + escapeHtml(m.value) + "</mark>";
+    cursor = m.end;
+  }
+  overlay.innerHTML = html + escapeHtml(text.slice(cursor));
+}
+
+function renderRedacted(text, matches, style) {
+  if (!matches.length) { redactedEl.textContent = text; return; }
+  var counters = makeCounters(), html = "", cursor = 0;
+  for (var i = 0; i < matches.length; i++) {
+    var m = matches[i];
+    html += escapeHtml(text.slice(cursor, m.start));
+    html += '<mark class="pii token" style="--mc:' + TYPE_META[m.type].color + '">' + escapeHtml(tokenFor(m, style, counters)) + "</mark>";
+    cursor = m.end;
+  }
+  redactedEl.innerHTML = html + escapeHtml(text.slice(cursor));
+}
+
+function renderSummary(matches) {
+  if (!matches.length) { summaryEl.innerHTML = '<div class="empty">No PII detected yet — paste text or load a file.</div>'; return; }
+  var byType = {}; TYPE_ORDER.forEach(function(t){ byType[t] = []; });
+  matches.forEach(function(m){ byType[m.type].push(m); });
+  var html = "";
+  TYPE_ORDER.forEach(function(t){
+    if (!byType[t].length) return;
+    var c = TYPE_META[t].color;
+    html += '<div class="group" style="--mc:' + c + '">';
+    html += '<h3><span class="sw"></span>' + t + ' <span class="gc">' + byType[t].length + '</span></h3><ul>';
+    byType[t].forEach(function(m){ html += '<li style="--mc:' + c + '"><span class="val">' + escapeHtml(m.value) + '</span><span class="tag">[' + TYPE_META[t].label + ']</span></li>'; });
+    html += '</ul></div>';
+  });
+  summaryEl.innerHTML = html;
+}
+
+function buildTypePanel() {
+  var html = "";
+  TYPE_ORDER.forEach(function(t){
+    var meta = TYPE_META[t];
+    html += '<label class="chip" data-type="' + t + '" style="--mc:' + meta.color + '">' +
+            '<input type="checkbox" checked><span class="sw"></span>' + t +
+            ' <span class="n" data-n="' + t + '">0</span></label>';
+  });
+  typeRow.innerHTML = html;
+  typeRow.querySelectorAll(".chip").forEach(function(chip){
+    chip.addEventListener("click", function(e){
+      e.preventDefault();
+      var t = chip.dataset.type;
+      if (state.enabled.has(t)) state.enabled.delete(t); else state.enabled.add(t);
+      chip.classList.toggle("off", !state.enabled.has(t));
+      chip.querySelector("input").checked = state.enabled.has(t);
+      applyFilterAndRender();
+    });
+  });
+}
+
+function updateTypeCounts() {
+  var counts = {}; TYPE_ORDER.forEach(function(t){ counts[t] = 0; });
+  state.all.forEach(function(m){ counts[m.type]++; });
+  TYPE_ORDER.forEach(function(t){
+    var el = typeRow.querySelector('[data-n="' + t + '"]');
+    if (el) el.textContent = counts[t];
+  });
+}
+
+// Filter raw matches by enabled types, then render everything from cache (no re-scan).
+function applyFilterAndRender() {
+  state.matches = state.all.filter(function(m){ return state.enabled.has(m.type); });
+  var style = styleSel.value;
+
+  // live highlight only under threshold
+  state.highlightOn = state.text.length <= HILITE_MAX_CHARS && state.matches.length <= HILITE_MAX_MARKS;
+  if (state.highlightOn) {
+    leftWrap.classList.add("highlighted");
+    renderOverlay(state.text, state.matches);
+    bigfileNote.hidden = true;
+  } else {
+    leftWrap.classList.remove("highlighted");
+    overlay.innerHTML = "";
+    bigfileNote.hidden = false;
+    bigfileNote.textContent = "Large input: live highlighting is off for responsiveness. Detection and redaction are fully active — " +
+      state.matches.length.toLocaleString() + " items found.";
+  }
+
+  if (state.rightMode === "redacted") { renderRedacted(state.text, state.matches, style); redactedEl.hidden = false; summaryEl.hidden = true; }
+  else { renderSummary(state.matches); redactedEl.hidden = true; summaryEl.hidden = false; }
+
+  leftCount.textContent = state.matches.length + " found";
+  rightCount.textContent = state.matches.length ? (state.matches.length + " item" + (state.matches.length === 1 ? "" : "s")) : "";
+  updateTypeCounts();
+  syncScroll();
+}
+
+function syncScroll(){ overlay.scrollTop = input.scrollTop; overlay.scrollLeft = input.scrollLeft; }
+
+// ---------- detection worker ----------
+var worker = null, reqId = 0, latestRendered = 0;
+function startWorker() {
+  var src = document.getElementById("detectWorkerSrc").textContent;
+  var url = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
+  worker = new Worker(url);
+  worker.onmessage = function(e) {
+    var msg = e.data;
+    if (msg.type === "ready") {
+      dataStatus.className = "ready";
+      dataStatus.textContent = "Reference data: " + msg.stats.first.toLocaleString() + " first names · " +
+        msg.stats.last.toLocaleString() + " surnames · " + msg.stats.places.toLocaleString() + " US places";
+      scan(); // initial (sample/empty)
+      return;
+    }
+    if (msg.type === "result") {
+      if (msg.id < latestRendered) return;        // ignore stale
+      latestRendered = msg.id;
+      scanningEl.hidden = true;
+      state.all = msg.error ? [] : (msg.matches || []);
+      applyFilterAndRender();
+    }
+  };
+}
+
+var scanTimer = null;
+function scan() {
+  state.text = input.value;
+  if (!worker) return;
+  scanningEl.hidden = state.text.length < 50000;     // only flag long scans
+  worker.postMessage({ type: "scan", id: ++reqId, text: state.text });
+}
+function scheduleScan(){ clearTimeout(scanTimer); scanTimer = setTimeout(scan, 200); }
+
+// ---------- file ingestion ----------
+var pdfWorkerUrl = null;
+function setupPdfWorker() {
+  if (pdfWorkerUrl || typeof pdfjsLib === "undefined") return;
+  var src = document.getElementById("pdfWorkerSrc").textContent;
+  pdfWorkerUrl = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+}
+
+function splitName(name) {
+  var dot = name.lastIndexOf(".");
+  if (dot <= 0) return { base: name, ext: "txt" };
+  return { base: name.slice(0, dot), ext: name.slice(dot + 1).toLowerCase() };
+}
+
+async function extractPdf(file) {
+  setupPdfWorker();
+  var buf = await file.arrayBuffer();
+  var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  var parts = [];
+  for (var p = 1; p <= pdf.numPages; p++) {
+    var page = await pdf.getPage(p);
+    var content = await page.getTextContent();
+    parts.push(content.items.map(function(it){ return it.str; }).join(" "));
+  }
+  return parts.join("\n\n");
+}
+
+async function loadFile(file) {
+  if (!file) return;
+  var nm = splitName(file.name);
+  var ext = nm.ext;
+  try {
+    if (ext === "pdf") {
+      dataStatus.textContent = "Extracting PDF…";
+      input.value = await extractPdf(file);
+      state.extracted = true; state.fileExt = "txt";
+    } else if (ext === "docx") {
+      dataStatus.textContent = "Extracting Word document…";
+      var ab = await file.arrayBuffer();
+      var res = await mammoth.extractRawText({ arrayBuffer: ab });
+      input.value = res.value;
+      state.extracted = true; state.fileExt = "txt";
+    } else if (ext === "doc") {
+      alert("Legacy .doc (binary Word) is not supported. Please save it as .docx or paste the text.");
+      return;
+    } else {
+      input.value = await file.text();
+      state.extracted = false; state.fileExt = ext || "txt";
+    }
+    state.fileBase = nm.base;
+    dataStatus.className = "ready";
+    scan();
+  } catch (err) {
+    alert("Could not read “" + file.name + "”: " + err.message);
+  }
+}
+
+// ---------- copy / download ----------
+function currentRedactedText(){ return buildRedactedText(state.text, state.matches, styleSel.value); }
+
+function download() {
+  var text = currentRedactedText();
+  var base = state.fileBase || "redacted";
+  var name = state.extracted ? (base + ".redacted.txt") : (base + ".redacted." + state.fileExt);
+  var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+
+async function copyRedacted() {
+  var text = currentRedactedText();
+  try { await navigator.clipboard.writeText(text); flash($("#copy"), "Copied!"); }
+  catch (e) {
+    // clipboard API can be unavailable on file://; fall back to a hidden textarea
+    var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
+    ta.select(); try { document.execCommand("copy"); flash($("#copy"), "Copied!"); } catch (_) { alert("Copy failed — select the Redacted pane manually."); }
+    document.body.removeChild(ta);
+  }
+}
+function flash(btn, txt) { var old = btn.textContent; btn.textContent = txt; setTimeout(function(){ btn.textContent = old; }, 1100); }
+
+// ---------- events ----------
+input.addEventListener("input", scheduleScan);
+input.addEventListener("scroll", syncScroll);
+
+$("#file").addEventListener("change", function(e){ loadFile(e.target.files[0]); });
+$("#clear").addEventListener("click", function(){ input.value = ""; state.fileBase = ""; state.extracted = false; state.fileExt = "txt"; scan(); });
+styleSel.addEventListener("change", applyFilterAndRender);
+$("#copy").addEventListener("click", copyRedacted);
+$("#download").addEventListener("click", download);
+
+$("#tabs").addEventListener("click", function(e){
+  var btn = e.target.closest("button"); if (!btn) return;
+  document.querySelectorAll("#tabs button").forEach(function(b){ b.classList.toggle("active", b === btn); });
+  state.rightMode = btn.dataset.view;
+  applyFilterAndRender();
+});
+
+// drag & drop
+var dragDepth = 0;
+function hasFiles(e){ return e.dataTransfer && [].indexOf.call(e.dataTransfer.types || [], "Files") !== -1; }
+leftWrap.addEventListener("dragenter", function(e){ if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; leftWrap.classList.add("drop-active"); });
+leftWrap.addEventListener("dragover",  function(e){ if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+leftWrap.addEventListener("dragleave", function(e){ if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) leftWrap.classList.remove("drop-active"); });
+leftWrap.addEventListener("drop",      function(e){ if (!e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); dragDepth = 0; leftWrap.classList.remove("drop-active"); loadFile(e.dataTransfer.files[0]); });
+window.addEventListener("dragover", function(e){ e.preventDefault(); });
+window.addEventListener("drop", function(e){ e.preventDefault(); });
+
+$("#sample").addEventListener("click", function(){
+  input.value =
+`Customer: John Q. Smith
+Co-applicant: Mary T. Smith
+Email: john.smith@example.com
+Alt email: mary_t.smith+loan@acme.co.uk
+
+Mailing Address:
+123 Main Street
+Suite 401
+Milwaukee, WI 53202
+
+Alt zip: 23245-3453
+
+Phones:
+(716) 234-2242
+716-234-2242
++1 716.234.2242
+
+Loan account: 53563453-3
+SSN: 234-45-3455
+Date of birth: 04/12/1986
+D.O.B. March 7, 1990
+
+Bank routing (ABA): 021000021
+Wire transit number 011401533
+
+Vehicle: 2018 Honda Civic, VIN 1HGBH41JXMN109186
+Also: 5YJSA1E26HF000337 (Tesla)
+
+Payment methods:
+Visa 4111 1111 1111 1111
+MC: 5555-5555-5555-4444
+Amex 378282246310005
+Disc 6011000990139424
+Plain account: 9876543210
+
+Server logs: client 192.168.1.42 -> 10.0.0.7, gw 2001:0db8:85a3:0000:0000:8a2e:0370:7334
+
+Driver's license no D1234567
+Passport number X1234567
+
+Notes — applicant lives in Wisconsin and previously resided in Chicago, IL 60601.
+Secondary contact: Dr. Patel, phone 4145551212.
+Borrower asked about my loan, my title, my due date and my rate.
+`;
+  state.fileBase = "sample"; state.extracted = false; state.fileExt = "txt";
+  scan();
+});
+
+// ---------- boot ----------
+buildTypePanel();
+startWorker();
+</script>
+</body>
+</html>
