@@ -2,6 +2,17 @@
 
 All notable changes to the R-SICCI SPA are documented here.
 
+## Unreleased
+
+- **Hosted on GitHub Pages** at https://bronty13.github.io/rsicci/ so external
+  participants/researchers can run it from a link (the NFEditor/CalendarMaker
+  pattern). Adds `scripts/deploy-pages.sh` + `npm run deploy` (builds, then pushes
+  the single-file artifact + `version.json` to the public `bronty13/rsicci` Pages
+  repo) and `base: './'` in the Vite config so the one inlined `index.html` runs
+  identically from the Pages URL and a saved `file://` copy. No app-behavior change
+  (app version stays 0.3.0); the deploy is fully client-side — no answers are
+  transmitted.
+
 ## 0.3.0 — 2026-06-24
 
 - **Per-theme breakdown for the non-restricted Module D interest themes**

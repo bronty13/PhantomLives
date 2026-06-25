@@ -6,6 +6,9 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 // instrument JSON inlined) so the SPA can be distributed and run offline by
 // double-clicking — no server, no external asset requests.
 export default defineConfig({
+  // `base: './'` lets the one inlined dist/index.html run identically from a
+  // GitHub Pages URL and from a saved file:// copy.
+  base: './',
   plugins: [react(), viteSingleFile()],
   test: {
     globals: true,

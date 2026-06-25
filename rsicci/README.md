@@ -7,6 +7,28 @@ Sexual Interests, Consent, and Context Inventory (R-SICCI, Draft v0.1)* and
 It is a non-clinical, **research-only**, IRB-gated instrument. It does **not**
 diagnose, predict criminality, or determine fitness, eligibility, or treatment.
 
+## Hosted
+
+Live (single bookmarkable URL, updates on refresh):
+**https://bronty13.github.io/rsicci/**
+
+Participants and researchers can open that link in any modern browser — there's
+nothing to install. The page is a fully client-side single file: **no participant
+answers are ever transmitted** (they're exported to a local file). The hosted copy
+and a saved `file://` copy behave identically.
+
+Privacy caveats vs. the instrument's data-governance rules: the survey **content**
+is publicly visible at the URL, and GitHub Pages logs visitor **IP addresses**
+server-side. No answers are collected either way.
+
+Deploy (source stays in this monorepo; only the built artifact is pushed to the
+public `bronty13/rsicci` Pages repo):
+
+```sh
+npm run deploy            # build → push dist/index.html + version.json → Pages
+PAGES_REPO=me/rsicci npm run deploy
+```
+
 ## Two roles, one file
 
 The built file (`dist/index.html`) has a home screen with two modes:
