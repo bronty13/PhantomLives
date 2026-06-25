@@ -64,7 +64,8 @@ header.appbar {
 #dataStatus { font-size: 12px; color: var(--muted); }
 #dataStatus.ready { color: var(--green); }
 #dataStatus.error { color: var(--red); }
-.ver { font-size: 11px; color: var(--muted); margin-left: 12px; }
+.ver { font-size: 11px; color: var(--muted); margin-left: 4px; }
+button.ghost { background: transparent; border-color: var(--border); }
 
 /* ---------- Privacy banner ---------- */
 .privacy {
@@ -129,12 +130,10 @@ main {
 .card-head h2 { font-size: 13px; font-weight: 700; color: var(--navy); margin: 0; text-transform: uppercase; letter-spacing: .5px; }
 .card-head .count { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--teal-dark); }
 
-/* tabs (right card) */
 .tabs { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .tabs button { border: 0; border-radius: 0; background: transparent; padding: 6px 14px; font-size: 12.5px; }
 .tabs button.active { background: var(--teal); color: #fff; }
 
-/* editor */
 .editor-wrap { position: relative; flex: 1; min-height: 240px; }
 .editor-wrap.drop-active::after {
   content: "Drop file to load";
@@ -169,7 +168,6 @@ mark.pii {
 }
 mark.pii.token { background: color-mix(in srgb, var(--mc) 22%, white); font-weight: 600; }
 
-/* big-file notice */
 .bigfile-note {
   margin: 0; padding: 10px 16px;
   background: color-mix(in srgb, var(--amber) 14%, white);
@@ -178,7 +176,6 @@ mark.pii.token { background: color-mix(in srgb, var(--mc) 22%, white); font-weig
 }
 .bigfile-note[hidden] { display: none; }
 
-/* type panel */
 .typepanel { border-top: 1px solid var(--border); padding: 10px 14px; }
 .typepanel .row { display: flex; flex-wrap: wrap; gap: 6px 8px; }
 .chip {
@@ -191,10 +188,8 @@ mark.pii.token { background: color-mix(in srgb, var(--mc) 22%, white); font-weig
 .chip .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--mc); flex: none; }
 .chip .n { color: var(--muted); font-variant-numeric: tabular-nums; }
 .chip.off { opacity: .42; }
-.chip.off .n { color: var(--muted); }
 .typepanel .meta { margin-top: 8px; font-size: 11px; color: var(--muted); }
 
-/* output panes */
 .outwrap { flex: 1; min-height: 240px; position: relative; }
 .redacted, .summary { position: absolute; inset: 0; margin: 0; padding: 16px; overflow: auto; }
 .redacted {
@@ -225,6 +220,61 @@ mark.pii.token { background: color-mix(in srgb, var(--mc) 22%, white); font-weig
 .scanning[hidden] { display: none; }
 
 @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+
+/* ---------- Manual modal ---------- */
+.modal { position: fixed; inset: 0; z-index: 50; display: flex; }
+.modal[hidden] { display: none; }
+.modal .backdrop { position: absolute; inset: 0; background: rgba(20,31,56,.45); }
+.modal .sheet {
+  position: relative; margin: auto; width: min(1000px, 94vw); height: min(86vh, 900px);
+  background: var(--card); border-radius: var(--radius-lg); box-shadow: 0 18px 60px rgba(0,0,0,.3);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.modal .sheet-head {
+  display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modal .sheet-head h2 { margin: 0; font-size: 16px; color: var(--navy); font-weight: 700; }
+.modal .sheet-head .spacer { flex: 1; }
+.modal .search { position: relative; }
+.modal .search input {
+  font: 400 13px var(--font); padding: 7px 12px 7px 30px; width: 240px;
+  border: 1px solid var(--border); border-radius: 20px; color: var(--navy); background: var(--bg);
+}
+.modal .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); opacity: .5; }
+.modal .search .hits { font-size: 11px; color: var(--muted); margin-left: 8px; }
+.modal .close { border: 0; background: transparent; font-size: 20px; line-height: 1; color: var(--muted); padding: 4px 8px; }
+.modal .close:hover { color: var(--navy); }
+.modal .sheet-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px 1fr; }
+.modal .toc {
+  border-right: 1px solid var(--border); overflow: auto; padding: 14px 10px; background: var(--bg);
+}
+.modal .toc a {
+  display: block; padding: 5px 10px; border-radius: 6px; font-size: 12.5px;
+  color: var(--navy); text-decoration: none; cursor: pointer;
+}
+.modal .toc a.lvl3 { padding-left: 22px; font-size: 12px; color: var(--body); }
+.modal .toc a:hover { background: color-mix(in srgb, var(--teal) 12%, white); }
+.modal .toc a.dim { opacity: .35; }
+.modal .doc { overflow: auto; padding: 22px 30px; }
+.modal .doc h1 { font-size: 24px; color: var(--navy); margin: 0 0 12px; }
+.modal .doc h2 { font-size: 19px; color: var(--navy); margin: 26px 0 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.modal .doc h3 { font-size: 15.5px; color: var(--navy-light); margin: 20px 0 8px; }
+.modal .doc p, .modal .doc li { font-size: 14px; line-height: 1.6; color: var(--body); }
+.modal .doc ul, .modal .doc ol { padding-left: 22px; }
+.modal .doc li { margin: 3px 0; }
+.modal .doc code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); padding: 1px 5px; border-radius: 4px; color: var(--navy-dark); }
+.modal .doc pre { background: var(--navy-dark); color: #e6e9ef; padding: 14px 16px; border-radius: var(--radius); overflow: auto; }
+.modal .doc pre code { background: transparent; color: inherit; padding: 0; }
+.modal .doc blockquote { border-left: 3px solid var(--teal); margin: 12px 0; padding: 4px 14px; background: color-mix(in srgb, var(--teal) 7%, white); color: var(--navy); }
+.modal .doc table { border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+.modal .doc th, .modal .doc td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.modal .doc th { background: var(--bg); color: var(--navy); }
+.modal .doc hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+.modal .doc a { color: var(--teal-dark); }
+.modal .doc mark.find { background: var(--amber); color: var(--navy); border-radius: 2px; }
+.modal .doc mark.find.cur { background: var(--orange); color: #fff; }
+@media (max-width: 720px) { .modal .sheet-body { grid-template-columns: 1fr; } .modal .toc { display: none; } }
 </style>
 </head>
 <body>
@@ -237,6 +287,7 @@ mark.pii.token { background: color-mix(in srgb, var(--mc) 22%, white); font-weig
   </div>
   <div class="spacer"></div>
   <span id="dataStatus">Loading reference data…</span>
+  <button id="manualBtn" class="ghost">Manual</button>
   <span class="ver">v<!--INLINE:version--></span>
 </header>
 
@@ -301,291 +352,61 @@ mark.pii.token { background: color-mix(in srgb, var(--mc) 22%, white); font-weig
   </section>
 </main>
 
+<!-- ---------- Manual modal ---------- -->
+<div class="modal" id="manualModal" hidden>
+  <div class="backdrop" id="manualBackdrop"></div>
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>User Manual</h2>
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1B2A4A" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="manualSearch" type="search" placeholder="Search the manual…" />
+        <span class="hits" id="manualHits"></span>
+      </div>
+      <div class="spacer"></div>
+      <button class="close" id="manualClose" title="Close (Esc)">&times;</button>
+    </div>
+    <div class="sheet-body">
+      <nav class="toc" id="manualToc"></nav>
+      <article class="doc" id="manualDoc"></article>
+    </div>
+  </div>
+</div>
+
+<!-- The User Manual markdown, inlined at build time (same bytes as USER_MANUAL.md). -->
+<script type="text/markdown" id="manualSrc">/*INLINE:manual*/</script>
+
 <!-- ============================================================= -->
-<!-- Detection worker source. The 2 MB reference data lives ONLY    -->
-<!-- here (inside the worker), so the main/UI thread never holds it -->
-<!-- and never blocks on a scan. Built into a Blob URL at runtime.  -->
+<!-- Detection worker: the inlined engine + the ~2 MB reference     -->
+<!-- data live ONLY here, so the UI thread never holds them.        -->
 <!-- ============================================================= -->
 <script type="text/js-worker" id="detectWorkerSrc">
 "use strict";
-// Worker global is `self`; the data files assign to `window.*`, so alias it.
-var window = self;
+var window = self;   // data files assign to window.*; alias it in the worker.
 
 /*INLINE:data*/
 
-// ---------- Reference data hookups ----------
-var FIRST_NAMES = (self.PII_FIRST_NAMES instanceof Set) ? self.PII_FIRST_NAMES : new Set();
-var LAST_NAMES  = (self.PII_LAST_NAMES  instanceof Set) ? self.PII_LAST_NAMES  : new Set();
-var PLACES      = (self.PII_PLACES && typeof self.PII_PLACES === "object") ? self.PII_PLACES : {};
+/*INLINE:engine*/
 
-// ---------- Static regex / data ----------
-var STATES_FULL = {
-  "alabama":"AL","alaska":"AK","arizona":"AZ","arkansas":"AR","california":"CA",
-  "colorado":"CO","connecticut":"CT","delaware":"DE","florida":"FL","georgia":"GA",
-  "hawaii":"HI","idaho":"ID","illinois":"IL","indiana":"IN","iowa":"IA",
-  "kansas":"KS","kentucky":"KY","louisiana":"LA","maine":"ME","maryland":"MD",
-  "massachusetts":"MA","michigan":"MI","minnesota":"MN","mississippi":"MS","missouri":"MO",
-  "montana":"MT","nebraska":"NE","nevada":"NV","new hampshire":"NH","new jersey":"NJ",
-  "new mexico":"NM","new york":"NY","north carolina":"NC","north dakota":"ND","ohio":"OH",
-  "oklahoma":"OK","oregon":"OR","pennsylvania":"PA","rhode island":"RI","south carolina":"SC",
-  "south dakota":"SD","tennessee":"TN","texas":"TX","utah":"UT","vermont":"VT",
-  "virginia":"VA","washington":"WA","west virginia":"WV","wisconsin":"WI","wyoming":"WY",
-  "district of columbia":"DC"
-};
-var STATE_ABBR = new Set(Object.values(STATES_FULL));
-var STATE_FULL_RE = new RegExp("\\b(" + Object.keys(STATES_FULL).join("|").replace(/ /g,"\\s+") + ")\\b", "gi");
-var STATE_ABBR_RE = new RegExp("\\b(" + [...STATE_ABBR].join("|") + ")\\b", "g"); // case-sensitive
+var __engine = makeEngine({
+  firstNames: (self.PII_FIRST_NAMES instanceof Set) ? self.PII_FIRST_NAMES : new Set(),
+  lastNames:  (self.PII_LAST_NAMES  instanceof Set) ? self.PII_LAST_NAMES  : new Set(),
+  places:     (self.PII_PLACES && typeof self.PII_PLACES === "object") ? self.PII_PLACES : {}
+});
 
-var STREET_SUFFIXES = [
-  "street","st","avenue","ave","road","rd","boulevard","blvd","lane","ln",
-  "drive","dr","court","ct","place","pl","way","parkway","pkwy","circle","cir",
-  "trail","trl","highway","hwy","terrace","ter","loop","square","sq","plaza","plz"
-];
-var STREET_RE = new RegExp(
-  "\\b\\d{1,6}\\s+(?:[NSEW]\\.?\\s+)?[A-Za-z0-9'\\-\\.]+(?:\\s+[A-Za-z0-9'\\-\\.]+){0,4}\\s+(?:" +
-  STREET_SUFFIXES.join("|") + ")\\b\\.?",
-  "gi"
-);
-var SECONDARY_RE = /\b(?:suite|ste|apt|apartment|unit|#|floor|fl|bldg|building|rm|room)\.?\s*[\w\d-]+\b/gi;
-var SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
-var PHONE_RE = /(?:\+?1[\s.\-]?)?\(?\b\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}\b/g;
-var ZIP_RE = /\b\d{5}(?:-\d{4})?\b/g;
-var EMAIL_RE = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,24}\b/g;
-var NUMERIC_CANDIDATE_RE = /\b\d(?:[\s\-]?\d){4,18}\b/g;
-var VIN_RE = /\b[A-HJ-NPR-Z0-9]{17}\b/gi;
+var __placeStates = Object.values(self.PII_PLACES || {}).reduce(function (a, v) { return a + v.length; }, 0);
+self.postMessage({ type: "ready", stats: {
+  first: (self.PII_FIRST_NAMES || new Set()).size,
+  last:  (self.PII_LAST_NAMES  || new Set()).size,
+  places: Object.keys(self.PII_PLACES || {}).length,
+  placeStates: __placeStates
+} });
 
-// New PII value patterns
-var IPV4_RE = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g;
-var IPV6_RE = /\b(?:[A-Fa-f0-9]{1,4}:){3,7}[A-Fa-f0-9]{1,4}\b/g; // >=4 groups: avoids HH:MM:SS times
-var NINE_DIGIT_RE = /\b\d{9}\b/g;
-var DATE_RE = /\b(?:\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})\b/gi;
-// Keyword-anchored capture (the keyword gate IS the pattern)
-var PASSPORT_RE = /passport\s*(?:no\.?|number|#|:)?\s*([A-Z0-9]{6,9})\b/gi;
-var DL_RE = /(?:driver'?s?\s+licen[cs]e|\bdl\b|license)\s*(?:no\.?|number|#|:)?\s*([A-Z0-9]{5,15})\b/gi;
-// Windowed keyword gates
-var ROUTING_KW = /\b(?:routing|aba|rtn|transit)\b/i;
-var DOB_KW = /\b(?:d\.?o\.?b\.?|date\s+of\s+birth|birth\s*date|born)\b/i;
-
-var NAME_STOPWORDS = new Set(`
-the a an and or but if then so as is are was were be been being am do does did have has had
-can could will would shall should may might must of for to in on at by with from into onto
-upon about over under between among through during before after since until while because
-although though however therefore however whether either neither both each every any some
-no not yes very just only also even still here there now today tomorrow yesterday
-i you he she it we they me him her us them my your his hers its our their mine yours ours theirs
-this that these those who whom whose which what where when why how
-loan title rate fee account amount balance payment due paid pay owe debt principal interest
-term period escrow taxes insurance premium charge charges deposit refund credit
-home auto vehicle car truck mortgage lease finance note bond
-will may must can shall should would could
-yes no okay ok sure thanks hello hi
-date time day month year week
-new old next last first second third
-high low more less most least best worst
-right left above below center side end front back top bottom
-true false unknown other none null void
-`.trim().toLowerCase().split(/\s+/));
-
-// ---------- Name detection ----------
-function isTitleCase(tok) { return /^[A-Z][a-z'’\-]*(?:[A-Z][a-z'’\-]*)*$/.test(tok) && /[a-z]/.test(tok); }
-function isAllCaps(tok)  { return /^[A-Z][A-Z'’\-]*$/.test(tok) && tok.length >= 2; }
-function nameTokenOk(tok){ if (NAME_STOPWORDS.has(tok.toLowerCase())) return false; return isTitleCase(tok) || isAllCaps(tok); }
-
-function findNames(text) {
-  var out = [];
-  if (!FIRST_NAMES.size || !LAST_NAMES.size) return out;
-  var re = /\b([A-Za-z][A-Za-z'’\-]+)(?:\s+([A-Za-z])\.?)?\s+([A-Za-z][A-Za-z'’\-]+)\b/g, m;
-  while ((m = re.exec(text)) !== null) {
-    var fnTok = m[1], lnTok = m[3];
-    if (!nameTokenOk(fnTok) || !nameTokenOk(lnTok)) continue;
-    if (!FIRST_NAMES.has(fnTok.toLowerCase())) continue;
-    if (!LAST_NAMES.has(lnTok.toLowerCase())) continue;
-    out.push({ start: m.index, end: m.index + m[0].length, type: "Name", value: m[0], priority: 20 });
-  }
-  var titledRe = /\b(Mr|Mrs|Ms|Miss|Dr|Prof|Rev|Sir|Madam)\.?\s+([A-Za-z][A-Za-z'’\-]+)\b/g;
-  while ((m = titledRe.exec(text)) !== null) {
-    var ln = m[2];
-    if (!nameTokenOk(ln)) continue;
-    if (!LAST_NAMES.has(ln.toLowerCase())) continue;
-    out.push({ start: m.index, end: m.index + m[0].length, type: "Name", value: m[0], priority: 20 });
-  }
-  return out;
-}
-
-// ---------- City detection (hash-lookup, not a megaregex) ----------
-// Scan TitleCase word-sequences and probe the PLACES map. O(1) per candidate
-// vs. running a 21k-branch alternation over the whole text. More precise too:
-// requiring TitleCase avoids the old case-insensitive false-positive surface.
-function findCities(text) {
-  var out = [];
-  if (!PLACES || !Object.keys(PLACES).length) return out;
-  var re = /\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2})\b/g, m;
-  while ((m = re.exec(text)) !== null) {
-    var phrase = m[1];
-    if (PLACES[phrase.toLowerCase()]) {
-      out.push({ start: m.index, end: m.index + phrase.length, type: "City", value: phrase, priority: 30 });
-      continue;
-    }
-    // shrink longest-first: "Milwaukee County" -> "Milwaukee"
-    var toks = phrase.split(/\s+/);
-    for (var n = toks.length - 1; n >= 1; n--) {
-      var sub = toks.slice(0, n).join(" ");
-      if (PLACES[sub.toLowerCase()]) {
-        out.push({ start: m.index, end: m.index + sub.length, type: "City", value: sub, priority: 30 });
-        break;
-      }
-    }
-  }
-  return out;
-}
-
-// ---------- Account / Credit Card ----------
-function luhnValid(d) {
-  var sum = 0, alt = false;
-  for (var i = d.length - 1; i >= 0; i--) {
-    var x = d.charCodeAt(i) - 48;
-    if (x < 0 || x > 9) return false;
-    if (alt) { x *= 2; if (x > 9) x -= 9; }
-    sum += x; alt = !alt;
-  }
-  return sum % 10 === 0;
-}
-function ccBrand(d) {
-  var n = d.length;
-  if (/^4/.test(d) && (n === 13 || n === 16 || n === 19)) return "Visa";
-  if (n === 16) { if (/^5[1-5]/.test(d)) return "Mastercard"; var p4 = parseInt(d.slice(0,4),10); if (p4 >= 2221 && p4 <= 2720) return "Mastercard"; }
-  if (/^3[47]/.test(d) && n === 15) return "Amex";
-  if ((n === 16 || n === 19) && (/^6011/.test(d) || /^65/.test(d) || /^64[4-9]/.test(d))) return "Discover";
-  if (n >= 14 && n <= 19 && (/^36/.test(d) || /^38/.test(d) || /^39/.test(d) || /^30[0-5]/.test(d))) return "Diners";
-  if (n >= 16 && n <= 19 && /^35(2[89]|[3-8]\d)/.test(d)) return "JCB";
-  return null;
-}
-function findCreditCardsAndAccounts(text) {
-  var out = [], m;
-  NUMERIC_CANDIDATE_RE.lastIndex = 0;
-  while ((m = NUMERIC_CANDIDATE_RE.exec(text)) !== null) {
-    var raw = m[0], digits = raw.replace(/[\s\-]/g, "");
-    var start = m.index, end = m.index + raw.length;
-    if (/^\d{3}-\d{2}-\d{4}$/.test(raw)) continue;            // SSN shape -> SSN_RE owns it
-    if (digits.length >= 13 && digits.length <= 19 && luhnValid(digits) && ccBrand(digits)) {
-      out.push({ start: start, end: end, type: "CreditCard", value: raw, priority: 95 });
-      continue;
-    }
-    if (digits.length >= 5 && digits.length <= 19) {
-      out.push({ start: start, end: end, type: "Account", value: raw, priority: 55 });
-    }
-  }
-  return out;
-}
-
-// ---------- ABA routing checksum ----------
-function abaValid(d) {
-  if (d.length !== 9) return false;
-  var n = [];
-  for (var i = 0; i < 9; i++) n.push(d.charCodeAt(i) - 48);
-  var sum = 3*(n[0]+n[3]+n[6]) + 7*(n[1]+n[4]+n[7]) + (n[2]+n[5]+n[8]);
-  return sum % 10 === 0;
-}
-function nearKeyword(text, start, end, re, before, after) {
-  var lo = Math.max(0, start - before);
-  var hi = Math.min(text.length, end + after);
-  return re.test(text.slice(lo, hi));
-}
-
-// ---------- New keyword-gated detectors ----------
-function findRouting(text) {
-  var out = [], m;
-  NINE_DIGIT_RE.lastIndex = 0;
-  while ((m = NINE_DIGIT_RE.exec(text)) !== null) {
-    var d = m[0];
-    if (!abaValid(d)) continue;
-    if (!nearKeyword(text, m.index, m.index + 9, ROUTING_KW, 20, 20)) continue;
-    out.push({ start: m.index, end: m.index + 9, type: "Routing", value: d, priority: 88 });
-  }
-  return out;
-}
-function findDOB(text) {
-  var out = [], m;
-  DATE_RE.lastIndex = 0;
-  while ((m = DATE_RE.exec(text)) !== null) {
-    var s = m.index, e = m.index + m[0].length;
-    // gate: a DOB keyword must PRECEDE the date within ~25 chars (avoids due-date noise)
-    if (!DOB_KW.test(text.slice(Math.max(0, s - 25), s))) continue;
-    out.push({ start: s, end: e, type: "DOB", value: m[0], priority: 78 });
-  }
-  return out;
-}
-function findIPs(text) {
-  var out = [], m;
-  IPV4_RE.lastIndex = 0;
-  while ((m = IPV4_RE.exec(text)) !== null) out.push({ start: m.index, end: m.index + m[0].length, type: "IPAddress", value: m[0], priority: 108 });
-  IPV6_RE.lastIndex = 0;
-  while ((m = IPV6_RE.exec(text)) !== null) out.push({ start: m.index, end: m.index + m[0].length, type: "IPAddress", value: m[0], priority: 108 });
-  return out;
-}
-// Keyword-anchored: token captured in group 1 sits at the END of the match.
-function findAnchored(text, re, type, prio, requireDigit) {
-  var out = [], m;
-  re.lastIndex = 0;
-  while ((m = re.exec(text)) !== null) {
-    var tok = m[1];
-    if (!tok) continue;
-    if (requireDigit && !/\d/.test(tok)) continue;       // cuts "License Agreement"
-    var end = m.index + m[0].length;
-    var start = end - tok.length;
-    out.push({ start: start, end: end, type: type, value: tok, priority: prio });
-  }
-  return out;
-}
-
-// ---------- detect() + overlap resolver ----------
-function detect(text) {
-  var matches = [];
-  function push(re, type, prio) { var m; re.lastIndex = 0; while ((m = re.exec(text)) !== null) matches.push({ start: m.index, end: m.index + m[0].length, type: type, value: m[0], priority: prio }); }
-
-  for (var x of findIPs(text)) matches.push(x);          // 108
-  push(EMAIL_RE, "Email", 105);
-  push(SSN_RE,   "SSN",   100);
-  push(VIN_RE,   "VIN",   90);
-  for (var r of findRouting(text)) matches.push(r);      // 88, gated
-  push(PHONE_RE, "Phone", 80);
-  for (var d of findDOB(text)) matches.push(d);          // 78, gated
-  for (var p of findAnchored(text, PASSPORT_RE, "Passport", 76, true)) matches.push(p);
-  for (var l of findAnchored(text, DL_RE, "DriversLicense", 74, true)) matches.push(l);
-  for (var c of findCreditCardsAndAccounts(text)) matches.push(c);  // CC 95 / Account 55
-  push(STREET_RE, "Address1", 70);
-  push(SECONDARY_RE, "Address2", 60);
-  push(ZIP_RE, "Zip", 58);   // above Account(55): a bare 5-digit ZIP must not read as [ACCOUNT]
-  push(STATE_FULL_RE, "State", 40);
-  push(STATE_ABBR_RE, "State", 35);
-  for (var ci of findCities(text)) matches.push(ci);     // 30
-  for (var nm of findNames(text)) matches.push(nm);      // 20
-
-  // Resolve overlaps: higher priority wins; ties -> longer span.
-  matches.sort(function(a,b){ return a.start - b.start || b.priority - a.priority || (b.end-b.start)-(a.end-a.start); });
-  var kept = [];
-  for (var i = 0; i < matches.length; i++) {
-    var mm = matches[i];
-    var conflict = null;
-    for (var k = 0; k < kept.length; k++) { if (!(mm.end <= kept[k].start || mm.start >= kept[k].end)) { conflict = kept[k]; break; } }
-    if (!conflict) { kept.push(mm); continue; }
-    var mScore = mm.priority * 1000 + (mm.end - mm.start);
-    var kScore = conflict.priority * 1000 + (conflict.end - conflict.start);
-    if (mScore > kScore) { kept.splice(kept.indexOf(conflict), 1); kept.push(mm); }
-  }
-  kept.sort(function(a,b){ return a.start - b.start; });
-  return kept;
-}
-
-// ---------- Worker protocol ----------
-var placeCount = Object.values(PLACES).reduce(function(a,v){ return a + v.length; }, 0);
-self.postMessage({ type: "ready", stats: { first: FIRST_NAMES.size, last: LAST_NAMES.size, places: Object.keys(PLACES).length, placeStates: placeCount } });
-
-self.onmessage = function(e) {
+self.onmessage = function (e) {
   var msg = e.data;
   if (!msg || msg.type !== "scan") return;
   var matches;
-  try { matches = detect(msg.text || ""); }
+  try { matches = __engine.detect(msg.text || ""); }
   catch (err) { self.postMessage({ type: "result", id: msg.id, error: String(err) }); return; }
   self.postMessage({ type: "result", id: msg.id, matches: matches });
 };
@@ -598,39 +419,22 @@ self.onmessage = function(e) {
 <script>/*INLINE:pdfjs*/</script>
 <script>/*INLINE:mammoth*/</script>
 
+<!-- Shared modules, inlined as plain globals (build.py strips the `export`s). -->
+<script>/*INLINE:redact*/</script>
+<script>/*INLINE:markdown*/</script>
+
 <!-- ============================ Main app ============================ -->
 <script>
 "use strict";
 
 var VERSION = "<!--INLINE:version-->";
+// TYPE_META, TYPE_ORDER, tokenFor, makeCounters, redact come from the inlined redact module.
+// renderMarkdown, slugify come from the inlined markdown module.
 
-// type -> { label (redaction token), color }. Drives panel, legend, summary, marks.
-var TYPE_META = {
-  IPAddress:      { label: "IP",       color: "#2D6A4F" },
-  Email:          { label: "EMAIL",    color: "#0096C7" },
-  SSN:            { label: "SSN",      color: "#CF2E2E" },
-  VIN:            { label: "VIN",      color: "#7B5EA7" },
-  Routing:        { label: "ROUTING",  color: "#B8860B" },
-  Phone:          { label: "PHONE",    color: "#FF6900" },
-  DOB:            { label: "DOB",      color: "#00A878" },
-  Passport:       { label: "PASSPORT", color: "#6A4C93" },
-  DriversLicense: { label: "DL",       color: "#9C27B0" },
-  CreditCard:     { label: "CARD",     color: "#C2185B" },
-  Account:        { label: "ACCOUNT",  color: "#E0A800" },
-  Name:           { label: "NAME",     color: "#00B4D8" },
-  Address1:       { label: "ADDRESS",  color: "#E63946" },
-  Address2:       { label: "ADDRESS2", color: "#F4845F" },
-  City:           { label: "CITY",     color: "#00B050" },
-  State:          { label: "STATE",    color: "#0077B6" },
-  Zip:            { label: "ZIP",      color: "#5E60CE" }
-};
-var TYPE_ORDER = Object.keys(TYPE_META);
-
-// Performance thresholds for the live inline highlight (detection always runs).
 var HILITE_MAX_CHARS = 600000;   // ~600 KB of text
 var HILITE_MAX_MARKS = 6000;
 
-var $ = function(s){ return document.querySelector(s); };
+var $ = function (s) { return document.querySelector(s); };
 var input = $("#input"), overlay = $("#overlay"), leftWrap = $("#leftWrap");
 var redactedEl = $("#redacted"), summaryEl = $("#summary");
 var leftCount = $("#leftCount"), rightCount = $("#rightCount");
@@ -638,47 +442,13 @@ var dataStatus = $("#dataStatus"), bigfileNote = $("#bigfileNote"), scanningEl =
 var styleSel = $("#style"), typeRow = $("#typeRow");
 
 var state = {
-  text: "",
-  all: [],                 // raw matches from worker
-  matches: [],             // filtered by enabled types
+  text: "", all: [], matches: [],
   rightMode: "redacted",
   enabled: new Set(TYPE_ORDER),
-  fileBase: "",            // original base name (no extension)
-  fileExt: "txt",          // extension to use on download
-  extracted: false,        // true for PDF/DOCX (output is .redacted.txt)
-  highlightOn: true
+  fileBase: "", fileExt: "txt", extracted: false, highlightOn: true
 };
 
-function escapeHtml(s){ return s.replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); }
-function normVal(v){ return v.toLowerCase().replace(/\s+/g, " ").trim(); }
-
-// ---------- redaction token (the runtime style toggle) ----------
-function makeCounters(){ return {}; }
-function tokenFor(m, style, counters) {
-  var label = TYPE_META[m.type].label;
-  if (style === "mask") {
-    var len = Math.max(4, Math.min(16, m.value.replace(/\s/g, "").length));
-    return "█".repeat(len);
-  }
-  if (style === "numbered") {
-    var bucket = counters[m.type] || (counters[m.type] = { map: new Map(), n: 0 });
-    var key = normVal(m.value);
-    var idx = bucket.map.get(key);
-    if (idx === undefined) { idx = ++bucket.n; bucket.map.set(key, idx); }
-    return "[" + label + "_" + idx + "]";
-  }
-  return "[" + label + "]";
-}
-
-function buildRedactedText(text, matches, style) {
-  var counters = makeCounters(), out = "", cursor = 0;
-  for (var i = 0; i < matches.length; i++) {
-    var m = matches[i];
-    out += text.slice(cursor, m.start) + tokenFor(m, style, counters);
-    cursor = m.end;
-  }
-  return out + text.slice(cursor);
-}
+function escapeHtml(s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
 
 // ---------- rendering ----------
 function renderOverlay(text, matches) {
@@ -707,15 +477,15 @@ function renderRedacted(text, matches, style) {
 
 function renderSummary(matches) {
   if (!matches.length) { summaryEl.innerHTML = '<div class="empty">No PII detected yet — paste text or load a file.</div>'; return; }
-  var byType = {}; TYPE_ORDER.forEach(function(t){ byType[t] = []; });
-  matches.forEach(function(m){ byType[m.type].push(m); });
+  var byType = {}; TYPE_ORDER.forEach(function (t) { byType[t] = []; });
+  matches.forEach(function (m) { byType[m.type].push(m); });
   var html = "";
-  TYPE_ORDER.forEach(function(t){
+  TYPE_ORDER.forEach(function (t) {
     if (!byType[t].length) return;
     var c = TYPE_META[t].color;
     html += '<div class="group" style="--mc:' + c + '">';
     html += '<h3><span class="sw"></span>' + t + ' <span class="gc">' + byType[t].length + '</span></h3><ul>';
-    byType[t].forEach(function(m){ html += '<li style="--mc:' + c + '"><span class="val">' + escapeHtml(m.value) + '</span><span class="tag">[' + TYPE_META[t].label + ']</span></li>'; });
+    byType[t].forEach(function (m) { html += '<li style="--mc:' + c + '"><span class="val">' + escapeHtml(m.value) + '</span><span class="tag">[' + TYPE_META[t].label + ']</span></li>'; });
     html += '</ul></div>';
   });
   summaryEl.innerHTML = html;
@@ -723,15 +493,15 @@ function renderSummary(matches) {
 
 function buildTypePanel() {
   var html = "";
-  TYPE_ORDER.forEach(function(t){
+  TYPE_ORDER.forEach(function (t) {
     var meta = TYPE_META[t];
     html += '<label class="chip" data-type="' + t + '" style="--mc:' + meta.color + '">' +
             '<input type="checkbox" checked><span class="sw"></span>' + t +
             ' <span class="n" data-n="' + t + '">0</span></label>';
   });
   typeRow.innerHTML = html;
-  typeRow.querySelectorAll(".chip").forEach(function(chip){
-    chip.addEventListener("click", function(e){
+  typeRow.querySelectorAll(".chip").forEach(function (chip) {
+    chip.addEventListener("click", function (e) {
       e.preventDefault();
       var t = chip.dataset.type;
       if (state.enabled.has(t)) state.enabled.delete(t); else state.enabled.add(t);
@@ -743,20 +513,18 @@ function buildTypePanel() {
 }
 
 function updateTypeCounts() {
-  var counts = {}; TYPE_ORDER.forEach(function(t){ counts[t] = 0; });
-  state.all.forEach(function(m){ counts[m.type]++; });
-  TYPE_ORDER.forEach(function(t){
+  var counts = {}; TYPE_ORDER.forEach(function (t) { counts[t] = 0; });
+  state.all.forEach(function (m) { counts[m.type]++; });
+  TYPE_ORDER.forEach(function (t) {
     var el = typeRow.querySelector('[data-n="' + t + '"]');
     if (el) el.textContent = counts[t];
   });
 }
 
-// Filter raw matches by enabled types, then render everything from cache (no re-scan).
 function applyFilterAndRender() {
-  state.matches = state.all.filter(function(m){ return state.enabled.has(m.type); });
+  state.matches = state.all.filter(function (m) { return state.enabled.has(m.type); });
   var style = styleSel.value;
 
-  // live highlight only under threshold
   state.highlightOn = state.text.length <= HILITE_MAX_CHARS && state.matches.length <= HILITE_MAX_MARKS;
   if (state.highlightOn) {
     leftWrap.classList.add("highlighted");
@@ -779,25 +547,25 @@ function applyFilterAndRender() {
   syncScroll();
 }
 
-function syncScroll(){ overlay.scrollTop = input.scrollTop; overlay.scrollLeft = input.scrollLeft; }
+function syncScroll() { overlay.scrollTop = input.scrollTop; overlay.scrollLeft = input.scrollLeft; }
 
 // ---------- detection worker ----------
-var worker = null, reqId = 0, latestRendered = 0;
+var worker = null, reqId = 0, latestRendered = 0, scanTimer = null;
 function startWorker() {
   var src = document.getElementById("detectWorkerSrc").textContent;
   var url = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
   worker = new Worker(url);
-  worker.onmessage = function(e) {
+  worker.onmessage = function (e) {
     var msg = e.data;
     if (msg.type === "ready") {
       dataStatus.className = "ready";
       dataStatus.textContent = "Reference data: " + msg.stats.first.toLocaleString() + " first names · " +
         msg.stats.last.toLocaleString() + " surnames · " + msg.stats.places.toLocaleString() + " US places";
-      scan(); // initial (sample/empty)
+      scan();
       return;
     }
     if (msg.type === "result") {
-      if (msg.id < latestRendered) return;        // ignore stale
+      if (msg.id < latestRendered) return;
       latestRendered = msg.id;
       scanningEl.hidden = true;
       state.all = msg.error ? [] : (msg.matches || []);
@@ -805,15 +573,13 @@ function startWorker() {
     }
   };
 }
-
-var scanTimer = null;
 function scan() {
   state.text = input.value;
   if (!worker) return;
-  scanningEl.hidden = state.text.length < 50000;     // only flag long scans
+  scanningEl.hidden = state.text.length < 50000;
   worker.postMessage({ type: "scan", id: ++reqId, text: state.text });
 }
-function scheduleScan(){ clearTimeout(scanTimer); scanTimer = setTimeout(scan, 200); }
+function scheduleScan() { clearTimeout(scanTimer); scanTimer = setTimeout(scan, 200); }
 
 // ---------- file ingestion ----------
 var pdfWorkerUrl = null;
@@ -823,13 +589,11 @@ function setupPdfWorker() {
   pdfWorkerUrl = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
   pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 }
-
 function splitName(name) {
   var dot = name.lastIndexOf(".");
   if (dot <= 0) return { base: name, ext: "txt" };
   return { base: name.slice(0, dot), ext: name.slice(dot + 1).toLowerCase() };
 }
-
 async function extractPdf(file) {
   setupPdfWorker();
   var buf = await file.arrayBuffer();
@@ -838,15 +602,13 @@ async function extractPdf(file) {
   for (var p = 1; p <= pdf.numPages; p++) {
     var page = await pdf.getPage(p);
     var content = await page.getTextContent();
-    parts.push(content.items.map(function(it){ return it.str; }).join(" "));
+    parts.push(content.items.map(function (it) { return it.str; }).join(" "));
   }
   return parts.join("\n\n");
 }
-
 async function loadFile(file) {
   if (!file) return;
-  var nm = splitName(file.name);
-  var ext = nm.ext;
+  var nm = splitName(file.name), ext = nm.ext;
   try {
     if (ext === "pdf") {
       dataStatus.textContent = "Extracting PDF…";
@@ -874,8 +636,7 @@ async function loadFile(file) {
 }
 
 // ---------- copy / download ----------
-function currentRedactedText(){ return buildRedactedText(state.text, state.matches, styleSel.value); }
-
+function currentRedactedText() { return redact(state.text, state.matches, styleSel.value); }
 function download() {
   var text = currentRedactedText();
   var base = state.fileBase || "redacted";
@@ -884,49 +645,105 @@ function download() {
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
   a.href = url; a.download = name; document.body.appendChild(a); a.click();
-  document.body.removeChild(a); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 }
-
 async function copyRedacted() {
   var text = currentRedactedText();
   try { await navigator.clipboard.writeText(text); flash($("#copy"), "Copied!"); }
   catch (e) {
-    // clipboard API can be unavailable on file://; fall back to a hidden textarea
     var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
     ta.select(); try { document.execCommand("copy"); flash($("#copy"), "Copied!"); } catch (_) { alert("Copy failed — select the Redacted pane manually."); }
     document.body.removeChild(ta);
   }
 }
-function flash(btn, txt) { var old = btn.textContent; btn.textContent = txt; setTimeout(function(){ btn.textContent = old; }, 1100); }
+function flash(btn, txt) { var old = btn.textContent; btn.textContent = txt; setTimeout(function () { btn.textContent = old; }, 1100); }
+
+// ---------- manual modal ----------
+var manualModal = $("#manualModal"), manualDoc = $("#manualDoc"), manualToc = $("#manualToc");
+var manualSearch = $("#manualSearch"), manualHits = $("#manualHits");
+var manualRendered = false, manualToken = null;
+function renderManual() {
+  if (manualRendered) return;
+  var md = document.getElementById("manualSrc").textContent;
+  var res = renderMarkdown(md);
+  manualDoc.innerHTML = res.html;
+  manualToc.innerHTML = res.toc.map(function (h) {
+    return '<a class="lvl' + h.level + '" data-id="' + h.id + '">' + escapeHtml(h.text) + "</a>";
+  }).join("");
+  manualToc.querySelectorAll("a").forEach(function (a) {
+    a.addEventListener("click", function () {
+      var el = document.getElementById(a.dataset.id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  manualRendered = true;
+}
+function openManual() { renderManual(); manualModal.hidden = false; manualSearch.focus(); }
+function closeManual() { manualModal.hidden = true; }
+
+// Search: highlight occurrences in the rendered doc, count them, dim empty TOC entries.
+function runManualSearch() {
+  // clear previous highlights
+  manualDoc.querySelectorAll("mark.find").forEach(function (m) {
+    var t = document.createTextNode(m.textContent); m.parentNode.replaceChild(t, m);
+  });
+  manualDoc.normalize();
+  var q = manualSearch.value.trim();
+  if (q.length < 2) { manualHits.textContent = ""; manualToc.querySelectorAll("a").forEach(function (a) { a.classList.remove("dim"); }); return; }
+  var rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  var count = 0, first = null;
+  var walker = document.createTreeWalker(manualDoc, NodeFilter.SHOW_TEXT, null);
+  var textNodes = [];
+  while (walker.nextNode()) { if (walker.currentNode.nodeValue.match(rx)) textNodes.push(walker.currentNode); }
+  textNodes.forEach(function (node) {
+    var frag = document.createDocumentFragment(), last = 0, s = node.nodeValue, m2;
+    rx.lastIndex = 0;
+    while ((m2 = rx.exec(s)) !== null) {
+      frag.appendChild(document.createTextNode(s.slice(last, m2.index)));
+      var mk = document.createElement("mark"); mk.className = "find"; mk.textContent = m2[0];
+      if (!first) { first = mk; mk.classList.add("cur"); }
+      frag.appendChild(mk); count++; last = m2.index + m2[0].length;
+      if (m2.index === rx.lastIndex) rx.lastIndex++;
+    }
+    frag.appendChild(document.createTextNode(s.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  });
+  manualHits.textContent = count ? (count + " match" + (count === 1 ? "" : "es")) : "no matches";
+  if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+}
 
 // ---------- events ----------
 input.addEventListener("input", scheduleScan);
 input.addEventListener("scroll", syncScroll);
-
-$("#file").addEventListener("change", function(e){ loadFile(e.target.files[0]); });
-$("#clear").addEventListener("click", function(){ input.value = ""; state.fileBase = ""; state.extracted = false; state.fileExt = "txt"; scan(); });
+$("#file").addEventListener("change", function (e) { loadFile(e.target.files[0]); });
+$("#clear").addEventListener("click", function () { input.value = ""; state.fileBase = ""; state.extracted = false; state.fileExt = "txt"; scan(); });
 styleSel.addEventListener("change", applyFilterAndRender);
 $("#copy").addEventListener("click", copyRedacted);
 $("#download").addEventListener("click", download);
+$("#manualBtn").addEventListener("click", openManual);
+$("#manualClose").addEventListener("click", closeManual);
+$("#manualBackdrop").addEventListener("click", closeManual);
+var manualSearchTimer = null;
+manualSearch.addEventListener("input", function () { clearTimeout(manualSearchTimer); manualSearchTimer = setTimeout(runManualSearch, 180); });
+document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !manualModal.hidden) closeManual(); });
 
-$("#tabs").addEventListener("click", function(e){
+$("#tabs").addEventListener("click", function (e) {
   var btn = e.target.closest("button"); if (!btn) return;
-  document.querySelectorAll("#tabs button").forEach(function(b){ b.classList.toggle("active", b === btn); });
+  document.querySelectorAll("#tabs button").forEach(function (b) { b.classList.toggle("active", b === btn); });
   state.rightMode = btn.dataset.view;
   applyFilterAndRender();
 });
 
-// drag & drop
 var dragDepth = 0;
-function hasFiles(e){ return e.dataTransfer && [].indexOf.call(e.dataTransfer.types || [], "Files") !== -1; }
-leftWrap.addEventListener("dragenter", function(e){ if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; leftWrap.classList.add("drop-active"); });
-leftWrap.addEventListener("dragover",  function(e){ if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
-leftWrap.addEventListener("dragleave", function(e){ if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) leftWrap.classList.remove("drop-active"); });
-leftWrap.addEventListener("drop",      function(e){ if (!e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); dragDepth = 0; leftWrap.classList.remove("drop-active"); loadFile(e.dataTransfer.files[0]); });
-window.addEventListener("dragover", function(e){ e.preventDefault(); });
-window.addEventListener("drop", function(e){ e.preventDefault(); });
+function hasFiles(e) { return e.dataTransfer && [].indexOf.call(e.dataTransfer.types || [], "Files") !== -1; }
+leftWrap.addEventListener("dragenter", function (e) { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; leftWrap.classList.add("drop-active"); });
+leftWrap.addEventListener("dragover",  function (e) { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+leftWrap.addEventListener("dragleave", function (e) { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) leftWrap.classList.remove("drop-active"); });
+leftWrap.addEventListener("drop",      function (e) { if (!e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); dragDepth = 0; leftWrap.classList.remove("drop-active"); loadFile(e.dataTransfer.files[0]); });
+window.addEventListener("dragover", function (e) { e.preventDefault(); });
+window.addEventListener("drop", function (e) { e.preventDefault(); });
 
-$("#sample").addEventListener("click", function(){
+$("#sample").addEventListener("click", function () {
   input.value =
 `Customer: John Q. Smith
 Co-applicant: Mary T. Smith

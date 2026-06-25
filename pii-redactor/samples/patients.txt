@@ -1,0 +1,42 @@
+LAKESIDE FAMILY HEALTH -- PATIENT INTAKE RECORDS
+*** SYNTHETIC TRAINING DATA -- NOT REAL PATIENTS ***
+
+------------------------------------------------------------
+Patient: Linda Nguyen
+MRN (account): MRN-100571902
+D.O.B.: 1979-04-02
+Phone: (212) 555-6610
+Email: linda.nguyen@testmail.org
+Address: 73 Oak Street, Apt 3B, Rochester, NY 14604
+Primary care: Dr. Patel
+Notes: Patient born on April 2, 1979; no known allergies.
+
+------------------------------------------------------------
+Patient: Carlos Ramirez
+MRN (account): MRN-100633870
+D.O.B.: 09/30/1992
+Phone: 303-555-2204
+Email: carlos.ramirez@mail.example.net
+Address: 55 Cedar Lane, Unit 12, Denver, CO 80202
+Primary care: Dr. Emily Carter
+Insurance SSN on file: 612-33-7781
+
+------------------------------------------------------------
+Patient: Grace Okafor
+MRN (account): MRN-100819644
+Date of birth: December 1, 1995
+Phone: +1 305.555.7720
+Email: grace.okafor@inbox.example.org
+Address: 318 Highland Drive, Ste 220, Miami, FL 33130
+Primary care: Dr. Wei Chen
+Notes: Emergency contact George Murphy, (617) 555-7700.
+
+------------------------------------------------------------
+Patient: Hiroshi Tanaka
+MRN (account): MRN-100888301
+D.O.B.: 1982-05-25
+Phone: 206-555-4412
+Email: hiroshi.tanaka@demo-corp.example
+Address: 910 River Road, Seattle, WA 98101
+Primary care: Dr. Sarah Anderson
+Notes: Patient's birth date 1982-05-25 confirmed against state ID.

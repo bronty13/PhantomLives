@@ -1,46 +1,16 @@
-// Headless test of the detection engine as it ships in dist/pii-redactor.html.
-// Extracts the inlined worker source (engine + reference data), runs it in a
-// vm sandbox with self/window shims, and asserts detect() on the sample text.
-// Run: node tests/engine.test.mjs
-
-import { readFileSync } from "node:fs";
+// Detection engine tests — imports the shared module directly.
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import vm from "node:vm";
-import assert from "node:assert/strict";
+import { makeEngine } from "../src/engine.js";
+import { loadData } from "../src/data-node.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const html = readFileSync(join(ROOT, "dist", "pii-redactor.html"), "utf8");
+const data = loadData(join(ROOT, "data"));
+const { detect } = makeEngine(data);
 
-// --- extract the detection worker source (engine + inlined data) ---
-const m = html.match(/<script type="text\/js-worker" id="detectWorkerSrc">([\s\S]*?)<\/script>/);
-assert.ok(m, "detectWorkerSrc script not found in built file");
-const workerSrc = m[1].replace(/<\\\/script/g, "</script"); // undo build-time escaping
-
-// --- run it in a sandbox; capture detect() and the ready stats ---
-let readyStats = null;
-const sandbox = {};
-sandbox.self = {
-  postMessage(msg) { if (msg && msg.type === "ready") readyStats = msg.stats; },
-  set onmessage(_) {}, get onmessage() { return null; },
-};
-sandbox.Set = Set; sandbox.Map = Map; sandbox.Object = Object;
-sandbox.RegExp = RegExp; sandbox.Math = Math; sandbox.parseInt = parseInt;
-vm.createContext(sandbox);
-vm.runInContext(workerSrc, sandbox, { filename: "detectWorker.js" });
-
-const detect = sandbox.detect;
-assert.equal(typeof detect, "function", "detect() not exported from worker scope");
-
-// --- 1. reference data inlined and parsed ---
-assert.ok(readyStats, "worker never posted ready stats");
-assert.ok(readyStats.first > 4000,  `first names too few: ${readyStats.first}`);
-assert.ok(readyStats.last > 150000, `surnames too few: ${readyStats.last}`);
-assert.ok(readyStats.places > 20000, `places too few: ${readyStats.places}`);
-console.log(`✓ data inlined: ${readyStats.first} first, ${readyStats.last} last, ${readyStats.places} places`);
-
-// --- 2. sample coverage: every expected type is detected ---
-const sample = `Customer: John Q. Smith
+const SAMPLE = `Customer: John Q. Smith
 Email: john.smith@example.com
 123 Main Street
 Suite 401
@@ -57,35 +27,54 @@ Driver's license no D1234567
 Passport number X1234567
 previously resided in Chicago, IL 60601`;
 
-const found = detect(sample);
-const byType = {};
-for (const f of found) (byType[f.type] ||= []).push(f.value);
+function group(matches) {
+  const by = {};
+  for (const m of matches) (by[m.type] ||= []).push(m.value);
+  return by;
+}
 
-const expected = ["Name", "Email", "Address1", "Address2", "City", "State", "Zip",
-                  "Phone", "Account", "SSN", "DOB", "Routing", "VIN", "CreditCard",
-                  "IPAddress", "DriversLicense", "Passport"];
-const missing = expected.filter((t) => !byType[t]);
-assert.deepEqual(missing, [], `missing detections: ${missing.join(", ")}`);
-console.log(`✓ all ${expected.length} expected PII types detected`);
+test("reference data loaded", () => {
+  assert.ok(data.firstNames.size > 4000);
+  assert.ok(data.lastNames.size > 150000);
+  assert.ok(Object.keys(data.places).length > 20000);
+});
 
-// --- 3. specific-value correctness ---
-assert.ok(byType.Routing.includes("021000021"), "valid ABA routing not caught");
-assert.ok(byType.CreditCard.includes("4111 1111 1111 1111"), "Visa not caught");
-assert.ok(byType.IPAddress.includes("192.168.1.42"), "IPv4 not caught");
-assert.ok(byType.DriversLicense.includes("D1234567"), "DL token not caught");
-assert.ok(byType.Passport.includes("X1234567"), "passport token not caught");
-console.log("✓ value-level checks pass");
+test("all expected PII types detected in the sample", () => {
+  const by = group(detect(SAMPLE));
+  const expected = ["Name", "Email", "Address1", "Address2", "City", "State", "Zip",
+                    "Phone", "Account", "SSN", "DOB", "Routing", "VIN", "CreditCard",
+                    "IPAddress", "DriversLicense", "Passport"];
+  const missing = expected.filter((t) => !by[t]);
+  assert.deepEqual(missing, [], `missing: ${missing.join(", ")}`);
+});
 
-// --- 4. keyword gating: a bare date / 9-digit / IP-less number is NOT over-flagged ---
-const noKw = detect("The invoice is due 12/25/2024 and ref number 021000021 applies.");
-const noKwTypes = new Set(noKw.map((f) => f.type));
-assert.ok(!noKwTypes.has("DOB"), "DOB flagged without a birth keyword (false positive)");
-assert.ok(!noKwTypes.has("Routing"), "Routing flagged without an ABA keyword (false positive)");
-console.log("✓ keyword gating suppresses ungated dates & 9-digit numbers");
+test("value-level correctness", () => {
+  const by = group(detect(SAMPLE));
+  assert.ok(by.Routing.includes("021000021"));
+  assert.ok(by.CreditCard.includes("4111 1111 1111 1111"));
+  assert.ok(by.IPAddress.includes("192.168.1.42"));
+  assert.ok(by.DriversLicense.includes("D1234567"));
+  assert.ok(by.Passport.includes("X1234567"));
+  assert.ok(by.Zip.includes("53202"), "5-digit ZIP must be typed Zip, not Account");
+});
 
-// --- 5. ABA checksum rejects an invalid 9-digit number even with the keyword ---
-const badAba = detect("Bank routing number 123456789 is on file.");
-assert.ok(!badAba.some((f) => f.type === "Routing"), "invalid ABA checksum was accepted");
-console.log("✓ ABA checksum rejects invalid routing numbers");
+test("keyword gating suppresses ungated dates and 9-digit numbers", () => {
+  const by = group(detect("Invoice due 12/25/2024, ref number 021000021 applies."));
+  assert.ok(!by.DOB, "DOB flagged without a birth keyword");
+  assert.ok(!by.Routing, "Routing flagged without an ABA keyword");
+});
 
-console.log("\nALL TESTS PASSED");
+test("ABA checksum rejects an invalid routing number even with the keyword", () => {
+  const by = group(detect("Bank routing number 123456789 is on file."));
+  assert.ok(!by.Routing, "invalid ABA checksum accepted");
+});
+
+test("Luhn + brand gating rejects a non-card 16-digit run", () => {
+  const by = group(detect("Reference 1234567812345678 on the account."));
+  assert.ok(!by.CreditCard, "non-Luhn 16-digit run accepted as a card");
+});
+
+test("empty / non-string input is safe", () => {
+  assert.deepEqual(detect(""), []);
+  assert.deepEqual(detect(undefined), []);
+});

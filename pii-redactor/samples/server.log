@@ -1,0 +1,31 @@
+2026-01-04 08:12:33 [INFO] startup: api server listening on 0.0.0.0:8080
+2026-01-04 08:12:41 [INFO] request from 192.168.1.42 path=/health status=200
+2026-01-04 08:13:02 [INFO] request from 10.0.0.7 path=/api/v1/customers status=200
+2026-01-04 08:13:05 [INFO] auth ok user=emily.carter@example.com from 203.0.113.55
+2026-01-04 08:13:19 [DEBUG] db pool acquired conn for 172.16.5.88
+2026-01-04 08:14:07 [INFO] request from 198.51.100.23 path=/api/v1/loans status=201
+2026-01-04 08:14:50 [WARN] slow query 1.8s client=192.168.1.99
+2026-01-04 08:15:11 [INFO] auth ok user=james.patel3@sample.io from 10.0.0.14
+2026-01-04 08:15:33 [INFO] request from 2001:db8:85a3::8a2e:370:7334 path=/health status=200
+2026-01-04 08:16:02 [ERROR] unhandled exception in /api/v1/payments trace=ab12cd
+2026-01-04 08:16:40 [WARN] leaked contact in payload phone=(716) 555-1020 client=192.168.1.42
+2026-01-04 08:17:21 [INFO] request from 10.0.0.7 path=/api/v1/customers status=200
+2026-01-04 08:17:55 [DEBUG] cache miss key=cust:100299481 node=172.16.5.90
+2026-01-04 08:18:30 [INFO] auth ok user=linda_nguyen@testmail.org from 203.0.113.77
+2026-01-04 08:19:04 [ERROR] ssn appeared in log line ssn=501-22-7788 src=192.168.1.42
+2026-01-04 08:19:48 [INFO] request from fe80::1ff:fe23:4567:890a path=/metrics status=200
+2026-01-04 08:20:15 [INFO] request from 198.51.100.40 path=/api/v1/loans status=200
+2026-01-04 08:20:59 [WARN] rate limit hit for 10.0.0.55 endpoint=/api/v1/search
+2026-01-04 08:21:33 [INFO] auth ok user=carlos.ramirez@mail.example.net from 192.168.1.7
+2026-01-04 08:22:10 [DEBUG] worker 4 picked job id=8841 from 10.0.0.7
+2026-01-04 08:22:44 [INFO] request from 192.168.1.201 path=/health status=200
+2026-01-04 08:23:18 [ERROR] payment gateway timeout upstream=203.0.113.90
+2026-01-04 08:23:59 [WARN] leaked contact phone=312-555-7741 in note client=10.0.0.7
+2026-01-04 08:24:32 [INFO] request from 172.16.8.12 path=/api/v1/customers status=200
+2026-01-04 08:25:07 [INFO] auth ok user=aisha.khan21@example.com from 198.51.100.61
+2026-01-04 08:25:50 [DEBUG] gc pause 42ms node=192.168.1.42
+2026-01-04 08:26:24 [INFO] request from 2001:db8::1 path=/health status=200
+2026-01-04 08:27:01 [WARN] retry 2/3 connecting to 10.0.0.250
+2026-01-04 08:27:45 [INFO] request from 192.168.1.88 path=/api/v1/loans status=200
+2026-01-04 08:28:19 [INFO] shutdown signal received, draining connections
+2026-01-04 08:28:33 [INFO] server stopped cleanly

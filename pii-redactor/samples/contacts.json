@@ -1,0 +1,116 @@
+[
+  {
+    "id": 1,
+    "name": "Jennifer Thompson",
+    "email": "jennifer.thompson@example.com",
+    "phone": "(716) 555-1020",
+    "ssn": "402-19-8833",
+    "dateOfBirth": "1986-03-22",
+    "address": {
+      "street": "73 Oak Street, Apt 3B",
+      "city": "Rochester",
+      "state": "NY",
+      "zip": "14604"
+    },
+    "banking": {
+      "routingNumber": "021000021",
+      "account": "100459872013"
+    },
+    "card": "378282246310005",
+    "ip": "192.168.1.42"
+  },
+  {
+    "id": 2,
+    "name": "Dr. Wei Chen",
+    "email": "wei.chen@sample.io",
+    "phone": "312-555-7788",
+    "ssn": "319-55-4471",
+    "dob": "born November 4, 1979",
+    "address": {
+      "street": "1200 Lincoln Boulevard",
+      "city": "Chicago",
+      "state": "IL",
+      "zip": "60601"
+    },
+    "banking": {
+      "ABA": "011401533",
+      "account": "100783345021"
+    },
+    "card": "6011000990139424",
+    "ip": "10.0.0.7"
+  },
+  {
+    "id": 3,
+    "name": "Olga Petrov",
+    "email": "olga.petrov88@testmail.org",
+    "phone": "+1 303.555.4419",
+    "ssn": "566-21-0098",
+    "dob": "D.O.B. 1991-07-15",
+    "address": {
+      "street": "55 Cedar Lane, Unit 12",
+      "city": "Denver",
+      "state": "CO",
+      "zip": "80202"
+    },
+    "card": "5105105105105100",
+    "ip": "172.16.5.88",
+    "passport": "Passport number C7781230"
+  },
+  {
+    "id": 4,
+    "name": "Samuel Reed",
+    "email": "samuel.reed@mail.example.net",
+    "phone": "(512) 555-3367",
+    "ssn": "271-44-6650",
+    "dateOfBirth": "DOB 04/18/1973",
+    "address": {
+      "street": "910 River Road",
+      "city": "Austin",
+      "state": "TX",
+      "zip": "78701"
+    },
+    "banking": {
+      "routing": "111000025",
+      "account": "100920018744"
+    },
+    "driversLicense": "Driver's license no D4419087",
+    "ip": "192.168.10.5"
+  },
+  {
+    "id": 5,
+    "name": "Priya Sharma",
+    "email": "priya.sharma@inbox.example.org",
+    "phone": "206-555-9921",
+    "ssn": "488-33-1276",
+    "dob": "birth date 1994-12-09",
+    "address": {
+      "street": "318 Highland Drive, Ste 220",
+      "city": "Seattle",
+      "state": "WA",
+      "zip": "98101"
+    },
+    "card": "4012888888881881",
+    "ip": "2001:db8:85a3::8a2e:370:7334"
+  },
+  {
+    "id": 6,
+    "name": "George Murphy",
+    "email": "george.murphy42@fakemail.example",
+    "phone": "(617) 555-7700",
+    "ssn": "350-12-4498",
+    "dob": "Date of birth: February 28, 1968",
+    "address": {
+      "street": "27 Church Street",
+      "city": "Boston",
+      "state": "MA",
+      "zip": "02108"
+    },
+    "banking": {
+      "transit": "121000358",
+      "account": "100110293355"
+    },
+    "card": "5555555555554444",
+    "vin": "1HGBH41JXMN109186",
+    "ip": "10.10.10.10"
+  }
+]

@@ -2,6 +2,59 @@
 
 All notable changes to PII Redactor are documented here.
 
+## [0.2.0] — 2026-06-25
+
+Documentation, an in-app manual, a command-line interface, and a real test
+suite — plus a refactor that makes the detection engine a single shared module.
+
+### Added — in-app User Manual
+- A **Manual** button opens a modal with the full `USER_MANUAL.md`, rendered by a
+  new dependency-free Markdown renderer (`src/markdown.js`) that works under the
+  strict CSP (no markdown-it / no CDN).
+- **Table of contents** (auto-built from h2/h3 headings) and **full-text search**
+  that highlights matches in place and counts them. The in-app help and the repo
+  doc are the same bytes (the manual is inlined at build time).
+
+### Added — command-line interface
+- `cli.mjs` exposes the same detection engine for batch/automation use: stdin or
+  files, `--style labeled|numbered|mask`, `--types`/`--exclude`, `--json`,
+  `--stats`, `-o`, `--list-types`. Text input only (PDF/DOCX remain GUI-only so
+  the CLI stays dependency-free).
+
+### Added — tests & test data
+- Real suite via Node's built-in runner (`./run-tests.sh` → 37 tests): engine
+  coverage/gating/checksums, redactor token styles + numbered consistency,
+  markdown renderer, CLI (spawned end-to-end), the committed samples, and a
+  build-integration check.
+- `samples/` — small example inputs of each format (`.txt .csv .json .log .md`),
+  plus `scripts/generate-samples.py` to (re)generate them and emit large files
+  for scalability testing (gitignored). All synthetic; Luhn-valid cards,
+  ABA-valid routing numbers.
+
+### Added — documentation
+- `DESIGN.md` (architecture & rationale), `HANDOFF.md` (how to work on it),
+  expanded `README.md`, and this changelog.
+
+### Changed — engine extracted to shared ES modules
+- The detection engine (`src/engine.js`), redactor (`src/redact.js`), and
+  markdown renderer (`src/markdown.js`) are now ES modules with **one source of
+  truth**. The browser inlines them (build.py strips `export`); the CLI and tests
+  `import` them directly. No more engine copy living only inside the worker.
+- `build.py` gained `strip_exports()` and new inline markers (engine, redact,
+  markdown, manual).
+
+### Performance
+- **Overlap resolver is now O(n) instead of O(n²).** It scanned the whole kept
+  set per match; since matches are start-sorted and kept stays non-overlapping, a
+  new match can only overlap the *last* kept interval, so one comparison suffices.
+  Surfaced by the new large-file test: a 5 MB / ~210k-detection input dropped from
+  **26.3 s to 0.31 s** (~85×).
+
+### Notes
+- Documented the inherited **name-adjacency quirk** (a capitalized word right
+  before a full name can cause that occurrence to be missed) in `DESIGN.md` /
+  `HANDOFF.md`.
+
 ## [0.1.0] — 2026-06-25
 
 Initial release. A defi-branded, fully-offline PII-scrubbing HTML SPA, rebuilt

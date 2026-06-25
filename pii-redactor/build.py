@@ -19,6 +19,7 @@ No network access at build time beyond the one-time vendor fetch (already done).
 
 import base64
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -38,6 +39,18 @@ def js_safe(s: str) -> str:
     """Neutralize any literal </script that would otherwise close the host tag.
     Safe inside JS strings/regex (same value); cannot legally appear elsewhere."""
     return s.replace("</script", "<\\/script")
+
+
+def strip_exports(s: str) -> str:
+    """Turn an ES module into a plain inline script: drop import lines and the
+    `export ` keyword so `export function f` becomes `function f` (a global in
+    the inlined <script>). Node imports the same files unmodified."""
+    out = []
+    for line in s.splitlines():
+        if re.match(r"^\s*import\s", line):
+            continue
+        out.append(re.sub(r"^(\s*)export\s+", r"\1", line))
+    return js_safe("\n".join(out))
 
 
 def b64(p: pathlib.Path) -> str:
@@ -74,11 +87,18 @@ def main() -> int:
             print(f"ERROR: missing vendor file {f} (run the vendor fetch first)", file=sys.stderr)
             return 1
 
+    manual_path = ROOT / "USER_MANUAL.md"
+    manual_md = read(manual_path) if manual_path.exists() else "# User Manual\n\n_Not found at build time._"
+
     html = read(SRC)
     replacements = {
         "<!--INLINE:version-->": VERSION,
         "/*INLINE:fontface*/": fontface(),
+        "/*INLINE:engine*/": strip_exports(read(ROOT / "src" / "engine.js")),
+        "/*INLINE:redact*/": strip_exports(read(ROOT / "src" / "redact.js")),
+        "/*INLINE:markdown*/": strip_exports(read(ROOT / "src" / "markdown.js")),
         "/*INLINE:data*/": data_block(),
+        "/*INLINE:manual*/": js_safe(manual_md),
         "/*INLINE:pdfjs*/": js_safe(read(VENDOR / "pdf.min.js")),
         "/*INLINE:mammoth*/": js_safe(read(VENDOR / "mammoth.browser.min.js")),
         "/*INLINE:pdfworker*/": js_safe(read(VENDOR / "pdf.worker.min.js")),
