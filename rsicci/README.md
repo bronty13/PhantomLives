@@ -59,6 +59,11 @@ correctness rules:
 The xlsx specification's "Scoring Example" (CII = 50, CIB = 2, CAP = 40, max
 practice = 4) is used verbatim as a unit-test fixture.
 
+Alongside the CII/CIB/CAP aggregates, the report shows a **per-theme breakdown**
+of the 38 Module-D interest themes (raw Appeal/Desire/Practice, theme interest
+mean/%, and a breadth marker for themes ≥ 2.0) — the non-restricted counterpart
+of the SRI per-theme table.
+
 ### Scoring interpretations chosen where the draft is ambiguous
 
 The draft instrument leaves two points open; these were resolved by judgment and

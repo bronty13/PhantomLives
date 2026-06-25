@@ -4,7 +4,7 @@
 // Module J raw values.
 
 import { useState } from 'react'
-import { score, ScoringOutput } from './engine'
+import { score, ScoringOutput, DThemeScore } from './engine'
 import { classify, AxisResult } from './classify'
 import { loadDataFile, PlainPayload } from '../datafile/datafile'
 import { prohibitedUses, items } from '../instrument/instrument'
@@ -40,6 +40,46 @@ function AxisCard({ a }: { a: AxisResult }) {
       </p>
       {a.note && <p className="muted small">{a.note}</p>}
     </div>
+  )
+}
+
+function ThemeBreakdown({ rows }: { rows: DThemeScore[] }) {
+  // Show only themes the participant engaged with (any non-null cell), most
+  // interesting first. Parallels the SRI per-theme table.
+  const answered = rows
+    .filter((r) => r.appeal !== null || r.desire !== null || r.practice !== null)
+    .sort((a, b) => (b.interestPct ?? -1) - (a.interestPct ?? -1))
+
+  return (
+    <section>
+      <h3>Interest themes — per-theme breakdown ({answered.length} of {rows.length} engaged)</h3>
+      {answered.length === 0 ? (
+        <p className="muted">No interest themes were answered.</p>
+      ) : (
+        <table className="matrix theme-breakdown">
+          <thead>
+            <tr>
+              <th className="theme-col">Theme</th>
+              <th>Appeal</th><th>Desire</th><th>Practice</th>
+              <th>Interest mean</th><th>Interest %</th><th>Breadth</th>
+            </tr>
+          </thead>
+          <tbody>
+            {answered.map((r) => (
+              <tr key={r.stem} className={r.meetsBreadth ? 'breadth' : undefined}>
+                <td className="theme-col">{r.label}</td>
+                <td>{r.appeal ?? '—'}</td>
+                <td>{r.desire ?? '—'}</td>
+                <td>{r.practice ?? '—'}</td>
+                <td>{r.interestMean === null ? '—' : r.interestMean.toFixed(2)}</td>
+                <td>{r.interestPct === null ? '—' : r.interestPct.toFixed(0)}</td>
+                <td>{r.meetsBreadth ? '✓ ≥2.0' : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }
 
@@ -86,6 +126,8 @@ export function Report({ payload }: { payload: PlainPayload }) {
           </p>
         )}
       </section>
+
+      <ThemeBreakdown rows={s.themeBreakdown} />
 
       <section>
         <h3>CEI — Consent Experience Indicators (retained separately, no composite)</h3>

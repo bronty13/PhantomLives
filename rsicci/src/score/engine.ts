@@ -77,10 +77,30 @@ const PRACTICE_TAGS = ['No practice disclosed', 'Past only', 'Recent', 'Occasion
 
 // ---- Module D: CII, CIB, CAP ------------------------------------------------
 
+/** Per-theme detail for the Module D interest matrix (parallels the SRI breakdown). */
+export interface DThemeScore {
+  stem: string
+  label: string
+  appeal: number | null
+  desire: number | null
+  practice: number | null
+  /** Mean of valid Appeal/Desire (0–4). */
+  interestMean: number | null
+  /** interestMean as 0–100. */
+  interestPct: number | null
+  /** Practice as 0–100. */
+  practicePct: number | null
+  /** Any of Appeal/Desire/Practice ≥ 1. */
+  endorsed: boolean
+  /** interestMean ≥ 2.0 (contributes to CIB). */
+  meetsBreadth: boolean
+}
+
 interface DMatrixStats {
   cii: ScoreResult
   cib: ScoreResult & { count: number }
   cap: ScoreResult & { maxPracticeCode: number | null }
+  themeBreakdown: DThemeScore[]
 }
 
 function scoreDMatrix(answers: AnswersInput): DMatrixStats {
@@ -93,6 +113,7 @@ function scoreDMatrix(answers: AnswersInput): DMatrixStats {
   const themeMeans: number[] = [] // themes with ≥1 valid appeal/desire
   const practicePcts: number[] = []
   let maxPracticeCode: number | null = null
+  const themeBreakdown: DThemeScore[] = []
 
   for (const t of themes) {
     const aRec = record(answers, t.appeal)
@@ -116,6 +137,19 @@ function scoreDMatrix(answers: AnswersInput): DMatrixStats {
       practicePcts.push((pNum / 4) * 100)
       if (maxPracticeCode === null || pNum > maxPracticeCode) maxPracticeCode = pNum
     }
+
+    themeBreakdown.push({
+      stem: t.stem,
+      label: t.label,
+      appeal: aNum,
+      desire: dNum,
+      practice: pNum,
+      interestMean: themeMean,
+      interestPct: themeMean === null ? null : (themeMean / 4) * 100,
+      practicePct: pNum === null ? null : (pNum / 4) * 100,
+      endorsed: [aNum, dNum, pNum].some((v) => v !== null && v >= 1),
+      meetsBreadth: themeMean !== null && themeMean >= 2.0,
+    })
   }
 
   const adEligible = adDisplayed > 0 && adValid / adDisplayed >= 0.7
@@ -169,7 +203,7 @@ function scoreDMatrix(answers: AnswersInput): DMatrixStats {
     }
   }
 
-  return { cii, cib, cap }
+  return { cii, cib, cap, themeBreakdown }
 }
 
 // ---- Generic composite: mean of N items / 4 * 100, with an "M of N" gate -----
@@ -381,6 +415,8 @@ export interface ScoringOutput {
   cii: ScoreResult
   cib: ScoreResult & { count: number }
   cap: ScoreResult & { maxPracticeCode: number | null }
+  /** Per-theme breakdown of the 38 Module-D interest themes. */
+  themeBreakdown: DThemeScore[]
   kis: ScoreResult
   /** KID_NO_IDENTITY: contextual tag, never scored as concealment/pathology. */
   noIdentityContext: number | null
@@ -443,6 +479,7 @@ export function score(answers: AnswersInput): ScoringOutput {
     cii: d.cii,
     cib: d.cib,
     cap: d.cap,
+    themeBreakdown: d.themeBreakdown,
     kis,
     noIdentityContext: resolveNumeric('KID_NO_IDENTITY', value(answers, 'KID_NO_IDENTITY')),
     ccs,

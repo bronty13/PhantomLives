@@ -48,6 +48,45 @@ describe('Module D — CII / CIB / CAP (xlsx worked example)', () => {
   })
 })
 
+describe('Module D — per-theme breakdown (parallels SRI)', () => {
+  const answers = dMatrix([
+    { appeal: 3, desire: 4, practice: 3 },
+    { appeal: 2, desire: 1, practice: 0 },
+    { appeal: 0, desire: 0, practice: 0 },
+  ])
+  const s = score(answers)
+
+  it('emits one row per theme with raw cells and derived fields', () => {
+    expect(s.themeBreakdown.length).toBe(themes.length)
+    const t0 = s.themeBreakdown[0]
+    expect(t0.appeal).toBe(3)
+    expect(t0.desire).toBe(4)
+    expect(t0.practice).toBe(3)
+    expect(t0.interestMean).toBeCloseTo(3.5, 6)
+    expect(t0.interestPct).toBeCloseTo(87.5, 6)
+    expect(t0.meetsBreadth).toBe(true)
+    expect(t0.endorsed).toBe(true)
+  })
+
+  it('flags non-breadth and non-endorsed themes correctly', () => {
+    expect(s.themeBreakdown[1].meetsBreadth).toBe(false) // mean 1.5
+    expect(s.themeBreakdown[1].endorsed).toBe(true) // appeal 2
+    expect(s.themeBreakdown[2].endorsed).toBe(false) // all zero
+    expect(s.themeBreakdown[2].meetsBreadth).toBe(false)
+  })
+
+  it('leaves unanswered themes as null cells', () => {
+    const last = s.themeBreakdown[themes.length - 1]
+    expect(last.appeal).toBeNull()
+    expect(last.interestMean).toBeNull()
+    expect(last.endorsed).toBe(false)
+  })
+
+  it('breadth-flagged count matches CIB count', () => {
+    expect(s.themeBreakdown.filter((r) => r.meetsBreadth).length).toBe(s.cib.count)
+  })
+})
+
 describe('Missing codes (97/98/99) are excluded, not zero', () => {
   it('a 99 is dropped from a theme mean instead of pulling it toward 0', () => {
     // Target theme: appeal=4, desire=99 (PNTA) → theme mean = 4 (not 2).

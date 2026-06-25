@@ -2,6 +2,17 @@
 
 All notable changes to the R-SICCI SPA are documented here.
 
+## 0.3.0 — 2026-06-24
+
+- **Per-theme breakdown for the non-restricted Module D interest themes**
+  (parallels the SRI per-theme table). The scoring engine now retains, for each
+  of the 38 themes, the raw Appeal/Desire/Practice values, the theme interest
+  mean and %, the Practice %, and `endorsed` / `meetsBreadth` flags. The report
+  renders an "Interest themes — per-theme breakdown" table (engaged themes only,
+  sorted by interest, with the breadth-contributing themes highlighted).
+- New tests assert the breakdown's raw cells, derived fields, null handling, and
+  that the breadth-flagged count matches CIB; 39 tests total.
+
 ## 0.2.0 — 2026-06-24
 
 - **SRI is now scored as an individual, researcher-facing index** (at the

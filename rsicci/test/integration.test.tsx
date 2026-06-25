@@ -89,6 +89,8 @@ describe('headless render smoke test', () => {
     expect(html).toContain('Restricted Sensitive-Theme Research Index') // SRI section present
     expect(html).toMatch(/risk, dangerousness/i) // SRI misuse guardrail kept
     expect(html).toContain('Prohibited uses')
+    expect(html).toContain('Interest themes — per-theme breakdown') // D per-theme table
+    expect(html).toContain(themes[0].label) // an engaged theme row
   })
 
   it('Report renders the populated SRI breakdown when Module J was opted into', () => {

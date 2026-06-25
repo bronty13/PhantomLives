@@ -138,3 +138,6 @@ table.scores thead th { color: var(--muted); font-weight: 600; font-size: 0.8rem
 }
 .sri-themes { margin-top: 12px; font-size: 0.85rem; }
 .sri-themes td:not(.theme-col) { text-align: center; font-variant-numeric: tabular-nums; }
+.theme-breakdown { margin-top: 10px; font-size: 0.85rem; }
+.theme-breakdown td:not(.theme-col) { text-align: center; font-variant-numeric: tabular-nums; }
+.theme-breakdown tr.breadth { background: var(--selected); }
