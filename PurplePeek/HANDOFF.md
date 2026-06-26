@@ -54,9 +54,17 @@ writes then calls a `reloadX()` / `patchLocal` to refresh the published slice.
 
 `AppState` publishes raw `mediaFiles` **and** cached derivations: `visibleMediaFiles`,
 `previewQueue`, `folderTree`, and toolbar enable-flags. `recomputeDerived()` rebuilds them in
-one O(n) pass, called only when an input changes (file set / folder selection / decision).
-Single-item edits use `patchLocal` (O(1) via an `id → index` map) to mutate in place. Don't
-reintroduce per-`body` filtering — it was the main large-library lag source.
+one O(n) pass, called only when an input changes (file set / folder selection / decision /
+the `showTaggedOnly` toggle). Single-item edits use `patchLocal` (O(1) via an `id → index`
+map) to mutate in place. Don't reintroduce per-`body` filtering — it was the main large-library
+lag source.
+
+`fileKeywordNames` (`[fileId: [name]]`) is a published slice of the same kind: bulk-loaded once
+via `DatabaseService.allFileKeywordNames()` (refreshed on any keyword change + on launch), it
+backs the per-item tag labels (grid cells, list rows, the Preview tag strip) and the "Tagged
+only" filter — so the grid never does a per-cell keyword query. The tagged gate is applied
+inside `recomputeDerived()` to both `visibleMediaFiles` and `previewQueue`, alongside the
+`DecisionFilter` lens.
 
 ## Module map
 

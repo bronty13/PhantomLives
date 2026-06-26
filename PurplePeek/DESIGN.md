@@ -46,7 +46,9 @@ necessity:
 `keep` is a SQLite tri-state integer — `NULL` = undecided, `1` = keep, `0` = skip — bridged to
 Swift `Bool?` via `MediaFile.keepDecision`. Undecided is a first-class state (it's the default
 Preview queue and a Show-filter option), not "false". The `DecisionFilter` enum is the single
-lens that turns this tri-state into the grid/Preview filters.
+lens that turns this tri-state into the grid/Preview filters. A separate boolean `showTaggedOnly`
+lens layers on top of it (combinable, not exclusive) so you can narrow either queue to items that
+carry tags — handy when reviewing already-decided items for the ones you've annotated.
 
 ## Missing vs deleted: reconciling disk on re-scan
 
