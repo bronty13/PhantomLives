@@ -70,13 +70,15 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 10 | **Coding Agents & AI-Assisted Development** | The application most readers use daily: the autonomy ladder, plan→act→verify workflows & spec-driven development, context/steering & subagent orchestration, tools & MCP in the loop, reading SWE-bench honestly + the verification discipline, and the security failure modes (the lethal trifecta, since the agent runs code). |
 | 11 | **AI Product & UX Patterns** | Making AI products *usable*: designing for probabilistic systems, streaming & perceived performance, calibrated trust & citations, human-in-the-loop & control, designing for failure, and onboarding + the feedback flywheel. The course's most durable module (built on Microsoft HAX, Google PAIR, NN/g). |
 | 12 | **Governance, Safety & Compliance** | Keeping AI products on the right side of the law and of users' trust: risk-based thinking, the regulatory landscape (EU AI Act, US patchwork, NIST RMF, ISO 42001), data privacy & training-data provenance, documentation/accountability, risk assessment & red-teaming, and operationalizing a governance program. |
+| 13 | **LLMOps / Productionization & Observability** | Running it all in production: how LLMOps inverts MLOps, the LLM gateway pattern, observability & tracing (the trace/span model, OpenTelemetry GenAI), reliability engineering (200-is-not-the-contract), the deploy/improve lifecycle (prompt versioning, eval gates, gradual rollout, model migration), and ops at scale (secrets, cost governance, PII, the platform team). |
 
-> 🎓 **The curriculum is complete — all 13 modules (0–12, 70 lessons).** The full arc from
+> 🎓 **The curriculum is complete — all 14 modules (0–13, 76 lessons).** The full arc from
 > choosing a model to running the whole stack locally, then multimodal & generative media,
-> AI-assisted software development, product/UX, and governance. See [CURRICULUM.md](CURRICULUM.md)
-> for the lesson index and [HANDOFF.md](HANDOFF.md) to extend or refresh it — the perishable
-> content (model catalogs, the coding-tool landscape, the regulatory timeline) should be
-> re-verified against the primary sources on the cadence each lesson notes.
+> AI-assisted software development, product/UX, governance, and operating it all in production.
+> See [CURRICULUM.md](CURRICULUM.md) for the lesson index and [HANDOFF.md](HANDOFF.md) to extend
+> or refresh it — the perishable content (model catalogs, the coding-tool landscape, the
+> regulatory timeline, the LLMOps tooling) should be re-verified against the primary sources on
+> the cadence each lesson notes.
 
 ---
 
@@ -174,6 +176,14 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [Documentation & Accountability](part-12-governance/03-documentation-and-accountability.md) — the datasheet→model card→system card taxonomy, EU technical-documentation/logging requirements, AI inventories, and audit trails.
 - [Risk Assessment & Red-Teaming](part-12-governance/04-risk-assessment-and-red-teaming.md) — impact assessments (FRIA/DPIA), red-teaming as governance, OWASP LLM Top 10 / MITRE ATLAS, and frontier "if-then" safety frameworks.
 - [Operationalizing Governance](part-12-governance/05-operationalizing-governance.md) — the program (roles, three lines of defense), effective human oversight, incident response, and lifecycle "build-it-in" governance.
+
+**Module 13 — LLMOps / Productionization & Observability**
+- [What is LLMOps, and the Productionization Gap](part-13-llmops/00-what-is-llmops.md) — how LLMOps inverts MLOps (you ship the prompt, not weights; non-determinism; inference cost; external-API dependency), what "production-ready" means, and the inner/outer-loop lifecycle. **Start here.**
+- [The LLM Gateway Pattern](part-13-llmops/01-the-llm-gateway-pattern.md) — one chokepoint in front of every model call (unified API, key management, routing, fallback, caching, cost tracking, guardrails) and the tool landscape.
+- [Observability & Tracing](part-13-llmops/02-observability-and-tracing.md) — why APM isn't enough, the trace/span model for agents, the OpenTelemetry GenAI conventions (status: not yet stable), the tools, and the content-capture privacy tension.
+- [Reliability Engineering](part-13-llmops/03-reliability-engineering.md) — "200 OK is not the contract," LLM-specific failure modes, retries-with-jitter, circuit breakers, fallback chains, hedging, degradation, and split (deterministic vs quality) SLOs.
+- [Continuous Improvement & the Deployment Lifecycle](part-13-llmops/04-continuous-improvement-and-lifecycle.md) — silent regressions, prompt versioning (rollback = relabel), threshold-based eval gates in CI, shadow→canary→A/B rollout, model-version migration, and the feedback loop.
+- [Ops at Scale](part-13-llmops/05-ops-at-scale.md) — scoped virtual keys, cost attribution + *hard* budgets (provider budgets are soft), PII/retention/ZDR/residency, and the central AI-platform-team pattern.
 
 ---
 

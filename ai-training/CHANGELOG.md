@@ -3,6 +3,49 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-26 — Module 13 (LLMOps / Productionization & Observability) built — CURRICULUM COMPLETE (0–13, 76 lessons)
+
+The operational synthesis module — how to *run* LLM apps in production, connecting the threads from
+M5 (eval), M7 (cost), M8 (serving), M11 (UX), and M12 (governance).
+
+- **Module 13 — LLMOps / Productionization & Observability** (6 lessons), durable-principle-first
+  with dated tooling snapshots:
+  - `00-what-is-llmops` — the productionization gap; **LLMOps inverts MLOps** (you ship the prompt/
+    context/tool config not weights; non-determinism inherent; cost is inference-dominated forever;
+    hard external-API dependency; evals replace fixed metrics — but CI/CD/versioning/monitoring carry
+    over, LLMOps *extends* not replaces); production-ready pillars; the inner/outer-loop lifecycle.
+  - `01-the-llm-gateway-pattern` — **the chokepoint**: one internal endpoint in front of every model
+    call centralizing unified API / keys / routing / fallback / rate-limit / caching / cost / logging
+    / guardrails; tool roundup (LiteLLM, Portkey, Cloudflare, Kong, OpenRouter, Helicone, Vercel,
+    Bedrock/Vertex); ties M7 routing + M8 serving (the gateway sits in front of either).
+  - `02-observability-and-tracing` — why APM is blind (semantic payload + tree-not-request); the
+    trace/span model; **OpenTelemetry GenAI conventions status = Development/NOT stable** (flagged as
+    a re-verify item); content-capture is opt-in by spec; tools; the PII/redaction tension (ties
+    M4 trajectory eval, M11 trust, M12 data governance).
+  - `03-reliability-engineering` — **"a 200 OK is not the contract"**; LLM failure modes (multi-
+    dimensional 429, 529≠rate-limit, refusals-inside-200, streaming-after-200, schema-valid-but-wrong);
+    retries-with-**jitter** (jitter = load safety, honor Retry-After), circuit breakers, fallback
+    chains, hedging on TTFT, graceful degradation, capacity/provisioned-throughput, and **split SLIs**
+    (deterministic vs quality/multi-trial).
+  - `04-continuous-improvement-and-lifecycle` — **silent regressions** as the enemy; prompt versioning
+    (rollback = relabel); **eval gates = threshold-and-baseline relative, not pass/fail** (calibrate a
+    judge to 85–90% before it blocks; prod failures → permanent regression tests); shadow→canary→A/B
+    watching *quality* signals; pin the full behavioral surface (prompt+model+RAG+tools) as one rollback
+    unit; **pin dated model snapshots not aliases** + deprecation lifecycle (ties M1, M5, M10).
+  - `05-ops-at-scale` — **govern-at-center/consume-at-edge**; scoped virtual keys + referenced/rotatable
+    secrets; cost attribution + **hard gateway budgets (provider budgets are SOFT alerts)**; PII
+    redaction/retention TTL + provider no-train/ZDR/residency posture (re-verify); the central
+    AI-platform-team pattern; capstone tying the whole course together.
+- Sourcing per HANDOFF pipeline: one live-web research agent (LLMOps tooling + practices). Durable
+  engineering principles (backoff/jitter, circuit breakers, hedging, SLOs) anchored on classic
+  distributed-systems references; tool names/versions/provider terms flagged as dated June-2026
+  snapshots with a re-verify list. **The research agent flagged + excluded two hallucinated "facts"
+  (a non-existent arXiv ID, a fictional covered-model rule)** — folded into lesson 00 as a live
+  "verify citations" LLMOps lesson. Scratch research file used for synthesis then removed (not a lesson).
+- **Bookkeeping:** CURRICULUM adds the Module 13 table + the "complete (0–13, 76 lessons)" banner;
+  README adds the module-map row, contents block, and updated banner; PROGRESS lists Module 13. All
+  internal links verified.
+
 ## 2026-06-26 — Modules 11 & 12 built — CURRICULUM COMPLETE (0–12, 70 lessons)
 
 The final two candidate modules, built together (they cross-reference each other). The course

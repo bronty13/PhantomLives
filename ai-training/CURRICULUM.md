@@ -151,14 +151,26 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Risk assessment & red-teaming (impact assessments, OWASP/ATLAS, frontier if-then) | [part-12-governance/04-risk-assessment-and-red-teaming.md](part-12-governance/04-risk-assessment-and-red-teaming.md) |
 | ✅ | Operationalizing governance (program, human oversight, incident response, lifecycle) | [part-12-governance/05-operationalizing-governance.md](part-12-governance/05-operationalizing-governance.md) |
 
+## Module 13 — LLMOps / Productionization & Observability
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | What is LLMOps, and the productionization gap | [part-13-llmops/00-what-is-llmops.md](part-13-llmops/00-what-is-llmops.md) |
+| ✅ | The LLM gateway pattern (the chokepoint) | [part-13-llmops/01-the-llm-gateway-pattern.md](part-13-llmops/01-the-llm-gateway-pattern.md) |
+| ✅ | Observability & tracing (the trace/span model, OTel GenAI, privacy) | [part-13-llmops/02-observability-and-tracing.md](part-13-llmops/02-observability-and-tracing.md) |
+| ✅ | Reliability engineering (200-is-not-the-contract; backoff/fallback/SLOs) | [part-13-llmops/03-reliability-engineering.md](part-13-llmops/03-reliability-engineering.md) |
+| ✅ | Continuous improvement & the deployment lifecycle | [part-13-llmops/04-continuous-improvement-and-lifecycle.md](part-13-llmops/04-continuous-improvement-and-lifecycle.md) |
+| ✅ | Ops at scale (secrets, cost governance, PII, the platform team) | [part-13-llmops/05-ops-at-scale.md](part-13-llmops/05-ops-at-scale.md) |
+
 ---
 
-## 🎓 Curriculum complete — Modules 0–12
+## 🎓 Curriculum complete — Modules 0–13
 
-All 13 modules (0–12, 70 lessons) are built. The full practical arc: choosing models → prompting
+All 14 modules (0–13, 76 lessons) are built. The full practical arc: choosing models → prompting
 → RAG → agents → evaluation → fine-tuning → cost/latency → running it all locally → **multimodal
 & generative media** → **coding agents & AI-assisted development** → **AI product & UX patterns**
-→ **governance, safety & compliance**. To **extend or refresh** it (new modules, re-verifying the
-dated catalogs), see [HANDOFF.md](HANDOFF.md). The perishable content — model catalogs (M1, M9),
-the coding-tool landscape + SWE-bench (M10), and the regulatory timeline (M12) — should be
-re-verified against the primary sources on the cadence each lesson notes.
+→ **governance, safety & compliance** → **LLMOps / productionization & observability**. To
+**extend or refresh** it, see [HANDOFF.md](HANDOFF.md). The perishable content — model catalogs
+(M1, M9), the coding-tool landscape + SWE-bench (M10), the regulatory timeline (M12), and the
+LLMOps tooling/OTel-status (M13) — should be re-verified against the primary sources on the
+cadence each lesson notes.

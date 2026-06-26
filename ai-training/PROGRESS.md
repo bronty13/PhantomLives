@@ -103,5 +103,13 @@ Check off lessons as you complete them.
 - [ ] Risk assessment & red-teaming
 - [ ] Operationalizing governance
 
+## Module 13 — LLMOps / Productionization & Observability
+- [ ] What is LLMOps, and the productionization gap
+- [ ] The LLM gateway pattern
+- [ ] Observability & tracing
+- [ ] Reliability engineering
+- [ ] Continuous improvement & the deployment lifecycle
+- [ ] Ops at scale
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*
