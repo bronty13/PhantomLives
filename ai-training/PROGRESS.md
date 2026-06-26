@@ -71,5 +71,13 @@ Check off lessons as you complete them.
 - [ ] Serving at scale (vLLM)
 - [ ] Integration & operations
 
+## Module 9 — Multimodal & Generative Media
+- [ ] Multimodal fundamentals (the modality matrix)
+- [ ] Vision & document understanding
+- [ ] Audio, voice & realtime
+- [ ] Image & video generation
+- [ ] Local & on-device multimodal
+- [ ] Putting it together (capstone)
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*

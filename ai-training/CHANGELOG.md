@@ -3,6 +3,45 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-26 — Module 9 (Multimodal & Generative Media) built — first post-core extension
+
+- **Module 9 — Multimodal & Generative Media** (6 lessons), durable-first; the module
+  where the course's "text in, text out" assumption finally drops, with every prior module
+  shown to extend cleanly:
+  - `00-multimodal-fundamentals.md` — the modality matrix (which in/out modalities, and that
+    no single model fills the grid), native-multimodal vs. pipeline-of-specialists, the
+    pixel/second→token cost (ties to M7 token economics), and the "when text-only still wins"
+    gate (echoes M4's when-not-to-build discipline).
+  - `01-vision-and-documents.md` — the three tiers of "reading" a document (plain OCR /
+    layout-aware / LLM reasoning), native PDF vs. rasterize, grounding/bounding-boxes, the
+    **authoritative Claude lineup modality + vision-pricing table** (text+image-in only, no
+    image/video generation, no audio; high-res 2576px on Opus 4.7+/Fable 5; native PDF +
+    citations), a snapshot of other frontier vision models + document-specialist OCR tools,
+    and multimodal RAG (cross-links M3).
+  - `02-audio-voice-and-realtime.md` — cascade (STT→LLM→TTS) vs. native speech-to-speech, the
+    sub-800ms latency budget (cross-links M7 latency), ASR/TTS snapshots, OpenAI Realtime /
+    Gemini Live, WebRTC/WebSocket transport, VAD + barge-in, and the audio-token cost trap.
+  - `03-image-and-video-generation.md` — the five billing shapes, control features (the
+    instruction-editing "Nano Banana/Kontext" paradigm), the four-axis commercial licensing
+    checklist, image + video catalogs (flagging the Imagen-deprecated / Sora-EOL / FLUX.2-flagship
+    / Midjourney-no-API corrections + the near-term shutdown cluster), and C2PA + SynthID
+    provenance with the EU AI Act Art. 50 (2026-08-02) hook.
+  - `04-local-and-on-device.md` — Apple-Silicon-weighted: the unified-memory fit table, local
+    VLMs (Qwen3-VL, Gemma 3, Moondream, SmolVLM) via llama.cpp/Ollama/LM Studio/MLX-VLM,
+    whisper.cpp vs. MLX-Whisper (ties to transcribe/ + M8), local TTS (Kokoro/Piper/CSM), and
+    local diffusion (Draw Things/mflux/ComfyUI); cross-links M8's base_url unlock.
+  - `05-putting-it-together.md` — a document→cited-answer pipeline capstone, multimodal
+    cost/latency at scale (resolution/duration as the master knob, right-sizing, caching,
+    batching — all cross-linked to M7), multimodal evaluation (OCR=code-graded, generated
+    media=LLM-judge/human, voice=two-layer — cross-links M5), and a recap of how M1–M8 extend.
+- Sourcing per HANDOFF pipeline: Anthropic/Claude facts via the **`claude-api` skill**
+  (authoritative); everyone else via two parallel live-web research agents (frontier vision +
+  image/video gen; audio/voice/realtime + local multimodal). Every model/price flagged as a
+  dated June-2026 snapshot; announced-but-unshipped and imminent-shutdown items called out.
+- **Bookkeeping:** CURRICULUM adds the Module 9 table and revises the completion banner
+  (Modules 0–9, next = Module 10 Coding Agents); README adds the module-map row, the contents
+  block, and bumps `last_reviewed`; PROGRESS lists Module 9. All internal links relative.
+
 ## 2026-06-18 — Module 8 (Local Inference Deep Dive) built — CORE CURRICULUM COMPLETE
 
 - **Module 8 — Local Inference Deep Dive** (6 lessons), hands-on, Apple-Silicon-weighted;

@@ -4,7 +4,7 @@ type: course-home
 audience: builder / power-user learning to choose, run, and apply AI models well
 scope: practical working knowledge of the AI model landscape and how to use it
 status: living document
-last_reviewed: 2026-06-18
+last_reviewed: 2026-06-26
 ---
 
 # AI Training — choosing and using AI models like a pro
@@ -66,10 +66,13 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 6 | **Fine-tuning & Adaptation** | When (and when not) to fine-tune; methods (LoRA/QLoRA, SFT, DPO, RFT, distillation), the data discipline, process/tooling/serving, and the pitfalls (forgetting, safety degradation, maintenance). |
 | 7 | **Cost & Latency Engineering** | The cost/latency/quality triangle; token economics, caching, model right-sizing & routing, latency engineering (TTFT/streaming/throughput), and production economics / build-vs-buy. |
 | 8 | **Local Inference Deep Dive** | Running models on your own hardware end-to-end: the local stack, Ollama/LM Studio, Apple Silicon & MLX, llama.cpp/GGUF, vLLM serving, and offline integration/ops. |
+| 9 | **Multimodal & Generative Media** | Beyond text-in/text-out: the modality matrix, vision & document understanding, audio/voice/realtime, image & video generation (+ licensing/provenance), local multimodal on Apple Silicon, and a capstone pipeline. |
 
-> 🎓 **The core curriculum (Modules 0–8) is complete** — the full arc from choosing a model
-> to running the whole stack on your own hardware. See [CURRICULUM.md](CURRICULUM.md) for the
-> lesson index and [HANDOFF.md](HANDOFF.md) to extend it.
+> 🎓 **The core curriculum (Modules 0–8) plus Module 9 (Multimodal) is complete** — the full
+> arc from choosing a model to running the whole stack on your own hardware, now including
+> multimodal & generative media. The next planned build is **Module 10 — Coding Agents &
+> AI-Assisted Development**. See [CURRICULUM.md](CURRICULUM.md) for the lesson index and
+> [HANDOFF.md](HANDOFF.md) to extend it.
 
 ---
 
@@ -135,6 +138,14 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [llama.cpp & GGUF](part-08-local-inference/03-llama-cpp-and-gguf.md) — the engine: quantization in depth, GPU offload, context/KV cache, GBNF grammars.
 - [Serving at Scale (vLLM)](part-08-local-inference/04-serving-at-scale-vllm.md) — when to graduate, PagedAttention/continuous batching, multi-GPU, multi-LoRA serving.
 - [Integration & Operations](part-08-local-inference/05-integration-and-operations.md) — the OpenAI-compatible base_url unlock, offline RAG, benchmarking, troubleshooting (+ the course capstone).
+
+**Module 9 — Multimodal & Generative Media**
+- [Multimodal Fundamentals](part-09-multimodal/00-multimodal-fundamentals.md) — the modality matrix, native-multimodal vs. pipeline-of-specialists, the pixel/second→token cost, and when text-only still wins. **Start here.**
+- [Vision & Document Understanding](part-09-multimodal/01-vision-and-documents.md) — the three tiers of "reading" a document, native PDF vs. rasterize, grounding, the Claude modality/vision-pricing picture, and multimodal RAG.
+- [Audio, Voice & Realtime](part-09-multimodal/02-audio-voice-and-realtime.md) — cascade vs. native speech-to-speech, the latency budget, ASR/TTS snapshots, realtime APIs, and audio-token billing.
+- [Image & Video Generation](part-09-multimodal/03-image-and-video-generation.md) — the five billing shapes, control features, the four-axis licensing checklist, current image/video catalogs, and C2PA/SynthID provenance.
+- [Local & On-Device Multimodal](part-09-multimodal/04-local-and-on-device.md) — what fits in unified memory, local VLMs, whisper.cpp/MLX-Whisper, local TTS, and local diffusion on Apple Silicon.
+- [Putting It Together](part-09-multimodal/05-putting-it-together.md) — a document→cited-answer pipeline, multimodal cost/latency/eval at scale, and how every prior module extends.
 
 ---
 

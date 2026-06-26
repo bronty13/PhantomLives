@@ -103,12 +103,23 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | Serving at scale (vLLM) | [part-08-local-inference/04-serving-at-scale-vllm.md](part-08-local-inference/04-serving-at-scale-vllm.md) |
 | ✅ | Integration & operations (+ course capstone) | [part-08-local-inference/05-integration-and-operations.md](part-08-local-inference/05-integration-and-operations.md) |
 
+## Module 9 — Multimodal & Generative Media
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | Multimodal fundamentals (the modality matrix; when text-only wins) | [part-09-multimodal/00-multimodal-fundamentals.md](part-09-multimodal/00-multimodal-fundamentals.md) |
+| ✅ | Vision & document understanding (OCR tiers, native PDF, Claude modality/pricing) | [part-09-multimodal/01-vision-and-documents.md](part-09-multimodal/01-vision-and-documents.md) |
+| ✅ | Audio, voice & realtime (ASR, TTS, speech-to-speech, voice agents) | [part-09-multimodal/02-audio-voice-and-realtime.md](part-09-multimodal/02-audio-voice-and-realtime.md) |
+| ✅ | Image & video generation (billing shapes, control, licensing, provenance) | [part-09-multimodal/03-image-and-video-generation.md](part-09-multimodal/03-image-and-video-generation.md) |
+| ✅ | Local & on-device multimodal (Apple Silicon: VLMs, Whisper, diffusion) | [part-09-multimodal/04-local-and-on-device.md](part-09-multimodal/04-local-and-on-device.md) |
+| ✅ | Putting it together (pipeline capstone + cost/latency/eval at scale) | [part-09-multimodal/05-putting-it-together.md](part-09-multimodal/05-putting-it-together.md) |
+
 ---
 
-## 🎓 Core curriculum complete
+## 🎓 Core curriculum + Module 9 complete
 
-Modules 0–8 are built. The course covers the full practical arc: choosing models → prompting
-→ RAG → agents → evaluation → fine-tuning → cost/latency → running it all locally. To **extend**
-it (new modules, refreshing the dated catalogs), see [HANDOFF.md](HANDOFF.md) — candidate
-future topics include multimodal (vision/audio/video) workflows, AI product/UX patterns, and
-governance/compliance.
+Modules 0–9 are built. The course covers the full practical arc: choosing models → prompting
+→ RAG → agents → evaluation → fine-tuning → cost/latency → running it all locally → **multimodal
+& generative media**. To **extend** it (new modules, refreshing the dated catalogs), see
+[HANDOFF.md](HANDOFF.md) — the next planned build is **Module 10 — Coding Agents & AI-Assisted
+Development**; further candidates include AI product/UX patterns and governance/compliance.
