@@ -3,6 +3,39 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-26 — Two gap-fill lessons: M0 vocabulary primer + M4 agent interoperability/A2A (now 78 lessons)
+
+Closed the two small known gaps from HANDOFF/review (not full modules — one lesson each).
+
+- **Module 0 — Vocabulary primer** (`part-00-orientation/01-vocabulary-primer.md`, new): split the
+  primer **out** of lesson 00 (where it was folded in, scoped to "8 concepts before the Module 1
+  catalogs") into its own dedicated lesson and **expanded it to a whole-course glossary** (~25 terms
+  grouped: the essential handful → model anatomy → capabilities/behavior → access/licensing →
+  application patterns that name whole modules → operational terms), each cross-linked to the module
+  that teaches it in depth. Lesson 00 slimmed to pure "how to use this course" (title + est_time
+  updated, embedded primer replaced with a pointer, Next → the primer). CURRICULUM Module 0 row
+  flipped ⬜→✅.
+- **Module 4 — Agent interoperability & the A2A protocol** (`part-04-agents-and-tool-use/07-...`, new):
+  the previously-zero-coverage agent↔agent topic, appended as lesson 07 (a forward-looking frontier
+  capstone after the lesson-06 synthesis; 06's footer rewired Next → 07). Durable spine = the
+  **vertical (MCP, agent↔tools) vs. horizontal (A2A, agent↔agent) vs. agent↔user (AG-UI)** split,
+  complementary not competing. A2A concepts (Agent Cards / well-known URI / signing, client+remote
+  roles, task lifecycle, messages/artifacts, transports, **opaque agents**, delegated auth);
+  governance (Google→Linux Foundation; v1.0 production-ready early 2026 + breaking changes; ACP merged
+  in). **Corrected a widely-mis-reported fact** (and my own earlier M10 framing): **A2A is its OWN LF
+  project, NOT under the Agentic AI Foundation** — AAIF = MCP/goose/AGENTS.md only. Security spine =
+  the **lethal trifecta compounding across a trust cascade** (one agent's output is the next's
+  untrusted input; authentication is necessary-not-sufficient; scoped/least-privilege delegation) —
+  cross-links M4 safety + M12 red-teaming. Honest maturity read: emerging-but-maturing, deployment
+  concentrated in cloud vendors, registries fragmented.
+- Sourcing per HANDOFF: the primer is durable foundational content (no research). The A2A lesson used
+  one live-web research agent (deep-research workflow); first-party-verified items (A2A versioning,
+  AAIF composition, ACP→A2A merger, MCP/A2A complementarity, lethal trifecta) taught as fact, secondary/
+  uncertain items (OWASP ASI IDs, JWS card-signing specifics, SDK readiness) softened or omitted. The
+  research scratch file (`research/agent-interop-a2a.md`) used for synthesis then removed (not a lesson).
+- **Bookkeeping:** CURRICULUM (M0 row ✅ + new file, M4 adds lesson 07, banner 76→78), README (M4
+  contents adds lesson 07, banner 76→78), PROGRESS (both new lessons). All internal links verified.
+
 ## 2026-06-26 — Module 13 (LLMOps / Productionization & Observability) built — CURRICULUM COMPLETE (0–13, 76 lessons)
 
 The operational synthesis module — how to *run* LLM apps in production, connecting the threads from

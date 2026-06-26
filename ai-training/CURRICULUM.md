@@ -16,7 +16,7 @@ lesson list — the [README](README.md) module map points here.
 | Status | Lesson | File |
 |---|---|---|
 | ✅ | How to use this course | [part-00-orientation/00-how-to-use-this-course.md](part-00-orientation/00-how-to-use-this-course.md) |
-| ⬜ | Vocabulary primer (tokens, context, params, modalities, quantization) | *(planned — currently folded into the Module 1 pages)* |
+| ✅ | Vocabulary primer (the essential terms, glossary for the whole course) | [part-00-orientation/01-vocabulary-primer.md](part-00-orientation/01-vocabulary-primer.md) |
 
 ## Module 1 — Model Landscape *(the first build)*
 
@@ -59,6 +59,7 @@ lesson list — the [README](README.md) module map points here.
 | ✅ | MCP & the tool ecosystem | [part-04-agents-and-tool-use/04-mcp-and-the-tool-ecosystem.md](part-04-agents-and-tool-use/04-mcp-and-the-tool-ecosystem.md) |
 | ✅ | Safety, security & reliability | [part-04-agents-and-tool-use/05-safety-security-and-reliability.md](part-04-agents-and-tool-use/05-safety-security-and-reliability.md) |
 | ✅ | Evaluating & operating agents | [part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md](part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md) |
+| ✅ | Agent interoperability & the A2A protocol | [part-04-agents-and-tool-use/07-agent-interoperability-and-a2a.md](part-04-agents-and-tool-use/07-agent-interoperability-and-a2a.md) |
 
 ## Module 5 — Evaluation
 
@@ -166,7 +167,7 @@ lesson list — the [README](README.md) module map points here.
 
 ## 🎓 Curriculum complete — Modules 0–13
 
-All 14 modules (0–13, 76 lessons) are built. The full practical arc: choosing models → prompting
+All 14 modules (0–13, 78 lessons) are built. The full practical arc: choosing models → prompting
 → RAG → agents → evaluation → fine-tuning → cost/latency → running it all locally → **multimodal
 & generative media** → **coding agents & AI-assisted development** → **AI product & UX patterns**
 → **governance, safety & compliance** → **LLMOps / productionization & observability**. To

@@ -72,7 +72,7 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 12 | **Governance, Safety & Compliance** | Keeping AI products on the right side of the law and of users' trust: risk-based thinking, the regulatory landscape (EU AI Act, US patchwork, NIST RMF, ISO 42001), data privacy & training-data provenance, documentation/accountability, risk assessment & red-teaming, and operationalizing a governance program. |
 | 13 | **LLMOps / Productionization & Observability** | Running it all in production: how LLMOps inverts MLOps, the LLM gateway pattern, observability & tracing (the trace/span model, OpenTelemetry GenAI), reliability engineering (200-is-not-the-contract), the deploy/improve lifecycle (prompt versioning, eval gates, gradual rollout, model migration), and ops at scale (secrets, cost governance, PII, the platform team). |
 
-> 🎓 **The curriculum is complete — all 14 modules (0–13, 76 lessons).** The full arc from
+> 🎓 **The curriculum is complete — all 14 modules (0–13, 78 lessons).** The full arc from
 > choosing a model to running the whole stack locally, then multimodal & generative media,
 > AI-assisted software development, product/UX, governance, and operating it all in production.
 > See [CURRICULUM.md](CURRICULUM.md) for the lesson index and [HANDOFF.md](HANDOFF.md) to extend
@@ -113,6 +113,7 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [MCP & the Tool Ecosystem](part-04-agents-and-tool-use/04-mcp-and-the-tool-ecosystem.md) — what MCP is, its architecture, and its security surface.
 - [Safety, Security & Reliability](part-04-agents-and-tool-use/05-safety-security-and-reliability.md) — failure modes, guardrails, human-in-the-loop, least privilege, excessive agency, the lethal trifecta.
 - [Evaluating & Operating Agents](part-04-agents-and-tool-use/06-evaluating-and-operating-agents.md) — outcome vs. trajectory eval, pass^k, agent eval sets, and observability.
+- [Agent Interoperability & the A2A Protocol](part-04-agents-and-tool-use/07-agent-interoperability-and-a2a.md) — the vertical(MCP)/horizontal(A2A) split, Agent Cards & task lifecycle, opaque agents, the governance landscape, and the cross-agent trust boundary.
 
 **Module 5 — Evaluation**
 - [The Eval Mindset](part-05-evaluation/00-the-eval-mindset.md) — why eval is the moat, eval-driven development, "look at your data," offline vs. online. **Start here.**

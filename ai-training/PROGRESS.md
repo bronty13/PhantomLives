@@ -9,6 +9,7 @@ Check off lessons as you complete them.
 
 ## Module 0 — Orientation
 - [ ] How to use this course
+- [ ] Vocabulary primer
 
 ## Module 1 — Model Landscape
 - [ ] How to choose a model (the decision framework)
@@ -39,6 +40,7 @@ Check off lessons as you complete them.
 - [ ] MCP & the tool ecosystem
 - [ ] Safety, security & reliability
 - [ ] Evaluating & operating agents
+- [ ] Agent interoperability & the A2A protocol
 
 ## Module 5 — Evaluation
 - [ ] The eval mindset

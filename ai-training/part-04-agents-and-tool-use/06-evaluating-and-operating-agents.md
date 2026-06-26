@@ -110,7 +110,13 @@ least-autonomous pattern that fits → curate its context → standardize connec
 wrap it in least-privilege guardrails and human gates → and measure it on outcomes (and
 `pass^k`) with full tracing before you trust it.**
 
+That synthesis covers building and operating a *single* agent and its tools. One frontier
+remains: what happens when agents must work with *other* agents, across vendor and framework
+boundaries.
+
 ---
 
-← [Safety, security & reliability](05-safety-security-and-reliability.md) ·
-↑ [Module index](../CURRICULUM.md)
+## Next
+
+→ [Agent interoperability & the A2A protocol](07-agent-interoperability-and-a2a.md) — the
+agent ecosystem's horizontal frontier.
