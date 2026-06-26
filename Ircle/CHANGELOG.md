@@ -2,6 +2,21 @@
 
 All notable changes to Ircle are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **A data race in the shared `IRCKit` engine that could crash the app at
+  random** (IRCKit 0.4.0). `IRCClient` touched its connection state from both
+  the main thread (Ircle's synchronous `send`/`disconnect`/cap reads via
+  `IrcleSession`) and its private socket queue with no synchronization — a
+  use-after-free on the hot send path and concurrent mutation of the receive
+  buffer on disconnect, firing during connect/disconnect/reconnect (sporadic,
+  timing-dependent crashes). IRCKit now confines all connection state to its
+  serial queue; the public API is unchanged, so Ircle needed no source changes.
+  Proven race-free with a ThreadSanitizer harness (7 races → 0). See
+  `IRCKit/CHANGELOG.md` (0.4.0).
+
 ## 0.26.0 — 2026-06-20
 
 ### Added
