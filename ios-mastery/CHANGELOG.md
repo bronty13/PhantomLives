@@ -3,6 +3,27 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 03 (Security Architecture) built — 33/105 lessons ✅ — FOUNDATION TIER COMPLETE
+
+The security spine: the layered Platform-Security model; the SEP/SEPOS software deep dive (L4
+microkernel, the keystore, why SEP is the acquisition wall); Data Protection + the keybags (the
+four NSFileProtection classes, the per-file→class-key→keybag wrap chain); passcode + BFU/AFU +
+the iOS 18 inactivity reboot (the keystone forensic-state lesson); code signing + AMFI +
+entitlements + CoreTrust + trust caches; the sandbox + TCC on iOS; the kernel-hardening ladder
+(KASLR→KPP→KTRR→PAC→PPL→SPTM/TXM→Exclaves→MIE); biometrics security (the disable conditions +
+the compelled-biometrics legal split); the Keychain (keychain-2.db, kSecAttrAccessible classes);
+and Lockdown Mode / Stolen Device Protection / Advanced Data Protection.
+
+- Built 9/10 via the module-builder workflow; **`04-code-signing-amfi-entitlements` was authored
+  by hand** because the workflow author tripped a cybersecurity content-filter on the CoreTrust/
+  AMFI material (a recurring false-positive on legitimate, Apple-documented security topics — the
+  authored lessons are fine; only the fresh-agent meta-prompt phrasing trips it). Notably the
+  kernel-hardening lesson (06) came through the workflow cleanly.
+
+With Parts 00–03 done, every vocabulary item the forensics, dev, and RE pillars depend on
+(SEP/keybags, BFU/AFU, code-signing/AMFI, the mitigation ladder, the container model) is written
+and cross-linkable.
+
 ## 2026-06-26 — Part 02 (System Architecture & Internals) built — 23/105 lessons ✅
 
 XNU/Darwin on mobile; the SecureROM→iBoot→kernelcache→launchd boot chain; IMG4/SHSH

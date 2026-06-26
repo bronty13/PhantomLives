@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–02 complete (23/105 lessons ✅). 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–03 complete (33/105 lessons ✅) — the foundation tier (orientation, hardware, internals, security) is done. 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -63,16 +63,16 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [The iOS security model](part-03-security-architecture/00-the-ios-security-model.md) | ⬜ |
-| 01 | [SEP & SEPOS deep dive](part-03-security-architecture/01-sep-sepos-deep-dive.md) | ⬜ |
-| 02 | [Data Protection & the keybags](part-03-security-architecture/02-data-protection-and-keybags.md) | ⬜ |
-| 03 | [Passcode, BFU/AFU & the inactivity reboot](part-03-security-architecture/03-passcode-bfu-afu-and-inactivity.md) | ⬜ |
-| 04 | [Code signing, AMFI & entitlements](part-03-security-architecture/04-code-signing-amfi-entitlements.md) | ⬜ |
-| 05 | [The sandbox & TCC on iOS](part-03-security-architecture/05-the-sandbox-and-tcc.md) | ⬜ |
-| 06 | [Kernel hardening: PAC, PPL, SPTM/TXM, MIE](part-03-security-architecture/06-kernel-hardening-pac-sptm-txm-mie.md) | ⬜ |
-| 07 | [Biometrics security architecture](part-03-security-architecture/07-biometrics-security-architecture.md) | ⬜ |
-| 08 | [The Keychain on iOS](part-03-security-architecture/08-keychain-on-ios.md) | ⬜ |
-| 09 | [Advanced protections: Lockdown, SDP, ADP](part-03-security-architecture/09-advanced-protections-lockdown-sdp-adp.md) | ⬜ |
+| 00 | [The iOS security model](part-03-security-architecture/00-the-ios-security-model.md) | ✅ |
+| 01 | [SEP & SEPOS deep dive](part-03-security-architecture/01-sep-sepos-deep-dive.md) | ✅ |
+| 02 | [Data Protection & the keybags](part-03-security-architecture/02-data-protection-and-keybags.md) | ✅ |
+| 03 | [Passcode, BFU/AFU & the inactivity reboot](part-03-security-architecture/03-passcode-bfu-afu-and-inactivity.md) | ✅ |
+| 04 | [Code signing, AMFI & entitlements](part-03-security-architecture/04-code-signing-amfi-entitlements.md) | ✅ |
+| 05 | [The sandbox & TCC on iOS](part-03-security-architecture/05-the-sandbox-and-tcc.md) | ✅ |
+| 06 | [Kernel hardening: PAC, PPL, SPTM/TXM, MIE](part-03-security-architecture/06-kernel-hardening-pac-sptm-txm-mie.md) | ✅ |
+| 07 | [Biometrics security architecture](part-03-security-architecture/07-biometrics-security-architecture.md) | ✅ |
+| 08 | [The Keychain on iOS](part-03-security-architecture/08-keychain-on-ios.md) | ✅ |
+| 09 | [Advanced protections: Lockdown, SDP, ADP](part-03-security-architecture/09-advanced-protections-lockdown-sdp-adp.md) | ✅ |
 
 ## Part 04 — Networking & Connectivity
 
