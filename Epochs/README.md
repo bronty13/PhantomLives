@@ -7,10 +7,12 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.1 — scaffold + engine core.** Combat resolution and area scoring
-> are implemented and unit-tested against a small fixture map. The real 102-land
-> board, the 49 empires, the event deck, the AI, and the map UI are still to
-> come (see `docs/SPEC.md` §14).
+> **Status: v0.2 — playable headless game.** A full 7-epoch game runs
+> end-to-end and deterministically: catch-up draft → empire setup → expansion +
+> combat → monuments → scoring → pre-eminence → ranked winner, with stub AI
+> bots, all unit-tested against a small fixture map (42 tests). Still to come:
+> the real 102-land board, the 49 empires, the event deck, the tunable heuristic
+> AI, and the map UI (see `docs/SPEC.md` §14).
 
 ## Stack
 
@@ -22,17 +24,22 @@ across main, renderer, and tests.
 ```
 src/
   shared/        # pure game brain — engine + data (no Electron/DOM)
-    types.ts         entity types (Land, Area, EmpireCard, BoardPiece, …)
+    types.ts         entity types (Land, Area, EmpireCard, BoardPiece, MapData…)
     rng.ts           seeded deterministic RNG (mulberry32)
     combat.ts        dice combat: closed-form odds + seeded resolution
     scoring.ts       presence/dominance/control area scoring + structures
+    board.ts         queryable map wrapper (adjacency, sea index, areas)
+    game.ts          the Game state machine + applyCapture (the turn loop)
+    bot.ts           Bot interface + GreedyStubBot / RandomBot
+    sim.ts           headless game runner (runHeadlessGame / formatResult)
     data/
-      areaValues.ts  the real per-epoch Victory-Point table (13 areas)
-      fixtureMap.ts  small placeholder board until the real one is transcribed
+      areaValues.ts    the real per-epoch Victory-Point table (13 areas)
+      fixtureMap.ts    small placeholder board until the real one is transcribed
+      fixtureEmpires.ts synthetic empire deck until the 49 empires are transcribed
   main/          # Electron main process (window lifecycle)
   preload/       # contextBridge surface
   renderer/      # UI (placeholder: renders the VP table from the engine)
-tests/           # vitest unit tests (combat, scoring)
+tests/           # vitest unit tests (combat, scoring, game)
 docs/SPEC.md     # canonical rules + data model + open questions
 ```
 

@@ -3,7 +3,7 @@
 // coherent Mediterranean-ish slice across three real Areas. Borders are kept
 // symmetric. Replace with src/shared/data/board.ts when real data lands.
 
-import type { AreaDef, Land, LandId, SeaId } from '../types'
+import type { AreaDef, Land, LandId, MapData, SeaId } from '../types'
 import { AREA_NAMES, valueByEpoch } from './areaValues'
 
 export const FIXTURE_SEAS: SeaId[] = ['eastern_med', 'western_med', 'black_sea']
@@ -92,4 +92,11 @@ const AREA_OF = new Map<LandId, string>(
 /** Resolve a fixture land to its Area id (or null for barren/unknown). */
 export function fixtureAreaOf(landId: LandId): string | null {
   return AREA_OF.get(landId) ?? null
+}
+
+/** Bundled MapData for constructing a Board from the fixture. */
+export const FIXTURE_MAP_DATA: MapData = {
+  lands: FIXTURE_LANDS,
+  areas: FIXTURE_AREAS,
+  seas: FIXTURE_SEAS,
 }

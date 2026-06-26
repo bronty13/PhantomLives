@@ -31,6 +31,13 @@ export interface AreaDef {
   valueByEpoch: Record<EpochId, number>
 }
 
+/** Everything needed to build a Board: the lands, the areas, and the seas. */
+export interface MapData {
+  lands: Land[]
+  areas: AreaDef[]
+  seas: SeaId[]
+}
+
 /** Which water an empire's fleets may use. `all` = full navigation. */
 export type Navigation = { all: true } | { seas: SeaId[] }
 
