@@ -3,6 +3,26 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 02 (System Architecture & Internals) built — 23/105 lessons ✅
+
+XNU/Darwin on mobile; the SecureROM→iBoot→kernelcache→launchd boot chain; IMG4/SHSH
+personalization; APFS + the sealed System volume; launchd + the system-daemon cast; processes/
+Mach/XPC + the restricted debugging surface; memory/jetsam + the app lifecycle; the dyld shared
+cache + AMFI/trust-cache; the filesystem/container map; unified logging + sysdiagnose; and the
+usbmuxd/lockdownd/AFC/mobilebackup2 device-services stack (+ iOS 17 RemoteXPC). Built in two
+passes (server rate-limiting interrupted the first; resumed from cache to fill 4 gap lessons).
+
+**Currency correction (live research caught a stale baseline):** an author agent's web search
+surfaced **usbliter8** — a real, verified (The Hacker News / The Register / 9to5Mac /
+AppleInsider, 2026-06-18) checkm8-style **unpatchable SecureROM exploit for A12–A13** by
+Paradigm Shift. This moves the BootROM-exploit acquisition boundary from **A11→A12** to
+**A13→A14** (A8–A11 checkm8 + A12–A13 usbliter8; A14+ has no public BootROM exploit). Since this
+is the single most load-bearing fact in mobile forensics, the boundary was reconciled across the
+build: the boot-chain lesson covers it natively, and the SoC-matrix, mental-model, platform-
+history, DFU, APFS, and device-services lessons (Parts 00–02) plus the HANDOFF grounded baseline
+were corrected. Jailbreak/kernel-patching claims were left intact (a BootROM exploit is not a
+kernel jailbreak; there is still no public kernel jailbreak for A12+ on iOS 18/26).
+
 ## 2026-06-26 — Part 01 (Hardware & Silicon) built — 12/105 lessons ✅
 
 The silicon substrate (16 agents, ~2.07M tokens, live research per lesson):

@@ -151,13 +151,14 @@ Two below-the-OS device modes, both reached by **button gestures** rather than s
 | **Recovery** | **iBoot** (the stage-2 bootloader) is up | Apple-signed IPSW restore/update; talks to Finder/`idevicerestore` | Normal restore/repair; *not* a data door (it reinstalls, it does not extract) |
 | **DFU** (Device Firmware Update) | **BootROM (SecureROM)** only — iBoot has not loaded | Whatever the BootROM will accept over USB before any OS code runs | The deepest entry point; the substrate for **checkm8** |
 
-DFU sits one stage lower than Recovery: in DFU the **immutable BootROM** is the only code running, before iBoot, before the kernel, before AMFI. That is precisely why it is the door low-level acquisition uses. **checkm8** is a *BootROM* USB exploit triggered in DFU — and because the BootROM is mask-ROM fixed at fabrication, **whether a given chip is checkm8-able is a permanent hardware property**: it works on **A8–A11 only** (and the matching iPads). On **A12 and later**, the BootROM in DFU will only accept **Apple-signed, personalized Image4 payloads** (SHSH/ECID-bound), so DFU on a modern device is *just a restore path* — sealed, not an acquisition door. This is the single fact that bifurcates the whole acquisition landscape by chip generation.
+DFU sits one stage lower than Recovery: in DFU the **immutable BootROM** is the only code running, before iBoot, before the kernel, before AMFI. That is precisely why it is the door low-level acquisition uses. **checkm8** is a *BootROM* USB exploit triggered in DFU — and because the BootROM is mask-ROM fixed at fabrication, **whether a given chip is checkm8-able is a permanent hardware property**: it works on **A8–A11 only** (and the matching iPads). The June-2026 **usbliter8** SecureROM/USB-DMA bug reopened this DFU door on **A12–A13** (iPhone XS/XR/11, plus S4/S5 and A12 iPads), so the sealed line moved to **A14 and later**: there the BootROM in DFU accepts only **Apple-signed, personalized Image4 payloads** (SHSH/ECID-bound), making DFU on an A14+ device *just a restore path* — sealed, not an acquisition door. This chip-generation split — a BootROM foothold on **A8–A13**, none on **A14+** — bifurcates the whole acquisition landscape.
 
 ```
 Normal boot:   BootROM ─▶ iBoot ─▶ XNU kernel ─▶ launchd ─▶ SpringBoard
 Recovery:      BootROM ─▶ iBoot  (waits for signed IPSW over USB)
 DFU:           BootROM            (waits for a payload over USB — checkm8 lives HERE, A8–A11)
-                  └── A12+: only Apple-signed Image4/SHSH accepted ⇒ no low-level door
+                  ├── A12–A13: usbliter8 (2026) ⇒ BootROM door reopened
+                  └── A14+: only Apple-signed Image4/SHSH accepted ⇒ no low-level door
 ```
 
 The chip generation, not the OS, decides what DFU is good for:
@@ -165,7 +166,8 @@ The chip generation, not the OS, decides what DFU is good for:
 | Silicon | Example devices | DFU = low-level door? | Practical acquisition path |
 |---|---|---|---|
 | **A8–A11** | iPhone 6–X | ✅ checkm8 (unpatchable BootROM) | palera1n/checkra1n-class checkm8 → full-FS even at BFU on older OS; A11 needs passcode disabled |
-| **A12–A14 / early M** | iPhone XS–12, iPad | ❌ (signed-only DFU) | Software exploit / extraction agent *if one exists for the OS build*; no BootROM door |
+| **A12–A13** | iPhone XS–11 | ✅ usbliter8 (2026, unpatchable BootROM) | usbliter8 (public 2026-06-18) → BootROM code-exec in DFU; boot a ramdisk for full-FS, lock-state permitting; new/maturing |
+| **A14 / early M** | iPhone 12–, iPad | ❌ (signed-only DFU) | Software exploit / extraction agent *if one exists for the OS build*; no BootROM door |
 | **A15–A18 / M2–M4** | iPhone 13–16 | ❌ | Agent-based full-FS only on vulnerable OS builds; SPTM/TXM-hardened |
 | **A19 / A19 Pro, M5** | **iPhone 17 line, iPad Pro M5** | ❌ | Hardest target of 2026 (MIE/EMTE); even commercial low-level support lags this silicon |
 
@@ -176,7 +178,7 @@ The **button gestures** (for **iPhone 8 and later** — all of which use this Si
 - **Recovery:** quick-press **Vol Up**, quick-press **Vol Down**, then **hold Side** until the *connect-to-computer* (cable) screen appears. The screen shows the recovery graphic — you are at iBoot.
 - **DFU:** quick-press **Vol Up**, quick-press **Vol Down**, **hold Side** until the screen goes fully black (~10 s), then — still holding Side — **also hold Vol Down** for ~5 s, **release Side** but keep holding **Vol Down** ~5 s. **The screen must stay black.** Any logo or cable graphic means you overshot into Recovery and must start over. (The timing on the Side button is the whole difficulty; one second long throws you into Recovery instead.)
 
-Because DFU shows a black screen and Recovery shows the cable graphic, you cannot always tell the two apart by looking — you confirm over USB. The BootROM in DFU enumerates as an Apple **USB device in DFU mode** (the host sees a distinct USB product string / mode), while Recovery enumerates as the iBoot "Recovery Mode" interface. The checkm8 toolchain (`gaster`/`ipwndfu`/palera1n) drives the device into DFU and then into a **"pwned DFU"** state — the BootROM exploited so it will accept an *unsigned* payload — which is the literal moment the signing wall falls on A8–A11. On A12+ there is no pwned-DFU because the BootROM bug is patched; DFU stays signed-only.
+Because DFU shows a black screen and Recovery shows the cable graphic, you cannot always tell the two apart by looking — you confirm over USB. The BootROM in DFU enumerates as an Apple **USB device in DFU mode** (the host sees a distinct USB product string / mode), while Recovery enumerates as the iBoot "Recovery Mode" interface. The checkm8 toolchain (`gaster`/`ipwndfu`/palera1n) drives the device into DFU and then into a **"pwned DFU"** state — the BootROM exploited so it will accept an *unsigned* payload — which is the literal moment the signing wall falls on A8–A11. On A14+ there is no pwned-DFU; DFU stays signed-only. (A12–A13 regained a pwned-DFU path via **usbliter8** in June 2026.)
 
 > 🔬 **Forensics note:** The host-visible USB descriptor of a DFU/Recovery device leaks identity even before any restore: the **ECID** (Exclusive Chip ID, the per-die unique serial), the chip/board ID, and the production/security mode appear in the DFU/Recovery serial string and in `irecovery -q`/`ideviceinfo` output. The ECID is the value SHSH blobs and Image4 personalization are *bound to* — so even a bricked, OS-less device in DFU still tells you exactly which die it is. (Personalization mechanics: [[image4-personalization-shsh]].)
 
@@ -188,9 +190,9 @@ Because DFU shows a black screen and Recovery shows the cable graphic, you canno
 4. From the ramdisk, **mount the Data volume read-only** and image it, or run an SSH-over-USB agent that streams files off. On A8–A10 BFU, only BFU-class data is readable without the passcode; A11 requires the passcode disabled. AFU yields far more.
 5. **Tear down** by rebooting to the unmodified OS — checkm8 is non-persistent, so the device returns to its original firmware on the next normal boot.
 
-The forensic virtues: it is **read-only** (ramdisk, no writes to user data), it works on a **locked** device for whatever data classes the lock state exposes, and it needs no passcode for the exploit itself. The hard limit is the silicon — none of this exists for A12+.
+The forensic virtues: it is **read-only** (ramdisk, no writes to user data), it works on a **locked** device for whatever data classes the lock state exposes, and it needs no passcode for the exploit itself. The hard limit is the silicon — none of this exists for **A14+** (the same ramdisk approach extends to A12–A13 via **usbliter8** since June 2026; see [[the-jailbreak-landscape-2026]]).
 
-> ⚠️ **ADVANCED:** DFU/Recovery gestures are described here for completeness and for the read-only walkthrough — but on a **seized evidentiary device you do not casually enter them**. Forcing a reboot to reach DFU **destroys the AFU state**: it drops the device to BFU and may trip the inactivity/Stolen-Device timers, turning a recoverable phone into a cold one. DFU/Recovery are for *restore, repair, or a sanctioned checkm8 acquisition on a supported chip* — and even then, you image and document first, and you run it on the **checkm8** path only with the legal authority and tooling to do so. Never "just try DFU" on evidence. The 2026 jailbreak/exploit reality (palera1n's checkm8 range, the A12+ dead end) is mapped in [[the-jailbreak-landscape-2026]]; the signing wall DFU enforces is [[image4-personalization-shsh]] and [[boot-chain-securerom-iboot]].
+> ⚠️ **ADVANCED:** DFU/Recovery gestures are described here for completeness and for the read-only walkthrough — but on a **seized evidentiary device you do not casually enter them**. Forcing a reboot to reach DFU **destroys the AFU state**: it drops the device to BFU and may trip the inactivity/Stolen-Device timers, turning a recoverable phone into a cold one. DFU/Recovery are for *restore, repair, or a sanctioned checkm8 acquisition on a supported chip* — and even then, you image and document first, and you run it on the **checkm8** path only with the legal authority and tooling to do so. Never "just try DFU" on evidence. The 2026 jailbreak/exploit reality (palera1n's checkm8 range, usbliter8's A12–A13 range, the A14+ dead end) is mapped in [[the-jailbreak-landscape-2026]]; the signing wall DFU enforces is [[image4-personalization-shsh]] and [[boot-chain-securerom-iboot]].
 
 > 🖥️ **macOS contrast:** Apple silicon **Macs have a DFU mode too** — reached by a button/key gesture and revived/restored from a *second* Mac running Apple Configurator 2 or `mdmclient`/`cfgutil`. The shape is identical (a BootROM-level USB target that accepts only signed firmware), which is the tell that iOS and macOS now share the same boot-security model. The difference is that no one is exploiting a modern Mac's BootROM over DFU for acquisition — the value of iOS DFU is entirely the legacy **checkm8** window on A8–A11 silicon that will never get patched because it is in ROM.
 
@@ -201,13 +203,13 @@ Everything above collapses into one decision tree you run in the field. The hard
 ```
    Seized device
         │
-   What chip?  ─── A8–A11 ──▶ checkm8 fallback exists (read-only ramdisk image possible later)
-        │        A12+ ─────▶ no low-level door; you depend entirely on lock state + tooling
+   What chip?  ─ A8–A13 ──▶ BootROM fallback exists (checkm8 A8–A11 / usbliter8 A12–A13; ramdisk image possible)
+        │        A14+ ─────▶ no low-level door; you depend entirely on lock state + tooling
         │
    What lock state NOW?
         ├─ Unlocked / AFU ──▶ DON'T let it lock or sleep. Isolate (Faraday), keep powered+awake,
         │                     race to acquisition before the ~1 h port timer and the 72 h reboot.
-        └─ BFU ─────────────▶ data is cold; A12+ ⇒ usually little recoverable without the passcode.
+        └─ BFU ─────────────▶ data is cold; A14+ ⇒ usually little recoverable without the passcode.
         │
    Is there a trusting computer?  ─── yes ──▶ seize it; its pairing/escrow record may unlock AFU logical.
 ```
@@ -361,7 +363,7 @@ The Simulator likewise *accepts* CoreMotion API calls but **synthesizes nothing*
 1. Given a device's chip generation, decide: is DFU a **low-level acquisition door** or **only a restore path**? Fill the table for A11, A12, A15, A19.
 2. Write the exact **Recovery** vs **DFU** button gestures for a Face-ID iPhone from memory; mark the one step where overshooting lands you in the wrong mode.
 3. State, in one line each, what each mode runs (BootROM vs iBoot) and what it will accept (any payload vs Apple-signed Image4).
-4. For an A12+ seized device that is **AFU now**, write the SOP: would you ever enter DFU? Why not? What does it cost you?
+4. For an **A14+** seized device that is **AFU now**, write the SOP: would you ever enter DFU? Why not? What does it cost you?
 
 ### Lab 4 — The USB-Restricted-Mode seizure clock (read-only walkthrough + Simulator stand-in)
 
@@ -387,8 +389,8 @@ The Simulator likewise *accepts* CoreMotion API calls but **synthesizes nothing*
 
 - **"It's only charging, so it's safe to leave it" is backwards.** Leaving a locked phone sitting is exactly how you **lose** access: the ~1 h port timer expires and then the 72 h inactivity reboot drops it to BFU. Charging does not reset the *unlock* timers. Keep an unlocked/AFU device awake and get it to acquisition fast.
 - **The connector is a red herring.** Lightning vs USB-C changes nothing about acquirability — the data gate is identical. Don't reason about USB Restricted Mode in terms of the plug shape.
-- **DFU on evidence is destructive.** Forcing the reboot to reach DFU kills AFU state, may trip Stolen-Device/inactivity timers, and on A12+ buys you *nothing* (no low-level door anyway). It is not a "let me just try" step.
-- **checkm8 eligibility is fixed in silicon, not in software.** No iOS update can make an A12+ checkm8-able, and none can *un*-checkm8 an A11. Read the **chip**, not the OS version, to know your low-level options.
+- **DFU on evidence is destructive.** Forcing the reboot to reach DFU kills AFU state, may trip Stolen-Device/inactivity timers, and on **A14+** buys you *nothing* (no low-level door anyway). It is not a "let me just try" step.
+- **BootROM-exploit eligibility is fixed in silicon, not in software.** No iOS update can make an A12+ checkm8-able, and none can *un*-checkm8 an A11; the separate **usbliter8** bug (A12–A13) is likewise a permanent silicon property. Read the **chip**, not the OS version, to know your low-level options.
 - **PowerLog schema is a moving target.** Don't hardcode table/column names from a blog written two iOS versions ago. List `.tables`, and let APOLLO map streams. The same goes for HealthKit's `data_type` integers.
 - **PowerLog and Health are ~7-day rolling stores on-device.** The continuous timeline is only as long as the window unless archives/backups extend it. Acquire promptly; don't assume last month's steps are still there.
 - **Timestamp epoch traps.** HealthKit uses **Apple Mac Absolute Time** (add `978307200`); PowerLog mixes units **per table**; CoreMotion APIs hand you *relative* monotonic times that must be anchored to boot. Mixing them silently yields timestamps decades off — see [[the-ios-timestamp-zoo]].
@@ -405,7 +407,7 @@ The Simulator likewise *accepts* CoreMotion API calls but **synthesizes nothing*
 - The iPhone's **data port is a security boundary on a ~1-hour clock**: locked + untrusted ≈ charge-only. There is no Mac equivalent — this is the seizure-time race that decides whether logical acquisition is even possible.
 - A **host pairing/escrow record** (`/var/db/lockdown/<UDID>.plist` on a trusting Mac) can defeat the timer for AFU logical acquisition without the passcode — making the suspect's *computer* a first-class phone-acquisition target.
 - **Two power-driven timers** govern data reachability: USB Restricted Mode (~1 h, gates the *port*) and the **SEP inactivity reboot (72 h, drops AFU→BFU and cools the data)**. Both start at last unlock.
-- **DFU is the only low-level door, and it is sealed by chip generation:** checkm8 works in DFU on **A8–A11 only**; A12+ DFU accepts only Apple-signed Image4, so it is a restore path, not an acquisition door. Eligibility is fixed in ROM at fabrication.
+- **DFU is the only low-level door, and it is sealed by chip generation:** a SecureROM exploit works in DFU on **A8–A13** (checkm8 A8–A11 + usbliter8 A12–A13); on **A14+** DFU accepts only Apple-signed Image4, so it is a restore path, not an acquisition door. Eligibility is fixed in ROM at fabrication.
 - Forcing **DFU/Recovery on evidence is destructive** — it kills AFU state and may trip inactivity/Stolen-Device timers. Image and document before any mode change; never "just try it."
 - The **AOP keeps the IMU/barometer/pedometer running 24/7**, so Health (`healthdb_secure.sqlite`) holds a near-continuous **step/flights/elevation activity timeline** that accrues with the screen off and no app open — a presence record suspects rarely clean.
 - **PowerLog** (`CurrentPowerlog.PLSQL`) is a pattern-of-life goldmine — charge curve, camera/app/process events — on a ~7-day window; pair it with APOLLO and mind the per-table epoch.

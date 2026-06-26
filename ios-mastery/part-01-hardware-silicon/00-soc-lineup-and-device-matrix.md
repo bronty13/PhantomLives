@@ -159,8 +159,8 @@ Here is the comprehensive map. Read it as the SoC ladder with the *identifiers a
 | iPhone 7 / 7 Plus | `iPhone9,1` / `iPhone9,2` | `d10ap` / `d11ap` | `0x8010` (32784) | A10 | ✅ | — | — |
 | iPhone 8 / 8 Plus | `iPhone10,1` / `iPhone10,2` | `d20ap` / `d21ap` | `0x8015` (32789) | A11 | ✅‡ | — | — |
 | **iPhone X** | `iPhone10,3` / `iPhone10,6` | `d22ap` / `d221ap` | `0x8015` (32789) | A11 | **✅‡ (upper bound)** | — | — |
-| **iPhone XS / XR** | `iPhone11,2` / `iPhone11,8` | `d321ap` / `n841ap` | `0x8020` (32800) | A12 | **❌ (the wall)** | — | — |
-| iPhone 11 | `iPhone12,1` | `n104ap` | `0x8030` (32816) | A13 | ❌ | — | — |
+| **iPhone XS / XR** | `iPhone11,2` / `iPhone11,8` | `d321ap` / `n841ap` | `0x8020` (32800) | A12 | **❌ / usbliter8 ✦** | — | — |
+| iPhone 11 | `iPhone12,1` | `n104ap` | `0x8030` (32816) | A13 | ❌ / usbliter8 ✦ | — | — |
 | iPhone 12 / 12 Pro | `iPhone13,2` / `iPhone13,3` | → resolve | `0x8101` (33025) | A14 | ❌ | — | — |
 | iPhone 13 / 13 Pro | `iPhone14,5` / `iPhone14,2` | → resolve | `0x8110` (33040) | A15 | ❌ | ✅ | — |
 | iPhone 14 Pro | `iPhone15,2` | `d73ap` | `0x8120` (33056) | A16 | ❌ | ✅ | — |
@@ -177,14 +177,15 @@ Here is the comprehensive map. Read it as the SoC ladder with the *identifiers a
 
 **Footnotes:**
 - † **A9 was dual-sourced** — Samsung `s8000` (`0x8000`) and TSMC `s8003` (`0x8003`) dies shipped in the same model ("chipgate"). The `CPID` differs by fab; resolve per unit.
-- ‡ **A11 needs the passcode disabled** for palera1n's checkm8 boot (a SEP/keybag interaction unique to A11); A8–A10 do not. A11 is the checkm8 **upper bound**; A12 closed it at fabrication.
+- ‡ **A11 needs the passcode disabled** for palera1n's checkm8 boot (a SEP/keybag interaction unique to A11); A8–A10 do not. A11 is the checkm8 **upper bound**; A12 closed *checkm8* at fabrication — but see ✦.
+- ✦ **usbliter8** (public **2026-06-18**, Paradigm Shift) is a checkm8-style **unpatchable SecureROM / USB-DMA exploit** covering **A12–A13** (+S4/S5, A12 iPads). So the BootROM-exploit foothold now spans **A8–A13** and the hard wall is **A13→A14**, not A11→A12; **A14+ has no public BootROM exploit**. A BootROM exploit is code-exec, *not* a full jailbreak (there is no public kernel jailbreak for A12+ on iOS 18/26) and does not itself defeat the SEP or the passcode. Brand-new and maturing — verify coverage/tooling at [[the-jailbreak-landscape-2026]].
 - § **iPhone 15 / 15 Plus reuse the A16** (`0x8120`) — a base-model chip reuse, so the `iPhone15,4/5` identifier sits a generation behind its Pro siblings on the SoC ladder. Never assume same-year models share a SoC.
 - ‖ iPhone **Air** (`iPhone18,4`) and **17e** (`iPhone18,5`, shipped 2026-03) board configs were not pinned at author time — resolve with `ipsw device-list`.
 - ¶ **MIE on M5 is unconfirmed** at author time; Apple's Memory Integrity Enforcement messaging centered on A19. Verify before asserting MIE for the M5 iPad Pro. SPTM/TXM (M2+) is solid.
 
 A few structural reads of the table that pay off:
 
-1. **The checkm8 cliff is one row.** Everything `iPhone7,x`–`iPhone10,6` (A8–A11, `0x7000`–`0x8015`) has a hardware foothold; everything `iPhone11,2` onward (A12+, `0x8020`+) does not. That A11→A12 / `0x8015`→`0x8020` line is the most consequential boundary in iPhone forensics, full stop.
+1. **The BootROM-exploit cliff is one row — and it just moved.** `iPhone7,x`–`iPhone10,6` (A8–A11, `0x7000`–`0x8015`) have a **checkm8** foothold; **A12–A13** (`iPhone11,2`–`iPhone12,x`, `0x8020`/`0x8030`) gained one via **usbliter8 ✦** in June 2026; **A14+** (`iPhone13,x`+, `0x8101`+) has none. The hardware-foothold wall is now the **A13→A14** line — the single most consequential boundary in iPhone forensics (it sat at A11→A12 until June 2026).
 2. **Three identifier eras off the `ProductType` numbers.** `iPhone17,x` = iPhone 16 (A18); `iPhone18,x` = iPhone 17 (A19). The `ProductType` major runs *one ahead* of the marketing number for the recent generations — a permanent off-by-one trap.
 3. **`CPID` no longer separates base from Pro** on A18/A19 (`0x8140`/`0x8150` shared). The `ProductType` is the discriminator.
 
@@ -193,9 +194,10 @@ A few structural reads of the table that pay off:
 The rightmost three columns are not academic — each marks a *capability change* that reshapes acquisition and RE:
 
 ```
-   checkm8  ── A8 ─ A9 ─ A10 ─ A11 │ A12 ─────────────────────────── A19
-  (SecureROM     ✅   ✅   ✅    ✅  │  ❌   no public BootROM foothold ❌
-   BootROM bug)                     │
+   BootROM   ─ A8 ─ A9 ─ A10 ─ A11 ─ A12 ─ A13 │ A14 ──────────── A19
+   exploit      ✅   ✅   ✅    ✅   ✅✦   ✅✦  │  ❌  no public  ❌
+  (checkm8 A8–A11;                             │     BootROM foothold
+   usbliter8 ✦ A12–A13)                        │
                                     │
    SPTM/TXM ─────────────── A15+ ───┼──── (A15 A16 A17 A18 A19, M2+) ──►
   (HW page-table &                  │       kernel R/W ≠ game over;
@@ -206,7 +208,7 @@ The rightmost three columns are not academic — each marks a *capability change
    enforced in HW)                  │              memory-safety in HW
 ```
 
-- **checkm8 (A8–A11).** An unpatchable SecureROM vulnerability. Below the wall you get a hardware-rooted, OS-version-independent foothold → **full-file-system acquisition** is on the table (subject to BFU/AFU and passcode; see [[full-file-system-acquisition]]). Note the bug's silicon range historically reached earlier A5/A7-class and the Mac T2 too, but those parts can't run a modern, supported iOS, so the **forensically relevant** window is A8–A11.
+- **checkm8 (A8–A11) + usbliter8 (A12–A13 ✦).** Two unpatchable SecureROM vulnerabilities. Below the wall you get a hardware-rooted, OS-version-independent foothold → **full-file-system acquisition** is on the table (subject to BFU/AFU and passcode; see [[full-file-system-acquisition]]). checkm8's silicon range historically reached earlier A5/A7-class and the Mac T2, but those can't run a modern supported iOS, so its forensically relevant window is A8–A11; **usbliter8** (public 2026-06-18) extends the analogous foothold to **A12–A13**, so the combined BootROM-exploit window is **A8–A13** and **A14+ stays clean**.
 - **SPTM/TXM (A15+ / M2+).** The Secure Page Table Monitor and Trusted Execution Monitor move page-table and code-trust enforcement into hardware-isolated monitors, so a kernel read/write primitive (the historical jailbreak win) no longer equals total control — the monitor re-validates. This is why post-A14 exploitation got dramatically harder and commercial-tool lag is common (see [[kernel-hardening-pac-sptm-txm-mie]]).
 - **MIE / EMTE (A19).** Memory Integrity Enforcement uses Enhanced Memory Tagging at allocation granularity, enforced in hardware, to kill whole classes of memory-corruption bugs that exploit chains depend on. A19 is the current hardest-target tier.
 
@@ -220,20 +222,18 @@ Now connect the chain to the decision it drives. The identity you extract routes
   read (ProductType, build, CPID/board)
             │
             ▼
-   CPID in 0x7000–0x8015 (A8–A11)?
+   Which BootROM-exploit window?  (CPID)
             │
-      yes ──┴── no
-       │         │
-       ▼         ▼
-  checkm8     A12+ : no public BootROM foothold
-  branch          │
-  (HW-rooted      ├─ jailbroken / agent reachable for this (CPID, iOS)? → FFS via agent
-   FFS, OS-       │     (no public A12+ jailbreak on iOS 18/26 as of 2026)
-   independent)   │
-                  ├─ commercial exploit tool supports THIS build? → FFS/partial (verify matrix)
-                  │
-                  └─ otherwise → logical/backup over lockdown (pairable?) ;
-                       iCloud (if no ADP)  → backup-only branch
+   A8–A11 ──┼── A12–A13 ──┬── A14+ (0x8101+): no public BootROM exploit
+       │         │         │
+       ▼         ▼         ▼
+  checkm8     usbliter8   confined to OS-sanctioned paths:
+  branch      branch ✦        │
+  (HW-rooted  (HW-rooted,     ├─ agent FFS if one exists for this (CPID, build)?
+   FFS, OS-    A12–A13;        │     (no public A12+ kernel jailbreak on iOS 18/26)
+   indep.)     2026, new)      ├─ commercial exploit tool supports THIS build? → FFS/partial
+                               └─ otherwise → logical/backup over lockdown (pairable?) ;
+                                    iCloud (if no ADP) → backup-only branch
 ```
 
 The `CPID` decides the *branch*; the build decides the *exploit/tool matrix and data-protection behavior*; the lock state (BFU/AFU) decides *what's decryptable right now*. You cannot choose a method until all three are pinned — which is exactly why the very first step of every acquisition SOP ([[acquisition-sop-and-chain-of-custody]]) is identification, and why this lesson is the foundation of Part 07.
@@ -386,7 +386,7 @@ plutil -convert xml1 -o - /path/to/image/.../com.apple.MobileGestalt.plist | \
 1. `ipsw device-list > /tmp/devices.txt` and open it.
 2. For iPhone 6 (A8), iPhone X (A11), iPhone XS (A12), iPhone 16 Pro (A18 Pro), iPhone 17 Pro (A19 Pro): record each row's `ProductType`, `BoardConfig`, and `Platform`/`CPID`.
 3. Mark each "checkm8 foothold: yes/no" using the rule **`CPID` in `0x7000`–`0x8015` ⇒ yes**. Note exactly where the line falls (iPhone X yes, iPhone XS no).
-4. Write the one-sentence rule, then predict — for a hypothetical seized iPhone X vs iPhone 17 Pro — which gets a hardware-rooted full-file-system path and which is confined to logical/commercial methods. (Answer: X = yes; 17 Pro = no.)
+4. Write the one-sentence rule, then predict — for a hypothetical seized iPhone X vs iPhone 17 Pro — which gets a hardware-rooted full-file-system path and which is confined to logical/commercial methods. (Answer: X (A11) = yes via checkm8; 17 Pro (A19) = no.) Then extend the rule for **usbliter8 ✦**: it adds an **A12–A13** BootROM path (so iPhone XS/XR/11 also gained a hardware foothold in June 2026), moving the wall to **A14**.
 
 ### Lab 2 — Parse a `BuildManifest.plist` end to end
 
@@ -446,7 +446,7 @@ For each of: **iPhone X (A11)**, **iPhone XS (A12), iOS 18**, **iPhone 17 Pro (A
 - The **`CPID` (`ApChipID`) is the silicon's permanent serial** and the value every security boundary keys on; `BuildManifest.plist` stores it as the **decimal of the hex `t`-number** (`0x8150` → `33104`).
 - **`CPID` + `BDID`** are the personalization coordinates (chip + board) Apple's TSS hashes into an SHSH/APTicket; the **ECID** narrows that to one physical die and is the durable per-unit forensic anchor.
 - Since the **A18 generation, base and Pro share one `CPID`** (A18/A18 Pro = `0x8140`; A19/A19 Pro = `0x8150`), distinguished by `CPRV`/board — so resolve to the `ProductType`, not the `CPID`, for the base/Pro split.
-- The **2026 matrix** pins each model to its identifiers and three boundaries: **checkm8 (A8–A11)**, **SPTM/TXM (A15+/M2+)**, **MIE (A19)** — and the A11→A12 / `0x8015`→`0x8020` line is the single most decisive cliff in iPhone forensics.
+- The **2026 matrix** pins each model to its identifiers and the BootROM-exploit + mitigation boundaries: **checkm8 (A8–A11)** and **usbliter8 (A12–A13, June 2026 ✦)** below, **SPTM/TXM (A15+/M2+)** and **MIE (A19)** above — and the BootROM-foothold cliff now falls at the **A13→A14** line (it was A11→A12 until usbliter8).
 - **Identification is forensic step zero:** the `CPID` chooses the acquisition branch (checkm8 vs agent/commercial vs backup-only), the build chooses the exploit/tool matrix and data-protection behavior, the lock state chooses what's decryptable now.
 - You can run step-zero **cable-free** — from a `BuildManifest`, a backup `Info.plist`, or an image's MobileGestalt + `SystemVersion.plist` — and reach an acquisition posture with no device in hand.
 - Resolve the **newest** identifiers and board configs **live** (`ipsw device-list`, theapplewiki); they are the values most likely to be stale in any tool snapshot.

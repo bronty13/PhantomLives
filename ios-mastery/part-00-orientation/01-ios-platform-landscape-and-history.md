@@ -104,8 +104,8 @@ Here is the thesis of the lesson made concrete. On iPhone and iPad the **System-
 | A8 | iPhone 6 (2014) | 20 nm | — | **`checkm8` lower bound** |
 | A9–A10 | iPhone 6s / 7 (2015–16) | 16/14 nm | A10 first big.LITTLE in iPhone | `checkm8`-class BootROM exploit applies |
 | A11 | iPhone 8 / X (2017) | 10 nm | First **Neural Engine**; Face ID debut (iPhone X) | **`checkm8` UPPER bound** — A11 needs passcode disabled for palera1n |
-| A12 | iPhone XS/XR (2018) | 7 nm | First **PAC** (Pointer Authentication) | **A12+ ⇒ no public jailbreak on modern iOS**; the wall |
-| A13 | iPhone 11 (2019) | 7 nm | — | Software-only exploits only, version-gated |
+| A12 | iPhone XS/XR (2018) | 7 nm | First **PAC** (Pointer Authentication) | **`usbliter8`** BootROM exploit (A12–A13, June 2026); no public *kernel* jailbreak on modern iOS |
+| A13 | iPhone 11 (2019) | 7 nm | — | **`usbliter8`** BootROM upper bound; the wall is now **A13→A14** |
 | A14 | iPhone 12 (2020) | 5 nm | — | — |
 | A15 | iPhone 13 (2021) | 5 nm | **SPTM/TXM-era hardware threshold (A15+)** | Page-table & trust split moves to hardware-enforced monitors |
 | A16 | iPhone 14 Pro (2022) | 4 nm | — | — |
@@ -124,7 +124,7 @@ And the iPad-Pro M-series, which shares microarchitecture DNA with the Macs you 
 
 A note on reading the table: the "lead device" is the *marketing* name, but tooling and signing key off the **`ProductType`** identifier (`iPhone10,3`/`iPhone10,6` = iPhone X; `iPhone11,2` = iPhone XS), and one SoC spans several models. So when you place a device on this ladder you go *marketing name → `ProductType` → board → `CPID`/SoC*, never name-to-SoC directly — the identifier is the join key, and the marketing name is just a label hung on it.
 
-The single most important boundary on this whole ladder is **`checkm8`** — an unpatchable vulnerability in the **SecureROM** (the BootROM mask-programmed into the die). Because it lives in read-only silicon, no OS update has ever fixed it and none ever can; but it exists **only in A8–A11** parts. A12 closed it at fabrication, and that hardware line — **A11 vs A12** — is the most consequential single fact in iPhone forensics. Below it, you have a hardware-rooted, OS-version-independent foothold; above it, you are confined to software exploits that Apple patches version by version, and as of 2026 there is **no public jailbreak for A12+ on iOS 18/26**. The mitigation hardware only stacks higher as you climb: **PAC** (A12) → **PPL** → **SPTM/TXM** (A15+/M2+) → **Exclaves** → **MIE** (A19), a ladder you'll dissect in [[kernel-hardening-pac-sptm-txm-mie]].
+The single most important boundary on this whole ladder is the **unpatchable SecureROM exploit** — a bug in the BootROM mask-programmed into the die, which, living in read-only silicon, no OS update can ever fix. Historically this was **`checkm8`** (**A8–A11** only; A12 closed *it* at fabrication), and as of **June 2026** **`usbliter8`** added the analogous unpatchable foothold on **A12–A13**. So the hardware-foothold wall now falls at the **A13→A14** line — the most consequential single fact in iPhone forensics: at or below it you have a hardware-rooted, OS-version-independent foothold (full-file-system acquisition is on the table); **A14+** has none and is confined to software/agent exploits Apple patches build by build. A BootROM exploit is code-exec, *not* a full jailbreak — there is still **no public *kernel* jailbreak for A12+ on iOS 18/26**. The mitigation hardware only stacks higher as you climb: **PAC** (A12) → **PPL** → **SPTM/TXM** (A15+/M2+) → **Exclaves** → **MIE** (A19), a ladder you'll dissect in [[kernel-hardening-pac-sptm-txm-mie]].
 
 > 🖥️ **macOS contrast:** You met this exact pattern in macOS as the **T2 / Apple-Silicon boot-policy** line — a 2017 Intel Mac with no T2 is a categorically different acquisition target than a T2 or M-series Mac, because the secure boot root moved into dedicated silicon. iPhone is the same idea pushed to its limit and made *the entire* axis: there is no "Intel iPhone," so the device's identity *is* its SoC generation, full stop. "Which chip?" on iPhone carries the weight that "T2 or not?" carried on Mac.
 
@@ -203,7 +203,7 @@ Now assemble the pieces into the rule that makes "which device, which iOS?" step
 
 ```
    DEVICE MODEL ──► SoC GENERATION ──► immutable BootROM/SEP foothold?
-                                       (checkm8 A8–A11 = yes; A12+ = no)
+                                  (checkm8 A8–A11 + usbliter8 A12–A13 = yes; A14+ = no)
                               ×
    iOS VERSION + BUILD ──► software-exploit surface  (palera1n iOS 15.0–18.7.x;
                            + AFU/BFU + data-protection class behavior; ADP on/off)
@@ -218,8 +218,8 @@ Now assemble the pieces into the rule that makes "which device, which iOS?" step
 Worked the way an examiner does:
 
 - **A10 phone, any iOS** → SoC is in the `checkm8` window → a hardware-rooted, OS-independent extraction path exists regardless of version; full-file-system acquisition is on the table (subject to BFU/AFU and passcode).
-- **A12+ phone (say iPhone 17, A19), iOS 26.5** → no public BootROM or jailbreak foothold → you are confined to what the OS sanctions: a logical/backup acquisition over the lockdown service (if you can pair), or **commercial exploit tooling** whose support matrix you must check against *this exact build* — and on a freshly-booted device, the **72-hour inactivity reboot** may have already dropped it from AFU to **BFU**, gutting what's decryptable. ADP enabled? Cloud acquisition is off the table too.
-- **M-series iPad Pro (say M5), iPadOS 26.5** → an A12-and-beyond-class target with SPTM/TXM, so the same "no public foothold" posture as the modern phone — *plus* the iPad's larger evidence surface (external-storage providers, multi-window state). Same interlock math, a different artifact harvest once you're in.
+- **A14+ phone (say iPhone 17, A19), iOS 26.5** → no public BootROM or jailbreak foothold → you are confined to what the OS sanctions: a logical/backup acquisition over the lockdown service (if you can pair), or **commercial exploit tooling** whose support matrix you must check against *this exact build* — and on a freshly-booted device, the **72-hour inactivity reboot** may have already dropped it from AFU to **BFU**, gutting what's decryptable. ADP enabled? Cloud acquisition is off the table too.
+- **M-series iPad Pro (say M5), iPadOS 26.5** → an A14+/M-series-class target with SPTM/TXM, so the same "no public foothold" posture as the modern phone — *plus* the iPad's larger evidence surface (external-storage providers, multi-window state). Same interlock math, a different artifact harvest once you're in.
 
 Collapsed to a posture table — the mental lookup an examiner runs in the first sixty seconds:
 

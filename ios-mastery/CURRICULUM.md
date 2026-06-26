@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–01 complete (12/105 lessons ✅). 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–02 complete (23/105 lessons ✅). 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -47,17 +47,17 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [XNU on mobile](part-02-system-architecture/00-xnu-on-mobile.md) | ⬜ |
-| 01 | [The boot chain: SecureROM → iBoot](part-02-system-architecture/01-boot-chain-securerom-iboot.md) | ⬜ |
-| 02 | [Image4, personalization & SHSH](part-02-system-architecture/02-image4-personalization-shsh.md) | ⬜ |
-| 03 | [APFS on iOS & the volume layout](part-02-system-architecture/03-apfs-on-ios-volumes.md) | ⬜ |
-| 04 | [launchd & the system daemons](part-02-system-architecture/04-launchd-and-system-daemons.md) | ⬜ |
-| 05 | [Processes, Mach & XPC](part-02-system-architecture/05-processes-mach-xpc.md) | ⬜ |
-| 06 | [Memory, jetsam & the app lifecycle](part-02-system-architecture/06-memory-jetsam-app-lifecycle.md) | ⬜ |
-| 07 | [The dyld shared cache & AMFI](part-02-system-architecture/07-dyld-shared-cache-and-amfi.md) | ⬜ |
-| 08 | [Filesystem layout & app containers](part-02-system-architecture/08-filesystem-layout-and-containers.md) | ⬜ |
-| 09 | [Unified logging & sysdiagnose](part-02-system-architecture/09-unified-logging-and-sysdiagnose.md) | ⬜ |
-| 10 | [Device services & the backup protocol](part-02-system-architecture/10-device-services-and-backups.md) | ⬜ |
+| 00 | [XNU on mobile](part-02-system-architecture/00-xnu-on-mobile.md) | ✅ |
+| 01 | [The boot chain: SecureROM → iBoot](part-02-system-architecture/01-boot-chain-securerom-iboot.md) | ✅ |
+| 02 | [Image4, personalization & SHSH](part-02-system-architecture/02-image4-personalization-shsh.md) | ✅ |
+| 03 | [APFS on iOS & the volume layout](part-02-system-architecture/03-apfs-on-ios-volumes.md) | ✅ |
+| 04 | [launchd & the system daemons](part-02-system-architecture/04-launchd-and-system-daemons.md) | ✅ |
+| 05 | [Processes, Mach & XPC](part-02-system-architecture/05-processes-mach-xpc.md) | ✅ |
+| 06 | [Memory, jetsam & the app lifecycle](part-02-system-architecture/06-memory-jetsam-app-lifecycle.md) | ✅ |
+| 07 | [The dyld shared cache & AMFI](part-02-system-architecture/07-dyld-shared-cache-and-amfi.md) | ✅ |
+| 08 | [Filesystem layout & app containers](part-02-system-architecture/08-filesystem-layout-and-containers.md) | ✅ |
+| 09 | [Unified logging & sysdiagnose](part-02-system-architecture/09-unified-logging-and-sysdiagnose.md) | ✅ |
+| 10 | [Device services & the backup protocol](part-02-system-architecture/10-device-services-and-backups.md) | ✅ |
 
 ## Part 03 — Security Architecture
 

@@ -145,8 +145,11 @@ substrate + the fidelity caveat. Destructive/device steps get a ⚠️ block.>
 Bake these in; re-check at author time. Current OS **iOS/iPadOS 26.5** (26.6 beta; 27 at WWDC
 2026) · iPhone **17 / Air / 17 Pro/Max** on **A19/A19 Pro** (N3P; **MIE/EMTE**) · iPad Pro
 **M5** · **Xcode 26.4 / Swift 6.3** (iOS 26 SDK mandatory for submissions since 2026-04-28) ·
-**checkm8 = A8–A11 only**; palera1n **iOS 15.0–18.7.x** (A11 needs passcode disabled) · **no
-public jailbreak for A12+ on iOS 18/26** · **TrollStore frozen ≤ iOS 17.0** (CoreTrust patched
+**checkm8 = A8–A11 only**; **usbliter8** = unpatchable SecureROM/USB-DMA exploit for **A12–A13**
+(+S4/S5/A12 iPads), public **2026-06-18** → the BootROM-exploit acquisition boundary is now
+**A8–A13**; **A14+ has no public BootROM exploit** (a BootROM exploit is code-exec, NOT a full
+jailbreak, and doesn't defeat SEP/Data Protection) · palera1n **iOS 15.0–18.7.x** (A11 needs
+passcode disabled) · **no public kernel jailbreak for A12+ on iOS 18/26** · **TrollStore frozen ≤ iOS 17.0** (CoreTrust patched
 17.0.1) · mitigation ladder PAC → PPL → **SPTM/TXM** (A15+/M2+) → **Exclaves** → **MIE** (A19) ·
 **inactivity reboot 72 h → AFU→BFU** · **ADP breaks cloud acquisition** · **Biome/SEGB**
 displaced knowledgeC (format v1→v2 at iOS 17) · **DDM** the 2026 management standard · **AWDL →
