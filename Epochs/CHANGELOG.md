@@ -2,6 +2,43 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.4.0] — 2026-06-26
+
+The real world. Epochs now plays on a full 97-territory world map with the 49
+historical empires — no more 9-land fixture for the actual game.
+
+### Added
+- **`src/shared/data/board.ts`** (generated) — an **original real-geography
+  world map**: 97 lands across the 13 Areas, 29 seas/oceans, symmetric adjacency
+  (one connected component, land + sea), 18 resource lands, 8 barren lands, and
+  difficult terrain (mountain ranges, the Great Wall, straits).
+- **`src/shared/data/empires.ts`** (generated) — the **49-empire roster**
+  (7 epochs × 7): real historical empires (Sumer → British/Russian/Qing) in their
+  homelands, with calibrated strengths, navigation, and marauder flags.
+- **`scripts/world.source.json`** + **`scripts/build-data.mjs`** (`npm run
+  gen:data`) — the researched roster/geography and a deterministic generator that
+  emits the board + empires (symmetrizes adjacency, validates, reports). Retune by
+  editing the JSON and regenerating. (Built via a multi-agent research workflow:
+  3 epoch-group roster passes + geography → synthesis.)
+- **`tests/worldmap.test.ts`** (+10 tests, **61 total**): structural invariants
+  (adjacency symmetry, connectivity, counts, valid empire starts/seas) and a full
+  real-board game (≤1 army/land, no army on barren, ≤1 monument/land, ranked
+  winner, determinism).
+
+### Changed
+- `sim.ts` (`runMatch` / `runHeadlessGame` / tournaments) now defaults to the
+  **world map + 49 empires**; `runMatch` accepts `{ mapData, deck }` to override.
+  On the real board the AI is far stronger: HeuristicBot(hard) beats 3×
+  GreedyStubBot **97%** (was 56% on the fixture) — foresight finally has room.
+- Bumped to 0.4.0; added the `gen:data` script.
+
+### Notes
+- The board is **our own** real-geography map (uncopyrightable geography +
+  historical facts), faithful to the AH framework (13 Areas + VP table + 7 epochs
+  + ~100-land scale), not a copy of the unavailable AH board.
+- **Events remain unmodeled** (engine + data both deferred). AI difficulty weights
+  are still provisional — re-tune via self-play now that the real board exists.
+
 ## [0.3.0] — 2026-06-26
 
 Real AI opponents. `HeuristicBot` replaces `GreedyStubBot` as the default brain

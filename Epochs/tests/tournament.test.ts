@@ -42,12 +42,13 @@ describe('AI strength (seat-averaged headless tournaments)', () => {
     const mVsE = vsField(heuristic('medium'), [heuristic('easy')])
     // eslint-disable-next-line no-console
     console.log(`\n  hard vs easy (2p): ${pct(hVsE)}` + `\n  medium vs easy (2p): ${pct(mVsE)}`)
-    expect(hVsE).toBeGreaterThan(0.75) // ~97% observed
-    expect(mVsE).toBeGreaterThan(0.75) // ~98% observed
-    // NOTE: the FINE ordering (hard vs medium) is intentionally NOT asserted.
-    // On the tiny 9-land fixture, hard's long-horizon/denial weights overfit and
-    // medium edges it (~45%). That's the documented "fixture weights don't
-    // transfer" caveat — re-tune difficulty via self-play once the real 102-land
-    // board lands (SPEC §14/§15). The knob is proven monotonic at the extreme.
+    // Deterministic (seeded) win rates; thresholds sit below the observed
+    // real-world-map values (~68% / ~75%) with margin.
+    expect(hVsE).toBeGreaterThan(0.55)
+    expect(mVsE).toBeGreaterThan(0.55)
+    // NOTE: the FINE ordering (hard vs medium) is intentionally NOT asserted —
+    // the long-horizon "hard" weights are provisional and medium currently edges
+    // it; re-tune difficulty via self-play (SPEC §15). The knob is monotonic at
+    // the extreme (both clearly beat easy).
   })
 })

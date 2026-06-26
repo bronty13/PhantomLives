@@ -1,6 +1,6 @@
 {
   "name": "epochs",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Epochs — a digital strategy game of empires that rise and fall across seven epochs, played against AI opponents.",
   "author": "bronty13",
   "license": "UNLICENSED",
@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "gen:data": "node scripts/build-data.mjs",
     "dist:mac": "electron-vite build && electron-builder --mac --dir"
   },
   "devDependencies": {

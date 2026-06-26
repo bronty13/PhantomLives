@@ -4,10 +4,11 @@
 import { Board } from './board'
 import { GreedyStubBot, RandomBot, type Bot } from './bot'
 import { HeuristicBot, type Difficulty } from './heuristicBot'
-import { FIXTURE_EMPIRES } from './data/fixtureEmpires'
-import { FIXTURE_MAP_DATA } from './data/fixtureMap'
+import { WORLD_MAP_DATA } from './data/board'
+import { WORLD_EMPIRES } from './data/empires'
 import { Game, type GameResult, type PlayerConfig } from './game'
 import { makeRng } from './rng'
+import type { EmpireCard, MapData } from './types'
 
 /** Builds a bot for a seat. `seed` lets stochastic bots vary per game. */
 export type BotFactory = (name: string, seed: number) => Bot
@@ -24,15 +25,27 @@ export const random: BotFactory = (_name, seed) => {
   return new RandomBot((n) => rng.nextInt(n))
 }
 
-/** Run one full fixture game with the given per-seat bot factories. */
-export function runMatch(seed: number, factories: BotFactory[]): GameResult {
-  const board = new Board(FIXTURE_MAP_DATA)
+export interface MatchOptions {
+  /** Override the map (defaults to the full world). */
+  mapData?: MapData
+  /** Override the empire deck (defaults to the full 49-empire roster). */
+  deck?: EmpireCard[]
+}
+
+/** Run one full game with the given per-seat bot factories (world map by default). */
+export function runMatch(
+  seed: number,
+  factories: BotFactory[],
+  opts: MatchOptions = {},
+): GameResult {
+  const board = new Board(opts.mapData ?? WORLD_MAP_DATA)
+  const deck = opts.deck ?? WORLD_EMPIRES
   const players: PlayerConfig[] = factories.map((make, i) => ({
     id: `P${i + 1}`,
     name: `P${i + 1}`,
     bot: make(`P${i + 1}`, seed + i * 1009),
   }))
-  return new Game({ board, deck: FIXTURE_EMPIRES, players, seed }).run()
+  return new Game({ board, deck, players, seed }).run()
 }
 
 export interface HeadlessOptions {

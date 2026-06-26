@@ -7,13 +7,13 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.3 — real AI opponents.** A full 7-epoch game runs end-to-end and
-> deterministically, now driven by **`HeuristicBot`** — a tunable
-> marginal-expected-VP bot with difficulty levels that beats the stub bots
-> decisively in headless tournaments. 51 tests. Still to come: the real 102-land
-> board, the 49 empires, the event deck, and the map UI (see `docs/SPEC.md`
-> §14). AI weights are provisional fixture placeholders — re-tune on the real
-> board.
+> **Status: v0.4 — the real world.** A full 7-epoch game runs end-to-end and
+> deterministically on a **97-territory real-geography world map** with the **49
+> historical empires**, driven by **`HeuristicBot`** (which beats 3 stub bots
+> ~97% on the real board). 61 tests. Still to come: the event system, the map UI,
+> and the first packaged app (see `docs/SPEC.md` §14). The world is generated from
+> `scripts/world.source.json` via `npm run gen:data`; AI weights are still
+> provisional — re-tune via self-play.
 
 ## Stack
 
@@ -36,12 +36,17 @@ src/
     sim.ts           headless runner + tournament harness (runMatch/tournament)
     data/
       areaValues.ts    the real per-epoch Victory-Point table (13 areas)
-      fixtureMap.ts    small placeholder board until the real one is transcribed
-      fixtureEmpires.ts synthetic empire deck until the 49 empires are transcribed
+      board.ts         GENERATED — the 97-land real-geography world map
+      empires.ts       GENERATED — the 49 historical empires (7×7)
+      fixtureMap.ts    small board for fast deterministic unit tests
+      fixtureEmpires.ts small empire deck for unit tests
   main/          # Electron main process (window lifecycle)
   preload/       # contextBridge surface
   renderer/      # UI (placeholder: renders the VP table from the engine)
-tests/           # vitest (combat, scoring, game, heuristic, tournament)
+scripts/
+  world.source.json  # researched roster + geography (edit to retune the map)
+  build-data.mjs     # generator → board.ts + empires.ts (npm run gen:data)
+tests/           # vitest (combat, scoring, game, heuristic, tournament, worldmap)
 docs/SPEC.md     # canonical rules + data model + open questions
 ```
 

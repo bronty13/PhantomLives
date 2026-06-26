@@ -479,35 +479,34 @@ call `Math.random()` in the engine.
 
 ---
 
-## 14. Data-entry tasks (the real remaining work)
+## 14. Content data
 
-The **rules engine** is fully specified above. The **content data** must be
-transcribed (facts, not protected expression) from the rulebook scan, a
-high-resolution board image, and/or the 1997 game as oracle. Each becomes a JSON
-(or TS) data file under `src/shared/data/`:
+The **rules engine** is data-driven; the content lives in `src/shared/data/`.
+Because the exact Avalon Hill board art/adjacency is copyrighted and unavailable
+(and our legal posture says build our own — §0), the world is an **original
+real-geography map** generated from `scripts/world.source.json` (a researched
+roster + geography) via `scripts/build-data.mjs` → `npm run gen:data`. Real-world
+geography and historical-empire facts are uncopyrightable; the map is ours.
 
-1. **`board.ts` — the map graph.** All 102 Lands: `id`, `name`, `area`,
-   `barren`, `borders[]` (full adjacency), `seaBorders[]`, `difficultTerrain[]`,
-   `hasResource`. Plus the 13 Areas → Lands membership and the 8 Barren Lands.
-   *Source:* high-res board scan (BGG / Google Arts & Culture / The Strong);
-   cross-check adjacencies in the 1997 game.
-2. **`areas.ts` — VP table.** Already specified in §9.3 — encode directly.
-3. **`empires.ts` — the 49 Empire Cards.** Per card: `epoch`, `order`,
-   `strength`, `startLand`, `navigation`, `hasCapital`, optional `ability`.
-   *Source:* card scans / fan lists, validated against the 1997 game. (The modern
-   Z-Man/Rio Grande rulebooks print full rosters but for the 5-epoch redesign —
-   useful shape, different numbers; don't mix editions.)
-4. **`events.ts` — the event deck.** Each Greater/Lesser card's structured
-   `effect`. *Source:* card scans / transcription; the kinds in §11 are the
-   scaffold.
+- ✅ **`board.ts`** (generated) — **97 lands** across the 13 Areas with symmetric
+  real-geography adjacency, 29 seas/oceans, difficult terrain (mountains, the
+  Great Wall, straits), **18 resource** lands, **8 barren** lands. One connected
+  component (land + sea).
+- ✅ **`areaValues.ts`** — the per-epoch VP table (§9.3).
+- ✅ **`empires.ts`** (generated) — the **49 empires** (7 epochs × 7), real
+  historical empires in their homelands, with calibrated strengths, navigation,
+  and marauder (no-capital) flags (Celts, Goths, Huns, Vikings, Mongols).
+- ⏳ **`events.ts`** — the event deck (§11). **Deferred** until the engine models
+  events (it doesn't yet); building event data now would be premature. The kinds
+  in §11 are the scaffold.
 
-> **Edition discipline (critical):** target the **Avalon Hill 7-epoch** edition
-> throughout. The 2018 Z-Man (5 epochs) and 2024 Rio Grande editions are
-> *different games*; their numbers will silently corrupt the data model if mixed
-> in.
+> **Retuning:** edit `scripts/world.source.json` and re-run `npm run gen:data`.
+> The generated TS is committed; the engine never runs the generator at build
+> time. `tests/worldmap.test.ts` guards the invariants (symmetry, connectivity,
+> counts, valid empire starts).
 
-Until real data lands, the engine ships with a **small fixture map** (a handful
-of Lands/Areas/empires) so the engine and tests run end-to-end (§ scaffold).
+The small **fixture map** (`fixtureMap.ts` / `fixtureEmpires.ts`) is retained for
+fast, deterministic unit tests; `sim.ts` (and the app) default to the world map.
 
 ---
 
