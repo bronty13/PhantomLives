@@ -1,0 +1,362 @@
+// HeuristicBot — the real AI (replaces GreedyStubBot). It scores every frontier
+// placement by its marginal, survival-discounted, relative expected VP and
+// returns the argmax. Design from the AI design-panel synthesis; see docs/SPEC.md
+// §15. Pure + deterministic: all jitter flows through a seeded hash, never
+// Math.random and never the engine RNG (SPEC §13).
+//
+// Core ideas:
+//  - ENGINE PARITY: value a move as scoring.scoreArea(after) − scoreArea(before),
+//    summed over remaining epochs and discounted by a board-aware survival factor
+//    `rho`, so the bot can never value a move differently from how the engine
+//    actually scores it.
+//  - own_old (re-occupying your own land) has EXACTLY ZERO marginal area value
+//    (the old army already counted) — its only worth is refreshing a current-epoch
+//    army onto a resource land for monuments. (This is the GreedyStubBot bug.)
+//  - DENIAL: removing an enemy army / razing a capital is valued via the same
+//    parity math from the victim's perspective, weighted toward the leader.
+//  - RISK: enemy attacks are folded by closed-form (win/tie/loss) odds and must
+//    beat the best safe placement (opportunity cost).
+
+import type { Bot, BotView, FrontierOption } from './bot'
+import { combatOdds } from './combat'
+import { scoreArea } from './scoring'
+import type { AreaId, BoardPiece, EpochId, LandId, PlayerId } from './types'
+
+export interface HeuristicWeights {
+  rhoBase: number
+  rhoMin: number
+  terrainRetention: number
+  threatPenalty: number
+  structDurability: number
+  selfBias: number
+  monumentWeight: number
+  structWeight: number
+  marauderBonus: number
+  denialBase: number
+  denialLeaderBonus: number
+  denialCatchup: number
+  denyPhaseEarly: number
+  denyPhaseLate: number
+  riskAversion: number
+  armyFloor: number
+  expansionTempo: number
+  ownTempo: number
+  tieEps: number
+  minWinProb: number
+}
+
+export const DEFAULT_WEIGHTS: HeuristicWeights = {
+  rhoBase: 0.72,
+  rhoMin: 0.4,
+  terrainRetention: 0.6,
+  threatPenalty: 0.1,
+  structDurability: 0.15,
+  selfBias: 1.0,
+  monumentWeight: 0.9,
+  structWeight: 1.0,
+  marauderBonus: 1.0,
+  denialBase: 0.6,
+  denialLeaderBonus: 1.0,
+  denialCatchup: 0.04,
+  denyPhaseEarly: 0.5,
+  denyPhaseLate: 1.3,
+  riskAversion: 0.5,
+  armyFloor: 0.25,
+  expansionTempo: 0.05,
+  ownTempo: 0.01,
+  tieEps: 0.01,
+  minWinProb: 0.0,
+}
+
+export type Difficulty = 'easy' | 'medium' | 'hard'
+
+/** Difficulty maps onto a few weights so a stronger bot is SHARPER, not luckier:
+ *  foresight (rhoBase), opponent-awareness (denialBase), and noise (tieEps). */
+export function difficultyWeights(d: Difficulty): HeuristicWeights {
+  const overlays: Record<Difficulty, Partial<HeuristicWeights>> = {
+    easy: { rhoBase: 0.0, denialBase: 0.0, tieEps: 0.06, minWinProb: 0.4 },
+    medium: { rhoBase: 0.5, denialBase: 0.4, tieEps: 0.02, minWinProb: 0.15 },
+    hard: { rhoBase: 0.78, denialBase: 0.7, tieEps: 0.0, minWinProb: 0.0 },
+  }
+  return { ...DEFAULT_WEIGHTS, ...overlays[d] }
+}
+
+const clamp = (x: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, x))
+
+/** Deterministic [0,1) hash of the move key — seeded jitter, no Math.random. */
+export function hash01(seed: number, player: string, epoch: number, land: string): number {
+  let h = (2166136261 ^ seed) >>> 0
+  const key = `${player}|${epoch}|${land}`
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  h = (h + 0x6d2b79f5) | 0
+  let t = Math.imul(h ^ (h >>> 15), 1 | h)
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
+const DEFENSE_BASELINE = combatOdds(2, 1).defender // ≈ 0.2546
+
+export interface HeuristicBotOptions {
+  name?: string
+  difficulty?: Difficulty
+  weights?: Partial<HeuristicWeights>
+}
+
+export class HeuristicBot implements Bot {
+  readonly name: string
+  private readonly w: HeuristicWeights
+
+  constructor(opts: HeuristicBotOptions = {}) {
+    const base = opts.difficulty ? difficultyWeights(opts.difficulty) : DEFAULT_WEIGHTS
+    this.w = { ...base, ...(opts.weights ?? {}) }
+    this.name = opts.name ?? `Heuristic-${opts.difficulty ?? 'default'}`
+  }
+
+  chooseExpansion(view: BotView, frontier: FrontierOption[]): LandId | null {
+    if (frontier.length === 0) return null
+    const w = this.w
+    const { board, player: me, epoch: E } = view
+    const remainingEpochs = 7 - E
+
+    // ── precompute from the live board snapshot ───────────────────────────
+    const armyOwner = new Map<LandId, PlayerId>()
+    const structuresByLand = new Map<LandId, BoardPiece[]>()
+    const areaCount = new Map<AreaId, Map<PlayerId, number>>()
+    for (const p of view.pieces) {
+      if (p.kind === 'army') {
+        if (p.owner) armyOwner.set(p.land, p.owner)
+        const a = board.areaOf(p.land)
+        if (a && p.owner) {
+          let m = areaCount.get(a)
+          if (!m) {
+            m = new Map()
+            areaCount.set(a, m)
+          }
+          m.set(p.owner, (m.get(p.owner) ?? 0) + 1)
+        }
+      } else {
+        const arr = structuresByLand.get(p.land) ?? []
+        arr.push(p)
+        structuresByLand.set(p.land, arr)
+      }
+    }
+
+    const vpOf = (id: PlayerId): number =>
+      view.standings.find((s) => s.id === id)?.vp ?? 0
+    const myVp = vpOf(me)
+    let leaderId: PlayerId | null = null
+    let leaderVp = -Infinity
+    for (const s of view.standings) {
+      if (s.id === me) continue
+      if (s.vp > leaderVp) {
+        leaderVp = s.vp
+        leaderId = s.id
+      }
+    }
+    const phi = w.denyPhaseEarly + (w.denyPhaseLate - w.denyPhaseEarly) * ((E - 1) / 6)
+    const wDeny = (d: PlayerId): number =>
+      w.denialBase *
+      phi *
+      (1 + w.denialLeaderBonus * (d === leaderId ? 1 : 0) + w.denialCatchup * Math.max(0, vpOf(d) - myVp))
+
+    // ── board-aware survival retention on land L ──────────────────────────
+    const adjEnemy = (land: LandId): number => {
+      let n = 0
+      for (const nb of board.neighbors(land)) {
+        const o = armyOwner.get(nb)
+        if (o && o !== me) n++
+      }
+      return n
+    }
+    const retention = (land: LandId): { rhoArea: number; rhoStr: number } => {
+      const terrain = board.land(land)?.difficultTerrain ?? []
+      const defDice =
+        terrain.includes('forest') || terrain.includes('mountain') || terrain.includes('great_wall')
+          ? 2
+          : 1
+      const hold = combatOdds(2, defDice).defender
+      const rhoArea = clamp(
+        w.rhoBase + w.terrainRetention * (hold - DEFENSE_BASELINE) - w.threatPenalty * adjEnemy(land),
+        w.rhoMin,
+        0.98,
+      )
+      const rhoStr = clamp(rhoArea + w.structDurability, w.rhoMin, 0.98)
+      return { rhoArea, rhoStr }
+    }
+    const famStruct = (rhoStr: number): number => {
+      let total = 0
+      let p = 1
+      for (let k = 0; k <= remainingEpochs; k++) {
+        total += p
+        p *= rhoStr
+      }
+      return total
+    }
+
+    // ── engine-parity area value over the horizon ─────────────────────────
+    const fwdScore = (
+      area: AreaId,
+      rho: number,
+      perspective: PlayerId,
+      counts: Map<PlayerId, number>,
+    ): number => {
+      const own = counts.get(perspective) ?? 0
+      const rivals: number[] = []
+      for (const [id, c] of counts) if (id !== perspective) rivals.push(c)
+      let total = 0
+      let weight = 1
+      for (let k = 0; k <= remainingEpochs; k++) {
+        total += weight * scoreArea(area, (E + k) as EpochId, own, rivals)
+        weight *= rho
+      }
+      return total
+    }
+    const adjusted = (
+      base: Map<PlayerId, number>,
+      deltas: Array<[PlayerId, number]>,
+    ): Map<PlayerId, number> => {
+      const m = new Map(base)
+      for (const [id, d] of deltas) m.set(id, (m.get(id) ?? 0) + d)
+      return m
+    }
+    const EMPTY_COUNTS = new Map<PlayerId, number>()
+    const baseCounts = (area: AreaId | null): Map<PlayerId, number> =>
+      (area && areaCount.get(area)) || EMPTY_COUNTS
+
+    // ── structures captured by occupying L (applyCapture semantics) ───────
+    const structureTerms = (
+      land: LandId,
+      fam: number,
+    ): { selfStruct: number; denyStruct: number; razed: number } => {
+      let selfStruct = 0
+      let denyStruct = 0
+      let razed = 0
+      for (const s of structuresByLand.get(land) ?? []) {
+        if (s.owner == null || s.owner === me) continue
+        const wd = wDeny(s.owner)
+        if (s.kind === 'capital') {
+          selfStruct += w.structWeight * fam * 1 // flips to a city I bank
+          denyStruct += wd * fam * 2
+          razed++
+        } else if (s.kind === 'city') {
+          denyStruct += wd * fam * 1 // sacked
+          razed++
+        } else if (s.kind === 'monument') {
+          selfStruct += w.structWeight * fam * 1 // transfers to me
+          denyStruct += wd * fam * 1
+        }
+      }
+      return { selfStruct, denyStruct, razed }
+    }
+
+    const monMargin = (land: LandId, fam: number): number =>
+      board.land(land)?.hasResource && view.monumentsBuilt < 36
+        ? w.monumentWeight * 0.5 * fam
+        : 0
+
+    const isMarauder = !view.empire.hasCapital
+
+    // ── per-kind option scoring ───────────────────────────────────────────
+    const scoreEmpty = (opt: FrontierOption): number => {
+      const land = opt.land
+      const area = board.areaOf(land)
+      const { rhoArea, rhoStr } = retention(land)
+      const fam = famStruct(rhoStr)
+      const base = baseCounts(area)
+      const selfArea = area
+        ? w.selfBias * (fwdScore(area, rhoArea, me, adjusted(base, [[me, 1]])) - fwdScore(area, rhoArea, me, base))
+        : 0
+      const { selfStruct, denyStruct, razed } = structureTerms(land, fam)
+      const maraud = isMarauder ? w.marauderBonus * razed : 0
+      return (
+        selfArea +
+        w.selfBias * (selfStruct + monMargin(land, fam)) +
+        maraud +
+        denyStruct +
+        w.expansionTempo
+      )
+    }
+
+    const scoreOwnOld = (opt: FrontierOption): number => {
+      // No body added → area value is exactly 0; only a resource refresh matters.
+      const { rhoStr } = retention(opt.land)
+      return w.selfBias * monMargin(opt.land, famStruct(rhoStr)) + w.ownTempo
+    }
+
+    const scoreEnemy = (opt: FrontierOption, bestPeaceful: number): number => {
+      const land = opt.land
+      const area = board.areaOf(land)
+      const d = armyOwner.get(land)
+      const odds = opt.odds ?? combatOdds(2, 1)
+      const { rhoArea, rhoStr } = retention(land)
+      const fam = famStruct(rhoStr)
+      const base = baseCounts(area)
+
+      // WIN: I occupy (me +1) and the defender loses an army (d −1).
+      let selfAreaWin = 0
+      let denialWin = 0
+      if (area && d) {
+        const winMap = adjusted(base, [
+          [me, 1],
+          [d, -1],
+        ])
+        selfAreaWin = w.selfBias * (fwdScore(area, rhoArea, me, winMap) - fwdScore(area, rhoArea, me, base))
+        denialWin = wDeny(d) * (fwdScore(area, rhoArea, d, base) - fwdScore(area, rhoArea, d, winMap))
+      }
+      const { selfStruct, denyStruct, razed } = structureTerms(land, fam)
+      const maraud = isMarauder ? w.marauderBonus * razed : 0
+      const win =
+        selfAreaWin + w.selfBias * (selfStruct + monMargin(land, fam)) + maraud + denyStruct + denialWin
+
+      // TIE: both armies removed, I do not occupy (structures unchanged). My own
+      // tier can still rise because the defender dropped (self-upgrade).
+      let selfAreaTie = 0
+      let denialTie = 0
+      if (area && d) {
+        const tieMap = adjusted(base, [[d, -1]])
+        selfAreaTie = w.selfBias * (fwdScore(area, rhoArea, me, tieMap) - fwdScore(area, rhoArea, me, base))
+        denialTie = wDeny(d) * (fwdScore(area, rhoArea, d, base) - fwdScore(area, rhoArea, d, tieMap))
+      }
+      const tie = selfAreaTie + denialTie
+
+      const oppCost = Math.max(w.armyFloor, bestPeaceful)
+      let s = odds.attacker * win + odds.tie * tie - w.riskAversion * odds.defender * oppCost
+      if (odds.attacker < w.minWinProb) s -= 1e6 // timid skip (low difficulty)
+      return s
+    }
+
+    // ── two passes: peaceful first (sets opportunity cost), then attacks ──
+    const score = new Map<LandId, number>()
+    let bestPeaceful = 0
+    for (const opt of frontier) {
+      if (opt.kind === 'empty') {
+        const s = scoreEmpty(opt)
+        score.set(opt.land, s)
+        if (s > bestPeaceful) bestPeaceful = s
+      } else if (opt.kind === 'own_old') {
+        const s = scoreOwnOld(opt)
+        score.set(opt.land, s)
+        if (s > bestPeaceful) bestPeaceful = s
+      }
+    }
+    for (const opt of frontier) {
+      if (opt.kind === 'enemy') score.set(opt.land, scoreEnemy(opt, bestPeaceful))
+    }
+
+    // ── deterministic argmax with seeded jitter ───────────────────────────
+    let bestLand = frontier[0].land
+    let bestScore = -Infinity
+    for (const opt of frontier) {
+      const jitter = w.tieEps * (hash01(view.seed, me, E, opt.land) - 0.5)
+      const s = (score.get(opt.land) ?? -Infinity) + jitter
+      if (s > bestScore) {
+        bestScore = s
+        bestLand = opt.land
+      }
+    }
+    return bestLand
+  }
+}

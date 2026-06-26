@@ -7,12 +7,13 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.2 — playable headless game.** A full 7-epoch game runs
-> end-to-end and deterministically: catch-up draft → empire setup → expansion +
-> combat → monuments → scoring → pre-eminence → ranked winner, with stub AI
-> bots, all unit-tested against a small fixture map (42 tests). Still to come:
-> the real 102-land board, the 49 empires, the event deck, the tunable heuristic
-> AI, and the map UI (see `docs/SPEC.md` §14).
+> **Status: v0.3 — real AI opponents.** A full 7-epoch game runs end-to-end and
+> deterministically, now driven by **`HeuristicBot`** — a tunable
+> marginal-expected-VP bot with difficulty levels that beats the stub bots
+> decisively in headless tournaments. 51 tests. Still to come: the real 102-land
+> board, the 49 empires, the event deck, and the map UI (see `docs/SPEC.md`
+> §14). AI weights are provisional fixture placeholders — re-tune on the real
+> board.
 
 ## Stack
 
@@ -30,8 +31,9 @@ src/
     scoring.ts       presence/dominance/control area scoring + structures
     board.ts         queryable map wrapper (adjacency, sea index, areas)
     game.ts          the Game state machine + applyCapture (the turn loop)
-    bot.ts           Bot interface + GreedyStubBot / RandomBot
-    sim.ts           headless game runner (runHeadlessGame / formatResult)
+    bot.ts           Bot interface + GreedyStubBot / RandomBot (+ BotView)
+    heuristicBot.ts  the real AI: marginal-expected-VP bot + difficulty levels
+    sim.ts           headless runner + tournament harness (runMatch/tournament)
     data/
       areaValues.ts    the real per-epoch Victory-Point table (13 areas)
       fixtureMap.ts    small placeholder board until the real one is transcribed
@@ -39,7 +41,7 @@ src/
   main/          # Electron main process (window lifecycle)
   preload/       # contextBridge surface
   renderer/      # UI (placeholder: renders the VP table from the engine)
-tests/           # vitest unit tests (combat, scoring, game)
+tests/           # vitest (combat, scoring, game, heuristic, tournament)
 docs/SPEC.md     # canonical rules + data model + open questions
 ```
 

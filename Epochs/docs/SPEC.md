@@ -511,24 +511,64 @@ of Lands/Areas/empires) so the engine and tests run end-to-end (§ scaffold).
 
 ---
 
-## 15. AI design notes (forward reference)
+## 15. AI design — `HeuristicBot` (implemented v0.3)
 
-Target: a **tunable heuristic / weighted-scoring bot** (not a learned agent).
-Justified by closed-form combat (§7.3) + a clean scoring objective (§9):
+A **tunable heuristic / weighted-scoring bot** (`src/shared/heuristicBot.ts`),
+not a learned agent — justified by closed-form combat (§7.3) + a clean scoring
+objective (§9). It scores each frontier placement by its **marginal, survival-
+discounted, relative expected VP** and returns the argmax (null only when the
+frontier is empty). Empirically it beats `GreedyStubBot` ~100% and `RandomBot`
+~91% (2-player, seat-averaged); `tests/tournament.test.ts` is the evidence.
 
-- **Combat** needs no rollouts — score each candidate attack by its exact
-  expected VP swing (win prob × gain − loss prob × cost).
-- **Placement** (the real difficulty): greedily place each army where its
-  **marginal value** is highest = `f(area tier change this epoch, capital/city
-  capture, survival likelihood into future epochs, contesting vs. taking
-  uncontested ground)`.
-- **Empire/event selection**: static per-epoch value priors first; opponent
-  modeling later.
-- **Personas + epsilon-randomized tie-breaking** to avoid the "predictable"
-  failure mode the 1997/2013 AIs were criticized for; expose a **difficulty
-  knob**.
-- **Optional upgrade:** MCTS limited to the placement sub-decision (ref:
-  Szita/Chaslot/Spronck, *MCTS in Settlers of Catan*). Not needed for v1.
+**Engine-parity value function.** The value of a move is computed as
+`scoring.scoreArea(after) − scoring.scoreArea(before)`, summed over remaining
+epochs `E..7` and discounted by a per-epoch **retention** `rho` — so the bot can
+never value a move differently from how the engine actually scores it. Terms:
+
+- **SelfArea** — my tier delta in the land's area (presence→dominance→control),
+  over the horizon. A win also drops the defender's count (can lift my tier).
+- **own_old = 0 area value** — re-occupying my own land adds no body under
+  all-armies scoring; its *only* worth is refreshing a current-epoch army onto a
+  **resource** land for monuments. (This is the bug `GreedyStubBot` had.)
+- **Structures** (via `applyCapture` semantics): capturing an enemy capital is
+  **+1/−2** (flips to a city I bank), enemy city → sacked (−1 to them), monument
+  → transfers (+1/−1); Marauder gets +1 one-time per razed structure.
+- **Denial** — the victim's lost VP via the same parity math from *their*
+  perspective, weighted toward the leader / whoever is ahead (`wDeny`), ramped
+  by epoch.
+- **Risk** — enemy EV `= pw·WIN + pt·TIE − riskAversion·pl·oppCost`, where
+  `oppCost = max(armyFloor, best peaceful score)` (a lost army forfeits the safe
+  placement it could have made). A **tie** removes the defender without occupying
+  — modeled as a possible self-upgrade + denial.
+
+**Two count semantics** (do not mix): area tiers count **all** army colors;
+monuments count only **current-epoch** armies on resource lands.
+
+**Determinism.** All tie-break / persona jitter flows through
+`hash01(seed, player, epoch, land)` — never `Math.random`, never the engine RNG
+(§13). The engine rebuilds the `BotView` (with a fresh `pieces` snapshot) on
+**every** placement, because `state.pieces` is reassigned on each mutation.
+
+**Difficulty / personas** are pure weight overlays: `easy/medium/hard` trade
+foresight (`rhoBase`), opponent-awareness (`denialBase`), and noise (`tieEps`).
+The knob is monotonic at the extreme (medium & hard crush easy ~97%), but the
+fine `hard` vs `medium` ordering does **not** hold on the tiny fixture
+(long-horizon weights overfit) — **re-tune via self-play once the real board
+lands** (§14). Weights in `DEFAULT_WEIGHTS` are provisional fixture placeholders.
+
+**Future** (reuse the same primitives): bot-controlled empire **draft** and
+**event** play (currently engine-controlled / unmodeled), fort building, and an
+optional **MCTS** scoped to placement (ref: Szita/Chaslot/Spronck, *MCTS in
+Settlers of Catan*) using this heuristic as the rollout policy.
+
+**Known strength gaps** (correctness-clean per the AI review — improve during
+self-play tuning, not bugs): (1) **denial is scoped to the attacked defender
+only** — a *peaceful* placement (or a win/tie) that co-occupies an area a *third*
+player controls also drops that rival's tier, but no denial credit is given for
+it; extend `scoreEmpty` and the win/tie maps to value non-defender rivals.
+(2) A **tie** charges no opportunity-cost on the burned army (debit is on `pl`
+only) — optionally price the tie mass too. Both are magnitude/strategy tweaks
+best validated by self-play on the real board.
 
 ---
 

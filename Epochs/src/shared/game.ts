@@ -112,6 +112,7 @@ export class Game {
   private readonly empiresByEpoch: Map<EpochId, EmpireCard[]>
   private readonly bots: Map<PlayerId, Bot>
   private readonly prevEmpireOrder = new Map<PlayerId, number>()
+  private readonly seed: number
 
   constructor(opts: {
     board: Board
@@ -119,6 +120,7 @@ export class Game {
     players: PlayerConfig[]
     seed: number
   }) {
+    this.seed = opts.seed
     this.board = opts.board
     this.bots = new Map(opts.players.map((p) => [p.id, p.bot]))
     this.empiresByEpoch = new Map(EPOCHS.map((e) => [e, [] as EmpireCard[]]))
@@ -211,11 +213,24 @@ export class Game {
   private expand(pid: PlayerId, empire: EmpireCard): void {
     const bot = this.bots.get(pid)
     if (!bot) return
-    const view: BotView = { board: this.board, player: pid, epoch: this.state.epoch, empire }
     let remaining = empire.strength - 1 // first army placed at setup
     while (remaining > 0) {
       const frontier = this.computeFrontier(pid, empire)
       if (frontier.length === 0) break
+      // Rebuild the view each iteration: state.pieces is reassigned on every
+      // mutation, so a captured snapshot would go stale (the bot must see its
+      // own just-placed armies to evaluate the next placement).
+      const view: BotView = {
+        board: this.board,
+        player: pid,
+        epoch: this.state.epoch,
+        empire,
+        pieces: this.state.pieces,
+        standings: this.state.players.map((p) => ({ id: p.id, vp: p.vp })),
+        monumentsBuilt: this.state.monumentsBuilt,
+        seed: this.seed,
+        armiesRemaining: remaining,
+      }
       const targetId = bot.chooseExpansion(view, frontier)
       if (targetId == null) break
       const opt = frontier.find((f) => f.land === targetId) ?? frontier[0]

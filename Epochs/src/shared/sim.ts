@@ -1,28 +1,79 @@
-// Headless game runner — plays a full Epochs game with no UI, for testing,
-// AI tuning, and balance studies. Pure engine; safe to import anywhere.
+// Headless game runner + tournament harness — plays full Epochs games with no
+// UI, for AI tuning and balance studies. Pure engine; safe to import anywhere.
 
 import { Board } from './board'
-import { GreedyStubBot } from './bot'
+import { GreedyStubBot, RandomBot, type Bot } from './bot'
+import { HeuristicBot, type Difficulty } from './heuristicBot'
 import { FIXTURE_EMPIRES } from './data/fixtureEmpires'
 import { FIXTURE_MAP_DATA } from './data/fixtureMap'
 import { Game, type GameResult, type PlayerConfig } from './game'
+import { makeRng } from './rng'
+
+/** Builds a bot for a seat. `seed` lets stochastic bots vary per game. */
+export type BotFactory = (name: string, seed: number) => Bot
+
+export const heuristic =
+  (difficulty: Difficulty = 'hard'): BotFactory =>
+  (name) =>
+    new HeuristicBot({ name, difficulty })
+
+export const greedy: BotFactory = (name) => new GreedyStubBot(name)
+
+export const random: BotFactory = (_name, seed) => {
+  const rng = makeRng((seed ^ 0x9e3779b9) >>> 0)
+  return new RandomBot((n) => rng.nextInt(n))
+}
+
+/** Run one full fixture game with the given per-seat bot factories. */
+export function runMatch(seed: number, factories: BotFactory[]): GameResult {
+  const board = new Board(FIXTURE_MAP_DATA)
+  const players: PlayerConfig[] = factories.map((make, i) => ({
+    id: `P${i + 1}`,
+    name: `P${i + 1}`,
+    bot: make(`P${i + 1}`, seed + i * 1009),
+  }))
+  return new Game({ board, deck: FIXTURE_EMPIRES, players, seed }).run()
+}
 
 export interface HeadlessOptions {
   seed?: number
   players?: number
+  difficulty?: Difficulty
 }
 
-/** Run one full fixture game with `players` GreedyStubBots from a seed. */
+/** Run one full fixture game with `players` HeuristicBots (default medium). */
 export function runHeadlessGame(opts: HeadlessOptions = {}): GameResult {
   const seed = opts.seed ?? 1
   const n = opts.players ?? 4
-  const board = new Board(FIXTURE_MAP_DATA)
-  const players: PlayerConfig[] = Array.from({ length: n }, (_, i) => ({
-    id: `P${i + 1}`,
-    name: `Player ${i + 1}`,
-    bot: new GreedyStubBot(`Greedy${i + 1}`),
-  }))
-  return new Game({ board, deck: FIXTURE_EMPIRES, players, seed }).run()
+  const make = heuristic(opts.difficulty ?? 'medium')
+  return runMatch(seed, Array.from({ length: n }, () => make))
+}
+
+export interface MatchupResult {
+  games: number
+  wins: number
+  winRate: number
+}
+
+/**
+ * Win rate of the bot seated at `seatIndex` (default 0) across `seeds`,
+ * playing the given factory line-up.
+ */
+export function tournament(
+  factories: BotFactory[],
+  seeds: number[],
+  seatIndex = 0,
+): MatchupResult {
+  let wins = 0
+  for (const seed of seeds) {
+    if (runMatch(seed, factories).winner === `P${seatIndex + 1}`) wins++
+  }
+  return { games: seeds.length, wins, winRate: wins / seeds.length }
+}
+
+/** Inclusive integer range [a, b]. */
+export function seeds(a: number, b: number): number[] {
+  return Array.from({ length: b - a + 1 }, (_, i) => a + i)
 }
 
 /** Pretty one-block summary of a finished game. */

@@ -2,6 +2,44 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.3.0] — 2026-06-26
+
+Real AI opponents. `HeuristicBot` replaces `GreedyStubBot` as the default brain
+and beats the baselines decisively in headless tournaments.
+
+### Added
+- **`HeuristicBot`** (`src/shared/heuristicBot.ts`): a tunable, deterministic
+  marginal-expected-VP placement bot. Scores each move as
+  `scoreArea(after) − scoreArea(before)` (engine-parity), summed over remaining
+  epochs and discounted by a board-aware survival factor, plus structure
+  capture, monuments, and leader-weighted **denial**, with enemy attacks folded
+  by closed-form combat odds against an opportunity-cost floor. Difficulty
+  (`easy`/`medium`/`hard`) and personas are pure weight overlays; all jitter is
+  seeded (`hash01`), never `Math.random`. Designed via a multi-agent design
+  panel (3 philosophies → synthesis); see `docs/SPEC.md` §15.
+- **`BotView` extended** with a live `pieces` snapshot, `standings`,
+  `monumentsBuilt`, `seed`, and `armiesRemaining` so a bot can compute area
+  tiers, denial, and survival. The engine rebuilds the view on **every**
+  placement (fixes a latent stale-snapshot bug — `state.pieces` is reassigned on
+  each mutation).
+- **Tournament harness** in `sim.ts`: `runMatch`, `tournament`, bot factories
+  (`heuristic`/`greedy`/`random`), and `seeds()`.
+- Tests → **51 total** (+9): `HeuristicBot` decision logic (own_old fix, capital
+  capture, determinism, legality, no-`Math.random` source scan) and
+  seat-averaged win-rate tournaments proving HeuristicBot ≫ GreedyStubBot /
+  RandomBot and that the difficulty knob is monotonic at the extreme.
+
+### Changed
+- `runHeadlessGame` now uses `HeuristicBot` (default `medium`).
+- Bumped to 0.3.0 (script + preload).
+
+### Notes
+- AI weights are **provisional fixture placeholders** — the tiny 9-land fixture
+  overfits long-horizon weights (so `hard` doesn't cleanly beat `medium` there);
+  re-tune via self-play once the real board lands (`docs/SPEC.md` §14/§15).
+- `GreedyStubBot` is retained as a weak baseline (its `own_old` over-valuation
+  makes it actually worse than random — which is what motivated the real bot).
+
 ## [0.2.0] — 2026-06-26
 
 The engine is now a **playable, deterministic, headless game**: a full 7-epoch

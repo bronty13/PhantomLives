@@ -10,7 +10,7 @@
 import type { CombatOdds } from './combat'
 import type { Board } from './board'
 import { areaValue } from './data/areaValues'
-import type { EmpireCard, EpochId, LandId, PlayerId } from './types'
+import type { BoardPiece, EmpireCard, EpochId, LandId, PlayerId } from './types'
 
 export type FrontierKind = 'empty' | 'own_old' | 'enemy'
 
@@ -28,6 +28,16 @@ export interface BotView {
   player: PlayerId
   epoch: EpochId
   empire: EmpireCard
+  /** Live board snapshot — rebuilt by the engine on every placement. */
+  pieces: readonly BoardPiece[]
+  /** Current visible VP per player (excludes hidden pre-eminence). */
+  standings: readonly { id: PlayerId; vp: number }[]
+  /** Monuments already on the board (0 once the 36-cap is hit). */
+  monumentsBuilt: number
+  /** Game seed — drives deterministic tie-break jitter (never Math.random). */
+  seed: number
+  /** Armies left to place this turn. */
+  armiesRemaining: number
 }
 
 export interface Bot {
