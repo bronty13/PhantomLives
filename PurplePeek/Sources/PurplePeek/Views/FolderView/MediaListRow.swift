@@ -5,6 +5,7 @@ import SwiftUI
 struct MediaListRow: View {
     let file: MediaFile
     let isSelected: Bool
+    var keywordNames: [String] = []
     let onTap: () -> Void
 
     @Environment(\.appTheme) private var theme
@@ -22,9 +23,13 @@ struct MediaListRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(file.fileName).lineLimit(1)
-                    Text(file.mediaType.label)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    if keywordNames.isEmpty {
+                        Text(file.mediaType.label)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        tagChips
+                    }
                 }
                 Spacer()
                 if file.isFavorite {
@@ -56,6 +61,35 @@ struct MediaListRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// The file's tags as small accent-tinted capsules, shown in place of the media-type label
+    /// so tagged items read as richer at a glance. Caps the visible chips and trails a "+N".
+    private var tagChips: some View {
+        let maxChips = 4
+        let shown = keywordNames.prefix(maxChips)
+        let overflow = keywordNames.count - shown.count
+        return HStack(spacing: 4) {
+            Image(systemName: "tag.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(theme.accentColor)
+            ForEach(Array(shown), id: \.self) { name in
+                Text(name)
+                    .font(.system(size: 10, weight: .medium))
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(theme.accentColor.opacity(0.16), in: Capsule())
+                    .foregroundStyle(theme.accentColor)
+            }
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .help(keywordNames.joined(separator: ", "))
     }
 
     @ViewBuilder

@@ -326,4 +326,52 @@ final class DatabaseTests: XCTestCase {
             XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM keywords"), 1) // keyword vocab kept
         }
     }
+
+    /// The pure folder behind `allFileKeywordNames`: groups name-sorted rows per file, keeps
+    /// multi-tag order, and omits files that never appear (untagged files have no rows).
+    func testGroupFileKeywordRows() {
+        let rows: [(fileId: String, name: String)] = [
+            ("m1", "Beach"), ("m1", "Sun"),   // multi-tag file, already name-sorted by the query
+            ("m2", "Sun"),                     // single tag
+        ]
+        let map = DatabaseService.groupFileKeywordRows(rows)
+        XCTAssertEqual(map["m1"], ["Beach", "Sun"])
+        XCTAssertEqual(map["m2"], ["Sun"])
+        XCTAssertNil(map["m3"], "untagged files must be absent from the map")
+    }
+
+    /// End-to-end: the real JOIN query feeding the real grouping helper returns each tagged
+    /// file's sorted names and nothing for untagged files. This is what the grid's tag labels
+    /// and "Tagged only" filter read.
+    func testAllFileKeywordNamesQueryShape() throws {
+        let queue = try migratedQueue()
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO scan_roots(path,last_scanned_at,total_files) VALUES('/r','t',0)")
+            for id in ["m1", "m2", "m3"] {
+                try db.execute(sql: """
+                    INSERT INTO media_files(id,scan_root,file_path,file_name,file_type,is_favorite,created_at,updated_at)
+                    VALUES(?, '/r', ?, ?, 'photo', 0, 't', 't')
+                    """, arguments: [id, "/r/\(id).jpg", "\(id).jpg"])
+            }
+            try db.execute(sql: "INSERT INTO keywords(id,name,source,created_at) VALUES('k1','Sun','local','t')")
+            try db.execute(sql: "INSERT INTO keywords(id,name,source,created_at) VALUES('k2','Beach','local','t')")
+            // m1 has two tags, m2 has one, m3 has none.
+            try db.execute(sql: "INSERT INTO file_keywords(file_id,keyword_id) VALUES('m1','k1')")
+            try db.execute(sql: "INSERT INTO file_keywords(file_id,keyword_id) VALUES('m1','k2')")
+            try db.execute(sql: "INSERT INTO file_keywords(file_id,keyword_id) VALUES('m2','k1')")
+        }
+        let map = try queue.read { db -> [String: [String]] in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT fk.file_id AS file_id, k.name AS name
+                FROM file_keywords fk
+                JOIN keywords k ON k.id = fk.keyword_id
+                ORDER BY k.name
+                """)
+            return DatabaseService.groupFileKeywordRows(rows.map { ($0["file_id"], $0["name"]) })
+        }
+        XCTAssertEqual(map["m1"], ["Beach", "Sun"])   // ORDER BY k.name
+        XCTAssertEqual(map["m2"], ["Sun"])
+        XCTAssertNil(map["m3"])                        // untagged → absent
+        XCTAssertEqual(map.count, 2)
+    }
 }

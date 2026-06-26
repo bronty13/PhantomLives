@@ -436,6 +436,29 @@ final class DatabaseService {
         }
     }
 
+    /// Keyword *names* for every tagged file in one query (file_id → sorted names). Files with
+    /// no keywords are absent from the map. Used to label/filter the grid without a per-cell
+    /// lookup — the bulk analogue of `keywordNames(forFile:)`, cached in `AppState`.
+    func allFileKeywordNames() throws -> [String: [String]] {
+        try dbPool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT fk.file_id AS file_id, k.name AS name
+                FROM file_keywords fk
+                JOIN keywords k ON k.id = fk.keyword_id
+                ORDER BY k.name
+                """)
+            return Self.groupFileKeywordRows(rows.map { ($0["file_id"], $0["name"]) })
+        }
+    }
+
+    /// Fold `(file_id, name)` pairs — name-sorted by the query — into a file_id → names map.
+    /// Pure and side-effect-free so it's unit-testable without a live pool.
+    static func groupFileKeywordRows(_ rows: [(fileId: String, name: String)]) -> [String: [String]] {
+        var map: [String: [String]] = [:]
+        for row in rows { map[row.fileId, default: []].append(row.name) }
+        return map
+    }
+
     /// Replace a file's keyword set.
     func setKeywords(fileId: String, keywordIds: [String]) throws {
         try dbPool.write { db in

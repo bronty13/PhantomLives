@@ -39,6 +39,7 @@ struct PreviewModeView: View {
                         .background(.ultraThinMaterial)
                 }
                 Divider()
+                if appState.isTagged(file.id) { tagStrip(file) }
                 decisionBar(file)
             } else {
                 emptyQueue
@@ -96,9 +97,46 @@ struct PreviewModeView: View {
             .pickerStyle(.menu)
             .frame(width: 150)
             .help("Choose which items to step through — including ones you've already decided")
+
+            Toggle(isOn: Binding(
+                get: { appState.showTaggedOnly },
+                set: { appState.showTaggedOnly = $0; appState.startPreview() }
+            )) {
+                Label("Tagged", systemImage: "tag.fill")
+            }
+            .toggleStyle(.button)
+            .help("Step through only items that have tags assigned — combines with the Review filter")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    // MARK: - Tag strip
+
+    /// A prominent accent-tinted strip of the current item's tags, shown just above the decision
+    /// bar so assigned keywords are visible at a glance while reviewing (the popover only shows
+    /// them when opened). Reads the bulk map, which `toggleKeyword` keeps current.
+    private func tagStrip(_ file: MediaFile) -> some View {
+        let names = appState.keywordNames(for: file.id)
+        return HStack(spacing: 8) {
+            Image(systemName: "tag.fill").font(.caption).foregroundStyle(theme.accentColor)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(names, id: \.self) { name in
+                        Text(name)
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 3)
+                            .background(theme.accentColor.opacity(0.18), in: Capsule())
+                            .foregroundStyle(theme.accentColor)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.accentColor.opacity(0.07))
     }
 
     // MARK: - Decision bar

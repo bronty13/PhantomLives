@@ -22,7 +22,10 @@ Two views:
 
 - **Browse** — a Finder-like folder tree + thumbnail grid with a per-item detail panel. A
   **Show** menu filters the grid by decision (All / Undecided / Decided / Kept / Skipped), so
-  you can revisit choices, not just triage new items. Press **Space** on a selected item to
+  you can revisit choices, not just triage new items. A **Tagged** toggle narrows to only items
+  that have tags assigned (it combines with the Show menu), and tagged items display their tag
+  names right on the cell — so when you're reviewing decided items, the tagged ones stand out.
+  Press **Space** on a selected item to
   **peek** it full-size in Quick Look (press Space again to close); clicking through items
   while the peek is open updates it live.
 - **Preview** — a one-by-one walkthrough in a large viewer with full EXIF metadata. Keyboard-

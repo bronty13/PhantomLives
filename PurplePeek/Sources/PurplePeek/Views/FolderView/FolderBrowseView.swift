@@ -64,6 +64,11 @@ struct FolderBrowseView: View {
             .pickerStyle(.menu)
             .frame(width: 130)
             .help("Filter by decision — pick Decided / Kept / Skipped to review choices you've made")
+            Toggle(isOn: $appState.showTaggedOnly) {
+                Label("Tagged", systemImage: "tag.fill")
+            }
+            .toggleStyle(.button)
+            .help("Show only items that have tags assigned — combines with the decision filter")
             Picker("Layout", selection: $isGrid) {
                 Image(systemName: "square.grid.2x2").tag(true)
                 Image(systemName: "list.bullet").tag(false)
@@ -95,9 +100,13 @@ struct FolderBrowseView: View {
     private var content: some View {
         if files.isEmpty {
             VStack(spacing: 10) {
-                Image(systemName: "tray").font(.system(size: 44, weight: .light)).foregroundStyle(.secondary)
-                Text("No media here").font(.title3)
-                Text("Nothing to triage in this folder.").font(.callout).foregroundStyle(.secondary)
+                Image(systemName: appState.showTaggedOnly ? "tag.slash" : "tray")
+                    .font(.system(size: 44, weight: .light)).foregroundStyle(.secondary)
+                Text(appState.showTaggedOnly ? "No tagged items here" : "No media here").font(.title3)
+                Text(appState.showTaggedOnly
+                     ? "Nothing in this scope matches the current filter and has tags assigned."
+                     : "Nothing to triage in this folder.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if isGrid {
@@ -109,6 +118,7 @@ struct FolderBrowseView: View {
                         MediaListRow(
                             file: file,
                             isSelected: appState.selectedFileId == file.id,
+                            keywordNames: appState.keywordNames(for: file.id),
                             onTap: { appState.selectFile(file.id) }
                         )
                         Divider().opacity(0.15)

@@ -9,6 +9,28 @@ First feature-complete release — scan → browse / preview → decide → impo
 (with embed-then-import metadata) or keep-export audio → delete → manage in Settings.
 The sections below are the increments that make up 1.0, newest first.
 
+### Browse & Preview: surface tagged items when reviewing decisions
+
+- **Tags now show right on grid cells and list rows.** A tagged item displays its keyword names
+  under the filename (grid) or in place of the media-type label (list, as small accent capsules
+  with a "+N" overflow), so the items you've annotated stand out at a glance — especially handy
+  when reviewing items you've already decided on.
+- **Preview mode shows the current item's tags prominently** in an accent-tinted strip just above
+  the decision bar (previously the assigned keywords were only visible by opening the tag popover).
+- **New "Tagged" toggle** in *both* the Browse header and the Preview top bar, beside the
+  *Show* / *Review* (decision) menu. When on, only items that have at least one tag are shown; it
+  **combines with** the decision filter (e.g. *Decided* + *Tagged* → just the decided items you've
+  tagged). The Browse empty state and the "shows nothing after scanning" troubleshooting note now
+  call out the toggle so it can't silently hide everything.
+- Under the hood: a single bulk `file_id → keyword names` query
+  (`DatabaseService.allFileKeywordNames()`) cached as a published slice on `AppState`
+  (`fileKeywordNames`), refreshed on any keyword change and on launch — the grid never does a
+  per-cell DB hit. The grouping is a pure, unit-tested helper (`groupFileKeywordRows`); the
+  "Tagged only" gate lives in the existing `recomputeDerived()` pass (gating both the grid and the
+  Preview queue) alongside the decision lens.
+  Tests: +2 (the grouping helper; the JOIN-query shape, asserting sorted names and that untagged
+  files are absent).
+
 ### Sidebar: right-click "Refresh" on a folder
 
 - **Added a "Refresh" item to a scanned folder's right-click menu in the sidebar.** It re-scans

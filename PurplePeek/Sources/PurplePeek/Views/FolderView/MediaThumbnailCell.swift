@@ -7,6 +7,7 @@ struct MediaThumbnailCell: View {
     let file: MediaFile
     let isSelected: Bool
     var duplicateCount: Int = 1
+    var keywordNames: [String] = []
     let onTap: () -> Void
 
     @Environment(\.appTheme) private var theme
@@ -34,6 +35,8 @@ struct MediaThumbnailCell: View {
                     .truncationMode(.middle)
                     .frame(width: 160)
                     .foregroundStyle(.primary)
+
+                if !keywordNames.isEmpty { tagLine }
             }
             .contentShape(Rectangle())
         }
@@ -69,6 +72,21 @@ struct MediaThumbnailCell: View {
         case .video: return "film"
         case .audio: return "waveform"
         }
+    }
+
+    /// A compact accent-tinted line of the file's tags under the filename, so tagged items are
+    /// visibly distinct in the grid. Names are joined and truncated to fit the cell width.
+    private var tagLine: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "tag.fill").font(.system(size: 8))
+            Text(keywordNames.joined(separator: ", "))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .font(.caption2)
+        .foregroundStyle(theme.accentColor)
+        .frame(width: 160, alignment: .center)
+        .help(keywordNames.joined(separator: ", "))
     }
 
     // MARK: - Badges

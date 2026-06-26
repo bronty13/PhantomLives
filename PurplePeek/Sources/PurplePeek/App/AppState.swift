@@ -76,6 +76,11 @@ final class AppState: ObservableObject {
     @Published var mediaFiles: [MediaFile] = []
     @Published var keywords: [Keyword] = []
 
+    // file_id → its sorted keyword names, for the whole store. Bulk-loaded once (the grid would
+    // otherwise need a per-cell DB hit) and refreshed on any keyword change. Files with no
+    // keywords are simply absent. Drives the per-item tag labels and the "Tagged only" filter.
+    @Published private(set) var fileKeywordNames: [String: [String]] = [:]
+
     // Derived views, cached (recomputed only when inputs change — not per render). For a
     // 65k-item root these are O(n)/O(n·depth) to build, so recomputing them on every
     // SwiftUI body evaluation was the main source of large-library lag.
@@ -112,6 +117,11 @@ final class AppState: ObservableObject {
     /// Skipped to review items you've already decided).
     @Published var previewDecisionFilter: DecisionFilter = .undecided {
         didSet { if previewDecisionFilter != oldValue { recomputeDerived() } }
+    }
+    /// When on, the Folder grid shows only items that have at least one keyword/tag — pairs with
+    /// the decision lens so you can surface the tagged items among those you've already decided.
+    @Published var showTaggedOnly: Bool = false {
+        didSet { if showTaggedOnly != oldValue { recomputeDerived() } }
     }
 
     // MARK: - Decision undo
@@ -215,7 +225,21 @@ final class AppState: ObservableObject {
     func reloadKeywords() {
         do { keywords = try db.fetchAllKeywords() }
         catch { errorMessage = error.localizedDescription }
+        reloadFileKeywordNames()
     }
+
+    /// Refresh the bulk file→keyword-names map (cheap; one query). Call after any keyword
+    /// assignment change so the grid's tag labels and "Tagged only" filter stay in sync.
+    func reloadFileKeywordNames() {
+        do { fileKeywordNames = try db.allFileKeywordNames() }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Sorted keyword names assigned to `id` (empty when untagged) — read by the grid/list cells.
+    func keywordNames(for id: String) -> [String] { fileKeywordNames[id] ?? [] }
+
+    /// Whether `id` has at least one keyword/tag.
+    func isTagged(_ id: String) -> Bool { !(fileKeywordNames[id]?.isEmpty ?? true) }
 
     func reloadMediaFiles() {
         guard let root = selectedRootPath else {
@@ -299,6 +323,7 @@ final class AppState: ObservableObject {
         let folder = selectedFolderPath
         let gridFilter = gridDecisionFilter
         let previewFilter = previewDecisionFilter
+        let taggedOnly = showTaggedOnly
         var visible: [MediaFile] = []
         var preview: [MediaFile] = []
         var deletableImported = false
@@ -312,8 +337,8 @@ final class AppState: ObservableObject {
             // (the flags above still counted the hidden copies, so bulk delete reaches them).
             if hiddenDuplicateIds.contains(file.id) { continue }
 
-            // Grid: optional folder narrowing + the grid's decision lens.
-            if gridFilter.matches(file) {
+            // Grid: optional folder narrowing + the grid's decision lens + optional tagged-only.
+            if gridFilter.matches(file), !(taggedOnly && (fileKeywordNames[file.id]?.isEmpty ?? true)) {
                 if let folder {
                     let dir = (file.filePath as NSString).deletingLastPathComponent
                     if dir == folder || file.filePath.hasPrefix(folder + "/") { visible.append(file) }
@@ -321,8 +346,10 @@ final class AppState: ObservableObject {
                     visible.append(file)
                 }
             }
-            // Preview: whole-root, the preview's decision lens.
-            if previewFilter.matches(file) { preview.append(file) }
+            // Preview: whole-root, the preview's decision lens + optional tagged-only.
+            if previewFilter.matches(file), !(taggedOnly && (fileKeywordNames[file.id]?.isEmpty ?? true)) {
+                preview.append(file)
+            }
         }
 
         visibleMediaFiles = visible
@@ -720,8 +747,20 @@ final class AppState: ObservableObject {
         } else {
             selectedKeywordIds.insert(keywordId)
         }
-        do { try db.setKeywords(fileId: fileId, keywordIds: Array(selectedKeywordIds)) }
-        catch { errorMessage = error.localizedDescription }
+        do {
+            try db.setKeywords(fileId: fileId, keywordIds: Array(selectedKeywordIds))
+            // Reflect the change in the bulk map so this item's tag label updates and the
+            // "Tagged only" filter re-evaluates it (it may now enter or leave the grid).
+            let names = selectedKeywordNames()
+            fileKeywordNames[fileId] = names.isEmpty ? nil : names
+            if showTaggedOnly { recomputeDerived() }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// The names of the currently selected keyword ids, sorted — keeps the bulk map's per-file
+    /// entry consistent with `keywordNames(forFile:)` after an in-place toggle.
+    private func selectedKeywordNames() -> [String] {
+        keywords.filter { selectedKeywordIds.contains($0.id) }.map(\.name).sorted()
     }
 
     // MARK: - Albums

@@ -15,6 +15,7 @@ struct MediaGridView: View {
                         file: file,
                         isSelected: appState.selectedFileId == file.id,
                         duplicateCount: appState.duplicateCount(for: file.id),
+                        keywordNames: appState.keywordNames(for: file.id),
                         onTap: { appState.selectFile(file.id) }
                     )
                 }

@@ -80,6 +80,12 @@ a per-item **detail panel** on the right.
   live — just like Finder. (Space types normally when you're editing a title or caption.)
 - **Show menu** (top-right): filter the grid by decision — *All / Undecided / Decided / Kept /
   Skipped* — so you can revisit choices, not only triage new items.
+- **Tagged toggle** (the tag button beside the Show menu): show **only items that have tags
+  (keywords) assigned**. It combines with the Show menu — e.g. set Show to *Decided* and turn on
+  *Tagged* to review just the decided items you've already tagged. Items that carry tags also
+  show their **tag names** right on the cell (under the filename in grid view, in place of the
+  media-type label in list view), so the tagged ones stand out at a glance even with the toggle
+  off.
 - Badges on each thumbnail show its type, your keep (✓) / skip (✕) decision, favorite (♥),
   hidden (eye-slash), and a **missing** marker (orange) if the file has left disk (see
   *Refreshing*).
@@ -100,6 +106,10 @@ A full-size, one-at-a-time walkthrough with an **EXIF panel** — best for fast 
 
 - The **Review menu** picks which queue you walk: *Undecided* (default), or *Decided / Kept /
   Skipped / All* to revisit.
+- The **Tagged toggle** (beside the Review menu) limits the walk to items that have tags
+  assigned — it combines with the Review menu, the same as the Browse-mode toggle. When the
+  current item has tags, they show as **accent-colored chips in a strip just above the decision
+  bar**, so you can see them without opening the tag popover.
 - All keys are suspended while a title or caption field has focus, so you can type freely;
   press Return to leave the field and resume keyboard navigation. Moving to another item also
   releases the field automatically, so Y/N work right away on the next item.
@@ -216,4 +226,5 @@ your actual media files are never inside these backups.
 - **An item shows an orange "missing" badge.** The file left its original location on disk.
   Move it back and Refresh (⌘R), or delete the item if it's gone for good.
 - **A folder shows nothing after scanning.** Check the *Show* filter (it may be on Undecided/
-  Kept/etc.) and whether your top-level exclude name is hiding the subfolder you expected.
+  Kept/etc.), whether the **Tagged** toggle is on (it hides everything without tags), and whether
+  your top-level exclude name is hiding the subfolder you expected.
