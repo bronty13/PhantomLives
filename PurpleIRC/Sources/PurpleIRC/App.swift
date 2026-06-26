@@ -406,6 +406,13 @@ private struct HelpMenuExtras: View {
 
         Button("App Diagnostic Log…") { model.showAppLog = true }
         Button("Chat Logs…")          { model.showChatLogs = true }
+
+        Divider()
+        // Crashes on this build are signal-based (no NSException breadcrumb),
+        // so the actionable artifact is the OS crash report. This copies every
+        // PurpleIRC-*.ips out of ~/Library/Logs/DiagnosticReports into
+        // ~/Downloads and reveals it, so a report can be handed over in a click.
+        Button("Export Crash Reports…") { CrashReportExporter.exportAndReveal() }
     }
 }
 

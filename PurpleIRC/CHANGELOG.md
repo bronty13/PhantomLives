@@ -12,6 +12,38 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.1091] — 2026-06-25
+
+### Fixed
+
+- **A data race in the shared `IRCKit` engine that could crash the app at
+  random** (IRCKit 0.4.0). `IRCClient` touched its connection state from both
+  the main thread (our synchronous `send`/`disconnect`/cap reads) and its
+  private socket queue with no synchronization — a use-after-free on the hot
+  PONG send path and concurrent mutation of the receive buffer on disconnect.
+  These fired during connect/disconnect/reconnect, so they presented as
+  sporadic, timing-dependent crashes on **any** hardware. IRCKit now confines
+  all connection state to its serial queue (public API unchanged); proven race-
+  free with a ThreadSanitizer harness (7 races → 0). See `IRCKit/CHANGELOG.md`.
+
+### Added
+
+- **Help → "Export Crash Reports…"** — copies every `PurpleIRC-*.ips` crash
+  report out of `~/Library/Logs/DiagnosticReports/` into a timestamped folder
+  under `~/Downloads/PurpleIRC crash-reports/` and reveals it in Finder, so a
+  crash can be reported in one click instead of digging through `~/Library`.
+  This is the actionable diagnostic for the crashes actually seen on macOS-26
+  software-rendered VMs, which are **signal-based** (SIGSEGV/SIGTRAP/SIGABRT in
+  SwiftUI / AppKit / the Swift runtime) — the existing `last-exception.log`
+  breadcrumb only catches Objective-C `NSException`s and stays empty for these,
+  so the `.ips` (with its Exception Type + faulting-thread backtrace) is what
+  pinpoints the fault. (Investigation note: three captured VM crashes were a
+  Swift keypath-metadata SEGV during window-state restoration, the known
+  CoreAnimation layout-commit `NSException`, and an AppKit
+  `NSScrollingConcurrentVBLMonitor` `displayTiming != NULL` assertion — all
+  software-renderer fragility with no PurpleIRC logic on the stack; mitigations
+  are tracked separately.)
+
 ## [1.0.988] — 2026-06-18
 
 ### Changed
