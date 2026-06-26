@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Part 00 complete (4/105 lessons ✅). 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–01 complete (12/105 lessons ✅). 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -34,14 +34,14 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [SoC lineup & the device matrix](part-01-hardware-silicon/00-soc-lineup-and-device-matrix.md) | ⬜ |
-| 01 | [CPU, GPU, NPU & the microarchitecture](part-01-hardware-silicon/01-cpu-gpu-npu-microarchitecture.md) | ⬜ |
-| 02 | [The Secure Enclave (hardware)](part-01-hardware-silicon/02-secure-enclave-hardware.md) | ⬜ |
-| 03 | [Storage: NAND, the AES engine & effaceable storage](part-01-hardware-silicon/03-storage-nand-aes-effaceable.md) | ⬜ |
-| 04 | [The baseband & cellular subsystem](part-01-hardware-silicon/04-baseband-and-cellular.md) | ⬜ |
-| 05 | [Radios: Wi-Fi, Bluetooth, NFC & UWB](part-01-hardware-silicon/05-radios-wifi-bt-nfc-uwb.md) | ⬜ |
-| 06 | [Biometrics hardware: Face ID & Touch ID](part-01-hardware-silicon/06-biometrics-hardware-faceid-touchid.md) | ⬜ |
-| 07 | [Connectivity, power, sensors & DFU](part-01-hardware-silicon/07-connectivity-power-sensors-dfu.md) | ⬜ |
+| 00 | [SoC lineup & the device matrix](part-01-hardware-silicon/00-soc-lineup-and-device-matrix.md) | ✅ |
+| 01 | [CPU, GPU, NPU & the microarchitecture](part-01-hardware-silicon/01-cpu-gpu-npu-microarchitecture.md) | ✅ |
+| 02 | [The Secure Enclave (hardware)](part-01-hardware-silicon/02-secure-enclave-hardware.md) | ✅ |
+| 03 | [Storage: NAND, the AES engine & effaceable storage](part-01-hardware-silicon/03-storage-nand-aes-effaceable.md) | ✅ |
+| 04 | [The baseband & cellular subsystem](part-01-hardware-silicon/04-baseband-and-cellular.md) | ✅ |
+| 05 | [Radios: Wi-Fi, Bluetooth, NFC & UWB](part-01-hardware-silicon/05-radios-wifi-bt-nfc-uwb.md) | ✅ |
+| 06 | [Biometrics hardware: Face ID & Touch ID](part-01-hardware-silicon/06-biometrics-hardware-faceid-touchid.md) | ✅ |
+| 07 | [Connectivity, power, sensors & DFU](part-01-hardware-silicon/07-connectivity-power-sensors-dfu.md) | ✅ |
 
 ## Part 02 — System Architecture & Internals
 

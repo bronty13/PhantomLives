@@ -3,6 +3,30 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 01 (Hardware & Silicon) built — 12/105 lessons ✅
+
+The silicon substrate (16 agents, ~2.07M tokens, live research per lesson):
+
+- `00-soc-lineup-and-device-matrix` — model → ProductType → CPID/BDID/ECID → SoC → the
+  checkm8 (A8–A11) / SPTM (A15+) / MIE (A19) tiers; reading BuildManifest.plist; model+SoC ID
+  as forensic step zero.
+- `01-cpu-gpu-npu-microarchitecture` — P/E topology, the GPU + neural accelerators, the 16-core
+  ANE, arm64e + PAC keys at the silicon level, AMX/SME, unified memory.
+- `02-secure-enclave-hardware` — the SEP coprocessor: dedicated core, Memory Protection Engine,
+  TRNG/PKA/AES, the off-die Secure Storage Component, the fused UID/GID keys (why off-device
+  brute force is impossible).
+- `03-storage-nand-aes-effaceable` — NAND + ANS controller, the inline AES-XTS engine,
+  effaceable storage (BAG1/Dkey/EMF! lockers) and instant crypto-shred; why physical NAND
+  imaging is dead.
+- `04-baseband-and-cellular` — the baseband as a separate RTOS computer; Apple C1/C1X vs
+  Qualcomm; eUICC/eSIM; IMEI/IMSI/ICCID; the AP↔baseband interface.
+- `05-radios-wifi-bt-nfc-uwb` — the N1 chip, the NFC embedded Secure Element, U1/U2 UWB secure
+  ranging, and what each radio persists (BT pairing, known-Wi-Fi, Wallet).
+- `06-biometrics-hardware-faceid-touchid` — TrueDepth/Touch ID hardware, the Secure Neural
+  Engine, the factory-paired sensor↔SEP channel (why swaps disable biometrics).
+- `07-connectivity-power-sensors-dfu` — display/AOP, PMU/PowerLog, the sensor suite as evidence,
+  USB Restricted Mode, and the DFU/Recovery entry path.
+
 ## 2026-06-26 — Part 00 (Orientation) built — 4/105 lessons ✅
 
 The foundation module, authored + adversarially reviewed by the module-builder workflow
