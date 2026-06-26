@@ -3,6 +3,34 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 07 (Forensic Acquisition & Imaging) built — 42/105 lessons ✅
+
+The first forensics pillar, leaning directly on the security foundation (BFU/AFU, keybags,
+checkm8/usbliter8, the backup format):
+
+- `00-ios-forensics-landscape-and-authorization` (landmark, ⚖️) — the four axioms that
+  separate iOS from disk forensics; Riley v. California; CFAA; remote-wipe + the 72h
+  inactivity-reboot race.
+- `01-the-acquisition-taxonomy` — the five-tier ladder + the decision tree keyed to SoC ×
+  build × lock state.
+- `02-bfu-vs-afu-and-data-protection-classes` — the full state × class readability matrix +
+  the vendor reboot countermeasures (Safeguard Mode / GrayKey Preserve).
+- `03-the-itunes-finder-backup-format` — Manifest.db / Manifest.plist / Info / Status, the
+  SHA1(domain-relativePath) hashed tree, the encrypted-backup-adds-data paradox.
+- `04-logical-acquisition-with-libimobiledevice` — lockdownd/pairing/escrow-bag, idevicebackup2/
+  pymobiledevice3/mvt, the reproducible OSS workflow.
+- `05-full-file-system-acquisition` — BootROM-exploit (checkm8/usbliter8) vs agent vs commercial;
+  the SEP wall; the realistic 2026 matrix.
+- `06-icloud-acquisition-and-advanced-data-protection` — backups vs synced data, tokens/anisette,
+  the legal-process route, and how ADP forecloses both.
+- `07-decrypting-backups-and-images` — the crackable surface (weak backup passwords, hashcat
+  -m 14800) vs the uncrackable one (the SEP-bound device passcode).
+- `08-acquisition-sop-and-chain-of-custody` (landmark capstone, ⚖️) — isolation → identification
+  → method selection → hashing → a defensible chain-of-custody package.
+- Built via the **chunked** module-builder (3 lessons/chunk) after the first two attempts hit a
+  session-usage limit and then a server burst-throttle; chunking spread the load and made
+  partial progress resumable. 0 review problems.
+
 ## 2026-06-26 — Part 03 (Security Architecture) built — 33/105 lessons ✅ — FOUNDATION TIER COMPLETE
 
 The security spine: the layered Platform-Security model; the SEP/SEPOS software deep dive (L4

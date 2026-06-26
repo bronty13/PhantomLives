@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–03 complete (33/105 lessons ✅) — the foundation tier (orientation, hardware, internals, security) is done. 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–03 + 07 complete (42/105 lessons ✅) — foundation tier + Forensic Acquisition done. 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -114,15 +114,15 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [The iOS forensics landscape & authorization](part-07-acquisition-imaging/00-ios-forensics-landscape-and-authorization.md) | ⬜ |
-| 01 | [The acquisition taxonomy](part-07-acquisition-imaging/01-the-acquisition-taxonomy.md) | ⬜ |
-| 02 | [BFU vs AFU & Data Protection classes](part-07-acquisition-imaging/02-bfu-vs-afu-and-data-protection-classes.md) | ⬜ |
-| 03 | [The iTunes/Finder backup format](part-07-acquisition-imaging/03-the-itunes-finder-backup-format.md) | ⬜ |
-| 04 | [Logical acquisition with libimobiledevice](part-07-acquisition-imaging/04-logical-acquisition-with-libimobiledevice.md) | ⬜ |
-| 05 | [Full-file-system acquisition](part-07-acquisition-imaging/05-full-file-system-acquisition.md) | ⬜ |
-| 06 | [iCloud acquisition & Advanced Data Protection](part-07-acquisition-imaging/06-icloud-acquisition-and-advanced-data-protection.md) | ⬜ |
-| 07 | [Decrypting backups & images](part-07-acquisition-imaging/07-decrypting-backups-and-images.md) | ⬜ |
-| 08 | [Acquisition SOP & chain of custody](part-07-acquisition-imaging/08-acquisition-sop-and-chain-of-custody.md) | ⬜ |
+| 00 | [The iOS forensics landscape & authorization](part-07-acquisition-imaging/00-ios-forensics-landscape-and-authorization.md) | ✅ |
+| 01 | [The acquisition taxonomy](part-07-acquisition-imaging/01-the-acquisition-taxonomy.md) | ✅ |
+| 02 | [BFU vs AFU & Data Protection classes](part-07-acquisition-imaging/02-bfu-vs-afu-and-data-protection-classes.md) | ✅ |
+| 03 | [The iTunes/Finder backup format](part-07-acquisition-imaging/03-the-itunes-finder-backup-format.md) | ✅ |
+| 04 | [Logical acquisition with libimobiledevice](part-07-acquisition-imaging/04-logical-acquisition-with-libimobiledevice.md) | ✅ |
+| 05 | [Full-file-system acquisition](part-07-acquisition-imaging/05-full-file-system-acquisition.md) | ✅ |
+| 06 | [iCloud acquisition & Advanced Data Protection](part-07-acquisition-imaging/06-icloud-acquisition-and-advanced-data-protection.md) | ✅ |
+| 07 | [Decrypting backups & images](part-07-acquisition-imaging/07-decrypting-backups-and-images.md) | ✅ |
+| 08 | [Acquisition SOP & chain of custody](part-07-acquisition-imaging/08-acquisition-sop-and-chain-of-custody.md) | ✅ |
 
 ## Part 08 — Forensic Artifacts & Pattern of Life
 
