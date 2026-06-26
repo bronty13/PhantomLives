@@ -2,6 +2,41 @@
 
 All notable changes to IRCKit are documented here.
 
+## 0.4.0 — 2026-06-25
+
+### Fixed
+
+- **`IRCClient` data race (use-after-free + value-type heap corruption).**
+  `IRCClient` ran its `NWConnection` on a private serial queue but exposed a
+  synchronous API the `@MainActor` session layers call from the main thread, so
+  its mutable connection state (`connection`, `buffer`, `negotiator`,
+  `pendingConfig`, `didBecomeReady`) was read/written from **two threads with no
+  synchronization**. The sharp edges: `send()` read `connection` on the hot
+  PONG path while the queue could nil it on `.failed`/`.cancelled`/timeout
+  (torn reference → use-after-free), and `buffer` (a `Data` value) was
+  appended/drained on the queue while `disconnect()` did `removeAll()` on main
+  (concurrent value-type mutation → heap corruption) — both firing exactly
+  during connect/disconnect/reconnect, i.e. **sporadic, timing-dependent
+  crashes on any hardware**. Fixed by **confining all connection state to the
+  serial queue**: `connect`/`send` dispatch via `queue.async`; `disconnect` and
+  the `host`/`port`/`useTLS`/`enabledCaps`/`serverCapValues` getters read via
+  `queue.sync`. The **public API stays synchronous**, so PurpleIRC and Ircle
+  need no changes. `disconnect()` deliberately stays synchronous and still
+  flushes a best-effort QUIT (≤1s) before closing — the wait now runs on the
+  *caller* thread (never on the queue), so it can't deadlock against the send
+  completion (which replaces the old `sendSync` semaphore). A per-connection
+  `epoch` token makes a superseded socket's late callbacks no-ops, also fixing a
+  latent bug where an old connection's `.cancelled` could nil the new one.
+  `IRCClient` is now `@unchecked Sendable`. Proven with a new ThreadSanitizer
+  loopback harness (`IRCClientLoopbackTests`): **7 races before → 0 after**.
+
+### Added
+
+- **`IRCClientLoopbackTests`** — a loopback `NWListener` harness that drives
+  connect/send/disconnect/reconnect (functional reconnect coverage, previously
+  none), doubling as the TSan target for the race above
+  (`IRCKIT_STRESS=1 swift test --sanitize=thread --filter IRCClientLoopbackTests`).
+
 ## 0.3.0 — 2026-06-19
 
 ### Added

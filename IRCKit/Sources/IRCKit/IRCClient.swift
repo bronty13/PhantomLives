@@ -59,18 +59,42 @@ public struct IRCConnectionConfig {
     }
 }
 
-public final class IRCClient {
-    private var connection: NWConnection?
+public final class IRCClient: @unchecked Sendable {
+    // THREADING CONTRACT. All mutable connection state below is confined to
+    // `queue` (a serial dispatch queue). The NWConnection runs on `queue`, so
+    // its callbacks already execute there; the public API stays *synchronous*
+    // — the @MainActor session layers in PurpleIRC / Ircle call it from the
+    // main thread — but every read/write of this state is funnelled onto
+    // `queue` (`connect`/`send` via `queue.async`; `disconnect` and the
+    // `enabledCaps`/`host`/… getters via `queue.sync`). That makes the caller
+    // and the socket callbacks mutually exclusive, eliminating the data race
+    // on `connection`/`buffer`/`negotiator` (TSan-proven; see
+    // `IRCClientLoopbackTests`). `@unchecked Sendable` asserts this discipline;
+    // the `onMessage`/`onState`/`onRaw` callbacks must be set before `connect`.
     private let queue = DispatchQueue(label: "IRCKit.client")
+    private var connection: NWConnection?
+    // Bumped on every teardown/redial. Each connection's callbacks capture the
+    // value at setup and ignore events once it changes. A value-typed identity
+    // token (rather than capturing the NWConnection itself) — this avoids a
+    // conn↔handler retain cycle and makes a superseded socket's late events
+    // no-ops (incl. stopping an old socket's `.cancelled` from nilling the new).
+    private var epoch = 0
     private var buffer = Data()
 
     public var onMessage: ((IRCMessage) -> Void)?
     public var onState: ((IRCConnectionState) -> Void)?
     public var onRaw: ((String, Bool) -> Void)? // line, isOutbound
 
-    public private(set) var host: String = ""
-    public private(set) var port: UInt16 = 6667
-    public private(set) var useTLS: Bool = false
+    // Connection coordinates. The `_`-prefixed storage is queue-confined;
+    // on-queue code (`humanize`, the timeout item) reads it directly. The
+    // public getters expose it to off-queue callers race-free via `queue.sync`
+    // — never call them from `queue` (self-deadlock); no on-queue code does.
+    private var _host: String = ""
+    private var _port: UInt16 = 6667
+    private var _useTLS: Bool = false
+    public var host: String { queue.sync { _host } }
+    public var port: UInt16 { queue.sync { _port } }
+    public var useTLS: Bool { queue.sync { _useTLS } }
 
     // Registration / SASL state machine (extracted for unit testing).
     private var negotiator: SASLNegotiator?
@@ -87,11 +111,17 @@ public final class IRCClient {
     public init() {}
 
     public func connect(config: IRCConnectionConfig) {
-        disconnect()
-        self.host = config.host
-        self.port = config.port
-        self.useTLS = config.useTLS
-        self.pendingConfig = config
+        queue.async { [weak self] in self?._connect(config) }
+    }
+
+    /// Runs on `queue`. Tears down any prior connection (best-effort QUIT,
+    /// fire-and-forget — we can't block-wait on `queue`) then dials the new one.
+    private func _connect(_ config: IRCConnectionConfig) {
+        flushQuitAndCancel(detach(), quitMessage: nil, awaitFlush: false)
+        _host = config.host
+        _port = config.port
+        _useTLS = config.useTLS
+        pendingConfig = config
 
         let params: NWParameters
         if config.useTLS {
@@ -133,18 +163,25 @@ public final class IRCClient {
             return
         }
 
+        let gen = epoch
         let conn = NWConnection(host: endpointHost, port: endpointPort, using: params)
         self.connection = conn
 
         conn.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
+            // Runs on `queue`. `detach()`/`connect` bump `epoch`, so a
+            // superseded connection (its captured `gen` no longer current)
+            // fails this check and its late events are ignored — including an
+            // old socket's `.cancelled` after a redial. `gen` is captured by
+            // value, so the handler does not retain `conn`.
+            guard self.epoch == gen else { return }
             switch state {
             case .ready:
                 self.didBecomeReady = true
                 self.cancelConnectTimeout()
                 self.onState?(.connected)
                 self.startRegistration()
-                self.receiveLoop()
+                self.receiveLoop(gen)
             case .waiting(let err):
                 // `.waiting` is transient — NWConnection keeps retrying and may
                 // still reach `.ready`. Don't surface it as a hard failure
@@ -184,8 +221,8 @@ public final class IRCClient {
         let item = DispatchWorkItem { [weak self] in
             guard let self, !self.didBecomeReady else { return }
             self.onState?(.failed(
-                "Timed out connecting to \(self.host):\(self.port). The server didn't respond — "
-                + "check the host and port, and whether TLS should be \(self.useTLS ? "OFF" : "ON") "
+                "Timed out connecting to \(self._host):\(self._port). The server didn't respond — "
+                + "check the host and port, and whether TLS should be \(self._useTLS ? "OFF" : "ON") "
                 + "for this port (commonly 6697 = TLS, 6667 = plain)."))
             self.connection?.cancel()
             self.connection = nil
@@ -199,20 +236,68 @@ public final class IRCClient {
         connectTimeout = nil
     }
 
+    /// Synchronous, on purpose: flushes a best-effort QUIT (≤1s) before closing
+    /// so a server gets a proper goodbye even when the app is terminating (see
+    /// `ChatModel.performQuit`). Call from the main thread. The state teardown
+    /// runs on `queue` (`queue.sync`), but the QUIT flush waits on the *caller*
+    /// thread — never on `queue` — so it cannot deadlock against the send
+    /// completion (which is delivered on `queue`).
     public func disconnect(quitMessage: String? = nil) {
+        let conn = queue.sync { detach() }
+        flushQuitAndCancel(conn, quitMessage: quitMessage, awaitFlush: true)
+        onState?(.disconnected)
+    }
+
+    /// Runs on `queue`. Clears all connection state and returns the previous
+    /// NWConnection so the caller can flush/cancel it. We don't detach the
+    /// state handler — the `connection === conn` guard inside it already makes
+    /// the returned connection's later events no-ops.
+    private func detach() -> NWConnection? {
         cancelConnectTimeout()
-        if let conn = connection, conn.state == .ready {
-            let msg = quitMessage ?? "Client closed"
-            sendSync("QUIT :\(msg)")
-        }
-        connection?.cancel()
+        epoch &+= 1
+        let c = connection
         connection = nil
         buffer.removeAll()
         negotiator = nil
         pendingConfig = nil
+        didBecomeReady = false
+        return c
+    }
+
+    private func quitData(_ quitMessage: String?) -> Data? {
+        let safe = IRCSanitize.line("QUIT :\(quitMessage ?? "Client closed")")
+        guard !safe.isEmpty else { return nil }
+        return (safe + "\r\n").data(using: .utf8)
+    }
+
+    /// Flush a QUIT (when the connection is `.ready`) then cancel. With
+    /// `awaitFlush == true` the *caller* blocks ≤1s for the bytes to drain —
+    /// only ever pass `true` when NOT on `queue`, since the completion fires on
+    /// `queue`. With `false` the cancel is chained off the completion (no wait),
+    /// which is the only safe form on `queue`.
+    private func flushQuitAndCancel(_ conn: NWConnection?, quitMessage: String?, awaitFlush: Bool) {
+        guard let conn else { return }
+        guard conn.state == .ready, let data = quitData(quitMessage) else {
+            conn.cancel()
+            return
+        }
+        if awaitFlush {
+            let sem = DispatchSemaphore(value: 0)
+            conn.send(content: data, completion: .contentProcessed { _ in sem.signal() })
+            _ = sem.wait(timeout: .now() + 1.0)
+            conn.cancel()
+        } else {
+            conn.send(content: data, completion: .contentProcessed { _ in conn.cancel() })
+        }
     }
 
     public func send(_ line: String) {
+        queue.async { [weak self] in self?._send(line) }
+    }
+
+    /// Runs on `queue`. Also the in-order send used by registration / SASL,
+    /// which are already on `queue` and must enqueue their lines synchronously.
+    private func _send(_ line: String) {
         guard let conn = connection else { return }
         // Strip CR / LF / NUL inside the payload before re-appending the
         // single CRLF terminator. Anything else would let an attacker-
@@ -222,22 +307,11 @@ public final class IRCClient {
         let trimmed = safe + "\r\n"
         guard let data = trimmed.data(using: .utf8) else { return }
         onRaw?(IRCSanitize.maskForDisplay(safe), true)
-        conn.send(content: data, completion: .contentProcessed { error in
+        conn.send(content: data, completion: .contentProcessed { [weak self] error in
             if let error {
-                self.onState?(.failed("send failed: \(error.localizedDescription)"))
+                self?.onState?(.failed("send failed: \(error.localizedDescription)"))
             }
         })
-    }
-
-    private func sendSync(_ line: String) {
-        guard let conn = connection else { return }
-        let safe = IRCSanitize.line(line)
-        guard !safe.isEmpty else { return }
-        let trimmed = safe + "\r\n"
-        guard let data = trimmed.data(using: .utf8) else { return }
-        let sem = DispatchSemaphore(value: 0)
-        conn.send(content: data, completion: .contentProcessed { _ in sem.signal() })
-        _ = sem.wait(timeout: .now() + 1.0)
     }
 
     // MARK: - Error presentation
@@ -248,11 +322,11 @@ public final class IRCClient {
     /// very common footgun with older IRC networks.
     private func humanize(_ err: NWError) -> String {
         let base = err.localizedDescription
-        if useTLS, case .tls(let status) = err {
+        if _useTLS, case .tls(let status) = err {
             let hint: String
             switch status {
             case -9836:   // errSSLBadProtocolVersion — server closed the TLS handshake
-                hint = "server on \(host):\(port) doesn't appear to support TLS. Try turning TLS off, or use the network's TLS port (often 6697/9999)."
+                hint = "server on \(_host):\(_port) doesn't appear to support TLS. Try turning TLS off, or use the network's TLS port (often 6697/9999)."
             case -9807, -9808, -9809, -9810, -9812, -9813, -9814, -9815, -9816:
                 // Various SSL trust / cert-chain errors
                 hint = "TLS certificate was rejected. The server may be using a self-signed or untrusted cert."
@@ -270,35 +344,36 @@ public final class IRCClient {
         guard let cfg = pendingConfig else { return }
         let n = SASLNegotiator(config: cfg)
         negotiator = n
-        for line in n.registrationCommands() { send(line) }
+        for line in n.registrationCommands() { _send(line) }
     }
 
     /// Drive CAP/AUTHENTICATE/SASL numerics through the negotiator. The
     /// message is still forwarded to `onMessage` so the caller can log it.
     private func interceptForSASL(_ msg: IRCMessage) {
         guard let n = negotiator else { return }
-        for line in n.handle(msg) { send(line) }
+        for line in n.handle(msg) { _send(line) }
     }
 
     /// Caps the server actually granted us this session. Empty when CAP
     /// negotiation hasn't completed yet. Read by the session layer to decide
     /// whether to honour `@time` tags, expect echo-message, etc.
     public var enabledCaps: Set<String> {
-        negotiator?.enabledCaps ?? []
+        queue.sync { negotiator?.enabledCaps ?? [] }
     }
 
     /// Server-side cap values (e.g. `chathistory=1000`). Same lifetime as
     /// `enabledCaps` — keyed by cap name.
     public var serverCapValues: [String: String] {
-        negotiator?.serverCapValues ?? [:]
+        queue.sync { negotiator?.serverCapValues ?? [:] }
     }
 
     // MARK: - Receive pipeline
 
-    private func receiveLoop() {
-        guard let conn = connection else { return }
+    private func receiveLoop(_ gen: Int) {
+        guard epoch == gen, let conn = connection else { return }
         conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
+            // Runs on `queue`. Ignore reads from a superseded connection.
+            guard let self, self.epoch == gen else { return }
             if let data, !data.isEmpty {
                 self.buffer.append(data)
                 self.drainBuffer()
@@ -311,7 +386,7 @@ public final class IRCClient {
                 self.onState?(.disconnected)
                 return
             }
-            self.receiveLoop()
+            self.receiveLoop(gen)
         }
     }
 
