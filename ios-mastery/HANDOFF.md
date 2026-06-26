@@ -35,7 +35,7 @@ where the substrate is *not* a faithful analogue:
    app (Messages, Photos, Safari, Notes) and dissect the **real** SQLite/plist schemas. ⚠️ The
    Simulator runs macOS frameworks: **no SEP, no Data-Protection-at-rest, no baseband, no
    AMFI/sandbox enforcement, and the device-only pattern-of-life daemons (`knowledged`,
-   `biomed`, `powerd`/PowerLog, `routined`) do not populate device-style stores.** It teaches
+   `biomed`, `powerlogHelperd`/PowerLog, `routined`) do not populate device-style stores.** It teaches
    *structure/layout/parsing*; encryption/lock-state behavior is taught from sample images.
 2. **Public sample forensic images** — Josh Hickman's iOS reference images (thebinaryhick.blog /
    Digital Corpora), DFRWS, NIST CFReDS, the iLEAPP/mvt test data. Use these for the device-only

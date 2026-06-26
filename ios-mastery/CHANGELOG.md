@@ -3,6 +3,26 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 00 (Orientation) built — 4/105 lessons ✅
+
+The foundation module, authored + adversarially reviewed by the module-builder workflow
+(8 agents, ~922K tokens, live web research per lesson):
+
+- `00-how-to-use-this-course` — the skeleton, the five callouts (🖥️/🔬/⚖️/⚠️/🧪), the
+  no-physical-device lab doctrine, the freshness rule, Obsidian sync.
+- `01-ios-platform-landscape-and-history` — iPhone OS → iOS → the iPadOS fork; the Darwin
+  OS-family tree; SoC→device→era; the year-based naming reset (→26); and how version → SoC →
+  acquisition-capability interlock (the examiner's first question).
+- `02-macos-to-ios-mental-model-reset` — the keystone reflex-breaker: six hard resets (no
+  shell; AMFI signed-code-only; mandatory sandbox; Data Protection ≠ FileVault with the
+  BFU/AFU class matrix; the tethered-Mac lockdownd/usbmuxd/AFC stack + iOS 17 RemoteXPC; secure
+  boot with the 1TR escape welded shut) and the one principle beneath them.
+- `03-forensics-and-dev-workstation-setup` — building the Mac bench (Xcode/Simulator,
+  libimobiledevice/pymobiledevice3, iLEAPP/APOLLO/mvt/ccl-segb, ipsw/img4tool/ldid, Frida/
+  objection, mitmproxy, cfgutil) with install + verify steps, against public sample images.
+- Review pass corrected live facts (iOS 26.5.1; iOS 27 WWDC beta; the `powerd`→
+  `powerlogHelperd` daemon name in HANDOFF) and flagged perishable details for re-verify.
+
 ## 2026-06-26 — Course scaffolded (Part 00–11, 105 lessons planned)
 
 Initial scaffold of the iOS sibling to `macos-mastery`, weighted to engineering internals,

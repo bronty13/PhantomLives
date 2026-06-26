@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Part 00 complete (4/105 lessons ✅). 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -25,10 +25,10 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [How to use this course](part-00-orientation/00-how-to-use-this-course.md) | ⬜ |
-| 01 | [The iOS/iPadOS platform landscape & history](part-00-orientation/01-ios-platform-landscape-and-history.md) | ⬜ |
-| 02 | [macOS → iOS: the mental-model reset](part-00-orientation/02-macos-to-ios-mental-model-reset.md) | ⬜ |
-| 03 | [The forensics + dev workstation setup](part-00-orientation/03-forensics-and-dev-workstation-setup.md) | ⬜ |
+| 00 | [How to use this course](part-00-orientation/00-how-to-use-this-course.md) | ✅ |
+| 01 | [The iOS/iPadOS platform landscape & history](part-00-orientation/01-ios-platform-landscape-and-history.md) | ✅ |
+| 02 | [macOS → iOS: the mental-model reset](part-00-orientation/02-macos-to-ios-mental-model-reset.md) | ✅ |
+| 03 | [The forensics + dev workstation setup](part-00-orientation/03-forensics-and-dev-workstation-setup.md) | ✅ |
 
 ## Part 01 — Hardware & Silicon
 
