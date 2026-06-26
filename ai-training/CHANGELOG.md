@@ -3,6 +3,62 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-26 — Modules 11 & 12 built — CURRICULUM COMPLETE (0–12, 70 lessons)
+
+The final two candidate modules, built together (they cross-reference each other). The course
+now spans 13 modules.
+
+- **Module 11 — AI Product & UX Patterns** (6 lessons) — the course's most DURABLE module
+  (backbone: Microsoft HAX 18 guidelines, Google PAIR, Nielsen Norman Group; few catalogs to
+  rot):
+  - `00-designing-for-probabilistic-systems` — how AI UX inverts the deterministic-software
+    contract (fallible/variable/latent), the AI-native "context error," failure as the design
+    surface, and the guidance backbone.
+  - `01-latency-and-perceived-performance` — the 0.1/1/10s response-time limits + Doherty 400ms,
+    streaming as the highest-leverage pattern (TTFT vs TPOT), skeleton/optimistic UI, reasoning-
+    model wait UX (collapse raw CoT). Cross-links M7.
+  - `02-trust-transparency-and-citations` — **calibrated (not maximal) trust**, over/under-trust,
+    citations as pointers-not-proof + hallucinatable, post-hoc/unfaithful explanations,
+    anthropomorphism, provenance (C2PA/Art.50 → M9/M12).
+  - `03-human-in-the-loop-and-control` — **reversibility as the master variable** (gate at the
+    tool), edit-don't-accept (HAX G9), mid-generation steering, progressive autonomy, Shneiderman
+    2-axis, the rubber-stamp trap. Cross-links M4/M10.
+  - `04-designing-for-failure` — failure as default, HAX "when wrong" (G8–G11), honest abstention
+    > confident hallucination, ICE pattern, user-bandwidth, clarify→suggest→escalate, no fake
+    transparency. Cross-links M2/M3/M5.
+  - `05-onboarding-and-the-feedback-flywheel` — expectation-setting (HAX G1/G2), empty-state +
+    suggested prompts, frictionless feedback, **the feedback flywheel as dual-purpose eval +
+    preference data** (M5/M6).
+- **Module 12 — Governance, Safety & Compliance** (6 lessons) — the most FACT-SENSITIVE module;
+  durable-frameworks-first, every dated item status-flagged:
+  - `00-why-governance` — governance as an engineering concern, **build-it-in-don't-bolt-it-on**,
+    risk-based tiering as the durable spine, and the durable-vs-perishable sorting rule.
+  - `01-the-regulatory-landscape` — EU AI Act risk tiers + the **mid-2026 "Digital Omnibus"
+    timeline DELAY** (used as a live "the trackers lagged → re-verify the primary source" lesson),
+    the US deregulatory-federal/state-patchwork, NIST AI RMF (GOVERN/MAP/MEASURE/MANAGE), ISO/IEC
+    42001. Heavily dated + a "how to re-verify" cadence.
+  - `02-data-privacy-and-governance` — durable privacy principles (lawful basis/purpose-limitation/
+    minimization), the "is a model anonymous" + right-to-erasure tensions, machine unlearning as
+    risk-reduction-not-deletion, training-data provenance. Cross-links M6/M9.
+  - `03-documentation-and-accountability` — datasheet→model card→system card taxonomy (disaggregated
+    performance as a fairness control), EU Annex IV/Art.12 logging, **AI inventories** as the system
+    of record, audit trails/transparency reports. Cross-links M5/M7.
+  - `04-risk-assessment-and-red-teaming` — impact assessments (FRIA/DPIA/ISO 42005), red-teaming as
+    sociotechnical governance, **OWASP LLM Top 10 + MITRE ATLAS** as the checklist (consolidates the
+    M2/M3/M4/M10 security threads), frontier capability-threshold "if-then" frameworks.
+  - `05-operationalizing-governance` — the program (exec owner, three lines of defense), **effective
+    human oversight** (Art.14 = intervene/halt capability, not rubber-stamp — ties M10/M11), incident
+    response + reporting clocks, lifecycle "build-it-in" governance + continuous monitoring.
+- Sourcing per HANDOFF pipeline: two parallel live-web research agents (AI-product/UX design guidance;
+  the regulatory/standards landscape). Product/UX treated as durable-design (decade-stable HAX/PAIR/
+  NN/g) with example-light confidence; governance treated as perishable with every date/penalty/
+  version status-flagged and a re-verify cadence. The governance agent's scratch research file
+  (`ai-governance-safety-compliance.md`) was used for synthesis then removed (not a lesson).
+- **Bookkeeping:** CURRICULUM adds both module tables + the "curriculum complete (0–12, 70 lessons)"
+  banner; README adds two module-map rows, two contents blocks, and the completion banner; PROGRESS
+  lists both modules. All internal links across M11+M12 verified (they cross-reference each other,
+  hence one combined commit).
+
 ## 2026-06-26 — Module 10 (Coding Agents & AI-Assisted Development) built
 
 - **Module 10 — Coding Agents & AI-Assisted Development** (6 lessons), durable-first; takes the

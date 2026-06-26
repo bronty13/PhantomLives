@@ -87,5 +87,21 @@ Check off lessons as you complete them.
 - [ ] Evaluating & trusting coding agents
 - [ ] Security & failure modes
 
+## Module 11 — AI Product & UX Patterns
+- [ ] Designing for probabilistic systems
+- [ ] Latency & perceived performance
+- [ ] Trust, transparency & citations
+- [ ] Human-in-the-loop & control
+- [ ] Designing for failure
+- [ ] Onboarding, expectations & the feedback flywheel
+
+## Module 12 — Governance, Safety & Compliance
+- [ ] Why governance, and the risk-based frame
+- [ ] The regulatory landscape
+- [ ] Data privacy & governance
+- [ ] Documentation & accountability
+- [ ] Risk assessment & red-teaming
+- [ ] Operationalizing governance
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*

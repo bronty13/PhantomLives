@@ -129,10 +129,36 @@ lesson list — the [README](README.md) module map points here.
 
 ---
 
-## 🎓 Core curriculum + Modules 9–10 complete
+## Module 11 — AI Product & UX Patterns
 
-Modules 0–10 are built. The course covers the full practical arc: choosing models → prompting
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | Designing for probabilistic systems (the paradigm shift; HAX/PAIR backbone) | [part-11-product-ux/00-designing-for-probabilistic-systems.md](part-11-product-ux/00-designing-for-probabilistic-systems.md) |
+| ✅ | Latency & perceived performance (streaming, TTFT, reasoning-wait UX) | [part-11-product-ux/01-latency-and-perceived-performance.md](part-11-product-ux/01-latency-and-perceived-performance.md) |
+| ✅ | Trust, transparency & citations (calibrated trust; post-hoc explanations; provenance) | [part-11-product-ux/02-trust-transparency-and-citations.md](part-11-product-ux/02-trust-transparency-and-citations.md) |
+| ✅ | Human-in-the-loop & control (reversibility; edit-don't-accept; progressive autonomy) | [part-11-product-ux/03-human-in-the-loop-and-control.md](part-11-product-ux/03-human-in-the-loop-and-control.md) |
+| ✅ | Designing for failure (HAX "when wrong"; abstention; recovery ladder) | [part-11-product-ux/04-designing-for-failure.md](part-11-product-ux/04-designing-for-failure.md) |
+| ✅ | Onboarding, expectations & the feedback flywheel | [part-11-product-ux/05-onboarding-and-the-feedback-flywheel.md](part-11-product-ux/05-onboarding-and-the-feedback-flywheel.md) |
+
+## Module 12 — Governance, Safety & Compliance
+
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | Why governance, and the risk-based frame | [part-12-governance/00-why-governance.md](part-12-governance/00-why-governance.md) |
+| ✅ | The regulatory landscape (EU AI Act, US patchwork, NIST RMF, ISO 42001) | [part-12-governance/01-the-regulatory-landscape.md](part-12-governance/01-the-regulatory-landscape.md) |
+| ✅ | Data privacy & governance (GDPR/CCPA, training-data provenance, erasure tension) | [part-12-governance/02-data-privacy-and-governance.md](part-12-governance/02-data-privacy-and-governance.md) |
+| ✅ | Documentation & accountability (model/system cards, inventories, audit trails) | [part-12-governance/03-documentation-and-accountability.md](part-12-governance/03-documentation-and-accountability.md) |
+| ✅ | Risk assessment & red-teaming (impact assessments, OWASP/ATLAS, frontier if-then) | [part-12-governance/04-risk-assessment-and-red-teaming.md](part-12-governance/04-risk-assessment-and-red-teaming.md) |
+| ✅ | Operationalizing governance (program, human oversight, incident response, lifecycle) | [part-12-governance/05-operationalizing-governance.md](part-12-governance/05-operationalizing-governance.md) |
+
+---
+
+## 🎓 Curriculum complete — Modules 0–12
+
+All 13 modules (0–12, 70 lessons) are built. The full practical arc: choosing models → prompting
 → RAG → agents → evaluation → fine-tuning → cost/latency → running it all locally → **multimodal
-& generative media** → **coding agents & AI-assisted development**. To **extend** it (new modules,
-refreshing the dated catalogs), see [HANDOFF.md](HANDOFF.md) — remaining candidate topics include
-AI product/UX patterns and governance/compliance.
+& generative media** → **coding agents & AI-assisted development** → **AI product & UX patterns**
+→ **governance, safety & compliance**. To **extend or refresh** it (new modules, re-verifying the
+dated catalogs), see [HANDOFF.md](HANDOFF.md). The perishable content — model catalogs (M1, M9),
+the coding-tool landscape + SWE-bench (M10), and the regulatory timeline (M12) — should be
+re-verified against the primary sources on the cadence each lesson notes.
