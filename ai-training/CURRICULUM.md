@@ -116,10 +116,23 @@ lesson list — the [README](README.md) module map points here.
 
 ---
 
-## 🎓 Core curriculum + Module 9 complete
+## Module 10 — Coding Agents & AI-Assisted Development
 
-Modules 0–9 are built. The course covers the full practical arc: choosing models → prompting
+| Status | Lesson | File |
+|---|---|---|
+| ✅ | The coding-agent landscape & when to use one (the autonomy ladder) | [part-10-coding-agents/00-the-coding-agent-landscape.md](part-10-coding-agents/00-the-coding-agent-landscape.md) |
+| ✅ | Agentic coding workflows (plan→act→verify, spec-driven, test-first, review) | [part-10-coding-agents/01-agentic-coding-workflows.md](part-10-coding-agents/01-agentic-coding-workflows.md) |
+| ✅ | Context & orchestration for code (steering files, subagents, worktrees) | [part-10-coding-agents/02-context-and-orchestration.md](part-10-coding-agents/02-context-and-orchestration.md) |
+| ✅ | Tools & MCP in the coding loop (tool surface, MCP, guardrails) | [part-10-coding-agents/03-tools-and-mcp-in-the-loop.md](part-10-coding-agents/03-tools-and-mcp-in-the-loop.md) |
+| ✅ | Evaluating & trusting coding agents (SWE-bench reality + verification) | [part-10-coding-agents/04-evaluating-and-trusting-coding-agents.md](part-10-coding-agents/04-evaluating-and-trusting-coding-agents.md) |
+| ✅ | Security & failure modes (lethal trifecta, injection, supply chain) | [part-10-coding-agents/05-security-and-failure-modes.md](part-10-coding-agents/05-security-and-failure-modes.md) |
+
+---
+
+## 🎓 Core curriculum + Modules 9–10 complete
+
+Modules 0–10 are built. The course covers the full practical arc: choosing models → prompting
 → RAG → agents → evaluation → fine-tuning → cost/latency → running it all locally → **multimodal
-& generative media**. To **extend** it (new modules, refreshing the dated catalogs), see
-[HANDOFF.md](HANDOFF.md) — the next planned build is **Module 10 — Coding Agents & AI-Assisted
-Development**; further candidates include AI product/UX patterns and governance/compliance.
+& generative media** → **coding agents & AI-assisted development**. To **extend** it (new modules,
+refreshing the dated catalogs), see [HANDOFF.md](HANDOFF.md) — remaining candidate topics include
+AI product/UX patterns and governance/compliance.

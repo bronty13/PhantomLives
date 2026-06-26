@@ -3,6 +3,48 @@
 All notable changes to this curriculum. Dates are absolute (this content goes
 stale, so the date matters).
 
+## 2026-06-26 — Module 10 (Coding Agents & AI-Assisted Development) built
+
+- **Module 10 — Coding Agents & AI-Assisted Development** (6 lessons), durable-first; takes the
+  Module 4 agent foundations into the application most readers use daily:
+  - `00-the-coding-agent-landscape.md` — the **autonomy ladder** (autocomplete → IDE chat →
+    interactive agent → autonomous background agent) framed as a *leash, not a quality ranking*,
+    a June-2026 tool map (Claude Code, Copilot, Cursor, Windsurf/Cognition, Codex, Antigravity/
+    Jules, Devin, Kiro, …) with the consolidation caveat, and the "when a plain call beats an
+    agent" gate (cross-links M4).
+  - `01-agentic-coding-workflows.md` — the plan→act→verify loop, explore-before-implementing /
+    plan mode, **spec-driven development** (Kiro, GitHub Spec Kit), test-first loops as the
+    deterministic signal, and **diff review as the new bottleneck** (the "review sandwich").
+  - `02-context-and-orchestration.md` — steering files and the emerging **AGENTS.md** cross-tool
+    standard (+ CLAUDE.md, keep-it-short/context-rot), layered scope + auto-memory, subagents &
+    parallel fan-out (context isolation / least privilege / cost), worktree isolation for
+    parallel edits, and when multi-agent is/ isn't worth it (cross-links M4, M7).
+  - `03-tools-and-mcp-in-the-loop.md` — the built-in tool surface (incl. the language-server
+    "symbols not strings" point), MCP for dev (issues/DBs/PRs/observability), tool search for
+    scaling, and the defense-in-depth guardrails (permission rules, OS sandbox, checkpoints/VCS,
+    hooks) with reversibility as the leash criterion.
+  - `04-evaluating-and-trusting-coding-agents.md` — reading **SWE-bench** honestly (Verified
+    saturation + memorization evidence, **standardized score ≠ vendor self-report**,
+    contamination-free benchmarks tell a humbler story), the verification discipline (tests as
+    spec, build/type/run, read the diff), and outcome-vs-trajectory / test-gaming for code
+    (cross-links M5, M4).
+  - `05-security-and-failure-modes.md` — the highest-stakes lesson (the agent runs code): the
+    **lethal trifecta** in a dev context, the recurring **untrusted-content → rewrites-config →
+    auto-approve → execution** pattern (grounded in the 2025–26 CVEs), MCP **tool poisoning**,
+    **slopsquatting** / hallucinated dependencies, secret leakage, and the lesson-03 defenses
+    mapped to "break one leg of the trifecta."
+- Sourcing per HANDOFF pipeline: Claude/Claude Code facts via the **`claude-api` skill** +
+  the **`claude-code-guide`** agent (authoritative; the agent's stale "Claude 3.5 Sonnet
+  default" model claims were corrected to the skill's facts — Opus 4.8 flagship, `xhigh`
+  effort default in Claude Code); the broader tool landscape, SWE-bench leaderboard, and
+  security incidents via a live-web research agent. **Unverified mid-2026 SWE-bench model
+  scores were deliberately NOT asserted** — the lesson teaches the standardized-vs-vendor /
+  contamination *literacy* with first-party-confirmed baselines instead.
+- **Bookkeeping:** CURRICULUM adds the Module 10 table + revises the completion banner
+  (Modules 0–10; remaining candidates = product/UX, governance); README adds the module-map
+  row, contents block, and updated banner; PROGRESS lists Module 10. All internal links
+  relative and verified.
+
 ## 2026-06-26 — Module 9 (Multimodal & Generative Media) built — first post-core extension
 
 - **Module 9 — Multimodal & Generative Media** (6 lessons), durable-first; the module

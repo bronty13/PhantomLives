@@ -67,12 +67,13 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 | 7 | **Cost & Latency Engineering** | The cost/latency/quality triangle; token economics, caching, model right-sizing & routing, latency engineering (TTFT/streaming/throughput), and production economics / build-vs-buy. |
 | 8 | **Local Inference Deep Dive** | Running models on your own hardware end-to-end: the local stack, Ollama/LM Studio, Apple Silicon & MLX, llama.cpp/GGUF, vLLM serving, and offline integration/ops. |
 | 9 | **Multimodal & Generative Media** | Beyond text-in/text-out: the modality matrix, vision & document understanding, audio/voice/realtime, image & video generation (+ licensing/provenance), local multimodal on Apple Silicon, and a capstone pipeline. |
+| 10 | **Coding Agents & AI-Assisted Development** | The application most readers use daily: the autonomy ladder, plan→act→verify workflows & spec-driven development, context/steering & subagent orchestration, tools & MCP in the loop, reading SWE-bench honestly + the verification discipline, and the security failure modes (the lethal trifecta, since the agent runs code). |
 
-> 🎓 **The core curriculum (Modules 0–8) plus Module 9 (Multimodal) is complete** — the full
-> arc from choosing a model to running the whole stack on your own hardware, now including
-> multimodal & generative media. The next planned build is **Module 10 — Coding Agents &
-> AI-Assisted Development**. See [CURRICULUM.md](CURRICULUM.md) for the lesson index and
-> [HANDOFF.md](HANDOFF.md) to extend it.
+> 🎓 **The core curriculum (Modules 0–8) plus Modules 9 (Multimodal) and 10 (Coding Agents) is
+> complete** — the full arc from choosing a model to running the whole stack locally, now
+> including multimodal & generative media and AI-assisted software development. See
+> [CURRICULUM.md](CURRICULUM.md) for the lesson index and [HANDOFF.md](HANDOFF.md) to extend it
+> (remaining candidates: AI product/UX patterns, governance/compliance).
 
 ---
 
@@ -146,6 +147,14 @@ Every catalog page carries a `last_reviewed` date and a "how to re-verify" note.
 - [Image & Video Generation](part-09-multimodal/03-image-and-video-generation.md) — the five billing shapes, control features, the four-axis licensing checklist, current image/video catalogs, and C2PA/SynthID provenance.
 - [Local & On-Device Multimodal](part-09-multimodal/04-local-and-on-device.md) — what fits in unified memory, local VLMs, whisper.cpp/MLX-Whisper, local TTS, and local diffusion on Apple Silicon.
 - [Putting It Together](part-09-multimodal/05-putting-it-together.md) — a document→cited-answer pipeline, multimodal cost/latency/eval at scale, and how every prior module extends.
+
+**Module 10 — Coding Agents & AI-Assisted Development**
+- [The Coding-Agent Landscape & When to Use One](part-10-coding-agents/00-the-coding-agent-landscape.md) — the autonomy ladder (autocomplete→chat→interactive→autonomous) as a leash, the tool map, and when a plain call beats an agent. **Start here.**
+- [Agentic Coding Workflows](part-10-coding-agents/01-agentic-coding-workflows.md) — plan→act→verify, explore-before-implementing, spec-driven development, test-first loops, and diff review as the new bottleneck.
+- [Context & Orchestration for Code](part-10-coding-agents/02-context-and-orchestration.md) — steering files (the AGENTS.md/CLAUDE.md convention), subagents & parallel fan-out, worktree isolation, multi-agent.
+- [Tools & MCP in the Coding Loop](part-10-coding-agents/03-tools-and-mcp-in-the-loop.md) — the built-in tool surface (incl. language servers), MCP for dev (issues/DBs/PRs), tool search, and guardrails on destructive actions.
+- [Evaluating & Trusting Coding Agents](part-10-coding-agents/04-evaluating-and-trusting-coding-agents.md) — reading SWE-bench honestly (standardized vs. vendor, contamination), the verification discipline, and outcome vs. trajectory for code.
+- [Security & Failure Modes](part-10-coding-agents/05-security-and-failure-modes.md) — the lethal trifecta in a dev context, the untrusted-content→config→execution pattern, MCP tool poisoning, slopsquatting, secret leakage, and the defenses.
 
 ---
 

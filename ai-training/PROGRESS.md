@@ -79,5 +79,13 @@ Check off lessons as you complete them.
 - [ ] Local & on-device multimodal
 - [ ] Putting it together (capstone)
 
+## Module 10 — Coding Agents & AI-Assisted Development
+- [ ] The coding-agent landscape & when to use one
+- [ ] Agentic coding workflows
+- [ ] Context & orchestration for code
+- [ ] Tools & MCP in the coding loop
+- [ ] Evaluating & trusting coding agents
+- [ ] Security & failure modes
+
 ## Notes to self
 *(jot model picks that worked / didn't, prices you verified, hardware you tested)*
