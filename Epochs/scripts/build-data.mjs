@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const src = JSON.parse(readFileSync(join(root, 'scripts/world.source.json'), 'utf8'))
+const coords = JSON.parse(readFileSync(join(root, 'scripts/coords.json'), 'utf8'))
 
 const AREA_IDS = [
   'middle_east', 'north_africa', 'china', 'india', 'southern_europe',
@@ -45,6 +46,8 @@ for (const area of src.geography.areas) {
       }
       return true
     })
+    const xy = coords[t.name]
+    if (!xy) warn(`territory ${id}: no coordinates for "${t.name}"`)
     terrs.push({
       id,
       name: t.name,
@@ -53,6 +56,8 @@ for (const area of src.geography.areas) {
       difficultTerrain: terrain,
       hasResource: !!t.resource,
       seaBorders,
+      x: xy ? xy[0] : 0.5,
+      y: xy ? xy[1] : 0.5,
       neighborsHint: t.neighborsHint || '',
     })
   }
@@ -146,7 +151,7 @@ export const WORLD_LANDS: Land[] = [
 ${terrs
   .map(
     (t) =>
-      `  { id: ${j(t.id)}, name: ${j(t.name)}, area: ${j(t.area)}, barren: ${t.barren}, difficultTerrain: ${j(t.difficultTerrain)}, hasResource: ${t.hasResource}, borders: ${j(t.borders)}, seaBorders: ${j(t.seaBorders)} },`,
+      `  { id: ${j(t.id)}, name: ${j(t.name)}, area: ${j(t.area)}, barren: ${t.barren}, difficultTerrain: ${j(t.difficultTerrain)}, hasResource: ${t.hasResource}, x: ${t.x}, y: ${t.y}, borders: ${j(t.borders)}, seaBorders: ${j(t.seaBorders)} },`,
   )
   .join('\n')}
 ]

@@ -14,7 +14,7 @@
 
 import { Board } from './board'
 import type { Bot, BotView, FrontierKind, FrontierOption } from './bot'
-import { oddsForContext, resolveAssault, type CombatContext } from './combat'
+import { oddsForContext, resolveAssault, type CombatContext, type CombatResult } from './combat'
 import { scoreEmpireTurn } from './scoring'
 import { makeRng, type Rng } from './rng'
 import { EPOCHS } from './types'
@@ -27,7 +27,8 @@ const PREEMINENCE_MARKERS = [3, 3, 4, 4, 4, 5, 5, 6]
 export interface PlayerConfig {
   id: PlayerId
   name: string
-  bot: Bot
+  /** The AI for this seat. Omit (with `isHuman`) for a human player. */
+  bot?: Bot
   isHuman?: boolean
 }
 
@@ -54,6 +55,30 @@ export interface GameResult {
   epochsPlayed: number
   log: string[]
 }
+
+/**
+ * Events emitted by {@link Game.play} as the game advances, so a UI can animate
+ * step-by-step. On `awaitPlacement` (a human seat's expansion) the driver must
+ * resume the generator with the chosen LandId (or `undefined` to stop placing).
+ */
+export type GameEvent =
+  | { type: 'epochStart'; epoch: EpochId }
+  | { type: 'draft'; epoch: EpochId; assignments: { player: PlayerId; empire: string }[] }
+  | { type: 'turnStart'; player: PlayerId; empire: string; epoch: EpochId }
+  | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
+  | {
+      type: 'awaitPlacement'
+      player: PlayerId
+      empire: string
+      frontier: FrontierOption[]
+      remaining: number
+    }
+  | { type: 'placement'; player: PlayerId; land: LandId; kind: FrontierKind; outcome?: CombatResult }
+  | { type: 'score'; player: PlayerId; gained: number; total: number }
+  | { type: 'preeminence'; player: PlayerId | null }
+  | { type: 'turnEnd'; player: PlayerId }
+  | { type: 'epochEnd'; epoch: EpochId }
+  | { type: 'gameEnd'; result: GameResult }
 
 function shuffle<T>(xs: T[], rng: Rng): T[] {
   const a = [...xs]
@@ -113,6 +138,7 @@ export class Game {
   private readonly bots: Map<PlayerId, Bot>
   private readonly prevEmpireOrder = new Map<PlayerId, number>()
   private readonly seed: number
+  private readonly humanSeats: Set<PlayerId>
 
   constructor(opts: {
     board: Board
@@ -122,7 +148,10 @@ export class Game {
   }) {
     this.seed = opts.seed
     this.board = opts.board
-    this.bots = new Map(opts.players.map((p) => [p.id, p.bot]))
+    this.bots = new Map(
+      opts.players.filter((p) => p.bot).map((p) => [p.id, p.bot as Bot]),
+    )
+    this.humanSeats = new Set(opts.players.filter((p) => p.isHuman).map((p) => p.id))
     this.empiresByEpoch = new Map(EPOCHS.map((e) => [e, [] as EmpireCard[]]))
     for (const card of opts.deck) this.empiresByEpoch.get(card.epoch)?.push(card)
 
@@ -139,20 +168,113 @@ export class Game {
   }
 
   // ── public entry ────────────────────────────────────────────────────────
+  /** Play the whole game to completion (all-bot; drains {@link play}). */
   run(): GameResult {
+    const it = this.play()
+    let step = it.next()
+    while (!step.done) step = it.next()
+    return step.value
+  }
+
+  /**
+   * Step-driven game loop. Yields a GameEvent after each action; for a human
+   * seat's expansion it yields `awaitPlacement` and must be resumed via
+   * `.next(landId)` (or `.next(undefined)` to stop placing). `run()` drains it.
+   */
+  *play(): Generator<GameEvent, GameResult, LandId | undefined> {
     for (const epoch of EPOCHS) {
       this.state.epoch = epoch
+      yield { type: 'epochStart', epoch }
       const order = this.drawOrder()
       const assignment = this.draft(epoch, order)
+      yield {
+        type: 'draft',
+        epoch,
+        assignments: order
+          .filter((pid) => assignment.has(pid))
+          .map((pid) => ({ player: pid, empire: assignment.get(pid)!.name })),
+      }
       for (const pid of order) {
         const empire = assignment.get(pid)
         if (!empire) continue
-        this.playEmpireTurn(pid, empire)
+        yield* this.playEmpireTurnGen(pid, empire)
         this.prevEmpireOrder.set(pid, empire.order)
       }
-      this.preeminence()
+      const pre = this.preeminence()
+      yield { type: 'preeminence', player: pre }
+      yield { type: 'epochEnd', epoch }
     }
-    return this.finalize()
+    const result = this.finalize()
+    yield { type: 'gameEnd', result }
+    return result
+  }
+
+  private *playEmpireTurnGen(
+    pid: PlayerId,
+    empire: EmpireCard,
+  ): Generator<GameEvent, void, LandId | undefined> {
+    yield { type: 'turnStart', player: pid, empire: empire.name, epoch: this.state.epoch }
+    this.setupEmpire(pid, empire)
+    yield { type: 'setup', player: pid, land: empire.startLand, empire: empire.name }
+    yield* this.expandGen(pid, empire)
+    this.buildMonuments(pid)
+    const gained = scoreEmpireTurn(
+      this.state.pieces,
+      this.board.areaOfFn,
+      this.board.areaIds,
+      this.state.epoch,
+      pid,
+    )
+    this.player(pid).vp += gained
+    this.log(`E${this.state.epoch} ${pid} (${empire.name}) +${gained} → ${this.player(pid).vp}`)
+    yield { type: 'score', player: pid, gained, total: this.player(pid).vp }
+    yield { type: 'turnEnd', player: pid }
+  }
+
+  private *expandGen(
+    pid: PlayerId,
+    empire: EmpireCard,
+  ): Generator<GameEvent, void, LandId | undefined> {
+    const bot = this.bots.get(pid)
+    const isHuman = this.humanSeats.has(pid)
+    if (!bot && !isHuman) return
+    let remaining = empire.strength - 1 // first army placed at setup
+    while (remaining > 0) {
+      const frontier = this.computeFrontier(pid, empire)
+      if (frontier.length === 0) break
+      let targetId: LandId | undefined
+      if (isHuman) {
+        targetId = yield {
+          type: 'awaitPlacement',
+          player: pid,
+          empire: empire.name,
+          frontier,
+          remaining,
+        }
+        if (targetId == null) break // human chose to stop placing
+      } else {
+        // Rebuild the view each iteration: state.pieces is reassigned on every
+        // mutation, so a captured snapshot would go stale.
+        const view: BotView = {
+          board: this.board,
+          player: pid,
+          epoch: this.state.epoch,
+          empire,
+          pieces: this.state.pieces,
+          standings: this.state.players.map((p) => ({ id: p.id, vp: p.vp })),
+          monumentsBuilt: this.state.monumentsBuilt,
+          seed: this.seed,
+          armiesRemaining: remaining,
+        }
+        targetId = bot!.chooseExpansion(view, frontier) ?? undefined
+        if (targetId == null) break
+      }
+      const opt = frontier.find((f) => f.land === targetId)
+      if (!opt) break // invalid choice — stop placing
+      const outcome = this.resolveExpansion(pid, empire, opt)
+      yield { type: 'placement', player: pid, land: opt.land, kind: opt.kind, outcome }
+      remaining--
+    }
   }
 
   // ── phases ──────────────────────────────────────────────────────────────
@@ -184,21 +306,6 @@ export class Game {
     return assign
   }
 
-  private playEmpireTurn(pid: PlayerId, empire: EmpireCard): void {
-    this.setupEmpire(pid, empire)
-    this.expand(pid, empire)
-    this.buildMonuments(pid)
-    const gained = scoreEmpireTurn(
-      this.state.pieces,
-      this.board.areaOfFn,
-      this.board.areaIds,
-      this.state.epoch,
-      pid,
-    )
-    this.player(pid).vp += gained
-    this.log(`E${this.state.epoch} ${pid} (${empire.name}) +${gained} → ${this.player(pid).vp}`)
-  }
-
   private setupEmpire(pid: PlayerId, empire: EmpireCard): void {
     const start = empire.startLand
     this.removeArmyOn(start)
@@ -208,35 +315,6 @@ export class Game {
       this.addPiece({ land: start, kind: 'capital', owner: pid, epochColor: this.state.epoch })
     }
     this.addPiece({ land: start, kind: 'army', owner: pid, epochColor: this.state.epoch })
-  }
-
-  private expand(pid: PlayerId, empire: EmpireCard): void {
-    const bot = this.bots.get(pid)
-    if (!bot) return
-    let remaining = empire.strength - 1 // first army placed at setup
-    while (remaining > 0) {
-      const frontier = this.computeFrontier(pid, empire)
-      if (frontier.length === 0) break
-      // Rebuild the view each iteration: state.pieces is reassigned on every
-      // mutation, so a captured snapshot would go stale (the bot must see its
-      // own just-placed armies to evaluate the next placement).
-      const view: BotView = {
-        board: this.board,
-        player: pid,
-        epoch: this.state.epoch,
-        empire,
-        pieces: this.state.pieces,
-        standings: this.state.players.map((p) => ({ id: p.id, vp: p.vp })),
-        monumentsBuilt: this.state.monumentsBuilt,
-        seed: this.seed,
-        armiesRemaining: remaining,
-      }
-      const targetId = bot.chooseExpansion(view, frontier)
-      if (targetId == null) break
-      const opt = frontier.find((f) => f.land === targetId) ?? frontier[0]
-      this.resolveExpansion(pid, empire, opt)
-      remaining--
-    }
   }
 
   private buildMonuments(pid: PlayerId): void {
@@ -256,14 +334,16 @@ export class Game {
     }
   }
 
-  private preeminence(): void {
+  private preeminence(): PlayerId | null {
     const maxVp = Math.max(...this.state.players.map((p) => p.vp))
     const leaders = this.state.players.filter((p) => p.vp === maxVp)
     if (leaders.length === 1 && this.state.preeminencePool.length > 0) {
       const marker = this.state.preeminencePool.pop() as number
       leaders[0].preeminence.push(marker)
       this.log(`E${this.state.epoch} pre-eminence → ${leaders[0].id}`)
+      return leaders[0].id
     }
+    return null
   }
 
   private finalize(): GameResult {
@@ -340,19 +420,24 @@ export class Game {
     }
   }
 
-  private resolveExpansion(pid: PlayerId, empire: EmpireCard, opt: FrontierOption): void {
+  /** Returns the combat outcome for an enemy target, else undefined. */
+  private resolveExpansion(
+    pid: PlayerId,
+    empire: EmpireCard,
+    opt: FrontierOption,
+  ): CombatResult | undefined {
     const land = opt.land
     const epoch = this.state.epoch
     if (opt.kind === 'empty') {
       this.onOccupy(land, pid, empire)
       this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch })
-      return
+      return undefined
     }
     if (opt.kind === 'own_old') {
       this.removeArmyOn(land)
       this.onOccupy(land, pid, empire)
       this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch })
-      return
+      return undefined
     }
     // enemy
     const ctx = this.combatContext(land, opt.amphibious)
@@ -367,6 +452,7 @@ export class Game {
       this.removeArmyOn(land) // both removed; attacker army consumed, land vacant
     }
     // 'defender': attacker army consumed, board unchanged
+    return res.outcome
   }
 
   /** Apply sack/pillage + structure transfer when `pid` takes `land`. */

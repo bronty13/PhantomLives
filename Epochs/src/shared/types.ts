@@ -21,6 +21,9 @@ export interface Land {
   hasResource: boolean
   borders: LandId[]
   seaBorders: SeaId[]
+  /** Normalized world-map position (equirectangular, x,y in 0..1) for rendering. */
+  x?: number
+  y?: number
 }
 
 /** A colored scoring region (the 13 Areas). */

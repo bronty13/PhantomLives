@@ -2,6 +2,39 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.5.0] — 2026-06-26
+
+You can finally *see and play* it. An interactive Canvas world-map UI on a
+step-driven engine — watch the AI fight across the world, or play a seat.
+
+### Added
+- **Step-driven engine.** `Game.play()` is now a generator that yields a typed
+  `GameEvent` after each action (epoch/draft/turn/setup/placement/score/
+  pre-eminence/…); `run()` drains it (all 67 prior tests unchanged). A human
+  seat (`PlayerConfig.isHuman`, `bot` now optional) yields `awaitPlacement` and
+  resumes with the clicked land. Same engine drives both headless play and the UI.
+- **World-map renderer** (`src/renderer/`, vanilla TS + Canvas 2D): the 97
+  territories at real geographic positions, area-tinted, adjacency edges, armies
+  (player-colored), structures (★ capital / ◆ city / ▲ monument), resource dots,
+  hover labels, and placeable highlights. Scoreboard, epoch/turn HUD, and an
+  event log.
+- **Controls:** New Game (3–6 players, AI difficulty, seed, "I play seat 1"),
+  Step, Auto-play with a speed slider, and click-to-place during your turn.
+- **Geographic coordinates** for all 97 territories (`scripts/coords.json`,
+  folded into the generated `board.ts` as `x`/`y`); pure projection + hit-testing
+  in `src/shared/mapProjection.ts`; colors in `src/shared/palette.ts`.
+- `npm run dev:web` — serve the renderer in a plain browser (no Electron needed).
+- Tests → **72** (+5): step-generator event sequence + human-input path
+  (`session.test.ts`), and projection/hit-testing (`projection.test.ts`).
+
+### Changed
+- Bumped to 0.5.0. The renderer placeholder is replaced by the real game UI.
+
+### Notes
+- The Canvas visuals were verified by type-check + Vite build-graph resolution +
+  unit tests of the pure layers; pixel-level appearance is verified by running it
+  (`npm run dev:web` → open the printed URL). Events data/system still deferred.
+
 ## [0.4.0] — 2026-06-26
 
 The real world. Epochs now plays on a full 97-territory world map with the 49

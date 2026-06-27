@@ -7,13 +7,12 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.4 — the real world.** A full 7-epoch game runs end-to-end and
-> deterministically on a **97-territory real-geography world map** with the **49
-> historical empires**, driven by **`HeuristicBot`** (which beats 3 stub bots
-> ~97% on the real board). 61 tests. Still to come: the event system, the map UI,
-> and the first packaged app (see `docs/SPEC.md` §14). The world is generated from
-> `scripts/world.source.json` via `npm run gen:data`; AI weights are still
-> provisional — re-tune via self-play.
+> **Status: v0.5 — playable map UI.** An interactive Canvas world map on a
+> 97-territory globe: **watch the AI** play, or **play a seat yourself**
+> (click-to-place), with a scoreboard, epoch HUD, and event log. The engine is a
+> step-driven generator. 72 tests. Run it with **`npm run dev:web`** (browser) or
+> `npm run dev` (Electron). Still to come: the event system and the first packaged
+> app. AI weights are provisional — re-tune via self-play.
 
 ## Stack
 
@@ -34,6 +33,8 @@ src/
     bot.ts           Bot interface + GreedyStubBot / RandomBot (+ BotView)
     heuristicBot.ts  the real AI: marginal-expected-VP bot + difficulty levels
     sim.ts           headless runner + tournament harness (runMatch/tournament)
+    mapProjection.ts pure map projection + hit-testing (shared with the UI)
+    palette.ts       area + player colors
     data/
       areaValues.ts    the real per-epoch Victory-Point table (13 areas)
       board.ts         GENERATED — the 97-land real-geography world map
@@ -42,11 +43,12 @@ src/
       fixtureEmpires.ts small empire deck for unit tests
   main/          # Electron main process (window lifecycle)
   preload/       # contextBridge surface
-  renderer/      # UI (placeholder: renders the VP table from the engine)
+  renderer/      # the game UI: main.ts (session + controls) + map.ts (Canvas)
 scripts/
   world.source.json  # researched roster + geography (edit to retune the map)
   build-data.mjs     # generator → board.ts + empires.ts (npm run gen:data)
-tests/           # vitest (combat, scoring, game, heuristic, tournament, worldmap)
+tests/           # vitest (combat, scoring, game, heuristic, tournament, worldmap,
+                 #         session, projection)
 docs/SPEC.md     # canonical rules + data model + open questions
 ```
 
@@ -55,7 +57,8 @@ docs/SPEC.md     # canonical rules + data model + open questions
 | Command | What it does |
 |---|---|
 | `npm install` | Install deps (downloads the Electron binary unless `ELECTRON_SKIP_BINARY_DOWNLOAD=1`). |
-| `npm run dev` | Launch the app with hot reload (electron-vite). |
+| `npm run dev:web` | **Play in a browser** — serves the map UI with Vite (no Electron). Open the printed URL. |
+| `npm run dev` | Launch the full Electron app with hot reload. |
 | `npm test` | Run the vitest unit suite (engine; no Electron needed). |
 | `npm run typecheck` | `tsc --noEmit` over the node + web tsconfig projects. |
 | `./build-app.sh` | Build + install to `/Applications/Epochs.app` + relaunch with a freshness proof (repo standard). |
