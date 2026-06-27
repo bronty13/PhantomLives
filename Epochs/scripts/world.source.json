@@ -533,7 +533,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Dnieper, Eastern Anatolia, Hindu Kush, Persian Plateau, Turanian Plain, Western Anatolia, Western Steppe"
+            "neighborsHint": "Danube, Dnieper, Eastern Anatolia, Persian Plateau, Turanian Plain, Western Anatolia, Western Steppe"
           },
           {
             "name": "Western Anatolia",
@@ -541,7 +541,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Balkans, Caucasus, Crete, Danube, Dnieper, Eastern Anatolia, Levant, Morea"
+            "neighborsHint": "Balkans, Caucasus, Crete, Danube, Eastern Anatolia, Levant, Morea"
           },
           {
             "name": "Eastern Anatolia",
@@ -557,7 +557,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Caucasus, Eastern Anatolia, Hindu Kush, Lower Indus, Persian Salt Desert, Upper Indus, Zagros"
+            "neighborsHint": "Caucasus, Eastern Anatolia, Hindu Kush, Persian Salt Desert, Turanian Plain, Upper Indus, Zagros"
           },
           {
             "name": "Levant",
@@ -589,7 +589,7 @@
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Lower Indus, Lower Tigris, Middle Tigris, Persian Plateau, Western Ghats, Zagros"
+            "neighborsHint": "Lower Indus, Lower Tigris, Middle Tigris, Persian Plateau, Upper Indus, Western Ghats, Zagros"
           },
           {
             "name": "Palestine",
@@ -597,7 +597,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Crete, Levant, Libya, Middle Tigris, Nile Delta, Upper Tigris"
+            "neighborsHint": "Crete, Levant, Lower Tigris, Middle Tigris, Nile Delta, Nubia, Syrian Desert, Upper Tigris"
           },
           {
             "name": "Middle Tigris",
@@ -605,7 +605,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Lower Tigris, Palestine, Persian Salt Desert, Syrian Desert, Upper Tigris, Zagros"
+            "neighborsHint": "Lower Tigris, Palestine, Persian Salt Desert, Upper Tigris, Zagros"
           },
           {
             "name": "Lower Tigris",
@@ -613,7 +613,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Middle Tigris, Persian Salt Desert, Syrian Desert"
+            "neighborsHint": "Arabian Peninsula, Middle Tigris, Palestine, Persian Salt Desert, Syrian Desert"
           },
           {
             "name": "Syrian Desert",
@@ -621,7 +621,7 @@
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Arabian Peninsula, Lower Tigris, Middle Tigris, Nubia"
+            "neighborsHint": "Arabian Peninsula, Lower Tigris, Nubia, Palestine, Upper Nile"
           },
           {
             "name": "Arabian Peninsula",
@@ -629,7 +629,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Nubia, Syrian Desert, Upper Nile"
+            "neighborsHint": "Lower Tigris, Syrian Desert, Upper Nile"
           }
         ]
       },
@@ -642,7 +642,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Crete, Gold Coast, Nile Delta, Palestine, Sahara Desert, Sardinia, Sierra Morena"
+            "neighborsHint": "Central Africa, Crete, Morea, Nile Delta, Nubia, Sahara Desert, Sierra Morena"
           },
           {
             "name": "Sahara Desert",
@@ -650,7 +650,7 @@
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Central Africa, Gold Coast, Libya, Nile Delta, Nubia"
+            "neighborsHint": "Central Africa, Gold Coast, Libya, Sierra Morena"
           },
           {
             "name": "Nile Delta",
@@ -658,7 +658,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Libya, Nubia, Palestine, Sahara Desert"
+            "neighborsHint": "Crete, Libya, Nubia, Palestine"
           },
           {
             "name": "Nubia",
@@ -666,7 +666,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Arabian Peninsula, Central Africa, Nile Delta, Sahara Desert, Syrian Desert, Upper Nile"
+            "neighborsHint": "Central Africa, Libya, Nile Delta, Palestine, Syrian Desert, Upper Nile"
           },
           {
             "name": "Upper Nile",
@@ -674,7 +674,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Arabian Peninsula, Central Africa, Nubia"
+            "neighborsHint": "Arabian Peninsula, Central Africa, Madagascar, Nubia, Syrian Desert"
           }
         ]
       },
@@ -687,7 +687,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Central Africa, Congo Basin, Libya, Sahara Desert, Sierra Morena"
+            "neighborsHint": "Central Africa, Congo Basin, Sahara Desert, Sierra Morena"
           },
           {
             "name": "Central Africa",
@@ -695,7 +695,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Congo Basin, East Africa, Gold Coast, Nubia, Sahara Desert, Upper Nile"
+            "neighborsHint": "Congo Basin, East Africa, Gold Coast, Libya, Nubia, Sahara Desert, Upper Nile"
           },
           {
             "name": "Congo Basin",
@@ -711,7 +711,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Congo Basin, East Africa"
+            "neighborsHint": "Congo Basin, East Africa, Madagascar"
           },
           {
             "name": "East Africa",
@@ -727,7 +727,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "East Africa"
+            "neighborsHint": "East Africa, Southern Africa, Upper Nile"
           }
         ]
       },
@@ -740,7 +740,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Chekiang, Honshu, Korea, Manchuria, Yellow River"
+            "neighborsHint": "Chekiang, Korea, Yangtze Kiang, Yellow River"
           },
           {
             "name": "Manchuria",
@@ -748,7 +748,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Eastern Steppe, Great Plain of China, Korea, Mongolia, Siberia, Yellow River"
+            "neighborsHint": "Hokkaido, Korea"
           },
           {
             "name": "Yellow River",
@@ -756,7 +756,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Chekiang, Great Plain of China, Manchuria, Mongolia, Wei River, Yangtze Kiang"
+            "neighborsHint": "Great Plain of China, Korea, Mongolia, Wei River, Yangtze Kiang"
           },
           {
             "name": "Chekiang",
@@ -764,7 +764,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Great Plain of China, Si-Kiang, Yangtze Kiang, Yellow River"
+            "neighborsHint": "Great Plain of China, Si-Kiang, Yangtze Kiang"
           },
           {
             "name": "Wei River",
@@ -780,7 +780,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Chekiang, Si-Kiang, Szechwan, Wei River, Yellow River"
+            "neighborsHint": "Chekiang, Great Plain of China, Si-Kiang, Szechwan, Wei River, Yellow River"
           },
           {
             "name": "Si-Kiang",
@@ -788,7 +788,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Chekiang, Szechwan, Yangtze Kiang"
+            "neighborsHint": "Chekiang, Mekong, Szechwan, Yangtze Kiang"
           },
           {
             "name": "Szechwan",
@@ -796,7 +796,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Eastern Steppe, Irrawaddy, Plateau of Tibet, Si-Kiang, Tarim Basin, Wei River, Yangtze Kiang"
+            "neighborsHint": "Eastern Steppe, Irrawaddy, Mekong, Plateau of Tibet, Si-Kiang, Wei River, Yangtze Kiang"
           }
         ]
       },
@@ -809,7 +809,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Ganges Valley, Irrawaddy, Malayan Peninsula, Plateau of Tibet"
+            "neighborsHint": "Eastern Deccan, Ganges Valley, Irrawaddy, Malayan Peninsula, Plateau of Tibet"
           },
           {
             "name": "Hindu Kush",
@@ -817,7 +817,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Caucasus, Ganges Valley, Persian Plateau, Plateau of Tibet, Turanian Plain, Upper Indus"
+            "neighborsHint": "Ganges Valley, Persian Plateau, Turanian Plain, Upper Indus"
           },
           {
             "name": "Ganges Valley",
@@ -825,7 +825,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Eastern Deccan, Ganges Delta, Hindu Kush, Malayan Peninsula, Plateau of Tibet, Upper Indus"
+            "neighborsHint": "Eastern Deccan, Ganges Delta, Hindu Kush, Plateau of Tibet, Tarim Basin, Turanian Plain, Upper Indus"
           },
           {
             "name": "Upper Indus",
@@ -833,7 +833,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Eastern Deccan, Ganges Valley, Hindu Kush, Lower Indus, Persian Plateau"
+            "neighborsHint": "Eastern Deccan, Ganges Valley, Hindu Kush, Lower Indus, Persian Plateau, Persian Salt Desert, Western Deccan"
           },
           {
             "name": "Eastern Deccan",
@@ -841,7 +841,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Eastern Ghats, Ganges Valley, Lower Indus, Malayan Peninsula, Sumatra, Upper Indus, Western Deccan"
+            "neighborsHint": "Eastern Ghats, Ganges Delta, Ganges Valley, Malayan Peninsula, Sumatra, Upper Indus, Western Deccan"
           },
           {
             "name": "Lower Indus",
@@ -849,7 +849,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Eastern Deccan, Persian Plateau, Persian Salt Desert, Upper Indus, Western Deccan, Western Ghats"
+            "neighborsHint": "Persian Salt Desert, Upper Indus, Western Deccan, Western Ghats"
           },
           {
             "name": "Western Deccan",
@@ -857,7 +857,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Eastern Deccan, Eastern Ghats, Lower Indus, Western Ghats"
+            "neighborsHint": "Eastern Deccan, Eastern Ghats, Lower Indus, Upper Indus, Western Ghats"
           },
           {
             "name": "Eastern Ghats",
@@ -865,7 +865,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Ceylon, Eastern Deccan, Sumatra, The Outback, Western Deccan, Western Ghats"
+            "neighborsHint": "Ceylon, Eastern Deccan, Sumatra, Western Deccan, Western Ghats"
           },
           {
             "name": "Western Ghats",
@@ -881,7 +881,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Australia, Eastern Ghats, The Outback, Western Ghats"
+            "neighborsHint": "Australia, Eastern Ghats, Sumatra, The Outback, Western Ghats"
           }
         ]
       },
@@ -894,7 +894,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Alps, Northern Apennines, Northern Gaul, Pyrenees, Southern Iberia, Western Gaul"
+            "neighborsHint": "Alps, Northern Apennines, Pyrenees, Southern Iberia, Western Gaul"
           },
           {
             "name": "Pyrenees",
@@ -910,7 +910,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Central Europe, Central Massif, Dalmatia, Northern Apennines, Northern Gaul"
+            "neighborsHint": "Central Europe, Central Massif, Dalmatia, Lower Rhine, Northern Apennines, Northern Gaul, Western Gaul"
           },
           {
             "name": "Western Iberia",
@@ -918,7 +918,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Pyrenees, Southern Iberia"
+            "neighborsHint": "Pyrenees, Sierra Morena, Southern Iberia"
           },
           {
             "name": "Southern Iberia",
@@ -926,7 +926,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Central Massif, Northern Apennines, Pyrenees, Sierra Morena, Southern Apennines, Western Iberia"
+            "neighborsHint": "Central Massif, Northern Apennines, Pyrenees, Sierra Morena, Southern Apennines, West Indies, Western Iberia"
           },
           {
             "name": "Northern Apennines",
@@ -958,7 +958,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Dalmatia, Morea, Northern Apennines, Pindus, Sardinia, Sierra Morena, Southern Iberia"
+            "neighborsHint": "Dalmatia, Morea, Northern Apennines, Pindus, Sierra Morena, Southern Iberia"
           },
           {
             "name": "Pindus",
@@ -969,20 +969,12 @@
             "neighborsHint": "Balkans, Dalmatia, Morea, Southern Apennines"
           },
           {
-            "name": "Sardinia",
-            "terrain": "",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Crete, Libya, Morea, Sierra Morena, Southern Apennines"
-          },
-          {
             "name": "Morea",
             "terrain": "",
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Balkans, Crete, Pindus, Sardinia, Southern Apennines, Western Anatolia"
+            "neighborsHint": "Balkans, Crete, Libya, Pindus, Sierra Morena, Southern Apennines, Western Anatolia"
           },
           {
             "name": "Sierra Morena",
@@ -990,7 +982,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Gold Coast, Libya, Sardinia, Southern Apennines, Southern Iberia"
+            "neighborsHint": "Gold Coast, Libya, Morea, Sahara Desert, Southern Apennines, Southern Iberia, Western Iberia"
           },
           {
             "name": "Crete",
@@ -998,7 +990,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Levant, Libya, Morea, Palestine, Sardinia, Western Anatolia"
+            "neighborsHint": "Levant, Libya, Morea, Nile Delta, Palestine, Western Anatolia"
           }
         ]
       },
@@ -1011,7 +1003,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Albion, Central America, Ireland, Scandinavia, West Indies"
+            "neighborsHint": "Albion, Ireland"
           },
           {
             "name": "Ireland",
@@ -1019,7 +1011,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Albion, Central America, Highlands, Western Gaul"
+            "neighborsHint": "Albion, Highlands, Western Gaul"
           },
           {
             "name": "Scandinavia",
@@ -1027,7 +1019,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Albion, Baltic-Seaboard, Highlands, Lower Rhine, North European Plain, Siberia"
+            "neighborsHint": "Albion, Baltic-Seaboard, North European Plain"
           },
           {
             "name": "Albion",
@@ -1035,7 +1027,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Highlands, Ireland, Lower Rhine, Scandinavia, Western Gaul"
+            "neighborsHint": "Appalachia, Baltic-Seaboard, Highlands, Ireland, Lower Rhine, Northern Gaul, Scandinavia, Western Gaul"
           },
           {
             "name": "Western Gaul",
@@ -1043,7 +1035,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Albion, Central Massif, Ireland, Lower Rhine, Northern Gaul, Pyrenees"
+            "neighborsHint": "Albion, Alps, Central Massif, Ireland, Northern Gaul, Pyrenees"
           },
           {
             "name": "North European Plain",
@@ -1059,7 +1051,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Albion, Baltic-Seaboard, Central Europe, Northern Gaul, Scandinavia, Western Gaul"
+            "neighborsHint": "Albion, Alps, Baltic-Seaboard, Central Europe, Danube, Northern Gaul"
           },
           {
             "name": "Northern Gaul",
@@ -1067,7 +1059,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Alps, Central Europe, Central Massif, Lower Rhine, Western Gaul"
+            "neighborsHint": "Albion, Alps, Lower Rhine, Western Gaul"
           },
           {
             "name": "Baltic-Seaboard",
@@ -1075,7 +1067,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Central Europe, Danube, Dnieper, Lower Rhine, North European Plain, Scandinavia, Western Steppe"
+            "neighborsHint": "Albion, Danube, Dnieper, Lower Rhine, North European Plain, Scandinavia, Western Steppe"
           },
           {
             "name": "Central Europe",
@@ -1083,7 +1075,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Alps, Baltic-Seaboard, Dalmatia, Danube, Lower Rhine, Northern Gaul"
+            "neighborsHint": "Alps, Dalmatia, Danube, Lower Rhine"
           },
           {
             "name": "Dnieper",
@@ -1091,7 +1083,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Baltic-Seaboard, Caucasus, Danube, Western Anatolia, Western Steppe"
+            "neighborsHint": "Baltic-Seaboard, Caucasus, Danube, Western Steppe"
           },
           {
             "name": "Danube",
@@ -1099,7 +1091,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Balkans, Baltic-Seaboard, Central Europe, Dalmatia, Dnieper, Western Anatolia"
+            "neighborsHint": "Balkans, Baltic-Seaboard, Caucasus, Central Europe, Dalmatia, Dnieper, Lower Rhine, Western Anatolia"
           }
         ]
       },
@@ -1112,7 +1104,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "East Indies, Irrawaddy, Malayan Peninsula"
+            "neighborsHint": "East Indies, Irrawaddy, Malayan Peninsula, Si-Kiang, Szechwan"
           },
           {
             "name": "Irrawaddy",
@@ -1136,7 +1128,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "East Indies, Eastern Deccan, Ganges Delta, Ganges Valley, Irrawaddy, Mekong, Sumatra"
+            "neighborsHint": "East Indies, Eastern Deccan, Ganges Delta, Irrawaddy, Mekong, Sumatra"
           },
           {
             "name": "Sumatra",
@@ -1144,7 +1136,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "East Indies, Eastern Deccan, Eastern Ghats, Malayan Peninsula, New Guinea, The Outback"
+            "neighborsHint": "Ceylon, East Indies, Eastern Deccan, Eastern Ghats, Malayan Peninsula, New Guinea, The Outback"
           }
         ]
       },
@@ -1157,7 +1149,7 @@
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Eastern Steppe, Manchuria, North European Plain, Scandinavia"
+            "neighborsHint": "Eastern Steppe, Mongolia, North European Plain"
           },
           {
             "name": "Eastern Steppe",
@@ -1165,7 +1157,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Manchuria, Mongolia, North European Plain, Siberia, Szechwan, Tarim Basin, Wei River"
+            "neighborsHint": "Mongolia, North European Plain, Plateau of Tibet, Siberia, Szechwan, Tarim Basin, Wei River"
           },
           {
             "name": "Tarim Basin",
@@ -1173,7 +1165,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Eastern Steppe, North European Plain, Plateau of Tibet, Szechwan, Turanian Plain, Western Steppe"
+            "neighborsHint": "Eastern Steppe, Ganges Valley, North European Plain, Plateau of Tibet, Turanian Plain, Western Steppe"
           },
           {
             "name": "Western Steppe",
@@ -1189,7 +1181,7 @@
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Ganges Delta, Ganges Valley, Hindu Kush, Irrawaddy, Szechwan, Tarim Basin, Turanian Plain"
+            "neighborsHint": "Eastern Steppe, Ganges Delta, Ganges Valley, Irrawaddy, Szechwan, Tarim Basin"
           },
           {
             "name": "Turanian Plain",
@@ -1197,7 +1189,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Caucasus, Hindu Kush, Plateau of Tibet, Tarim Basin, Western Steppe"
+            "neighborsHint": "Caucasus, Ganges Valley, Hindu Kush, Persian Plateau, Tarim Basin, Western Steppe"
           },
           {
             "name": "Mongolia",
@@ -1205,7 +1197,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Eastern Steppe, Manchuria, Wei River, Yellow River"
+            "neighborsHint": "Eastern Steppe, Korea, Siberia, Wei River, Yellow River"
           }
         ]
       },
@@ -1218,7 +1210,7 @@
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Great Lakes, Great Plains, Pacific Seaboard"
+            "neighborsHint": "Appalachia, Great Lakes, Great Plains, Pacific Seaboard"
           },
           {
             "name": "Great Lakes",
@@ -1234,7 +1226,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Deep South, Great Lakes, West Indies"
+            "neighborsHint": "Albion, Deep South, Great Lakes, Northern Lakes"
           },
           {
             "name": "Pacific Seaboard",
@@ -1258,7 +1250,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Appalachia, Central America, Great Lakes, Great Plains, Mexican Valley, West Indies"
+            "neighborsHint": "Appalachia, Great Lakes, Great Plains, Mexican Valley, West Indies"
           },
           {
             "name": "Mexican Valley",
@@ -1266,7 +1258,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Central America, Deep South, Great Plains, Pacific Seaboard"
+            "neighborsHint": "Central America, Deep South, Great Plains, Pacific Seaboard, West Indies"
           },
           {
             "name": "West Indies",
@@ -1274,7 +1266,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Appalachia, Central America, Deep South, Highlands"
+            "neighborsHint": "Central America, Deep South, Guiana Highlands, Mexican Valley, Southern Iberia"
           },
           {
             "name": "Central America",
@@ -1282,7 +1274,7 @@
             "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Deep South, Highlands, Ireland, Mexican Valley, West Indies"
+            "neighborsHint": "Guiana Highlands, Mexican Valley, Northern Andes, West Indies"
           }
         ]
       },
@@ -1295,7 +1287,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Honshu, Korea"
+            "neighborsHint": "Honshu, Korea, Manchuria"
           },
           {
             "name": "Honshu",
@@ -1303,7 +1295,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Great Plain of China, Hokkaido, Korea"
+            "neighborsHint": "Hokkaido, Korea"
           },
           {
             "name": "Korea",
@@ -1311,7 +1303,7 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Great Plain of China, Hokkaido, Honshu, Manchuria"
+            "neighborsHint": "Great Plain of China, Hokkaido, Honshu, Manchuria, Mongolia, Yellow River"
           }
         ]
       },
@@ -1332,7 +1324,7 @@
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Australia, Ceylon, Eastern Ghats, New Guinea, Sumatra"
+            "neighborsHint": "Australia, Ceylon, New Guinea, Sumatra"
           },
           {
             "name": "Australia",
@@ -1341,6 +1333,59 @@
             "resource": true,
             "barren": false,
             "neighborsHint": "Ceylon, New Guinea, The Outback"
+          }
+        ]
+      },
+      {
+        "areaId": "south_america",
+        "territories": [
+          {
+            "name": "Guiana Highlands",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Amazonia, Brazil, Central America, Northern Andes, West Indies"
+          },
+          {
+            "name": "Brazil",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Amazonia, Guiana Highlands, Patagonia"
+          },
+          {
+            "name": "Amazonia",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": true,
+            "neighborsHint": "Brazil, Guiana Highlands, Northern Andes, Patagonia, Southern Andes"
+          },
+          {
+            "name": "Northern Andes",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Amazonia, Central America, Guiana Highlands, Southern Andes"
+          },
+          {
+            "name": "Southern Andes",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Amazonia, Northern Andes, Patagonia"
+          },
+          {
+            "name": "Patagonia",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Amazonia, Brazil, Southern Andes"
           }
         ]
       }

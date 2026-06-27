@@ -30,7 +30,7 @@ const LAND_BY_ID = new Map<string, Land>(lands.map((l) => [l.id, l]))
 // The board scan (art/board-crop.jpg → public/board.jpg) is the map. Land
 // coordinates are normalized fractions of THIS image, so the view rect is framed
 // to the image's aspect ratio (letterboxed) and projectLand maps straight onto it.
-const BOARD_ASPECT = 2600 / 1329
+const BOARD_ASPECT = 2600 / 1795
 
 type AwaitEvent = Extract<GameEvent, { type: 'awaitPlacement' }>
 type AwaitEventsEvent = Extract<GameEvent, { type: 'awaitEvents' }>

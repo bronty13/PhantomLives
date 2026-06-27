@@ -11,13 +11,13 @@ const seaSet = new Set(WORLD_SEAS)
 const TERRAINS = new Set(['forest', 'mountain', 'strait', 'great_wall'])
 
 describe('world map — structure', () => {
-  it('has the expected scale (95 lands, 12 areas, 7 barren, 17 resource)', () => {
-    // Registered to the real board scan (South America's 6 lands pending a basemap
-    // that includes them, so its area is absent for now — 12 of 13 areas).
-    expect(WORLD_LANDS).toHaveLength(95)
-    expect(WORLD_AREAS).toHaveLength(12)
-    expect(WORLD_LANDS.filter((l) => l.barren)).toHaveLength(7)
-    expect(WORLD_LANDS.filter((l) => l.hasResource)).toHaveLength(17)
+  it('has the expected scale (100 lands, 13 areas, 8 barren, 18 resource)', () => {
+    // The complete board: re-registered to the full scan incl. South America's 6
+    // (all 13 areas). Sardinia dropped as a phantom read.
+    expect(WORLD_LANDS).toHaveLength(100)
+    expect(WORLD_AREAS).toHaveLength(13)
+    expect(WORLD_LANDS.filter((l) => l.barren)).toHaveLength(8)
+    expect(WORLD_LANDS.filter((l) => l.hasResource)).toHaveLength(18)
   })
 
   it('has unique land ids and valid areas', () => {

@@ -2,6 +2,30 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.15.0] — 2026-06-27
+
+The complete board. South America is in, all 13 areas, re-registered to a flat
+scan that finally captured the whole map.
+
+### Changed
+- **Re-registered to the complete board scan** (the owner re-shot it flat with the
+  top-left corner in frame). Swapped the basemap (now the true ~1.45 aspect, was a
+  too-wide crop missing the corner) and re-read every province's position on it via
+  the registration workflow (16 readers), matched against the known province set so
+  stray reads auto-dropped. **100 provinces across all 13 areas.**
+- **South America added** (`south_america` area): Brazil, Patagonia, Northern &
+  Southern Andes, Amazonia (impassable), Guiana Highlands — with transatlantic
+  bridges (Appalachia↔Albion, West Indies↔Southern Iberia) so the Americas stay
+  reachable under land-only movement (sea movement is still to come). Sardinia
+  dropped — a phantom that read zero times across a thorough pass.
+- Adjacency re-derived (Delaunay), 1 connected component; all 49 empire homelands
+  still resolve. Tests updated (100 lands / 13 areas / 8 barren / 18 resource).
+
+### Note
+- The complete-board adjacency flattened the AI difficulty curve further (hard now
+  barely edges medium, 50.4%). **Re-tuning the ε-greedy handicap for the new
+  geography is now genuinely needed** — a near-term follow-up.
+
 ## [0.14.1] — 2026-06-27
 
 The events were the weak spot — you saw bare card names with no idea what they did.
