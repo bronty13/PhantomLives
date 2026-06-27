@@ -2,6 +2,31 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.11.2] — 2026-06-27
+
+Event system, slice 2 — targeting + disasters.
+
+### Added
+- **Targeting infrastructure**: events can now be aimed at a target Land. The bot
+  computes its own target (`EventView` gained `board` + `pieces`; `EventChoice`
+  carries `lesserTarget`); a human seat gets an `awaitEventTarget` step — the legal
+  targets light up and you click one. Pure, deterministic.
+- **Disasters** (the Lesser deck): **Volcano / Great Fire / Great Flood**
+  (structure-wreckers — raze a city/fort/monument, reduce a capital to a city, by
+  terrain: mountain / any / coastal) and **Plague** (the target army rolls 4 dice; a
+  '1' kills it). The AI aims them at an opponent's most valuable legal target
+  (capitals first, rich areas). The renderer logs each disaster + bursts an fx at
+  the target.
+- Integration test: disasters reliably fire in AI games; structure/plague effects
+  covered. The difficulty ladder still holds (its margins compress with the new
+  board variance: hard 58% vs medium, 72% vs easy).
+
+### Notes
+- Remaining disasters (Pestilence/Famine/Black Death/Storm-at-Sea), and the other
+  targeted families (Kingdoms, Rebellion, Civil War, Crusade, Barbarians, Treachery)
+  + the fleet cards are later slices. The hand is still the interim 3 Greater + 2
+  Lesser; the full 9-pile deck comes with task #29's conclusion.
+
 ## [0.11.1] — 2026-06-27
 
 Event system, slice 1 — the combat-modifier events.

@@ -18,14 +18,16 @@ import { oddsForContext, resolveAssault, type CombatContext, type CombatResult }
 import { makeEventDeck } from './data/events'
 import { scoreEmpireTurn } from './scoring'
 import { makeRng, type Rng } from './rng'
-import { EPOCHS } from './types'
+import { EPOCHS, effectNeedsTarget } from './types'
 import type {
   BoardPiece,
   EmpireCard,
   EpochId,
   EventCard,
+  EventEffect,
   EventHand,
   LandId,
+  PieceKind,
   PlayerId,
 } from './types'
 
@@ -83,7 +85,9 @@ export type GameEvent =
   | { type: 'draft'; epoch: EpochId; assignments: { player: PlayerId; empire: string }[] }
   | { type: 'turnStart'; player: PlayerId; empire: string; epoch: EpochId }
   | { type: 'awaitEvents'; player: PlayerId; empire: string; hand: EventHand }
+  | { type: 'awaitEventTarget'; player: PlayerId; card: string; targets: LandId[] }
   | { type: 'eventsPlayed'; player: PlayerId; played: string[] }
+  | { type: 'disaster'; player: PlayerId; card: string; land: LandId; effect: string }
   | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
   | {
       type: 'awaitPlacement'
@@ -198,9 +202,9 @@ export class Game {
     let gi = 0
     let li = 0
     for (const p of this.state.players) {
-      p.hand = { greater: greater.slice(gi, gi + 3), lesser: lesser.slice(li, li + 7) }
+      p.hand = { greater: greater.slice(gi, gi + 3), lesser: lesser.slice(li, li + 2) }
       gi += 3
-      li += 7
+      li += 2
     }
   }
 
@@ -343,31 +347,97 @@ export class Game {
         empire,
         player: pid,
         standings: this.state.players.map((p) => ({ id: p.id, vp: p.vp })),
+        board: this.board,
+        pieces: this.state.pieces,
       }
       choice = this.bots.get(pid)?.chooseEvents?.(view, player.hand)
     }
 
     const played: string[] = []
-    if (choice?.greater) this.applyEvent(player, 'greater', choice.greater, effects, played)
-    if (choice?.lesser) this.applyEvent(player, 'lesser', choice.lesser, effects, played)
+    // Greater events are never targeted (combat / army buffs) — fold them in.
+    if (choice?.greater) {
+      const card = this.takeCard(player, 'greater', choice.greater)
+      if (card) {
+        this.foldEffect(card, effects)
+        played.push(card.name)
+      }
+    }
+    // Lesser events may be a targeted disaster (aimed at an enemy Land).
+    if (choice?.lesser) {
+      const card = this.takeCard(player, 'lesser', choice.lesser)
+      if (card && effectNeedsTarget(card.effect)) {
+        const targets = this.disasterTargets(card.effect, pid)
+        let target =
+          choice.lesserTarget && targets.includes(choice.lesserTarget) ? choice.lesserTarget : undefined
+        if (target === undefined && this.humanSeats.has(pid) && targets.length > 0) {
+          const picked = (yield {
+            type: 'awaitEventTarget',
+            player: pid,
+            card: card.name,
+            targets,
+          }) as PlayInput
+          if (typeof picked === 'string' && targets.includes(picked)) target = picked
+        }
+        if (target !== undefined) {
+          this.resolveDisaster(card.effect, target, pid)
+          played.push(card.name)
+          yield { type: 'disaster', player: pid, card: card.name, land: target, effect: card.effect.kind }
+        }
+      } else if (card) {
+        this.foldEffect(card, effects)
+        played.push(card.name)
+      }
+    }
     if (played.length) yield { type: 'eventsPlayed', player: pid, played }
     return effects
   }
 
-  /** Remove a chosen card from the hand and fold its effect into `effects`. */
-  private applyEvent(
-    player: PlayerState,
-    cls: 'greater' | 'lesser',
-    cardId: string,
-    effects: TurnEffects,
-    played: string[],
-  ): void {
+  /** Remove a chosen card from the player's hand and return it (or null). */
+  private takeCard(player: PlayerState, cls: 'greater' | 'lesser', cardId: string): EventCard | null {
     const hand = cls === 'greater' ? player.hand.greater : player.hand.lesser
     const idx = hand.findIndex((c) => c.id === cardId)
-    if (idx < 0) return // not in hand — ignore
-    const [card] = hand.splice(idx, 1)
-    this.foldEffect(card, effects)
-    played.push(card.name)
+    if (idx < 0) return null
+    return hand.splice(idx, 1)[0]
+  }
+
+  /** Apply a targeted disaster to `land` (docs/AUTHENTIC-RULES §12). */
+  private resolveDisaster(effect: EventEffect, land: LandId, pid: PlayerId): void {
+    if (effect.kind === 'disaster_structure') {
+      // Wreck structures: monument/city/fort destroyed; a capital is reduced to a city.
+      this.state.pieces = this.state.pieces.flatMap((p) => {
+        if (p.land !== land || p.kind === 'army') return [p]
+        if (p.kind === 'capital') return [{ ...p, kind: 'city' as PieceKind }]
+        return [] // monument / city / fort destroyed
+      })
+    } else if (effect.kind === 'plague') {
+      // The army on the Land rolls 4 dice; any '1' eliminates it.
+      const army = this.state.pieces.find((p) => p.land === land && p.kind === 'army')
+      if (army) {
+        let killed = false
+        for (let i = 0; i < 4; i++) if (this.state.rng.rollDie() === 1) killed = true
+        if (killed) this.removeArmyOn(land)
+      }
+    }
+    void pid
+  }
+
+  /** Enemy Lands a disaster may legally strike (honours the terrain restriction). */
+  private disasterTargets(effect: EventEffect, pid: PlayerId): LandId[] {
+    const out = new Set<LandId>()
+    for (const p of this.state.pieces) {
+      if (p.owner == null || p.owner === pid) continue // aim at opponents
+      const land = this.board.land(p.land)
+      if (!land) continue
+      if (effect.kind === 'disaster_structure') {
+        if (p.kind === 'army') continue // needs a structure to wreck
+        if (effect.terrain === 'coastal' && land.seaBorders.length === 0) continue
+        if (effect.terrain === 'mountain' && !land.difficultTerrain.includes('mountain')) continue
+        out.add(p.land)
+      } else if (effect.kind === 'plague') {
+        if (p.kind === 'army') out.add(p.land)
+      }
+    }
+    return [...out]
   }
 
   private foldEffect(card: EventCard, effects: TurnEffects): void {

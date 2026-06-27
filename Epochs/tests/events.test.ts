@@ -25,27 +25,29 @@ function drive(game: Game): GameEvent[] {
 
 describe('event deck', () => {
   const deck = makeEventDeck()
-  it('has enough Greater for 6 players (>= 18); Lesser empty pending the rebuild', () => {
+  it('has enough Greater (>= 18) + Lesser disasters (>= 12) for 6 players', () => {
     expect(deck.greater.length).toBeGreaterThanOrEqual(18)
-    expect(deck.lesser.length).toBe(0) // authentic 9-pile deck rebuilt in task #29
+    expect(deck.lesser.length).toBeGreaterThanOrEqual(12)
   })
-  it('Greater cards are the implemented kinds; no Coins (wrong-edition, removed)', () => {
+  it('Greater are the implemented kinds; Lesser are targeted disasters', () => {
     for (const c of deck.greater) {
       expect(['leader', 'weaponry', 'fanaticism', 'reallocation', 'minor_empire']).toContain(
         c.effect.kind,
       )
     }
-    expect(deck.lesser).toHaveLength(0)
+    for (const c of deck.lesser) {
+      expect(['disaster_structure', 'plague']).toContain(c.effect.kind)
+    }
   })
 })
 
 describe('dealing hands', () => {
-  it('gives each player 3 Greater (Lesser empty for now), no shared cards (SPEC §11)', () => {
+  it('gives each player 3 Greater + 2 Lesser disasters, no shared cards (SPEC §11)', () => {
     const game = worldGame(1, hardBots(['P1', 'P2', 'P3', 'P4']))
     const seen = new Set<string>()
     for (const p of game.state.players) {
       expect(p.hand.greater).toHaveLength(3)
-      expect(p.hand.lesser).toHaveLength(0)
+      expect(p.hand.lesser).toHaveLength(2)
       for (const c of [...p.hand.greater, ...p.hand.lesser]) {
         expect(seen.has(c.id), `duplicate card ${c.id}`).toBe(false)
         seen.add(c.id)
@@ -55,6 +57,18 @@ describe('dealing hands', () => {
 })
 
 describe('events in a full game', () => {
+  it('disasters fire during AI games (the bot aims them at opponents)', () => {
+    let fired = false
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const game = worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))
+      if (drive(game).some((e) => e.type === 'disaster')) {
+        fired = true
+        break
+      }
+    }
+    expect(fired).toBe(true)
+  })
+
   it('the AI plays Greater events during a full game', () => {
     const game = worldGame(1, hardBots(['P1', 'P2', 'P3', 'P4']))
     const events = drive(game)

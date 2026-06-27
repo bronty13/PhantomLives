@@ -46,12 +46,18 @@ export interface EventView {
   empire: EmpireCard
   player: PlayerId
   standings: readonly { id: PlayerId; vp: number }[]
+  /** Board + live pieces, so a bot can aim a targeted event (e.g. a disaster). */
+  board: Board
+  pieces: readonly BoardPiece[]
 }
 
-/** Which event cards (by id) to play this turn — at most one of each class. */
+/** Which event cards (by id) to play this turn — at most one of each class.
+ *  A targeted card (disaster) carries its target Land id. */
 export interface EventChoice {
   greater?: string
   lesser?: string
+  greaterTarget?: LandId
+  lesserTarget?: LandId
 }
 
 export interface Bot {

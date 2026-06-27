@@ -63,12 +63,23 @@ export interface EmpireCard {
 export type EventClass = 'greater' | 'lesser'
 
 /** Structured event effect applied to the player's upcoming empire-turn. */
+/** Where a structure-wrecking disaster may strike (docs/AUTHENTIC-RULES §12). */
+export type DisasterTerrain = 'coastal' | 'mountain' | 'any' // Flood / Volcano / Fire
+
 export type EventEffect =
   | { kind: 'leader' } // attacker rolls 3 dice this turn
   | { kind: 'weaponry' } // +1 to each attacker die this turn
   | { kind: 'fanaticism' } // attacker wins all ties this turn
   | { kind: 'reallocation'; armies: number } // fleets → extra ground armies
   | { kind: 'minor_empire'; armies: number } // a small extra force (simplified)
+  // ── targeted disasters (played BEFORE turn, aimed at an enemy Land) ──
+  | { kind: 'disaster_structure'; terrain: DisasterTerrain } // Flood/Volcano/Fire: wreck structures
+  | { kind: 'plague' } // the target Land's army rolls 4 dice; a '1' eliminates it
+
+/** True for effects that must be aimed at a target Land. */
+export function effectNeedsTarget(e: EventEffect): boolean {
+  return e.kind === 'disaster_structure' || e.kind === 'plague'
+}
 
 export interface EventCard {
   id: string

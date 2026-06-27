@@ -19,8 +19,10 @@
 
 import type { Bot, BotView, EventChoice, EventView, FrontierOption } from './bot'
 import { combatOdds, winProb } from './combat'
+import { areaValue } from './data/areaValues'
 import { scoreArea } from './scoring'
-import type { AreaId, BoardPiece, EpochId, EventHand, LandId, PlayerId } from './types'
+import { effectNeedsTarget } from './types'
+import type { AreaId, BoardPiece, EpochId, EventEffect, EventHand, LandId, PlayerId } from './types'
 
 export interface HeuristicWeights {
   rhoBase: number
@@ -155,8 +157,42 @@ export class HeuristicBot implements Bot {
       }
     }
 
-    // (No Lesser events yet — the authentic 9-pile deck is rebuilt in task #29.)
+    // Lesser: aim a disaster at an opponent's most valuable legal target.
+    const disaster = hand.lesser.find((c) => effectNeedsTarget(c.effect))
+    if (disaster) {
+      const target = this.bestDisasterTarget(view, disaster.effect)
+      if (target) {
+        choice.lesser = disaster.id
+        choice.lesserTarget = target
+      }
+    }
     return choice
+  }
+
+  /** Best enemy Land to strike with a disaster (capital/city first; rich areas). */
+  private bestDisasterTarget(view: EventView, effect: EventEffect): LandId | null {
+    let best: LandId | null = null
+    let bestScore = 0
+    for (const p of view.pieces) {
+      if (p.owner == null || p.owner === view.player) continue
+      const land = view.board.land(p.land)
+      if (!land) continue
+      let score = 0
+      if (effect.kind === 'disaster_structure') {
+        if (p.kind === 'army') continue
+        if (effect.terrain === 'coastal' && land.seaBorders.length === 0) continue
+        if (effect.terrain === 'mountain' && !land.difficultTerrain.includes('mountain')) continue
+        score = (p.kind === 'capital' ? 5 : p.kind === 'city' ? 3 : 2) + areaValue(land.area ?? '', view.epoch) * 0.5
+      } else if (effect.kind === 'plague') {
+        if (p.kind !== 'army') continue
+        score = 1 + areaValue(land.area ?? '', view.epoch)
+      }
+      if (score > bestScore) {
+        bestScore = score
+        best = p.land
+      }
+    }
+    return best
   }
 
   chooseExpansion(view: BotView, frontier: FrontierOption[]): LandId | null {

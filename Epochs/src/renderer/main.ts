@@ -58,6 +58,7 @@ class GameUI {
   private placeable: Map<string, PlaceableEntry> | null = null
   private pending: AwaitEvent | null = null
   private pendingEvents: AwaitEventsEvent | null = null
+  private pendingTarget: { card: string; targets: string[] } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
   private auto = false
   private speed = 320
@@ -161,6 +162,7 @@ class GameUI {
     this.pending = null
     this.placeable = null
     this.pendingEvents = null
+    this.pendingTarget = null
     this.eventSel = {}
     this.hideEventPanel()
     if (this.rafId != null) cancelAnimationFrame(this.rafId)
@@ -191,7 +193,14 @@ class GameUI {
   private scheduleNext(): void {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
-    if (this.auto && !this.pending && !this.pendingEvents && !this.over && !this.helpOpen) {
+    if (
+      this.auto &&
+      !this.pending &&
+      !this.pendingEvents &&
+      !this.pendingTarget &&
+      !this.over &&
+      !this.helpOpen
+    ) {
       // dwell at least `speed`, but long enough for any running animation to finish
       const now = performance.now()
       const pend = this.fx.reduce((m, f) => Math.max(m, f.start + f.dur - now), 0)
@@ -219,6 +228,21 @@ class GameUI {
       case 'eventsPlayed':
         this.pushLog(`${this.nameOf(ev.player)} played ${ev.played.join(', ')}`)
         break
+      case 'awaitEventTarget':
+        // Human seat aiming a disaster: highlight the legal target lands.
+        this.pendingTarget = { card: ev.card, targets: ev.targets }
+        this.placeable = new Map(
+          ev.targets.map((t) => [t, { kind: 'enemy' as const, amphibious: false }]),
+        )
+        this.status = `${ev.card}: click a target land (highlighted).`
+        break
+      case 'disaster': {
+        const what = ev.effect === 'plague' ? 'plague' : 'razed'
+        this.pushLog(`☄ ${ev.card} struck ${this.landName(ev.land)} — ${what}`)
+        this.fx.push({ kind: 'clash', land: ev.land, color: '#e8801c', start: now, dur: 560, text: ev.card })
+        this.startLoop()
+        break
+      }
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
         this.startLoop()
@@ -306,10 +330,20 @@ class GameUI {
   }
 
   private onClick(e: MouseEvent): void {
-    if (!this.pending) return
     const { px, py } = this.toCanvas(e)
     const l = nearestLand(lands, this.rect, px, py, 14)
-    if (l && this.placeable?.has(l.id)) {
+    if (!l) return
+    // Aiming a disaster: click one of the highlighted target lands.
+    if (this.pendingTarget) {
+      if (this.pendingTarget.targets.includes(l.id)) {
+        this.pendingTarget = null
+        this.placeable = null
+        this.advance(l.id)
+      }
+      return
+    }
+    if (!this.pending) return
+    if (this.placeable?.has(l.id)) {
       const opt = this.pending.frontier.find((f) => f.land === l.id)
       this.attackOdds = opt?.kind === 'enemy' ? (opt.odds?.attacker ?? null) : null
       this.advance(l.id)
@@ -362,7 +396,7 @@ class GameUI {
    * timer, so this is a no-op there.)
    */
   private drainToInteractive(): void {
-    while (!this.auto && !this.over && !this.pending && !this.pendingEvents) {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget) {
       this.advance()
     }
   }
@@ -639,7 +673,7 @@ const TEMPLATE = `
             <h4>It stays close</h4>
             <p>The <b>weakest player drafts first</b> each epoch and gets first pick of the strongest new empire — so leads don't run away. Most Victory Points after Epoch VII wins.</p>
             <h4>Events</h4>
-            <p>You hold a fixed hand of cards for the <i>whole game</i> (no refills) and may play up to two before a turn. <b>Leaders</b> attack with 3 dice, <b>Weaponry</b> adds +1 to each die, and <b>Fanaticism</b> wins all ties. (The rest of the deck — disasters, minor empires and more — is being built; see the <b>📖 Rulebook</b> for everything.)</p>
+            <p>You hold a fixed hand of cards for the <i>whole game</i> (no refills) and may play up to two before a turn. <b>Leaders</b> attack with 3 dice, <b>Weaponry</b> adds +1 to each die, <b>Fanaticism</b> wins all ties — and <b>Disasters</b> (Volcano, Flood, Fire, Plague) are aimed at an enemy land, wrecking a capital or thinning an army. (More to come — minor empires and the full deck; see the <b>📖 Rulebook</b>.)</p>
             <h4>Watch or play</h4>
             <p>By default you <b>watch the AI</b>. To take a seat, tick <b>“I play (seat 1)”</b> and press <b>New Game</b>. On your turn, click a highlighted land to place an army — <span class="hk g">●</span> settle · <span class="hk b">●</span> reclaim · <span class="hk r">●</span> attack (ring color = your odds). Use <b>Step</b> / <b>Auto</b> and the speed slider to control playback; <b>End Turn</b> stops placing early.</p>
           </div>
