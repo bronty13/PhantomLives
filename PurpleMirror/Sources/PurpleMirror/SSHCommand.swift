@@ -47,4 +47,16 @@ enum SSHCommand {
         let arguments = sshOptions(for: host) + ["--", host.sshTarget, command]
         return ("/usr/bin/ssh", arguments)
     }
+
+    /// Build the remote shell command to run `bash <path> args…` with `env` inlined. SSH does not
+    /// forward the caller's environment, so script-managed jobs (e.g. the Obsidian sync, which needs
+    /// `OBSIDIAN_VAULT`) carry their env as `KEY='value'` prefixes in the command itself. Env is
+    /// emitted in sorted order so the output is deterministic (and unit-testable).
+    static func remoteBash(path: String, args: [String], env: [String: String]) -> String {
+        let prefix = env.sorted { $0.key < $1.key }
+            .map { "\($0.key)=\(shQuote($0.value))" }
+            .joined(separator: " ")
+        let cmd = (["/bin/bash", path] + args).map(shQuote).joined(separator: " ")
+        return prefix.isEmpty ? cmd : prefix + " " + cmd
+    }
 }

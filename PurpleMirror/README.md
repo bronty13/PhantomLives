@@ -82,9 +82,11 @@ grouped by host (e.g. "Runner · Photos").
   `~/.ssh/authorized_keys`. Connections are **key-only** (`BatchMode=yes` — a missing key
   fails fast rather than prompting) and bounded by `ConnectTimeout`; SSH ControlMaster
   multiplexing keeps the many small status calls cheap.
-- **Status, logs, and Run Now** work for remote jobs. **Schedule editing**
-  (enable/disable/interval) is **local-only for now** — it needs the host's plist/script
-  paths; coming in a later phase.
+- **Status, logs, Run Now, and schedule editing** (enable/disable + change interval) all work for
+  remote jobs. The plist interval edit uses `plutil -replace … -integer` over ssh (only
+  `StartInterval` is touched, with a backup restored if the reload fails); script-managed jobs
+  (e.g. the Obsidian sync) carry their env inlined into the remote command since ssh doesn't
+  forward it.
 - An unreachable/asleep host degrades gracefully: its jobs are kept and shown as
   unreachable (not dropped), and per-host concurrent refresh means a slow host can't stall
   the others.

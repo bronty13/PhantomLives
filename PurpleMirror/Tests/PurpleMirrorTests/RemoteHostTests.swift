@@ -53,6 +53,20 @@ import Foundation
         #expect(!args22.contains("-p"))
     }
 
+    // MARK: SSHCommand — remoteBash (Phase 3: schedule control over ssh)
+
+    @Test func remoteBashNoEnvJustQuotesCommand() {
+        let cmd = SSHCommand.remoteBash(path: "/x/sync.sh", args: ["--install-agent", "3600"], env: [:])
+        #expect(cmd == "'/bin/bash' '/x/sync.sh' '--install-agent' '3600'")
+    }
+
+    @Test func remoteBashInlinesEnvSortedAndQuoted() {
+        let cmd = SSHCommand.remoteBash(path: "/x/sync.sh", args: ["--install-agent", "1800"],
+                                        env: ["OBSIDIAN_VAULT": "/Vols/My Vault", "A": "b"])
+        // env sorted (A before OBSIDIAN_VAULT), each value shell-quoted, then the bash command
+        #expect(cmd == "A='b' OBSIDIAN_VAULT='/Vols/My Vault' '/bin/bash' '/x/sync.sh' '--install-agent' '1800'")
+    }
+
     @Test func shellArgvLocalUsesShDashC() {
         let (exe, args) = SSHCommand.shellArgv(for: .local, command: "ls ~/Library/LaunchAgents")
         #expect(exe == "/bin/sh")

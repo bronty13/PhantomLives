@@ -8,8 +8,11 @@ All notable changes to PurpleMirror are documented here.
   the launchd jobs on a *remote* Mac (e.g. the dedicated archive "runner") alongside local ones,
   so the same instance on Vortex or MB14 sees everything in one place. Add a host under
   **Settings ▸ Hosts** (SSH user / host / optional identity file) with a **Test connection**
-  button; its jobs appear grouped by host (e.g. "Runner · Photos"). Status, logs, and **Run Now**
-  work remotely; schedule editing (enable/disable/interval) stays local-only for now. An
+  button; its jobs appear grouped by host (e.g. "Runner · Photos"). Status, logs, **Run Now**, and
+  full **schedule editing** (enable/disable + change interval) all work remotely — the plist
+  interval edit uses `plutil -replace … -integer` over ssh (touching only `StartInterval`, with a
+  backup restored if the reload fails), and script-managed jobs carry their env (e.g.
+  `OBSIDIAN_VAULT`) inlined into the remote command since ssh doesn't forward it. An
   unreachable host degrades gracefully (its jobs are kept and shown as unreachable, never dropped)
   and a slow/asleep host can't stall the refresh (per-host concurrent refresh, `BatchMode`+
   `ConnectTimeout`, SSH ControlMaster multiplexing). New `MonitoredHost`/`HostStore`/`HostContext`/

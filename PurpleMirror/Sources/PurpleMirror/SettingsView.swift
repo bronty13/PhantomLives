@@ -79,8 +79,8 @@ private struct JobSettingsForm: View {
     var body: some View {
         Form {
             Section("Schedule") {
-                if !job.canEditSchedule {
-                    Text("On \(job.hostName) — schedule editing is coming soon. Run Now works now.")
+                if !job.isLocalHost {
+                    Text("On \(job.hostName) — edits apply over SSH.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Toggle("Automatic background run", isOn: Binding(
@@ -88,13 +88,12 @@ private struct JobSettingsForm: View {
                     set: { $0 ? job.enable() : job.disable() }
                 ))
                 .help("Loads/unloads the launchd agent that runs this job on a fixed interval.")
-                .disabled(!job.canEditSchedule)
 
                 Picker("Run every", selection: $selection) {
                     ForEach(presets, id: \.1) { Text($0.0).tag($0.1) }
                     Text("Custom…").tag(-1)
                 }
-                .disabled(!job.agentLoaded || !job.canEditSchedule)
+                .disabled(!job.agentLoaded)
                 .onChange(of: selection) { _, new in
                     isCustom = (new == -1)
                     if new != -1 { job.setInterval(new) }
@@ -105,7 +104,7 @@ private struct JobSettingsForm: View {
                         Text("Every \(customMinutes) minutes")
                     }
                     Button("Apply custom interval") { job.setInterval(customMinutes * 60) }
-                        .disabled(!job.agentLoaded || !job.canEditSchedule)
+                        .disabled(!job.agentLoaded)
                 }
             }
 

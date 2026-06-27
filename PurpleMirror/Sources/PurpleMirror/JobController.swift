@@ -132,16 +132,11 @@ final class JobController: ObservableObject, Identifiable {
 
     // MARK: Actions
 
-    /// Trigger one run now. For a loaded agent this is a `launchctl kickstart` — which works on
-    /// the local Mac OR the remote runner (the only control that needs no local paths). For an
-    /// *un*loaded agent the local fallbacks (script / bootstrap) only apply on the local host;
-    /// on a remote host, enable it there first.
+    /// Trigger one run now. For a loaded agent this is a `launchctl kickstart`; otherwise the
+    /// script is run directly, or the plist bootstrapped + kickstarted. All paths are host-aware
+    /// (local verbatim, or over ssh), so Run Now works on the local Mac and the remote runner alike.
     func runNow() {
         guard !isRunning else { return }
-        if !host.isLocal && !agentLoaded {
-            lastActionMessage = "Not loaded on \(hostName) — enable it there first"
-            return
-        }
         isRunning = true
         lastActionMessage = "Starting…"
         Task {
@@ -151,7 +146,7 @@ final class JobController: ObservableObject, Identifiable {
                 result = await ctx.run("/bin/launchctl", ["kickstart", "-k", domainTarget])
             } else if case .script(let path, let envKeys) = profile.scheduling {
                 startedViaKickstart = false
-                result = await runScript(path, [], envKeys: envKeys)
+                result = await runBash(path, [], envKeys: envKeys)
             } else {
                 _ = await ctx.run("/bin/launchctl", ["bootstrap", userDomain, plistPath])
                 result = await ctx.run("/bin/launchctl", ["kickstart", "-k", domainTarget])
@@ -169,18 +164,17 @@ final class JobController: ObservableObject, Identifiable {
         }
     }
 
-    /// True when schedule edits (enable/disable/interval) are available — local host only for now.
-    var canEditSchedule: Bool { host.isLocal }
+    /// Schedule edits (enable/disable/interval) work on every host now (local + remote).
+    var canEditSchedule: Bool { true }
 
     func enable() {
-        guard requireLocalForScheduleEdit() else { return }
         Task {
             lastActionMessage = "Enabling…"
             switch profile.scheduling {
             case .script(let path, let envKeys):
-                _ = await runScript(path, ["--install-agent", String(intervalSeconds)], envKeys: envKeys)
+                _ = await runBash(path, ["--install-agent", String(intervalSeconds)], envKeys: envKeys)
             case .plist:
-                _ = await Self.run("/bin/launchctl", ["bootstrap", userDomain, plistPath])
+                _ = await ctx.run("/bin/launchctl", ["bootstrap", userDomain, plistPath])
             }
             await refresh()
             lastActionMessage = "Auto-run enabled"
@@ -188,15 +182,14 @@ final class JobController: ObservableObject, Identifiable {
     }
 
     func disable() {
-        guard requireLocalForScheduleEdit() else { return }
         Task {
             lastActionMessage = "Disabling…"
             switch profile.scheduling {
             case .script(let path, _):
-                _ = await runScript(path, ["--uninstall-agent"], envKeys: [])
+                _ = await runBash(path, ["--uninstall-agent"], envKeys: [])
             case .plist:
                 // Leave the plist file on disk so it can be re-enabled; just unload it.
-                _ = await Self.run("/bin/launchctl", ["bootout", domainTarget])
+                _ = await ctx.run("/bin/launchctl", ["bootout", domainTarget])
             }
             await refresh()
             lastActionMessage = "Auto-run disabled (manual only)"
@@ -204,12 +197,11 @@ final class JobController: ObservableObject, Identifiable {
     }
 
     func setInterval(_ seconds: Int) {
-        guard requireLocalForScheduleEdit() else { return }
         Task {
             lastActionMessage = "Updating schedule…"
             switch profile.scheduling {
             case .script(let path, let envKeys):
-                _ = await runScript(path, ["--install-agent", String(seconds)], envKeys: envKeys)
+                _ = await runBash(path, ["--install-agent", String(seconds)], envKeys: envKeys)
             case .plist:
                 await setPlistInterval(seconds)
             }
@@ -218,26 +210,40 @@ final class JobController: ObservableObject, Identifiable {
         }
     }
 
-    /// Phase 2 limits schedule edits to the local host (they need local plist/script paths).
-    /// Remote control beyond Run-Now is a later phase.
-    private func requireLocalForScheduleEdit() -> Bool {
-        if host.isLocal { return true }
-        lastActionMessage = "Schedule edits on \(hostName) aren't supported yet — Run Now works"
-        return false
-    }
+    // MARK: Plist interval edit (defensive, host-aware)
 
-    // MARK: Plist interval edit (defensive, local only)
-
-    /// Rewrite ONLY `StartInterval` in the agent's plist, then reload it. Keeps a
-    /// backup and restores it if the reload fails, so an operational plist (e.g. a
-    /// PurpleAttic external-source sync) can't be left broken.
+    /// Rewrite ONLY `StartInterval` in the agent's plist, then reload it — keeping a backup and
+    /// restoring it if the reload fails, so an operational plist (e.g. a PurpleAttic external-source
+    /// sync) can't be left broken. Local uses Foundation file APIs; remote uses
+    /// `plutil -replace … -integer` over ssh (also touches only `StartInterval`).
     private func setPlistInterval(_ seconds: Int) async {
+        let backup = plistPath + ".purplemirror.bak"
+
+        if !host.isLocal {
+            let q = SSHCommand.shQuote
+            _ = await ctx.shell("cp \(q(plistPath)) \(q(backup))")
+            let (edit, _) = await ctx.shell("plutil -replace StartInterval -integer \(seconds) \(q(plistPath))")
+            guard edit == 0 else {
+                lastActionMessage = "Couldn't edit \(label).plist on \(hostName)"
+                _ = await ctx.shell("rm -f \(q(backup))")
+                return
+            }
+            _ = await ctx.run("/bin/launchctl", ["bootout", domainTarget])
+            let (st, _) = await ctx.run("/bin/launchctl", ["bootstrap", userDomain, plistPath])
+            if st != 0 {
+                _ = await ctx.shell("cp \(q(backup)) \(q(plistPath))")
+                _ = await ctx.run("/bin/launchctl", ["bootstrap", userDomain, plistPath])
+                lastActionMessage = "Reload failed — restored previous schedule on \(hostName)"
+            }
+            _ = await ctx.shell("rm -f \(q(backup))")
+            return
+        }
+
         guard let dict = NSDictionary(contentsOfFile: plistPath) as? [String: Any] else {
             lastActionMessage = "Couldn't read \(label).plist"; return
         }
         let updated = LaunchAgentPlist.withStartInterval(dict, seconds: seconds)
 
-        let backup = plistPath + ".purplemirror.bak"
         let fm = FileManager.default
         try? fm.removeItem(atPath: backup)
         try? fm.copyItem(atPath: plistPath, toPath: backup)
@@ -286,13 +292,20 @@ final class JobController: ObservableObject, Identifiable {
 
     // MARK: Process plumbing
 
-    /// Run a script via /bin/bash on the LOCAL host, carrying over the requested env keys from the
-    /// installed plist (e.g. OBSIDIAN_VAULT so --install-agent re-bakes it). Only reached on the
-    /// local host (schedule edits are local-only).
-    private func runScript(_ path: String, _ args: [String], envKeys: [String]) async -> (Int32, String) {
-        var env = ProcessInfo.processInfo.environment
-        for k in envKeys { if let v = descriptor.environment[k], !v.isEmpty { env[k] = v } }
-        return await Self.run("/bin/bash", [path] + args, env: env)
+    /// Run a script via `/bin/bash` on this job's host, carrying the requested env keys from the
+    /// installed plist (e.g. `OBSIDIAN_VAULT` so `--install-agent` re-bakes it). Local uses a real
+    /// `Process` env; remote inlines the env into the command (ssh doesn't forward it) and uses the
+    /// host's script path (rebased onto its home).
+    private func runBash(_ scriptPath: String, _ args: [String], envKeys: [String]) async -> (Int32, String) {
+        let path = rebaseHome(scriptPath) ?? scriptPath
+        var envDict: [String: String] = [:]
+        for k in envKeys { if let v = descriptor.environment[k], !v.isEmpty { envDict[k] = v } }
+        if host.isLocal {
+            var env = ProcessInfo.processInfo.environment
+            for (k, v) in envDict { env[k] = v }
+            return await Self.run("/bin/bash", [path] + args, env: env)
+        }
+        return await ctx.shell(SSHCommand.remoteBash(path: path, args: args, env: envDict))
     }
 
     /// Run a command off the main actor; capture merged stdout+stderr. The one `Process` runner;
