@@ -22,6 +22,17 @@ export function describeEffect(e: EventEffect): { text: string; timing: 'during'
       return { text: `Call up the fleets — raise ${e.armies} extra ground armies this turn.`, timing: 'during' }
     case 'minor_empire':
       return { text: `A minor people rallies to you — ${e.armies} extra armies this turn.`, timing: 'during' }
+    case 'siegecraft':
+      return { text: 'Enemy forts give no defence against your attacks this turn.', timing: 'during' }
+    case 'surprise_attack':
+      return { text: 'Your attacks ignore difficult-terrain and amphibious defence this turn.', timing: 'during' }
+    case 'extra_armies':
+      return {
+        text: e.needsCapital
+          ? `Your capital's administration raises ${e.armies} extra armies this turn.`
+          : `A surge of settlers — ${e.armies} extra armies this turn.`,
+        timing: 'during',
+      }
     case 'disaster_structure': {
       const where = e.terrain === 'coastal' ? 'a coastal enemy land' : e.terrain === 'mountain' ? 'a mountain enemy land' : 'any enemy land'
       return { text: `Strike ${where}: raze its city, fort, or monument (a capital is reduced to a city).`, timing: 'before' }
@@ -49,6 +60,10 @@ const WEAPONRY = [
 const FANATICISM = ['Fanaticism', 'Holy War', 'Zealotry', 'Martyrdom']
 const REALLOCATION = ['Mobilization', 'Mass Levy', 'Conscription', 'Grand Army']
 const MINOR_EMPIRE = ['Allied Tribes', 'Mercenary Host', 'Client Kingdom', 'Vassal State']
+const SIEGECRAFT = ['Siegecraft', 'Sapper Corps', 'Siege Towers']
+const SURPRISE = ['Surprise Attack', 'Ambush', 'Forced March']
+const POP_EXPLOSION = ['Population Boom', 'Fertile Years', 'Settlers']
+const CIVIL_SERVICE = ['Civil Service', 'Bureaucracy', 'Imperial Administration']
 
 // Targeted disasters (Lesser, aimed at an enemy Land before a turn): [name, effect, count].
 const DISASTERS: Array<[string, EventEffect, number]> = [
@@ -68,6 +83,14 @@ export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
   )
   MINOR_EMPIRE.forEach((n, i) =>
     greater.push(card(`g_minor_${i}`, 'greater', n, { kind: 'minor_empire', armies: 4 })),
+  )
+  SIEGECRAFT.forEach((n, i) => greater.push(card(`g_siege_${i}`, 'greater', n, { kind: 'siegecraft' })))
+  SURPRISE.forEach((n, i) => greater.push(card(`g_surprise_${i}`, 'greater', n, { kind: 'surprise_attack' })))
+  POP_EXPLOSION.forEach((n, i) =>
+    greater.push(card(`g_pop_${i}`, 'greater', n, { kind: 'extra_armies', armies: 2, needsCapital: false })),
+  )
+  CIVIL_SERVICE.forEach((n, i) =>
+    greater.push(card(`g_civil_${i}`, 'greater', n, { kind: 'extra_armies', armies: 2, needsCapital: true })),
   )
   const lesser: EventCard[] = []
   let di = 0

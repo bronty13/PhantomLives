@@ -53,7 +53,9 @@ export interface TurnEffects {
   attackerBonus: boolean // Leader → attacker rolls 3 dice
   attackerKeptBonus: number // Weaponry → +1 to each attacker die
   attackerWinsTies: boolean // Fanaticism → attacker wins ties
-  bonusArmies: number // Reallocation/Minor Empire → extra armies
+  bonusArmies: number // Reallocation/Minor Empire/Pop Explosion/Civil Service → extra armies
+  ignoreForts: boolean // Siegecraft → forts give no defence vs your attacks
+  ignoreTerrain: boolean // Surprise Attack → void difficult-terrain/amphibious defence
 }
 
 /** What the driver may pass back into `play()` when resuming a yield. */
@@ -329,6 +331,8 @@ export class Game {
       attackerKeptBonus: 0,
       attackerWinsTies: false,
       bonusArmies: 0,
+      ignoreForts: false,
+      ignoreTerrain: false,
     }
     const player = this.player(pid)
     if (player.hand.greater.length === 0 && player.hand.lesser.length === 0) return effects
@@ -358,7 +362,7 @@ export class Game {
     if (choice?.greater) {
       const card = this.takeCard(player, 'greater', choice.greater)
       if (card) {
-        this.foldEffect(card, effects)
+        this.foldEffect(card, effects, empire)
         played.push(card.name)
       }
     }
@@ -384,7 +388,7 @@ export class Game {
           yield { type: 'disaster', player: pid, card: card.name, land: target, effect: card.effect.kind }
         }
       } else if (card) {
-        this.foldEffect(card, effects)
+        this.foldEffect(card, effects, empire)
         played.push(card.name)
       }
     }
@@ -440,7 +444,7 @@ export class Game {
     return [...out]
   }
 
-  private foldEffect(card: EventCard, effects: TurnEffects): void {
+  private foldEffect(card: EventCard, effects: TurnEffects, empire: EmpireCard): void {
     switch (card.effect.kind) {
       case 'leader':
         effects.attackerBonus = true // attacker rolls 3 dice
@@ -451,9 +455,18 @@ export class Game {
       case 'fanaticism':
         effects.attackerWinsTies = true // attacker wins ties
         break
+      case 'siegecraft':
+        effects.ignoreForts = true // forts give no defence vs your attacks
+        break
+      case 'surprise_attack':
+        effects.ignoreTerrain = true // void difficult-terrain/amphibious defence
+        break
       case 'reallocation':
       case 'minor_empire':
         effects.bonusArmies += card.effect.armies
+        break
+      case 'extra_armies':
+        if (!card.effect.needsCapital || empire.hasCapital) effects.bonusArmies += card.effect.armies
         break
     }
   }
@@ -579,17 +592,19 @@ export class Game {
   ): CombatContext {
     const terrain = this.board.land(land)?.difficultTerrain ?? []
     const fort = this.state.pieces.some((p) => p.land === land && p.kind === 'fort')
+    const ignoreTerrain = effects?.ignoreTerrain ?? false // Surprise Attack
     return {
       attackerBonus: effects?.attackerBonus ?? false,
       attackerKeptBonus: effects?.attackerKeptBonus ?? 0,
       attackerWinsTies: effects?.attackerWinsTies ?? false,
       difficultTerrain:
-        terrain.includes('forest') ||
-        terrain.includes('mountain') ||
-        terrain.includes('great_wall'),
-      strait: terrain.includes('strait') && !amphibious,
-      amphibious,
-      fort,
+        !ignoreTerrain &&
+        (terrain.includes('forest') ||
+          terrain.includes('mountain') ||
+          terrain.includes('great_wall')),
+      strait: !ignoreTerrain && terrain.includes('strait') && !amphibious,
+      amphibious: amphibious && !ignoreTerrain,
+      fort: fort && !(effects?.ignoreForts ?? false), // Siegecraft
     }
   }
 

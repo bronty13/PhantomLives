@@ -47,14 +47,12 @@ describe('AI strength (seat-averaged headless tournaments)', () => {
         `\n  medium vs easy (2p): ${pct(mVsE)}` +
         `\n  hard vs easy (2p): ${pct(hVsE)}`,
     )
-    // Deterministic (seeded) win rates. Monotonic ε-greedy handicap of the tuned
-    // peak. The complete-board re-registration (100 lands, new Delaunay adjacency)
-    // flattened the hard/medium gap further — still hard > medium > easy (observed
-    // 50.4 / 62.1 / 64.2%), but hard barely edges medium now. NOTE: re-tuning the
-    // ε-greedy handicap for the new geography is genuinely needed (task: AI re-tune);
-    // thresholds track today's deterministic ladder.
-    expect(hVsM).toBeGreaterThan(0.5)
-    expect(mVsE).toBeGreaterThan(0.55)
-    expect(hVsE).toBeGreaterThan(0.55)
+    // Deterministic (seeded) win rates, clean monotonic ladder: hard > medium > easy.
+    // Re-tuned to a PURE random-move handicap (easy 0.42 / medium 0.20 / hard 0.0)
+    // after the old `easy` timidity overlay scored ~even with medium on the new board
+    // + richer events. Observed 56.7 / 61.3 / 62.9%.
+    expect(hVsM).toBeGreaterThan(0.53)
+    expect(mVsE).toBeGreaterThan(0.57)
+    expect(hVsE).toBeGreaterThan(0.58)
   })
 })

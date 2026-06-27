@@ -30,11 +30,13 @@ describe('event deck', () => {
     expect(deck.greater.length).toBeGreaterThanOrEqual(18)
     expect(deck.lesser.length).toBeGreaterThanOrEqual(12)
   })
-  it('Greater are the implemented kinds; Lesser are targeted disasters', () => {
+  it('Greater are the implemented boon kinds; Lesser are targeted disasters', () => {
+    const greaterKinds = [
+      'leader', 'weaponry', 'fanaticism', 'reallocation', 'minor_empire',
+      'siegecraft', 'surprise_attack', 'extra_armies',
+    ]
     for (const c of deck.greater) {
-      expect(['leader', 'weaponry', 'fanaticism', 'reallocation', 'minor_empire']).toContain(
-        c.effect.kind,
-      )
+      expect(greaterKinds).toContain(c.effect.kind)
     }
     for (const c of deck.lesser) {
       expect(['disaster_structure', 'plague']).toContain(c.effect.kind)
@@ -143,6 +145,10 @@ describe('describeEffect (event card text for the panel)', () => {
     { kind: 'fanaticism' },
     { kind: 'reallocation', armies: 3 },
     { kind: 'minor_empire', armies: 4 },
+    { kind: 'siegecraft' },
+    { kind: 'surprise_attack' },
+    { kind: 'extra_armies', armies: 2, needsCapital: false },
+    { kind: 'extra_armies', armies: 2, needsCapital: true },
     { kind: 'disaster_structure', terrain: 'mountain' },
     { kind: 'plague' },
   ]
@@ -161,5 +167,23 @@ describe('describeEffect (event card text for the panel)', () => {
   })
   it('interpolates the army count', () => {
     expect(describeEffect({ kind: 'reallocation', armies: 5 }).text).toContain('5')
+  })
+  it('capital-gated vs free extra armies read differently', () => {
+    const free = describeEffect({ kind: 'extra_armies', armies: 2, needsCapital: false }).text
+    const cap = describeEffect({ kind: 'extra_armies', armies: 2, needsCapital: true }).text
+    expect(free).not.toBe(cap)
+    expect(cap.toLowerCase()).toContain('capital')
+  })
+})
+
+describe('event deck — the new Greater boons are present', () => {
+  it('includes siegecraft, surprise_attack, and both extra_armies variants', () => {
+    const { greater } = makeEventDeck()
+    const kinds = new Set(greater.map((c) => c.effect.kind))
+    for (const k of ['siegecraft', 'surprise_attack', 'extra_armies']) expect(kinds.has(k as never)).toBe(true)
+    const capGated = greater.filter((c) => c.effect.kind === 'extra_armies' && c.effect.needsCapital)
+    const free = greater.filter((c) => c.effect.kind === 'extra_armies' && !c.effect.needsCapital)
+    expect(capGated.length).toBeGreaterThan(0)
+    expect(free.length).toBeGreaterThan(0)
   })
 })

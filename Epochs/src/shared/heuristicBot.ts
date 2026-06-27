@@ -88,8 +88,11 @@ export function difficultyWeights(d: Difficulty): HeuristicWeights {
   // (rhoBase), more noise (tieEps), more timidity (minWinProb), and (easy)
   // opponent-blind (denialBase 0). So hard > medium > easy by construction.
   const overlays: Record<Difficulty, Partial<HeuristicWeights>> = {
-    easy: { randomMoveProb: 0.4, rhoBase: 0.0, minWinProb: 0.4 },
-    medium: { randomMoveProb: 0.16 },
+    // Pure random-move handicap — monotonic by construction. (The old `easy`
+    // overlay added timidity/opponent-blindness, but "timid" plays SAFE and
+    // scored ~even with medium; plain extra noise is a cleaner, ordered weakening.)
+    easy: { randomMoveProb: 0.42 },
+    medium: { randomMoveProb: 0.2 },
     hard: { randomMoveProb: 0.0 },
   }
   return { ...DEFAULT_WEIGHTS, ...overlays[d] }
@@ -146,12 +149,17 @@ export class HeuristicBot implements Bot {
           (c) =>
             c.effect.kind === 'leader' ||
             c.effect.kind === 'weaponry' ||
-            c.effect.kind === 'fanaticism',
+            c.effect.kind === 'fanaticism' ||
+            c.effect.kind === 'siegecraft' ||
+            c.effect.kind === 'surprise_attack',
         )
         choice.greater = (combat ?? hand.greater[0]).id
       } else if (s <= 4 && view.epoch >= 2) {
         const armies = hand.greater.find(
-          (c) => c.effect.kind === 'reallocation' || c.effect.kind === 'minor_empire',
+          (c) =>
+            c.effect.kind === 'reallocation' ||
+            c.effect.kind === 'minor_empire' ||
+            c.effect.kind === 'extra_armies',
         )
         if (armies) choice.greater = armies.id
       }

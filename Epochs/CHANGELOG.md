@@ -2,6 +2,32 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.16.0] — 2026-06-27
+
+Event system, slice 3 — combat & build boons + an AI difficulty re-tune.
+
+### Added
+- **Four new Greater event effects** (the catalog grows toward the full deck):
+  - **Siegecraft** — enemy forts give no defence against your attacks this turn.
+  - **Surprise Attack** — your attacks ignore difficult-terrain / amphibious defence.
+  - **Population Boom / Settlers** — +2 armies this turn (no capital needed).
+  - **Civil Service / Bureaucracy** — +2 armies if you hold a Capital.
+  Wired through `TurnEffects` (`ignoreForts`, `ignoreTerrain`) + `combatContext`;
+  the bot folds them into its combat/build event picks. Each reads clearly in the
+  parchment event panel (`describeEffect`).
+
+### Changed
+- **AI difficulty re-tuned to a clean monotonic ladder.** The old `easy` overlay
+  added timidity (only safe attacks), which played *safe* and scored ~even with
+  medium on the new board + richer events. Replaced with a pure random-move
+  handicap (easy 0.42 / medium 0.20 / hard 0.0): hard > medium > easy is now clear
+  (56.7 / 61.3 / 62.9%). Resolves the long-standing difficulty-spread drift.
+
+### Deferred (need fleets/seas, not built yet)
+- Naval Supremacy, Pirates, Ship Building, Storm at Sea, Trade Bonus. Still to come:
+  the disaster variants (Pestilence/Famine/Black Death), Kingdoms, Migrants,
+  Barbarians, and the big one — true Minor Empires (a second empire-turn).
+
 ## [0.15.1] — 2026-06-27
 
 ### Fixed

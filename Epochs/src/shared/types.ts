@@ -72,6 +72,9 @@ export type EventEffect =
   | { kind: 'fanaticism' } // attacker wins all ties this turn
   | { kind: 'reallocation'; armies: number } // fleets → extra ground armies
   | { kind: 'minor_empire'; armies: number } // a small extra force (simplified)
+  | { kind: 'siegecraft' } // forts have no effect vs your attacks this turn
+  | { kind: 'surprise_attack' } // void difficult-terrain / amphibious defence this turn
+  | { kind: 'extra_armies'; armies: number; needsCapital: boolean } // Pop Explosion / Civil Service
   // ── targeted disasters (played BEFORE turn, aimed at an enemy Land) ──
   | { kind: 'disaster_structure'; terrain: DisasterTerrain } // Flood/Volcano/Fire: wreck structures
   | { kind: 'plague' } // the target Land's army rolls 4 dice; a '1' eliminates it
