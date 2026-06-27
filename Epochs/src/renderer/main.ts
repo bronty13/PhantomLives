@@ -22,6 +22,20 @@ import { drawFx, fxDone, type Fx } from './anim'
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 const lands = WORLD_MAP_DATA.lands
 const LAND_BY_ID = new Map<string, Land>(lands.map((l) => [l.id, l]))
+const MAP_BOUNDS = ((): { minX: number; minY: number; maxX: number; maxY: number } => {
+  let minX = 1
+  let minY = 1
+  let maxX = 0
+  let maxY = 0
+  for (const l of lands) {
+    if (l.x == null || l.y == null) continue
+    minX = Math.min(minX, l.x)
+    maxX = Math.max(maxX, l.x)
+    minY = Math.min(minY, l.y)
+    maxY = Math.max(maxY, l.y)
+  }
+  return { minX, minY, maxX, maxY }
+})()
 
 type AwaitEvent = Extract<GameEvent, { type: 'awaitPlacement' }>
 type AwaitEventsEvent = Extract<GameEvent, { type: 'awaitEvents' }>
@@ -349,8 +363,30 @@ class GameUI {
       this.canvas.width = cw * dpr
       this.canvas.height = ch * dpr
     }
-    const pad = 26
-    this.rect = { x: pad, y: pad, w: cw - 2 * pad, h: ch - 2 * pad }
+    // Fit the view to where territories actually are (their bbox + margin), with
+    // the equirectangular correction that one x-unit spans twice the longitude of
+    // a y-unit. rect still maps the full 0..1 domain, but is sized/offset so the
+    // populated bbox fills the canvas (rect overflows it — that's fine).
+    const b = MAP_BOUNDS
+    const bw = b.maxX - b.minX
+    const bh = b.maxY - b.minY
+    const m = 0.05
+    const minX = b.minX - bw * m
+    const maxX = b.maxX + bw * m
+    const minY = b.minY - bh * m
+    const maxY = b.maxY + bh * m
+    const dw = maxX - minX
+    const dh = maxY - minY
+    const pad = 6
+    const s = Math.min((cw - 2 * pad) / (dw * 2), (ch - 2 * pad) / dh)
+    const rw = 2 * s
+    const rh = s
+    this.rect = {
+      x: (cw - dw * rw) / 2 - minX * rw,
+      y: (ch - dh * rh) / 2 - minY * rh,
+      w: rw,
+      h: rh,
+    }
   }
 
   private drawScene(now: number): void {
@@ -365,6 +401,8 @@ class GameUI {
       hovered: this.hovered,
       placeable: this.placeable,
       tooltipLines: this.tooltipLines(),
+      viewW: this.canvas.clientWidth,
+      viewH: this.canvas.clientHeight,
     })
     for (const fx of this.fx) drawFx(this.ctx, this.rect, fx, now, LAND_BY_ID)
   }

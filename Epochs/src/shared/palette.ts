@@ -3,27 +3,31 @@
 
 import type { AreaId } from './types'
 
-// Muted, desaturated EARTH tones — regions read as terrain background, NOT as
-// player ownership. Player pieces (below) stay vivid so ownership pops on a
-// different visual channel than geography. (Kept distinct from PLAYER_COLORS.)
+// Earthy LAND tones — each of the 13 regions reads as a distinct landmass over
+// the blue ocean. Northern areas lean green/khaki (never ocean-blue) so land vs
+// sea never confuses. Player pieces (below) stay vivid and sit ON TOP, so
+// ownership pops on a brightness/size channel distinct from these region tints.
 export const AREA_COLORS: Record<AreaId, string> = {
-  middle_east: '#8a6d3b',
-  north_africa: '#9b8a52',
-  china: '#9c5a52',
-  india: '#a06a5c',
-  southern_europe: '#6e5a7a',
-  northern_europe: '#5a6e85',
-  southeast_asia: '#4a7a6e',
-  eurasia: '#6a6e78',
-  north_america: '#5e7a54',
-  south_america: '#74804e',
-  nippon: '#7a6a82',
-  africa: '#93824e',
-  australia: '#9c6a4e',
+  middle_east: '#c19a4e',
+  north_africa: '#cbb15e',
+  china: '#c2604f',
+  india: '#cc8150',
+  southern_europe: '#8f76a8',
+  northern_europe: '#6f9472',
+  southeast_asia: '#4fa386',
+  eurasia: '#a39a6e',
+  north_america: '#74a458',
+  south_america: '#9aa450',
+  nippon: '#a87290',
+  africa: '#c0a154',
+  australia: '#c0764e',
 }
 
+/** Sandy tan for Barren lands (deserts/tundra) — distinct from ocean and regions. */
+export const BARREN_COLOR = '#9c8f6e'
+
 export function areaColor(area: AreaId | null): string {
-  return (area && AREA_COLORS[area]) || '#444'
+  return (area && AREA_COLORS[area]) || BARREN_COLOR
 }
 
 /** Up to 6 player colors (3–6 players). */

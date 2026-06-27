@@ -2,6 +2,30 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.9.0] — 2026-06-27
+
+Map overhaul — it reads as a real map now. (Phase 1 of a fidelity pass driven by
+a research+audit of the real History-of-the-World rules; see below for what's
+still missing.)
+
+### Changed
+- **The map looks like a map.** Blue ocean (vertical gradient) instead of flat
+  near-black; same-region territories fuse into soft **continent silhouettes**;
+  brighter, more-saturated region tints (earthy land colors that never read as
+  ocean); bigger territory nodes; **territory labels** with collision-culling so
+  dense regions stay legible; readable adjacency edges; gold resource rings.
+- **Projection fixed.** The view now **fits the territories' bounding box** with
+  the equirectangular 2:1 correction (one x-unit = twice the longitude of a
+  y-unit), so continents are proportional and the empty Pacific no longer wastes
+  half the canvas. `map.ts` + `main.ts` (resize/bbox-fit) + `palette.ts`.
+
+### Known gaps (next phases of the fidelity build)
+A research+audit pass found Epochs faithfully implements land scoring + combat,
+but is **missing sea/ocean scoring (fleets), the disaster/targeting half of the
+event deck, and true minor empires**, and the per-epoch area-value table may be
+unverified. Those are the next phases (engine + complete in-app rules), pending
+authentic values transcribed from the physical board.
+
 ## [0.8.1] — 2026-06-27
 
 ### Added
