@@ -47,6 +47,15 @@ enum LaunchAgentPlist {
         return parse(dict)
     }
 
+    /// Parse plist *bytes* (e.g. fetched from a remote host via `cat <plist>` over SSH).
+    /// `PropertyListSerialization` reads both XML and binary plists, so the raw file can be
+    /// streamed back as-is — no `plutil` conversion needed on the remote. Nil if unparseable.
+    static func parse(data: Data) -> AgentDescriptor? {
+        guard let obj = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let dict = obj as? [String: Any] else { return nil }
+        return parse(dict)
+    }
+
     /// Return a copy of `dict` with `StartInterval` set to `seconds` — the only
     /// key a schedule change should touch. Everything else (args, env, log paths)
     /// is preserved verbatim so an operational plist isn't disturbed.
