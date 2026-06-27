@@ -2,6 +2,40 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.13.0] — 2026-06-27
+
+The board IS the map. The game now plays on the real History of the World board.
+
+### Changed
+- **Territories registered to the photographed board.** Replaced the generated
+  geography with **95 real provinces** read off the board scan via a parallel
+  registration workflow (two readers per region + consolidation), then cleaned and
+  ground-truthed: the whole Old World (Europe, Middle East — Lower/Middle/Upper
+  Tigris, Anatolia, Persia, Levant, Zagros, Arabia; India — Indus, Ganges, Deccan,
+  Ghats, Hindu Kush; China — 7 provinces; SE Asia; Africa; Australia; British
+  Isles; Scandinavia; Japan/Korea) **plus North America** (Pacific Seaboard, Great
+  Plains/Lakes, Appalachia, Deep South, Mexican Valley, Central America, West
+  Indies). Each land's (x,y) is a fraction of the board scan; adjacency is
+  Delaunay-derived (1 connected component); areas + terrain + resources assigned.
+- **The renderer draws the board scan as the basemap** and only the live game layer
+  on top — army counters, structures, rings, hover. The parchment Voronoi map is
+  retired (the real board carries the geography/labels/regions). Calibration mode
+  retained (off) for re-registering.
+- **All 49 empire homelands remapped** to the new province names (Sumeria → Lower
+  Tigris, Egypt → Nile Delta, Indus Valley → Upper Indus, …) so empires spawn on
+  real lands.
+
+### Known / next
+- **South America** (6 provinces: Brazil, Patagonia, the Andes, Amazonia, Guiana
+  Highlands) is on the physical board but was folded out of frame in the flat scan,
+  so it's pending a basemap that includes it (its scoring Area is absent for now —
+  12 of 13). No empire starts there.
+- The new geography **compressed the AI difficulty spread** (still monotonic
+  hard > medium > easy, tighter margins) — re-tuning the ε-greedy handicap is a
+  follow-up.
+- North-America province positions are approximate (close-up-read); the scan still
+  shows their true names, so it's cosmetic.
+
 ## [0.12.2] — 2026-06-27
 
 ### Changed

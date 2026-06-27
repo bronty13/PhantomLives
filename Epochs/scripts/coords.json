@@ -1,35 +1,382 @@
 {
-  "Mesopotamia": [0.622, 0.315], "Levant": [0.6, 0.314], "Anatolia": [0.597, 0.283],
-  "Persia": [0.647, 0.322], "Zagros": [0.631, 0.311], "Arabia": [0.625, 0.367],
-  "Empty Quarter": [0.639, 0.389], "Caucasus": [0.622, 0.264], "Assyria": [0.619, 0.3],
-  "Lower Nile": [0.586, 0.333], "Upper Nile": [0.59, 0.361], "Libya": [0.55, 0.35],
-  "Carthage": [0.528, 0.297], "Numidia": [0.517, 0.306], "Mauretania": [0.483, 0.322],
-  "Sahara": [0.514, 0.372], "North China": [0.819, 0.289], "South China": [0.811, 0.367],
-  "Manchuria": [0.847, 0.25], "Tibet": [0.744, 0.328], "Mongolia": [0.792, 0.244],
-  "Tarim": [0.733, 0.278], "Sichuan": [0.786, 0.331], "Gobi": [0.778, 0.261],
-  "Indus": [0.689, 0.35], "Punjab": [0.706, 0.328], "Ganges": [0.728, 0.356],
-  "Bengal": [0.747, 0.369], "Deccan": [0.714, 0.406], "Himalaya": [0.731, 0.339],
-  "Ceylon": [0.725, 0.458], "Italy": [0.535, 0.27], "Greece": [0.561, 0.283],
-  "Iberia": [0.489, 0.278], "Balkans": [0.558, 0.261], "Sicily": [0.539, 0.292],
-  "Crete": [0.569, 0.304], "Alps": [0.526, 0.242], "Gaul": [0.507, 0.239],
-  "Britain": [0.493, 0.205], "Ireland": [0.478, 0.203], "Germania": [0.529, 0.217],
-  "Scandinavia": [0.542, 0.156], "Poland": [0.553, 0.211], "Low Countries": [0.514, 0.211],
-  "Indochina": [0.794, 0.411], "Burma": [0.767, 0.383], "Siam": [0.781, 0.417],
-  "Malaya": [0.783, 0.478], "Sumatra": [0.782, 0.503], "Java": [0.806, 0.542],
-  "Borneo": [0.817, 0.497], "Philippines": [0.839, 0.433], "Pontic Steppe": [0.597, 0.233],
-  "Muscovy": [0.604, 0.19], "Volga": [0.631, 0.222], "Kazakh Steppe": [0.686, 0.233],
-  "Central Asia": [0.678, 0.267], "Urals": [0.664, 0.167], "Siberia": [0.778, 0.156],
-  "Eastern Woodlands": [0.278, 0.278], "Mississippi": [0.25, 0.306], "Great Plains": [0.222, 0.272],
-  "Mexico": [0.235, 0.38], "Rockies": [0.194, 0.256], "Alaska": [0.078, 0.144],
-  "Canada": [0.222, 0.178], "Greenland": [0.383, 0.1], "Andes": [0.285, 0.585],
-  "Amazon": [0.328, 0.522], "Brazil": [0.361, 0.556], "Pampas": [0.328, 0.694],
-  "Gran Chaco": [0.331, 0.628], "Patagonia": [0.308, 0.75], "Caribbean Coast": [0.303, 0.45],
-  "Antarctica": [0.325, 0.92], "Honshu": [0.886, 0.3], "Kyushu": [0.864, 0.319],
-  "Shikoku": [0.871, 0.313], "Hokkaido": [0.897, 0.259], "Korea": [0.854, 0.294],
-  "Ryukyu": [0.856, 0.353], "West Africa": [0.489, 0.422], "Guinea Coast": [0.506, 0.467],
-  "Ethiopia": [0.608, 0.45], "East Africa": [0.603, 0.511], "Congo": [0.561, 0.506],
-  "Great Lakes": [0.583, 0.517], "Zimbabwe": [0.582, 0.606], "Cape": [0.564, 0.7],
-  "Eastern Australia": [0.917, 0.685], "Western Australia": [0.839, 0.639], "Outback": [0.872, 0.639],
-  "New Guinea": [0.892, 0.528], "New Zealand": [0.983, 0.728], "Tasmania": [0.908, 0.733],
-  "Polynesia": [0.989, 0.6]
+ "Hokkaido": [
+  0.638,
+  0.058
+ ],
+ "Honshu": [
+  0.702,
+  0.072
+ ],
+ "Korea": [
+  0.667,
+  0.122
+ ],
+ "Great Plain of China": [
+  0.69,
+  0.158
+ ],
+ "Manchuria": [
+  0.612,
+  0.196
+ ],
+ "Yellow River": [
+  0.665,
+  0.205
+ ],
+ "Highlands": [
+  0.335,
+  0.225
+ ],
+ "Siberia": [
+  0.52,
+  0.238
+ ],
+ "Ireland": [
+  0.3,
+  0.25
+ ],
+ "Scandinavia": [
+  0.421,
+  0.259
+ ],
+ "Albion": [
+  0.317,
+  0.268
+ ],
+ "Chekiang": [
+  0.72,
+  0.27
+ ],
+ "Wei River": [
+  0.635,
+  0.273
+ ],
+ "Eastern Steppe": [
+  0.585,
+  0.283
+ ],
+ "Yangtze Kiang": [
+  0.698,
+  0.292
+ ],
+ "Si-Kiang": [
+  0.716,
+  0.326
+ ],
+ "Western Gaul": [
+  0.286,
+  0.33
+ ],
+ "North European Plain": [
+  0.498,
+  0.339
+ ],
+ "Szechwan": [
+  0.668,
+  0.345
+ ],
+ "Lower Rhine": [
+  0.344,
+  0.349
+ ],
+ "Northern Gaul": [
+  0.303,
+  0.353
+ ],
+ "Baltic-Seaboard": [
+  0.395,
+  0.358
+ ],
+ "Central Massif": [
+  0.262,
+  0.379
+ ],
+ "Pyrenees": [
+  0.208,
+  0.382
+ ],
+ "Tarim Basin": [
+  0.589,
+  0.382
+ ],
+ "Central Europe": [
+  0.337,
+  0.391
+ ],
+ "Alps": [
+  0.281,
+  0.393
+ ],
+ "Western Steppe": [
+  0.495,
+  0.403
+ ],
+ "Western Iberia": [
+  0.18,
+  0.408
+ ],
+ "Southern Iberia": [
+  0.205,
+  0.421
+ ],
+ "Dnieper": [
+  0.414,
+  0.424
+ ],
+ "Plateau of Tibet": [
+  0.625,
+  0.427
+ ],
+ "Danube": [
+  0.362,
+  0.435
+ ],
+ "Northern Apennines": [
+  0.268,
+  0.445
+ ],
+ "Dalmatia": [
+  0.3,
+  0.445
+ ],
+ "Turanian Plain": [
+  0.516,
+  0.445
+ ],
+ "Mekong": [
+  0.742,
+  0.461
+ ],
+ "Caucasus": [
+  0.456,
+  0.466
+ ],
+ "Irrawaddy": [
+  0.688,
+  0.469
+ ],
+ "Balkans": [
+  0.339,
+  0.491
+ ],
+ "Southern Apennines": [
+  0.264,
+  0.494
+ ],
+ "Ganges Delta": [
+  0.662,
+  0.496
+ ],
+ "Pindus": [
+  0.314,
+  0.497
+ ],
+ "Hindu Kush": [
+  0.553,
+  0.517
+ ],
+ "Sardinia": [
+  0.254,
+  0.528
+ ],
+ "Western Anatolia": [
+  0.375,
+  0.531
+ ],
+ "Ganges Valley": [
+  0.628,
+  0.534
+ ],
+ "Morea": [
+  0.312,
+  0.535
+ ],
+ "Eastern Anatolia": [
+  0.425,
+  0.538
+ ],
+ "Upper Indus": [
+  0.585,
+  0.54
+ ],
+ "Sierra Morena": [
+  0.19,
+  0.545
+ ],
+ "East Indies": [
+  0.785,
+  0.55
+ ],
+ "Persian Plateau": [
+  0.514,
+  0.553
+ ],
+ "Malayan Peninsula": [
+  0.714,
+  0.554
+ ],
+ "Crete": [
+  0.329,
+  0.593
+ ],
+ "Levant": [
+  0.401,
+  0.596
+ ],
+ "Zagros": [
+  0.471,
+  0.598
+ ],
+ "Eastern Deccan": [
+  0.663,
+  0.605
+ ],
+ "Lower Indus": [
+  0.575,
+  0.627
+ ],
+ "Sumatra": [
+  0.76,
+  0.63
+ ],
+ "Upper Tigris": [
+  0.425,
+  0.631
+ ],
+ "Gold Coast": [
+  0.129,
+  0.634
+ ],
+ "Persian Salt Desert": [
+  0.524,
+  0.635
+ ],
+ "Libya": [
+  0.225,
+  0.636
+ ],
+ "Palestine": [
+  0.328,
+  0.641
+ ],
+ "Western Deccan": [
+  0.627,
+  0.649
+ ],
+ "Sahara Desert": [
+  0.198,
+  0.66
+ ],
+ "Middle Tigris": [
+  0.444,
+  0.683
+ ],
+ "Nile Delta": [
+  0.28,
+  0.693
+ ],
+ "Eastern Ghats": [
+  0.667,
+  0.706
+ ],
+ "Western Ghats": [
+  0.615,
+  0.71
+ ],
+ "New Guinea": [
+  0.811,
+  0.71
+ ],
+ "Lower Tigris": [
+  0.452,
+  0.732
+ ],
+ "Central Africa": [
+  0.168,
+  0.74
+ ],
+ "Nubia": [
+  0.27,
+  0.742
+ ],
+ "Congo Basin": [
+  0.1,
+  0.743
+ ],
+ "The Outback": [
+  0.776,
+  0.748
+ ],
+ "Syrian Desert": [
+  0.393,
+  0.773
+ ],
+ "Arabian Peninsula": [
+  0.335,
+  0.804
+ ],
+ "Australia": [
+  0.782,
+  0.805
+ ],
+ "Upper Nile": [
+  0.277,
+  0.809
+ ],
+ "Ceylon": [
+  0.69,
+  0.814
+ ],
+ "Southern Africa": [
+  0.048,
+  0.817
+ ],
+ "East Africa": [
+  0.138,
+  0.838
+ ],
+ "Madagascar": [
+  0.169,
+  0.913
+ ],
+ "Northern Lakes": [
+  0.16,
+  0.045
+ ],
+ "Great Lakes": [
+  0.235,
+  0.065
+ ],
+ "Appalachia": [
+  0.275,
+  0.085
+ ],
+ "Pacific Seaboard": [
+  0.15,
+  0.105
+ ],
+ "Great Plains": [
+  0.198,
+  0.09
+ ],
+ "Deep South": [
+  0.245,
+  0.11
+ ],
+ "Mexican Valley": [
+  0.195,
+  0.13
+ ],
+ "West Indies": [
+  0.285,
+  0.125
+ ],
+ "Central America": [
+  0.24,
+  0.15
+ ],
+ "Mongolia": [
+  0.628,
+  0.235
+ ]
 }

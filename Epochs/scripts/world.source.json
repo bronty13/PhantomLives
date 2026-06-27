@@ -5,7 +5,7 @@
       "order": 1,
       "name": "Sumeria",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Mesopotamia",
+      "homelandTerritory": "Lower Tigris",
       "strength": 4,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -15,7 +15,7 @@
       "order": 2,
       "name": "Egypt",
       "homelandArea": "north_africa",
-      "homelandTerritory": "Lower Nile",
+      "homelandTerritory": "Nile Delta",
       "strength": 5,
       "hasCapital": true,
       "navigationSeas": "red_sea, mediterranean"
@@ -35,7 +35,7 @@
       "order": 4,
       "name": "Indus Valley",
       "homelandArea": "india",
-      "homelandTerritory": "Indus",
+      "homelandTerritory": "Upper Indus",
       "strength": 4,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -45,7 +45,7 @@
       "order": 5,
       "name": "Babylonia",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Assyria",
+      "homelandTerritory": "Upper Tigris",
       "strength": 4,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -55,7 +55,7 @@
       "order": 6,
       "name": "Shang Dynasty",
       "homelandArea": "china",
-      "homelandTerritory": "North China",
+      "homelandTerritory": "Yellow River",
       "strength": 4,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -65,7 +65,7 @@
       "order": 7,
       "name": "Aryans",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Central Asia",
+      "homelandTerritory": "Turanian Plain",
       "strength": 5,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -75,7 +75,7 @@
       "order": 1,
       "name": "Greek City States",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Greece",
+      "homelandTerritory": "Morea",
       "strength": 9,
       "hasCapital": true,
       "navigationSeas": "aegean_sea, mediterranean, black_sea"
@@ -85,7 +85,7 @@
       "order": 2,
       "name": "Chou",
       "homelandArea": "china",
-      "homelandTerritory": "North China",
+      "homelandTerritory": "Yellow River",
       "strength": 6,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -95,7 +95,7 @@
       "order": 3,
       "name": "Vedic City States",
       "homelandArea": "india",
-      "homelandTerritory": "Ganges",
+      "homelandTerritory": "Ganges Valley",
       "strength": 6,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -105,7 +105,7 @@
       "order": 4,
       "name": "Assyria",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Assyria",
+      "homelandTerritory": "Upper Tigris",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -115,7 +115,7 @@
       "order": 5,
       "name": "Scythians",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Pontic Steppe",
+      "homelandTerritory": "Western Steppe",
       "strength": 7,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -125,7 +125,7 @@
       "order": 6,
       "name": "Carthaginia",
       "homelandArea": "north_africa",
-      "homelandTerritory": "Carthage",
+      "homelandTerritory": "Libya",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "mediterranean, atlantic"
@@ -135,7 +135,7 @@
       "order": 7,
       "name": "Persia",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Persia",
+      "homelandTerritory": "Persian Plateau",
       "strength": 15,
       "hasCapital": true,
       "navigationSeas": "persian_gulf, mediterranean, aegean_sea"
@@ -145,7 +145,7 @@
       "order": 1,
       "name": "Celts",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Gaul",
+      "homelandTerritory": "Western Gaul",
       "strength": 8,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -155,7 +155,7 @@
       "order": 2,
       "name": "Macedonia",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Greece",
+      "homelandTerritory": "Morea",
       "strength": 15,
       "hasCapital": true,
       "navigationSeas": "aegean_sea, mediterranean"
@@ -165,7 +165,7 @@
       "order": 3,
       "name": "Maurya",
       "homelandArea": "india",
-      "homelandTerritory": "Ganges",
+      "homelandTerritory": "Ganges Valley",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -175,7 +175,7 @@
       "order": 4,
       "name": "Han",
       "homelandArea": "china",
-      "homelandTerritory": "North China",
+      "homelandTerritory": "Yellow River",
       "strength": 12,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -184,7 +184,7 @@
       "epoch": 3,
       "order": 5,
       "name": "Hsiung-Nu",
-      "homelandArea": "china",
+      "homelandArea": "eurasia",
       "homelandTerritory": "Mongolia",
       "strength": 7,
       "hasCapital": false,
@@ -195,7 +195,7 @@
       "order": 6,
       "name": "Romans",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Italy",
+      "homelandTerritory": "Northern Apennines",
       "strength": 25,
       "hasCapital": true,
       "navigationSeas": "mediterranean"
@@ -205,7 +205,7 @@
       "order": 7,
       "name": "Sassanids",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Persia",
+      "homelandTerritory": "Persian Plateau",
       "strength": 9,
       "hasCapital": true,
       "navigationSeas": "persian_gulf"
@@ -225,7 +225,7 @@
       "order": 2,
       "name": "Goths",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Pontic Steppe",
+      "homelandTerritory": "Western Steppe",
       "strength": 10,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -235,7 +235,7 @@
       "order": 3,
       "name": "Huns",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Kazakh Steppe",
+      "homelandTerritory": "Eastern Steppe",
       "strength": 14,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -245,7 +245,7 @@
       "order": 4,
       "name": "Guptas",
       "homelandArea": "india",
-      "homelandTerritory": "Ganges",
+      "homelandTerritory": "Ganges Valley",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "bay_of_bengal"
@@ -255,7 +255,7 @@
       "order": 5,
       "name": "T'ang Dynasty",
       "homelandArea": "china",
-      "homelandTerritory": "North China",
+      "homelandTerritory": "Yellow River",
       "strength": 11,
       "hasCapital": true,
       "navigationSeas": "sea_of_japan, south_china_sea"
@@ -265,7 +265,7 @@
       "order": 6,
       "name": "Arabs",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Arabia",
+      "homelandTerritory": "Arabian Peninsula",
       "strength": 18,
       "hasCapital": true,
       "navigationSeas": "red_sea"
@@ -275,7 +275,7 @@
       "order": 7,
       "name": "Khmers",
       "homelandArea": "southeast_asia",
-      "homelandTerritory": "Indochina",
+      "homelandTerritory": "Mekong",
       "strength": 5,
       "hasCapital": true,
       "navigationSeas": "south_china_sea"
@@ -285,7 +285,7 @@
       "order": 1,
       "name": "Franks",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Gaul",
+      "homelandTerritory": "Western Gaul",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "mediterranean"
@@ -305,7 +305,7 @@
       "order": 3,
       "name": "Holy Roman Empire",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Germania",
+      "homelandTerritory": "Central Europe",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -315,7 +315,7 @@
       "order": 4,
       "name": "Chola",
       "homelandArea": "india",
-      "homelandTerritory": "Deccan",
+      "homelandTerritory": "Western Deccan",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "bay_of_bengal"
@@ -325,7 +325,7 @@
       "order": 5,
       "name": "Sung Dynasty",
       "homelandArea": "china",
-      "homelandTerritory": "Sichuan",
+      "homelandTerritory": "Szechwan",
       "strength": 9,
       "hasCapital": true,
       "navigationSeas": "south_china_sea"
@@ -335,7 +335,7 @@
       "order": 6,
       "name": "Seljuk Turks",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Central Asia",
+      "homelandTerritory": "Turanian Plain",
       "strength": 12,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -344,7 +344,7 @@
       "epoch": 5,
       "order": 7,
       "name": "Mongols",
-      "homelandArea": "china",
+      "homelandArea": "eurasia",
       "homelandTerritory": "Mongolia",
       "strength": 20,
       "hasCapital": false,
@@ -355,7 +355,7 @@
       "order": 1,
       "name": "Ming Dynasty",
       "homelandArea": "china",
-      "homelandTerritory": "South China",
+      "homelandTerritory": "Si-Kiang",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "sea_of_japan, south_china_sea"
@@ -365,7 +365,7 @@
       "order": 2,
       "name": "Timurid Emirate",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Central Asia",
+      "homelandTerritory": "Turanian Plain",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -375,7 +375,7 @@
       "order": 3,
       "name": "Aztec",
       "homelandArea": "north_america",
-      "homelandTerritory": "Mexico",
+      "homelandTerritory": "Mexican Valley",
       "strength": 4,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -385,7 +385,7 @@
       "order": 4,
       "name": "Ottoman Turks",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Anatolia",
+      "homelandTerritory": "Eastern Anatolia",
       "strength": 15,
       "hasCapital": true,
       "navigationSeas": "red_sea, black_sea, mediterranean"
@@ -395,7 +395,7 @@
       "order": 5,
       "name": "Portugal",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Iberia",
+      "homelandTerritory": "Southern Iberia",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean"
@@ -405,7 +405,7 @@
       "order": 6,
       "name": "Spain",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Iberia",
+      "homelandTerritory": "Southern Iberia",
       "strength": 15,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean"
@@ -415,7 +415,7 @@
       "order": 7,
       "name": "Mughals",
       "homelandArea": "india",
-      "homelandTerritory": "Ganges",
+      "homelandTerritory": "Ganges Valley",
       "strength": 12,
       "hasCapital": true,
       "navigationSeas": "bay_of_bengal"
@@ -425,7 +425,7 @@
       "order": 1,
       "name": "Russia",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Muscovy",
+      "homelandTerritory": "Western Steppe",
       "strength": 12,
       "hasCapital": true,
       "navigationSeas": "north_sea, black_sea, sea_of_japan"
@@ -445,7 +445,7 @@
       "order": 3,
       "name": "Netherlands",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Low Countries",
+      "homelandTerritory": "Lower Rhine",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean, pacific"
@@ -455,7 +455,7 @@
       "order": 4,
       "name": "France",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Gaul",
+      "homelandTerritory": "Western Gaul",
       "strength": 15,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean, pacific"
@@ -465,7 +465,7 @@
       "order": 5,
       "name": "Britain",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Britain",
+      "homelandTerritory": "Albion",
       "strength": 20,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean, pacific"
@@ -475,7 +475,7 @@
       "order": 6,
       "name": "United States",
       "homelandArea": "north_america",
-      "homelandTerritory": "Eastern Woodlands",
+      "homelandTerritory": "Great Lakes",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "caribbean"
@@ -485,7 +485,7 @@
       "order": 7,
       "name": "Germany",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Germania",
+      "homelandTerritory": "Central Europe",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean, pacific"
@@ -528,76 +528,108 @@
         "areaId": "middle_east",
         "territories": [
           {
-            "name": "Mesopotamia",
-            "terrain": "",
-            "seas": "persian_gulf",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Assyria, Levant, Anatolia, Zagros, Persia, Arabia, Empty Quarter"
-          },
-          {
-            "name": "Levant",
-            "terrain": "",
-            "seas": "mediterranean,red_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Mesopotamia, Assyria, Anatolia, Arabia, Lower Nile"
-          },
-          {
-            "name": "Anatolia",
-            "terrain": "mountain,strait",
-            "seas": "black_sea,aegean_sea,mediterranean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Levant, Mesopotamia, Assyria, Caucasus, Zagros, Balkans (across Bosporus strait)"
-          },
-          {
-            "name": "Persia",
-            "terrain": "mountain",
-            "seas": "persian_gulf,caspian_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Zagros, Caucasus, Central Asia, Indus"
-          },
-          {
-            "name": "Zagros",
-            "terrain": "mountain",
-            "seas": "persian_gulf",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Mesopotamia, Assyria, Persia, Caucasus, Anatolia"
-          },
-          {
-            "name": "Arabia",
-            "terrain": "",
-            "seas": "red_sea,persian_gulf,arabian_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Levant, Mesopotamia, Empty Quarter, Ethiopia (across Red Sea)"
-          },
-          {
-            "name": "Empty Quarter",
-            "terrain": "",
-            "seas": "arabian_sea",
-            "resource": false,
-            "barren": true,
-            "neighborsHint": "Arabia, Mesopotamia"
-          },
-          {
             "name": "Caucasus",
             "terrain": "mountain",
-            "seas": "black_sea,caspian_sea",
+            "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Anatolia, Assyria, Zagros, Persia, Pontic Steppe, Volga"
+            "neighborsHint": "Dnieper, Eastern Anatolia, Hindu Kush, Persian Plateau, Turanian Plain, Western Anatolia, Western Steppe"
           },
           {
-            "name": "Assyria",
+            "name": "Western Anatolia",
             "terrain": "",
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Mesopotamia, Anatolia, Zagros, Caucasus, Levant"
+            "neighborsHint": "Balkans, Caucasus, Crete, Danube, Dnieper, Eastern Anatolia, Levant, Morea"
+          },
+          {
+            "name": "Eastern Anatolia",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Caucasus, Levant, Persian Plateau, Western Anatolia, Zagros"
+          },
+          {
+            "name": "Persian Plateau",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Caucasus, Eastern Anatolia, Hindu Kush, Lower Indus, Persian Salt Desert, Upper Indus, Zagros"
+          },
+          {
+            "name": "Levant",
+            "terrain": "",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Crete, Eastern Anatolia, Palestine, Upper Tigris, Western Anatolia, Zagros"
+          },
+          {
+            "name": "Zagros",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Eastern Anatolia, Levant, Middle Tigris, Persian Plateau, Persian Salt Desert, Upper Tigris"
+          },
+          {
+            "name": "Upper Tigris",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Levant, Middle Tigris, Palestine, Zagros"
+          },
+          {
+            "name": "Persian Salt Desert",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": true,
+            "neighborsHint": "Lower Indus, Lower Tigris, Middle Tigris, Persian Plateau, Western Ghats, Zagros"
+          },
+          {
+            "name": "Palestine",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Crete, Levant, Libya, Middle Tigris, Nile Delta, Upper Tigris"
+          },
+          {
+            "name": "Middle Tigris",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Lower Tigris, Palestine, Persian Salt Desert, Syrian Desert, Upper Tigris, Zagros"
+          },
+          {
+            "name": "Lower Tigris",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Middle Tigris, Persian Salt Desert, Syrian Desert"
+          },
+          {
+            "name": "Syrian Desert",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": true,
+            "neighborsHint": "Arabian Peninsula, Lower Tigris, Middle Tigris, Nubia"
+          },
+          {
+            "name": "Arabian Peninsula",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Nubia, Syrian Desert, Upper Nile"
           }
         ]
       },
@@ -605,633 +637,44 @@
         "areaId": "north_africa",
         "territories": [
           {
-            "name": "Lower Nile",
+            "name": "Libya",
             "terrain": "",
-            "seas": "mediterranean,red_sea",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Crete, Gold Coast, Nile Delta, Palestine, Sahara Desert, Sardinia, Sierra Morena"
+          },
+          {
+            "name": "Sahara Desert",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": true,
+            "neighborsHint": "Central Africa, Gold Coast, Libya, Nile Delta, Nubia"
+          },
+          {
+            "name": "Nile Delta",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Libya, Nubia, Palestine, Sahara Desert"
+          },
+          {
+            "name": "Nubia",
+            "terrain": "",
+            "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Upper Nile, Libya, Levant"
+            "neighborsHint": "Arabian Peninsula, Central Africa, Nile Delta, Sahara Desert, Syrian Desert, Upper Nile"
           },
           {
             "name": "Upper Nile",
             "terrain": "",
-            "seas": "red_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Lower Nile, Sahara, Ethiopia, West Africa"
-          },
-          {
-            "name": "Libya",
-            "terrain": "",
-            "seas": "mediterranean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Lower Nile, Carthage, Sahara"
-          },
-          {
-            "name": "Carthage",
-            "terrain": "",
-            "seas": "mediterranean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Libya, Numidia, Sahara, Sicily (across Sicilian channel)"
-          },
-          {
-            "name": "Numidia",
-            "terrain": "",
-            "seas": "mediterranean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Carthage, Mauretania, Sahara"
-          },
-          {
-            "name": "Mauretania",
-            "terrain": "mountain,strait",
-            "seas": "mediterranean,atlantic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Numidia, Sahara, Iberia (across Gibraltar strait)"
-          },
-          {
-            "name": "Sahara",
-            "terrain": "",
-            "seas": "atlantic",
-            "resource": false,
-            "barren": true,
-            "neighborsHint": "Libya, Carthage, Numidia, Mauretania, Upper Nile, West Africa"
-          }
-        ]
-      },
-      {
-        "areaId": "china",
-        "territories": [
-          {
-            "name": "North China",
-            "terrain": "great_wall",
-            "seas": "yellow_sea,east_china_sea",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "South China, Manchuria, Mongolia, Tarim, Sichuan, Tibet"
-          },
-          {
-            "name": "South China",
-            "terrain": "",
-            "seas": "south_china_sea,east_china_sea",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "North China, Sichuan, Tibet, Burma, Indochina"
-          },
-          {
-            "name": "Manchuria",
-            "terrain": "forest",
-            "seas": "yellow_sea,sea_of_japan",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "North China, Mongolia, Korea, Siberia"
-          },
-          {
-            "name": "Tibet",
-            "terrain": "mountain",
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "North China, South China, Sichuan, Tarim, Himalaya, Burma, Central Asia"
-          },
-          {
-            "name": "Mongolia",
-            "terrain": "",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "North China, Manchuria, Gobi, Tarim, Siberia, Kazakh Steppe"
-          },
-          {
-            "name": "Tarim",
-            "terrain": "mountain",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Tibet, North China, Mongolia, Gobi, Central Asia, Kazakh Steppe"
-          },
-          {
-            "name": "Sichuan",
-            "terrain": "mountain",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "North China, South China, Tibet, Burma"
-          },
-          {
-            "name": "Gobi",
-            "terrain": "",
-            "seas": "",
-            "resource": false,
-            "barren": true,
-            "neighborsHint": "Mongolia, Tarim, North China"
-          }
-        ]
-      },
-      {
-        "areaId": "india",
-        "territories": [
-          {
-            "name": "Indus",
-            "terrain": "",
-            "seas": "arabian_sea",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Punjab, Deccan, Persia, Himalaya"
-          },
-          {
-            "name": "Punjab",
-            "terrain": "",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Indus, Ganges, Himalaya, Central Asia"
-          },
-          {
-            "name": "Ganges",
-            "terrain": "",
-            "seas": "bay_of_bengal",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Punjab, Bengal, Deccan, Himalaya"
-          },
-          {
-            "name": "Bengal",
-            "terrain": "",
-            "seas": "bay_of_bengal",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Ganges, Deccan, Burma, Himalaya"
-          },
-          {
-            "name": "Deccan",
-            "terrain": "",
-            "seas": "arabian_sea,bay_of_bengal,indian_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Indus, Ganges, Bengal, Ceylon"
-          },
-          {
-            "name": "Himalaya",
-            "terrain": "mountain",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Punjab, Ganges, Bengal, Indus, Tibet"
-          },
-          {
-            "name": "Ceylon",
-            "terrain": "",
-            "seas": "indian_ocean,bay_of_bengal",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Deccan"
-          }
-        ]
-      },
-      {
-        "areaId": "southern_europe",
-        "territories": [
-          {
-            "name": "Italy",
-            "terrain": "",
-            "seas": "mediterranean,adriatic_sea",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Alps, Sicily, Balkans (across Adriatic), Greece (across Ionian)"
-          },
-          {
-            "name": "Greece",
-            "terrain": "mountain",
-            "seas": "aegean_sea,mediterranean,adriatic_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Balkans, Crete, Anatolia (across Aegean), Italy (across Ionian)"
-          },
-          {
-            "name": "Iberia",
-            "terrain": "mountain,strait",
-            "seas": "mediterranean,atlantic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Gaul, Mauretania (across Gibraltar strait)"
-          },
-          {
-            "name": "Balkans",
-            "terrain": "strait",
-            "seas": "adriatic_sea,aegean_sea,black_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Greece, Alps, Poland, Pontic Steppe, Italy (across Adriatic), Anatolia (across Bosporus strait)"
-          },
-          {
-            "name": "Sicily",
-            "terrain": "strait",
-            "seas": "mediterranean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Italy, Greece, Carthage (across Sicilian channel)"
-          },
-          {
-            "name": "Crete",
-            "terrain": "",
-            "seas": "mediterranean,aegean_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Greece"
-          },
-          {
-            "name": "Alps",
-            "terrain": "mountain",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Italy, Gaul, Germania, Balkans"
-          }
-        ]
-      },
-      {
-        "areaId": "northern_europe",
-        "territories": [
-          {
-            "name": "Gaul",
-            "terrain": "",
-            "seas": "atlantic,mediterranean,north_sea",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Iberia, Alps, Germania, Low Countries, Britain (across Dover strait)"
-          },
-          {
-            "name": "Britain",
-            "terrain": "strait",
-            "seas": "north_sea,atlantic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Gaul (across Dover strait), Ireland, Low Countries (across North Sea), Scandinavia (across North Sea)"
-          },
-          {
-            "name": "Ireland",
-            "terrain": "",
-            "seas": "atlantic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Britain"
-          },
-          {
-            "name": "Germania",
-            "terrain": "forest",
-            "seas": "north_sea,baltic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Gaul, Alps, Low Countries, Poland, Scandinavia (across Baltic)"
-          },
-          {
-            "name": "Scandinavia",
-            "terrain": "forest",
-            "seas": "north_sea,baltic,atlantic,arctic_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Germania (across Baltic), Britain (across North Sea), Poland (across Baltic), Muscovy"
-          },
-          {
-            "name": "Poland",
-            "terrain": "",
-            "seas": "baltic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Germania, Balkans, Pontic Steppe, Muscovy, Scandinavia (across Baltic)"
-          },
-          {
-            "name": "Low Countries",
-            "terrain": "",
-            "seas": "north_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Gaul, Germania, Britain (across North Sea)"
-          }
-        ]
-      },
-      {
-        "areaId": "southeast_asia",
-        "territories": [
-          {
-            "name": "Indochina",
-            "terrain": "",
-            "seas": "south_china_sea,bay_of_bengal",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "South China, Burma, Siam, Malaya"
-          },
-          {
-            "name": "Burma",
-            "terrain": "mountain",
-            "seas": "bay_of_bengal",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Bengal, Tibet, South China, Siam, Indochina"
-          },
-          {
-            "name": "Siam",
-            "terrain": "",
-            "seas": "south_china_sea,bay_of_bengal",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Burma, Indochina, Malaya"
-          },
-          {
-            "name": "Malaya",
-            "terrain": "strait",
-            "seas": "south_china_sea,bay_of_bengal",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Siam, Indochina, Sumatra (across Malacca strait)"
-          },
-          {
-            "name": "Sumatra",
-            "terrain": "",
-            "seas": "indian_ocean,south_china_sea,java_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Malaya (across Malacca strait), Java, Borneo"
-          },
-          {
-            "name": "Java",
-            "terrain": "",
-            "seas": "java_sea,indian_ocean",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Sumatra, Borneo"
-          },
-          {
-            "name": "Borneo",
-            "terrain": "forest",
-            "seas": "south_china_sea,java_sea,celebes_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Sumatra, Java, Philippines"
-          },
-          {
-            "name": "Philippines",
-            "terrain": "",
-            "seas": "south_china_sea,pacific,celebes_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Borneo, South China (across sea), New Guinea (across sea)"
-          }
-        ]
-      },
-      {
-        "areaId": "eurasia",
-        "territories": [
-          {
-            "name": "Pontic Steppe",
-            "terrain": "",
-            "seas": "black_sea,caspian_sea",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Muscovy, Volga, Caucasus, Balkans, Poland, Kazakh Steppe"
-          },
-          {
-            "name": "Muscovy",
-            "terrain": "forest",
-            "seas": "arctic_ocean,baltic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Pontic Steppe, Volga, Urals, Poland, Scandinavia, Siberia"
-          },
-          {
-            "name": "Volga",
-            "terrain": "",
-            "seas": "caspian_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Muscovy, Pontic Steppe, Urals, Kazakh Steppe, Caucasus"
-          },
-          {
-            "name": "Kazakh Steppe",
-            "terrain": "",
-            "seas": "caspian_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Volga, Urals, Central Asia, Siberia, Mongolia, Pontic Steppe"
-          },
-          {
-            "name": "Central Asia",
-            "terrain": "mountain",
-            "seas": "caspian_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Kazakh Steppe, Persia, Tarim, Tibet, Punjab"
-          },
-          {
-            "name": "Urals",
-            "terrain": "mountain",
-            "seas": "arctic_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Muscovy, Volga, Kazakh Steppe, Siberia"
-          },
-          {
-            "name": "Siberia",
-            "terrain": "",
-            "seas": "arctic_ocean,pacific,sea_of_japan,bering_sea",
-            "resource": false,
-            "barren": true,
-            "neighborsHint": "Urals, Muscovy, Kazakh Steppe, Mongolia, Manchuria, Alaska (across Bering strait)"
-          }
-        ]
-      },
-      {
-        "areaId": "north_america",
-        "territories": [
-          {
-            "name": "Eastern Woodlands",
-            "terrain": "forest",
-            "seas": "atlantic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Mississippi, Great Plains, Canada, Mexico"
-          },
-          {
-            "name": "Mississippi",
-            "terrain": "",
-            "seas": "gulf_of_mexico",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Eastern Woodlands, Great Plains, Mexico, Rockies"
-          },
-          {
-            "name": "Great Plains",
-            "terrain": "",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Eastern Woodlands, Mississippi, Rockies, Canada"
-          },
-          {
-            "name": "Mexico",
-            "terrain": "mountain",
-            "seas": "gulf_of_mexico,caribbean,pacific",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Mississippi, Rockies, Eastern Woodlands, Caribbean Coast (across Central America)"
-          },
-          {
-            "name": "Rockies",
-            "terrain": "mountain",
-            "seas": "pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Great Plains, Mississippi, Mexico, Alaska, Canada"
-          },
-          {
-            "name": "Alaska",
-            "terrain": "strait",
-            "seas": "pacific,bering_sea,arctic_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Canada, Rockies, Siberia (across Bering strait)"
-          },
-          {
-            "name": "Canada",
-            "terrain": "forest",
-            "seas": "atlantic,arctic_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Eastern Woodlands, Great Plains, Rockies, Alaska, Greenland"
-          },
-          {
-            "name": "Greenland",
-            "terrain": "",
-            "seas": "atlantic,arctic_ocean",
-            "resource": false,
-            "barren": true,
-            "neighborsHint": "Canada, Scandinavia (across North Atlantic)"
-          }
-        ]
-      },
-      {
-        "areaId": "south_america",
-        "territories": [
-          {
-            "name": "Andes",
-            "terrain": "mountain",
-            "seas": "pacific",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Amazon, Caribbean Coast, Pampas, Gran Chaco, Patagonia"
-          },
-          {
-            "name": "Amazon",
-            "terrain": "",
-            "seas": "atlantic",
-            "resource": false,
-            "barren": true,
-            "neighborsHint": "Andes, Caribbean Coast, Brazil, Gran Chaco"
-          },
-          {
-            "name": "Brazil",
-            "terrain": "",
-            "seas": "atlantic",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Amazon, Gran Chaco, Pampas, Caribbean Coast"
-          },
-          {
-            "name": "Pampas",
-            "terrain": "",
-            "seas": "atlantic",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Andes, Gran Chaco, Brazil, Patagonia"
-          },
-          {
-            "name": "Gran Chaco",
-            "terrain": "",
-            "seas": "",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Andes, Amazon, Brazil, Pampas"
-          },
-          {
-            "name": "Patagonia",
-            "terrain": "strait",
-            "seas": "atlantic,pacific,southern_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Andes, Pampas, Antarctica (across Drake Passage / Magellan strait)"
-          },
-          {
-            "name": "Caribbean Coast",
-            "terrain": "",
-            "seas": "caribbean,atlantic,pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Andes, Amazon, Brazil, Mexico (across Caribbean / Panama)"
-          },
-          {
-            "name": "Antarctica",
-            "terrain": "",
-            "seas": "southern_ocean,atlantic,pacific",
-            "resource": false,
-            "barren": true,
-            "neighborsHint": "Patagonia (across Drake Passage)"
-          }
-        ]
-      },
-      {
-        "areaId": "nippon",
-        "territories": [
-          {
-            "name": "Honshu",
-            "terrain": "mountain",
-            "seas": "sea_of_japan,pacific",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "Kyushu, Shikoku, Hokkaido, Korea (across Sea of Japan)"
-          },
-          {
-            "name": "Kyushu",
-            "terrain": "strait",
-            "seas": "east_china_sea,sea_of_japan,pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Honshu, Shikoku, Ryukyu, Korea (across Tsushima/Korea strait)"
-          },
-          {
-            "name": "Shikoku",
-            "terrain": "",
-            "seas": "pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Honshu, Kyushu"
-          },
-          {
-            "name": "Hokkaido",
-            "terrain": "forest",
-            "seas": "sea_of_japan,pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Honshu, Siberia (across La Perouse strait)"
-          },
-          {
-            "name": "Korea",
-            "terrain": "strait,mountain",
-            "seas": "yellow_sea,sea_of_japan,east_china_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Manchuria, North China (across Yellow Sea), Honshu (across sea), Kyushu (across Korea strait)"
-          },
-          {
-            "name": "Ryukyu",
-            "terrain": "",
-            "seas": "east_china_sea,pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Kyushu, South China (across East China Sea)"
+            "neighborsHint": "Arabian Peninsula, Central Africa, Nubia"
           }
         ]
       },
@@ -1239,44 +682,543 @@
         "areaId": "africa",
         "territories": [
           {
-            "name": "West Africa",
+            "name": "Gold Coast",
             "terrain": "",
-            "seas": "atlantic",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Central Africa, Congo Basin, Libya, Sahara Desert, Sierra Morena"
+          },
+          {
+            "name": "Central Africa",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Congo Basin, East Africa, Gold Coast, Nubia, Sahara Desert, Upper Nile"
+          },
+          {
+            "name": "Congo Basin",
+            "terrain": "forest",
+            "seas": "",
             "resource": true,
             "barren": false,
-            "neighborsHint": "Sahara, Guinea Coast, Upper Nile, Congo"
+            "neighborsHint": "Central Africa, East Africa, Gold Coast, Southern Africa"
           },
           {
-            "name": "Guinea Coast",
+            "name": "Southern Africa",
             "terrain": "forest",
-            "seas": "atlantic,gulf_of_guinea",
-            "resource": false,
+            "seas": "",
+            "resource": true,
             "barren": false,
-            "neighborsHint": "West Africa, Congo"
-          },
-          {
-            "name": "Ethiopia",
-            "terrain": "mountain",
-            "seas": "red_sea,indian_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Upper Nile, East Africa, Arabia (across Red Sea)"
+            "neighborsHint": "Congo Basin, East Africa"
           },
           {
             "name": "East Africa",
-            "terrain": "",
-            "seas": "indian_ocean",
+            "terrain": "mountain",
+            "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Ethiopia, Great Lakes, Congo, Zimbabwe, Upper Nile"
+            "neighborsHint": "Central Africa, Congo Basin, Madagascar, Southern Africa"
           },
           {
-            "name": "Congo",
-            "terrain": "forest",
-            "seas": "atlantic",
+            "name": "Madagascar",
+            "terrain": "",
+            "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "West Africa, Guinea Coast, Great Lakes, East Africa, Zimbabwe"
+            "neighborsHint": "East Africa"
+          }
+        ]
+      },
+      {
+        "areaId": "china",
+        "territories": [
+          {
+            "name": "Great Plain of China",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Chekiang, Honshu, Korea, Manchuria, Yellow River"
+          },
+          {
+            "name": "Manchuria",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Steppe, Great Plain of China, Korea, Mongolia, Siberia, Yellow River"
+          },
+          {
+            "name": "Yellow River",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Chekiang, Great Plain of China, Manchuria, Mongolia, Wei River, Yangtze Kiang"
+          },
+          {
+            "name": "Chekiang",
+            "terrain": "forest",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Great Plain of China, Si-Kiang, Yangtze Kiang, Yellow River"
+          },
+          {
+            "name": "Wei River",
+            "terrain": "forest",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Steppe, Mongolia, Szechwan, Yangtze Kiang, Yellow River"
+          },
+          {
+            "name": "Yangtze Kiang",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Chekiang, Si-Kiang, Szechwan, Wei River, Yellow River"
+          },
+          {
+            "name": "Si-Kiang",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Chekiang, Szechwan, Yangtze Kiang"
+          },
+          {
+            "name": "Szechwan",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Steppe, Irrawaddy, Plateau of Tibet, Si-Kiang, Tarim Basin, Wei River, Yangtze Kiang"
+          }
+        ]
+      },
+      {
+        "areaId": "india",
+        "territories": [
+          {
+            "name": "Ganges Delta",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Ganges Valley, Irrawaddy, Malayan Peninsula, Plateau of Tibet"
+          },
+          {
+            "name": "Hindu Kush",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Caucasus, Ganges Valley, Persian Plateau, Plateau of Tibet, Turanian Plain, Upper Indus"
+          },
+          {
+            "name": "Ganges Valley",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Deccan, Ganges Delta, Hindu Kush, Malayan Peninsula, Plateau of Tibet, Upper Indus"
+          },
+          {
+            "name": "Upper Indus",
+            "terrain": "",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Eastern Deccan, Ganges Valley, Hindu Kush, Lower Indus, Persian Plateau"
+          },
+          {
+            "name": "Eastern Deccan",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Ghats, Ganges Valley, Lower Indus, Malayan Peninsula, Sumatra, Upper Indus, Western Deccan"
+          },
+          {
+            "name": "Lower Indus",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Deccan, Persian Plateau, Persian Salt Desert, Upper Indus, Western Deccan, Western Ghats"
+          },
+          {
+            "name": "Western Deccan",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Deccan, Eastern Ghats, Lower Indus, Western Ghats"
+          },
+          {
+            "name": "Eastern Ghats",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Ceylon, Eastern Deccan, Sumatra, The Outback, Western Deccan, Western Ghats"
+          },
+          {
+            "name": "Western Ghats",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Ceylon, Eastern Ghats, Lower Indus, Persian Salt Desert, Western Deccan"
+          },
+          {
+            "name": "Ceylon",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Australia, Eastern Ghats, The Outback, Western Ghats"
+          }
+        ]
+      },
+      {
+        "areaId": "southern_europe",
+        "territories": [
+          {
+            "name": "Central Massif",
+            "terrain": "forest",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Alps, Northern Apennines, Northern Gaul, Pyrenees, Southern Iberia, Western Gaul"
+          },
+          {
+            "name": "Pyrenees",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Central Massif, Southern Iberia, Western Gaul, Western Iberia"
+          },
+          {
+            "name": "Alps",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Central Europe, Central Massif, Dalmatia, Northern Apennines, Northern Gaul"
+          },
+          {
+            "name": "Western Iberia",
+            "terrain": "",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Pyrenees, Southern Iberia"
+          },
+          {
+            "name": "Southern Iberia",
+            "terrain": "",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Central Massif, Northern Apennines, Pyrenees, Sierra Morena, Southern Apennines, Western Iberia"
+          },
+          {
+            "name": "Northern Apennines",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Alps, Central Massif, Dalmatia, Southern Apennines, Southern Iberia"
+          },
+          {
+            "name": "Dalmatia",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Alps, Balkans, Central Europe, Danube, Northern Apennines, Pindus, Southern Apennines"
+          },
+          {
+            "name": "Balkans",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Dalmatia, Danube, Morea, Pindus, Western Anatolia"
+          },
+          {
+            "name": "Southern Apennines",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Dalmatia, Morea, Northern Apennines, Pindus, Sardinia, Sierra Morena, Southern Iberia"
+          },
+          {
+            "name": "Pindus",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Balkans, Dalmatia, Morea, Southern Apennines"
+          },
+          {
+            "name": "Sardinia",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Crete, Libya, Morea, Sierra Morena, Southern Apennines"
+          },
+          {
+            "name": "Morea",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Balkans, Crete, Pindus, Sardinia, Southern Apennines, Western Anatolia"
+          },
+          {
+            "name": "Sierra Morena",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Gold Coast, Libya, Sardinia, Southern Apennines, Southern Iberia"
+          },
+          {
+            "name": "Crete",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Levant, Libya, Morea, Palestine, Sardinia, Western Anatolia"
+          }
+        ]
+      },
+      {
+        "areaId": "northern_europe",
+        "territories": [
+          {
+            "name": "Highlands",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Albion, Central America, Ireland, Scandinavia, West Indies"
+          },
+          {
+            "name": "Ireland",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Albion, Central America, Highlands, Western Gaul"
+          },
+          {
+            "name": "Scandinavia",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Albion, Baltic-Seaboard, Highlands, Lower Rhine, North European Plain, Siberia"
+          },
+          {
+            "name": "Albion",
+            "terrain": "",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Highlands, Ireland, Lower Rhine, Scandinavia, Western Gaul"
+          },
+          {
+            "name": "Western Gaul",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Albion, Central Massif, Ireland, Lower Rhine, Northern Gaul, Pyrenees"
+          },
+          {
+            "name": "North European Plain",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Baltic-Seaboard, Eastern Steppe, Scandinavia, Siberia, Tarim Basin, Western Steppe"
+          },
+          {
+            "name": "Lower Rhine",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Albion, Baltic-Seaboard, Central Europe, Northern Gaul, Scandinavia, Western Gaul"
+          },
+          {
+            "name": "Northern Gaul",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Alps, Central Europe, Central Massif, Lower Rhine, Western Gaul"
+          },
+          {
+            "name": "Baltic-Seaboard",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Central Europe, Danube, Dnieper, Lower Rhine, North European Plain, Scandinavia, Western Steppe"
+          },
+          {
+            "name": "Central Europe",
+            "terrain": "forest",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Alps, Baltic-Seaboard, Dalmatia, Danube, Lower Rhine, Northern Gaul"
+          },
+          {
+            "name": "Dnieper",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Baltic-Seaboard, Caucasus, Danube, Western Anatolia, Western Steppe"
+          },
+          {
+            "name": "Danube",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Balkans, Baltic-Seaboard, Central Europe, Dalmatia, Dnieper, Western Anatolia"
+          }
+        ]
+      },
+      {
+        "areaId": "southeast_asia",
+        "territories": [
+          {
+            "name": "Mekong",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "East Indies, Irrawaddy, Malayan Peninsula"
+          },
+          {
+            "name": "Irrawaddy",
+            "terrain": "forest",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Ganges Delta, Malayan Peninsula, Mekong, Plateau of Tibet, Szechwan"
+          },
+          {
+            "name": "East Indies",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Malayan Peninsula, Mekong, Sumatra"
+          },
+          {
+            "name": "Malayan Peninsula",
+            "terrain": "",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "East Indies, Eastern Deccan, Ganges Delta, Ganges Valley, Irrawaddy, Mekong, Sumatra"
+          },
+          {
+            "name": "Sumatra",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "East Indies, Eastern Deccan, Eastern Ghats, Malayan Peninsula, New Guinea, The Outback"
+          }
+        ]
+      },
+      {
+        "areaId": "eurasia",
+        "territories": [
+          {
+            "name": "Siberia",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": true,
+            "neighborsHint": "Eastern Steppe, Manchuria, North European Plain, Scandinavia"
+          },
+          {
+            "name": "Eastern Steppe",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Manchuria, Mongolia, North European Plain, Siberia, Szechwan, Tarim Basin, Wei River"
+          },
+          {
+            "name": "Tarim Basin",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Eastern Steppe, North European Plain, Plateau of Tibet, Szechwan, Turanian Plain, Western Steppe"
+          },
+          {
+            "name": "Western Steppe",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Baltic-Seaboard, Caucasus, Dnieper, North European Plain, Tarim Basin, Turanian Plain"
+          },
+          {
+            "name": "Plateau of Tibet",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": true,
+            "neighborsHint": "Ganges Delta, Ganges Valley, Hindu Kush, Irrawaddy, Szechwan, Tarim Basin, Turanian Plain"
+          },
+          {
+            "name": "Turanian Plain",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Caucasus, Hindu Kush, Plateau of Tibet, Tarim Basin, Western Steppe"
+          },
+          {
+            "name": "Mongolia",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Eastern Steppe, Manchuria, Wei River, Yellow River"
+          }
+        ]
+      },
+      {
+        "areaId": "north_america",
+        "territories": [
+          {
+            "name": "Northern Lakes",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": true,
+            "neighborsHint": "Great Lakes, Great Plains, Pacific Seaboard"
           },
           {
             "name": "Great Lakes",
@@ -1284,23 +1226,92 @@
             "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "East Africa, Congo, Zimbabwe, Ethiopia"
+            "neighborsHint": "Appalachia, Deep South, Great Plains, Northern Lakes"
           },
           {
-            "name": "Zimbabwe",
-            "terrain": "",
-            "seas": "indian_ocean,mozambique_channel",
-            "resource": true,
-            "barren": false,
-            "neighborsHint": "East Africa, Congo, Great Lakes, Cape"
-          },
-          {
-            "name": "Cape",
-            "terrain": "",
-            "seas": "atlantic,indian_ocean,southern_ocean",
+            "name": "Appalachia",
+            "terrain": "mountain",
+            "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Zimbabwe, Congo"
+            "neighborsHint": "Deep South, Great Lakes, West Indies"
+          },
+          {
+            "name": "Pacific Seaboard",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Great Plains, Mexican Valley, Northern Lakes"
+          },
+          {
+            "name": "Great Plains",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Deep South, Great Lakes, Mexican Valley, Northern Lakes, Pacific Seaboard"
+          },
+          {
+            "name": "Deep South",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Appalachia, Central America, Great Lakes, Great Plains, Mexican Valley, West Indies"
+          },
+          {
+            "name": "Mexican Valley",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Central America, Deep South, Great Plains, Pacific Seaboard"
+          },
+          {
+            "name": "West Indies",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Appalachia, Central America, Deep South, Highlands"
+          },
+          {
+            "name": "Central America",
+            "terrain": "forest",
+            "seas": "",
+            "resource": true,
+            "barren": false,
+            "neighborsHint": "Deep South, Highlands, Ireland, Mexican Valley, West Indies"
+          }
+        ]
+      },
+      {
+        "areaId": "nippon",
+        "territories": [
+          {
+            "name": "Hokkaido",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Honshu, Korea"
+          },
+          {
+            "name": "Honshu",
+            "terrain": "mountain",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Great Plain of China, Hokkaido, Korea"
+          },
+          {
+            "name": "Korea",
+            "terrain": "",
+            "seas": "",
+            "resource": false,
+            "barren": false,
+            "neighborsHint": "Great Plain of China, Hokkaido, Honshu, Manchuria"
           }
         ]
       },
@@ -1308,60 +1319,28 @@
         "areaId": "australia",
         "territories": [
           {
-            "name": "Eastern Australia",
-            "terrain": "mountain",
-            "seas": "coral_sea,tasman_sea,pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Outback, Western Australia, Tasmania (across Bass strait), New Guinea (across Torres strait), Polynesia"
-          },
-          {
-            "name": "Western Australia",
+            "name": "New Guinea",
             "terrain": "",
-            "seas": "indian_ocean",
+            "seas": "",
             "resource": false,
             "barren": false,
-            "neighborsHint": "Outback, Eastern Australia"
+            "neighborsHint": "Australia, Sumatra, The Outback"
           },
           {
-            "name": "Outback",
+            "name": "The Outback",
             "terrain": "",
             "seas": "",
             "resource": false,
             "barren": true,
-            "neighborsHint": "Eastern Australia, Western Australia"
+            "neighborsHint": "Australia, Ceylon, Eastern Ghats, New Guinea, Sumatra"
           },
           {
-            "name": "New Guinea",
-            "terrain": "forest,mountain",
-            "seas": "coral_sea,pacific",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Eastern Australia (across Torres strait), Philippines (across sea), Polynesia"
-          },
-          {
-            "name": "New Zealand",
-            "terrain": "mountain",
-            "seas": "tasman_sea,pacific,southern_ocean",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "Tasmania (across Tasman Sea), Polynesia, Eastern Australia (across Tasman Sea)"
-          },
-          {
-            "name": "Tasmania",
+            "name": "Australia",
             "terrain": "",
-            "seas": "tasman_sea,southern_ocean,pacific",
-            "resource": false,
+            "seas": "",
+            "resource": true,
             "barren": false,
-            "neighborsHint": "Eastern Australia (across Bass strait), New Zealand (across Tasman Sea)"
-          },
-          {
-            "name": "Polynesia",
-            "terrain": "",
-            "seas": "pacific,coral_sea",
-            "resource": false,
-            "barren": false,
-            "neighborsHint": "New Guinea, New Zealand, Eastern Australia"
+            "neighborsHint": "Ceylon, New Guinea, The Outback"
           }
         ]
       }
@@ -1391,7 +1370,7 @@
     "BARREN PLACEMENT (8): Empty Quarter, Sahara, Gobi, Siberia, Greenland, Amazon, Antarctica, Outback. They partition the board into the historic Old-World / New-World / Oceania theaters, protect marauder flanks (Gobi behind Mongolia; the open steppe behind Huns/Goths), and keep early epochs from leaking into empty continents.",
     "RESOURCE PLACEMENT (18, prime monument/wonder sites): the great river valleys and wealth zones - Mesopotamia, Lower Nile, North China, South China, Indus, Ganges, Italy, Gaul, Indochina, Java, Pontic Steppe, Mississippi, Mexico, Andes, Pampas, Honshu, West Africa, Zimbabwe. Twelve are Old-World homelands (fuels early-epoch contest in the cradles); Mississippi/Mexico/Andes/Pampas pre-seed the Americas so Epoch VI-VII arrivals have prizes; Java/Honshu/Zimbabwe reward late maritime/peripheral expansion.",
     "HOMELAND DENSITY / ANTI-SNOWBALL: middle_east supplies 3 of 7 homelands in BOTH Epoch I and II (Sumer/Hittites/Akkad, then Babylon/Assyria/Phoenicia) and southern_europe peaks in Epoch III (Greece + Rome). Tune per-territory VP so this cradle crowding does not let an early Fertile-Crescent leader snowball - the AH VP table already pays the small Old-World areas less per territory than the larger continents; preserve that gradient.",
-    "AUTHENTIC ROSTER (2026-06-27, docs/AUTHENTIC-RULES.md §11): real 1993 AH names/strengths/marauders/epochs. Start-lands mapped to nearest CURRENT territory (coarse map). FLAGS for the engine phase: Sumeria should be a neutral pre-game SEED not a drafted Epoch-I empire; Inca+Aztec share one Epoch-VI card (only Aztec listed); Spain & Portugal collide on Iberia (board has Western Iberia vs Pyrenees); navigation seas reference current ids (some invented — reconcile to 3 oceans + 10 seas later); intra-epoch `order` is provisional (need exact card numbers)."
+    "AUTHENTIC ROSTER (2026-06-27, docs/AUTHENTIC-RULES.md \u00a711): real 1993 AH names/strengths/marauders/epochs. Start-lands mapped to nearest CURRENT territory (coarse map). FLAGS for the engine phase: Sumeria should be a neutral pre-game SEED not a drafted Epoch-I empire; Inca+Aztec share one Epoch-VI card (only Aztec listed); Spain & Portugal collide on Iberia (board has Western Iberia vs Pyrenees); navigation seas reference current ids (some invented \u2014 reconcile to 3 oceans + 10 seas later); intra-epoch `order` is provisional (need exact card numbers)."
   ],
   "openIssues": [
     "Two empires were cut to reach exactly 7/epoch: Macedon/Alexander (Epoch III, strength 6, homeland Pella -> Balkans) and the Tibetan Empire (Epoch V, strength 5, homeland Lhasa -> Tibet). Re-add either for >7-player variants or an expanded deck; Macedon would make southern_europe Epoch III a 3-empire cluster (Greece+Macedon+Rome), Tibetan would make china Epoch V a 2-empire cluster (Tang+Tibet).",
