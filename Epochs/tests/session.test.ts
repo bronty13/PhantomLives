@@ -34,7 +34,6 @@ describe('Game.play() — the step-driven generator', () => {
     expect(count(events, 'epochStart')).toBe(7)
     expect(count(events, 'epochEnd')).toBe(7)
     expect(count(events, 'draft')).toBe(7)
-    expect(count(events, 'preeminence')).toBe(7)
     expect(count(events, 'gameEnd')).toBe(1)
     expect(count(events, 'turnStart')).toBeGreaterThan(0)
     expect(count(events, 'placement')).toBeGreaterThan(0)

@@ -20,7 +20,7 @@
 import type { Bot, BotView, EventChoice, EventView, FrontierOption } from './bot'
 import { combatOdds, winProb } from './combat'
 import { scoreArea } from './scoring'
-import type { AreaId, BoardPiece, EpochId, EventCard, EventHand, LandId, PlayerId } from './types'
+import type { AreaId, BoardPiece, EpochId, EventHand, LandId, PlayerId } from './types'
 
 export interface HeuristicWeights {
   rhoBase: number
@@ -152,11 +152,7 @@ export class HeuristicBot implements Bot {
       }
     }
 
-    if (hand.lesser.length > 0 && view.epoch >= 3 && s >= 5) {
-      const coinValue = (c: EventCard): number => (c.effect.kind === 'coins' ? c.effect.coins : 0)
-      const best = [...hand.lesser].sort((a, b) => coinValue(b) - coinValue(a))[0]
-      choice.lesser = best.id
-    }
+    // (No Lesser events yet — the authentic 9-pile deck is rebuilt in task #29.)
     return choice
   }
 

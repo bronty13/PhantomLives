@@ -411,16 +411,12 @@ I–VII; a dash (—) means the Area scores **0** that epoch.
 
 ---
 
-## 10. Pre-eminence markers (hidden endgame swing)
+## 10. Pre-eminence markers — ❌ REMOVED (wrong edition)
 
-- At the **end of each epoch**, the player with the **most VP** takes **one**
-  Pre-eminence Marker from the pool, **face down** (may not look until game end).
-- If **two or more players tie** for most VP, **no** marker is drawn that epoch.
-- There are **8 markers**: values **two 3s, three 4s, two 5s, one 6**.
-- At game end, all held markers are revealed and **added to VP**.
-
-This injects hidden information: the visible leaderboard during play is not the
-true score.
+> Pre-eminence markers belong to the later **Z-Man** edition, **not** the owner's
+> Avalon Hill 1993 game (docs/AUTHENTIC-RULES.md). Removed in v0.11 — there is no
+> end-of-epoch hidden draw and no end-game reveal. Final score is simply the most
+> VP after Epoch VII (§12).
 
 ---
 
@@ -441,27 +437,26 @@ true score.
 - **Minor Empire** — plays a small extra empire at turn start (epoch-specific);
   not scored until the active empire finishes.
 
-**Lesser Events** — grant **Coins** (do not carry between turns), spent to return
-a combat-lost army to your pool or to buy a fort. ("22 types" per manual text.)
+> **NOTE — "Coins" Lesser deck ❌ removed (wrong edition).** The authentic AH 1993
+> deck is **9 colour piles of 7** (draw one per pile → a 9-card hand), ~30 distinct
+> effects — see docs/AUTHENTIC-RULES.md §12. That full deck is being rebuilt
+> (task #29). The old single-effect "Coins → forts" Lesser deck was a wrong-edition
+> mechanic and is gone.
 
-> **IMPLEMENTED (v0.6).** Hands are dealt at game start (`Game.dealEvents`); an
-> event-play step (`eventPhase`) runs before each turn. Effects modeled as a
-> structured `EventEffect` (`data/events.ts` is the deck): Leader/Weaponry →
-> attacker +1 die this turn; Reallocation/Minor Empire → bonus armies; Coins →
-> buy forts on best-held lands (activating the fort combat). The bot decides via
+> **IMPLEMENTED (interim, v0.11).** Hands dealt at game start (`Game.dealEvents`);
+> an event step (`eventPhase`) runs before each turn. The **Lesser deck is empty**
+> pending the rebuild; the **Greater** deck stands: Leader/Weaponry → attacker +1
+> die; Reallocation/Minor Empire → bonus armies (simplified). The bot decides via
 > `chooseEvents`; a human seat resolves the `awaitEvents` yield via the UI panel.
-> **Simplifications (verify vs manual, §16):** Minor Empire is bonus armies (not
-> a full separate sub-empire); Coins buy forts only (not army-retrieval yet); the
-> "no two Disasters" restriction isn't needed (no Disaster cards modeled).
 
 ---
 
 ## 12. End game & victory
 
-After Epoch VII scoring and the final pre-eminence draw:
-1. Reveal all Pre-eminence Markers; add their values to each holder's VP.
-2. **Highest total VP wins.** (Tie-break: confirm in §16 — likely most
-   pre-eminence markers, then a shared win.)
+After Epoch VII scoring:
+1. **Highest total VP wins.** (Tie-break: highest Empire-Card-Number held in the
+   last epoch — docs/AUTHENTIC-RULES.md §2. No pre-eminence reveal — that mechanic
+   doesn't exist in this edition.)
 
 ---
 

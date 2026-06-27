@@ -1,7 +1,9 @@
-// The event deck (SPEC §11). Greater Events: Leaders & Weaponry (attacker +1
-// die), Reallocation & Minor Empire (bonus armies). Lesser Events: Coins (spent
-// on forts). Counts cover up to 6 players × (3 Greater + 7 Lesser) = 18 + 42.
-// Our own flavor names — the effects are the (uncopyrightable) game mechanics.
+// The event deck (SPEC §11 / docs/AUTHENTIC-RULES §12). Greater Events kept for
+// now: Leaders & Weaponry (attacker +1 die), Reallocation & Minor Empire (bonus
+// armies). The Lesser deck is EMPTY pending the authentic 9-colour-pile rebuild
+// (task #29) — the old "Coins" Lesser deck was a wrong-edition mechanic (the AH
+// 1993 game has no coins). Our own flavor names; the effects are the
+// (uncopyrightable) game mechanics.
 
 import type { EventCard, EventEffect } from '../types'
 
@@ -23,14 +25,6 @@ const WEAPONRY = [
 const REALLOCATION = ['Mobilization', 'Mass Levy', 'Conscription', 'Grand Army']
 const MINOR_EMPIRE = ['Allied Tribes', 'Mercenary Host', 'Client Kingdom', 'Vassal State']
 
-// [flavor, coins, count] — totals 49 Lesser cards.
-const LESSER: Array<[string, number, number]> = [
-  ['Trade', 1, 16],
-  ['Tribute', 2, 18],
-  ['Treasury', 2, 6],
-  ['Plunder', 3, 9],
-]
-
 export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
   const greater: EventCard[] = []
   LEADERS.forEach((n, i) => greater.push(card(`g_leader_${i}`, 'greater', n, { kind: 'leader' })))
@@ -41,13 +35,6 @@ export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
   MINOR_EMPIRE.forEach((n, i) =>
     greater.push(card(`g_minor_${i}`, 'greater', n, { kind: 'minor_empire', armies: 4 })),
   )
-
-  const lesser: EventCard[] = []
-  let li = 0
-  for (const [name, coins, count] of LESSER) {
-    for (let k = 0; k < count; k++) {
-      lesser.push(card(`l_${li++}`, 'lesser', `${name} (${coins})`, { kind: 'coins', coins }))
-    }
-  }
-  return { greater, lesser }
+  // Lesser deck is rebuilt in the authentic 9-pile event system (task #29).
+  return { greater, lesser: [] }
 }

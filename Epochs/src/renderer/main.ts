@@ -271,9 +271,6 @@ class GameUI {
         }
         break
       }
-      case 'preeminence':
-        if (ev.player) this.pushLog(`★ pre-eminence → ${this.nameOf(ev.player)}`)
-        break
       case 'turnEnd':
         this.activePlayer = null
         break
@@ -532,39 +529,24 @@ class GameUI {
     const rows = result.standings
       .map((s, rank) => {
         const i = this.playerOrder.indexOf(s.id)
-        const base = s.vp - s.preeminence.reduce((a, b) => a + b, 0)
-        const chips = s.preeminence.map((v) => `<span class="pre-chip" data-v="${v}">◇</span>`).join('')
         return (
           `<div class="go-row${rank === 0 ? ' winner' : ''}">` +
           `<span class="dot" style="background:${playerColor(i)}"></span>` +
           `<span class="go-name">${rank === 0 ? '👑 ' : ''}${esc(s.name)}</span>` +
-          `<span class="go-pre">${chips}</span><span class="go-vp">${base}</span></div>`
+          `<span class="go-vp">${s.vp}</span></div>`
         )
       })
       .join('')
     el.innerHTML =
       `<div class="evt-box"><h3>Game over — ${esc(this.nameOf(result.winner))} wins</h3>` +
       `<div class="go-list">${rows}</div>` +
-      `<div class="muted">hidden pre-eminence markers revealed →</div>` +
+      `<div class="muted">Most Victory Points after Epoch VII.</div>` +
       `<div class="evt-actions"><button id="go-again" class="primary">Play Again</button></div></div>`
     el.classList.remove('hidden')
     ;(el.querySelector('#go-again') as HTMLButtonElement).onclick = () => {
       el.classList.add('hidden')
       this.newGame()
     }
-    const chipEls = [...el.querySelectorAll('.pre-chip')] as HTMLElement[]
-    chipEls.forEach((chip, k) => {
-      setTimeout(() => {
-        chip.classList.add('flip')
-        chip.textContent = chip.dataset.v ?? ''
-        const vpEl = chip.closest('.go-row')?.querySelector('.go-vp') as HTMLElement | null
-        if (vpEl) {
-          vpEl.textContent = String(
-            parseInt(vpEl.textContent || '0', 10) + parseInt(chip.dataset.v || '0', 10),
-          )
-        }
-      }, 400 + k * 150)
-    })
   }
 
   // ── controls ──────────────────────────────────────────────────────────────
@@ -655,9 +637,9 @@ const TEMPLATE = `
             <h4>Combat</h4>
             <p>To take an enemy land you attack: roll <b>2 dice, keep the higher</b>, vs the defender's <b>1</b> — higher wins, an exact <b>tie is rerolled</b>. Mountains, forests, the Great Wall, straits and sea-landings make the <b>defender roll 2 dice</b> (keep higher); a <b>▮ fort</b> adds +1 to the defender. On your turn, <b>hover</b> a target to see the exact win odds.</p>
             <h4>It stays close</h4>
-            <p>The player in <b>last place drafts first</b> each epoch and gets first pick of the strongest new empire — so leads don't run away. And each epoch's leader secretly draws a hidden <b>pre-eminence</b> bonus, revealed only at the very end.</p>
+            <p>The <b>weakest player drafts first</b> each epoch and gets first pick of the strongest new empire — so leads don't run away. Most Victory Points after Epoch VII wins.</p>
             <h4>Events</h4>
-            <p>You hold a fixed hand of cards for the <i>whole game</i> (no refills): <b>Leaders / Weaponry</b> (stronger attacks), <b>bonus armies</b>, or <b>Coins</b> (build forts). Spend them wisely — up to one of each before a turn.</p>
+            <p>You hold a fixed hand of cards for the <i>whole game</i> (no refills) and may play up to two before a turn — <b>Leaders</b> and <b>Weaponry</b> sharpen your attacks. (The full event deck — disasters, minor empires and more — is being built; see the <b>📖 Rulebook</b> for everything.)</p>
             <h4>Watch or play</h4>
             <p>By default you <b>watch the AI</b>. To take a seat, tick <b>“I play (seat 1)”</b> and press <b>New Game</b>. On your turn, click a highlighted land to place an army — <span class="hk g">●</span> settle · <span class="hk b">●</span> reclaim · <span class="hk r">●</span> attack (ring color = your odds). Use <b>Step</b> / <b>Auto</b> and the speed slider to control playback; <b>End Turn</b> stops placing early.</p>
           </div>

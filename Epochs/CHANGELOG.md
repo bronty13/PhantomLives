@@ -2,6 +2,27 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.11.0] — 2026-06-27
+
+Authentic combat + the wrong-edition mechanics removed (fidelity rebuild, P0).
+
+### Changed
+- **Combat to the real rules** (docs/AUTHENTIC-RULES §5): an exact **tie is
+  REROLLED** (was "both armies removed"); the **defender caps at 2 dice** (no more
+  defender-rolls-3 for straits/amphibious); the **fort is a simple +1** that
+  absorbs no losses and falls with the last army (no multi-round shielding).
+  `combatOdds` still returns the raw single-roll PMF; new `winProb()` gives the
+  effective post-reroll win chance. AI combat EV, tooltips, clash colours and SPEC
+  §7 all updated. The difficulty ladder holds (hard 62% vs medium, 80% vs easy).
+
+### Removed
+- **Coins** and **pre-eminence markers** — both belong to the later Z-Man edition,
+  not the owner's AH 1993 game. Gone from the engine, types, scoring, UI (the
+  game-over screen is now plain "most VP wins" — no hidden reveal), SPEC §10–§12,
+  and tests. The Lesser event deck is **empty** pending the authentic 9-pile
+  rebuild (task #29); the Greater deck (Leader/Weaponry/Reallocation/Minor Empire)
+  stands for now.
+
 ## [0.10.1] — 2026-06-27
 
 ### Added

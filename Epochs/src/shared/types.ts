@@ -68,7 +68,6 @@ export type EventEffect =
   | { kind: 'weaponry' } // attacker rolls +1 die this turn
   | { kind: 'reallocation'; armies: number } // fleets → extra ground armies
   | { kind: 'minor_empire'; armies: number } // a small extra force (simplified)
-  | { kind: 'coins'; coins: number } // Lesser: coins, spent on forts
 
 export interface EventCard {
   id: string

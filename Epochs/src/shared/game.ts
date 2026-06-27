@@ -15,7 +15,6 @@
 import { Board } from './board'
 import type { Bot, BotView, EventChoice, EventView, FrontierKind, FrontierOption } from './bot'
 import { oddsForContext, resolveAssault, type CombatContext, type CombatResult } from './combat'
-import { areaValue } from './data/areaValues'
 import { makeEventDeck } from './data/events'
 import { scoreEmpireTurn } from './scoring'
 import { makeRng, type Rng } from './rng'
@@ -31,8 +30,6 @@ import type {
 } from './types'
 
 const TOTAL_MONUMENTS = 36
-// 8 markers: two 3s, three 4s, two 5s, one 6 (SPEC §10).
-const PREEMINENCE_MARKERS = [3, 3, 4, 4, 4, 5, 5, 6]
 
 export interface PlayerConfig {
   id: PlayerId
@@ -46,7 +43,6 @@ export interface PlayerState {
   id: PlayerId
   name: string
   vp: number
-  preeminence: number[] // hidden until game end
   hand: EventHand // fixed for the whole game (SPEC §11)
 }
 
@@ -54,7 +50,6 @@ export interface PlayerState {
 export interface TurnEffects {
   attackerBonus: boolean // Leader/Weaponry → attacker +1 die
   bonusArmies: number // Reallocation/Minor Empire → extra armies
-  coins: number // Lesser/Coins → forts
 }
 
 /** What the driver may pass back into `play()` when resuming a yield. */
@@ -64,14 +59,13 @@ export interface GameState {
   epoch: EpochId
   players: PlayerState[]
   pieces: BoardPiece[]
-  preeminencePool: number[]
   monumentsBuilt: number
   rng: Rng
   log: string[]
 }
 
 export interface GameResult {
-  standings: { id: PlayerId; name: string; vp: number; preeminence: number[] }[]
+  standings: { id: PlayerId; name: string; vp: number }[]
   winner: PlayerId
   epochsPlayed: number
   log: string[]
@@ -98,7 +92,6 @@ export type GameEvent =
     }
   | { type: 'placement'; player: PlayerId; land: LandId; kind: FrontierKind; outcome?: CombatResult }
   | { type: 'score'; player: PlayerId; gained: number; total: number }
-  | { type: 'preeminence'; player: PlayerId | null }
   | { type: 'turnEnd'; player: PlayerId }
   | { type: 'epochEnd'; epoch: EpochId }
   | { type: 'gameEnd'; result: GameResult }
@@ -185,11 +178,9 @@ export class Game {
         id: p.id,
         name: p.name,
         vp: 0,
-        preeminence: [],
         hand: { greater: [], lesser: [] },
       })),
       pieces: [],
-      preeminencePool: shuffle(PREEMINENCE_MARKERS, rng),
       monumentsBuilt: 0,
       rng,
       log: [],
@@ -244,8 +235,6 @@ export class Game {
         yield* this.playEmpireTurnGen(pid, empire)
         this.prevEmpireOrder.set(pid, empire.order)
       }
-      const pre = this.preeminence()
-      yield { type: 'preeminence', player: pre }
       yield { type: 'epochEnd', epoch }
     }
     const result = this.finalize()
@@ -263,7 +252,6 @@ export class Game {
     yield { type: 'setup', player: pid, land: empire.startLand, empire: empire.name }
     yield* this.expandGen(pid, empire, effects)
     this.buildMonuments(pid)
-    this.spendCoinsOnForts(pid, effects.coins)
     const gained = scoreEmpireTurn(
       this.state.pieces,
       this.board.areaOfFn,
@@ -330,7 +318,7 @@ export class Game {
     pid: PlayerId,
     empire: EmpireCard,
   ): Generator<GameEvent, TurnEffects, PlayInput> {
-    const effects: TurnEffects = { attackerBonus: false, bonusArmies: 0, coins: 0 }
+    const effects: TurnEffects = { attackerBonus: false, bonusArmies: 0 }
     const player = this.player(pid)
     if (player.hand.greater.length === 0 && player.hand.lesser.length === 0) return effects
 
@@ -385,24 +373,6 @@ export class Game {
       case 'minor_empire':
         effects.bonusArmies += card.effect.armies
         break
-      case 'coins':
-        effects.coins += card.effect.coins
-        break
-    }
-  }
-
-  /** Spend coins on forts: place one on each of the player's best held lands. */
-  private spendCoinsOnForts(pid: PlayerId, coins: number): void {
-    if (coins <= 0) return
-    const epoch = this.state.epoch
-    const hasFort = (land: LandId): boolean =>
-      this.state.pieces.some((p) => p.land === land && p.kind === 'fort')
-    const held = this.state.pieces
-      .filter((p) => p.owner === pid && p.kind === 'army' && p.epochColor === epoch && !hasFort(p.land))
-      .map((p) => p.land)
-      .sort((a, b) => areaValue(this.board.areaOf(b) ?? '', epoch) - areaValue(this.board.areaOf(a) ?? '', epoch))
-    for (let i = 0; i < coins && i < held.length; i++) {
-      this.addPiece({ land: held[i], kind: 'fort', owner: pid, epochColor: epoch })
     }
   }
 
@@ -463,24 +433,9 @@ export class Game {
     }
   }
 
-  private preeminence(): PlayerId | null {
-    const maxVp = Math.max(...this.state.players.map((p) => p.vp))
-    const leaders = this.state.players.filter((p) => p.vp === maxVp)
-    if (leaders.length === 1 && this.state.preeminencePool.length > 0) {
-      const marker = this.state.preeminencePool.pop() as number
-      leaders[0].preeminence.push(marker)
-      this.log(`E${this.state.epoch} pre-eminence → ${leaders[0].id}`)
-      return leaders[0].id
-    }
-    return null
-  }
-
   private finalize(): GameResult {
-    for (const p of this.state.players) {
-      p.vp += p.preeminence.reduce((a, b) => a + b, 0)
-    }
     const standings = [...this.state.players]
-      .map((p) => ({ id: p.id, name: p.name, vp: p.vp, preeminence: p.preeminence }))
+      .map((p) => ({ id: p.id, name: p.name, vp: p.vp }))
       .sort((a, b) => b.vp - a.vp)
     return {
       standings,

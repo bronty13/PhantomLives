@@ -25,25 +25,25 @@ function drive(game: Game): GameEvent[] {
 
 describe('event deck', () => {
   const deck = makeEventDeck()
-  it('has enough cards for 6 players (>= 18 Greater, >= 42 Lesser)', () => {
+  it('has enough Greater for 6 players (>= 18); Lesser empty pending the rebuild', () => {
     expect(deck.greater.length).toBeGreaterThanOrEqual(18)
-    expect(deck.lesser.length).toBeGreaterThanOrEqual(42)
+    expect(deck.lesser.length).toBe(0) // authentic 9-pile deck rebuilt in task #29
   })
-  it('Greater cards are the four kinds; Lesser are all Coins', () => {
+  it('Greater cards are the four kinds; no Coins (wrong-edition mechanic, removed)', () => {
     for (const c of deck.greater) {
       expect(['leader', 'weaponry', 'reallocation', 'minor_empire']).toContain(c.effect.kind)
     }
-    for (const c of deck.lesser) expect(c.effect.kind).toBe('coins')
+    expect(deck.lesser).toHaveLength(0)
   })
 })
 
 describe('dealing hands', () => {
-  it('gives each player 3 Greater + 7 Lesser, with no shared cards (SPEC §11)', () => {
+  it('gives each player 3 Greater (Lesser empty for now), no shared cards (SPEC §11)', () => {
     const game = worldGame(1, hardBots(['P1', 'P2', 'P3', 'P4']))
     const seen = new Set<string>()
     for (const p of game.state.players) {
       expect(p.hand.greater).toHaveLength(3)
-      expect(p.hand.lesser).toHaveLength(7)
+      expect(p.hand.lesser).toHaveLength(0)
       for (const c of [...p.hand.greater, ...p.hand.lesser]) {
         expect(seen.has(c.id), `duplicate card ${c.id}`).toBe(false)
         seen.add(c.id)
@@ -53,11 +53,12 @@ describe('dealing hands', () => {
 })
 
 describe('events in a full game', () => {
-  it('the AI plays events and builds forts from Coins', () => {
+  it('the AI plays Greater events during a full game', () => {
     const game = worldGame(1, hardBots(['P1', 'P2', 'P3', 'P4']))
     const events = drive(game)
     expect(events.some((e) => e.type === 'eventsPlayed')).toBe(true)
-    expect(game.state.pieces.some((p) => p.kind === 'fort')).toBe(true)
+    // (Forts no longer come from Coins — that was a wrong-edition mechanic;
+    // fort-building returns with the build phase + Engineering events, task #29/32.)
   })
 
   it('never plays more cards than were dealt (finite hand, no refills)', () => {

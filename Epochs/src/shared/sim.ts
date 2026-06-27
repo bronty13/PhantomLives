@@ -93,10 +93,7 @@ export function seeds(a: number, b: number): number[] {
 export function formatResult(r: GameResult): string {
   const lines = [`Winner: ${r.winner}  (epochs played: ${r.epochsPlayed})`]
   for (const s of r.standings) {
-    lines.push(
-      `  ${s.name.padEnd(10)} ${String(s.vp).padStart(4)} VP  ` +
-        `pre-eminence=[${s.preeminence.join(',')}]`,
-    )
+    lines.push(`  ${s.name.padEnd(10)} ${String(s.vp).padStart(4)} VP`)
   }
   return lines.join('\n')
 }
