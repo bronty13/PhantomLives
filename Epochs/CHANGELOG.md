@@ -2,6 +2,30 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.12.0] — 2026-06-27
+
+The look & feel pivot — an antique parchment board (phase 1 of recreating the
+nostalgic experience; the interactive "you play it" phase follows).
+
+### Changed
+- **The map is now an antique parchment board**, not abstract dots. Original
+  generated art on the real geography: an ocean ground, **Voronoi territories**
+  (pure `src/shared/voronoi.ts`, cached per layout) tinted with soft watercolour
+  region colours and sepia coastlines, **ridgeline mountains**, forest stipple,
+  **calligraphic italic labels**, a **compass rose**, and a burnt-edge frame. The
+  game layer is restyled to match: armies are **square counters** with a
+  crossed-swords emblem, structures keep ★/◆/▲/▮, and the active-empire ring,
+  placeable rings, hover tooltip and effects sit on top. `map.ts` rewritten;
+  `palette.ts` gains the parchment tints.
+
+### Next (the pivot continues)
+- Rebuild the territory data to the **board's authentic territories** (Lower
+  Tigris, Eastern Anatolia, Turanian Plain…) so the map matches the board exactly.
+- The interactive experience: **you play by default** — Epoch intro splash,
+  Keep/Pass empire draft, the Empire panel, Event windows, click-to-take-your-turn
+  — all in the warm parchment style. (The surrounding shell is still the dark UI
+  for now; it gets the parchment treatment in that phase.)
+
 ## [0.11.2] — 2026-06-27
 
 Event system, slice 2 — targeting + disasters.
