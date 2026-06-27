@@ -12,8 +12,12 @@ import type { Rng } from './rng'
 const SIDES = 6
 
 export interface CombatContext {
-  /** Leader / Weaponry / Event bonus → attacker rolls 3 dice instead of 2. */
+  /** Leader / Elite Troops / Jihad → attacker rolls 3 dice instead of 2. */
   attackerBonus?: boolean
+  /** Weaponry → +1 to the attacker's kept die. */
+  attackerKeptBonus?: number
+  /** Fanaticism / Jihad → the attacker WINS ties (instead of rerolling). */
+  attackerWinsTies?: boolean
   /** Forest / mountain / Great Wall on the defender's border → defender rolls 2. */
   difficultTerrain?: boolean
   /** Attacking across a strait without controlling the sea → defender rolls 2. */
@@ -23,6 +27,9 @@ export interface CombatContext {
   /** Defender sits in a fort → +1 to its die (absorbs no losses; SPEC §5). */
   fort?: boolean
 }
+
+/** How an exact tie resolves: default 'reroll'; Fanaticism→'attacker', Fortress→'defender'. */
+export type TieRule = 'reroll' | 'attacker' | 'defender'
 
 /** Ties are rerolled, so a resolved combat is only attacker or defender. */
 export type CombatResult = 'attacker' | 'defender'
@@ -64,7 +71,7 @@ export function pmfMaxOfK(k: number, sides = SIDES): number[] {
  * (max of `dDice`) + bonus. `tie` is the probability of an exact tie (which is
  * rerolled at resolution); use {@link winProb} for the effective win chance.
  */
-export function combatOdds(aDice: number, dDice: number, bonus = 0): CombatOdds {
+export function combatOdds(aDice: number, dDice: number, defBonus = 0, atkBonus = 0): CombatOdds {
   const atk = pmfMaxOfK(aDice)
   const def = pmfMaxOfK(dDice)
   let attacker = 0
@@ -76,25 +83,34 @@ export function combatOdds(aDice: number, dDice: number, bonus = 0): CombatOdds 
     for (let dv = 1; dv <= SIDES; dv++) {
       const dp = def[dv - 1]
       if (dp === 0) continue
-      const dVal = dv + bonus
+      const aVal = av + atkBonus
+      const dVal = dv + defBonus
       const p = ap * dp
-      if (av > dVal) attacker += p
-      else if (av === dVal) tie += p
+      if (aVal > dVal) attacker += p
+      else if (aVal === dVal) tie += p
       else defender += p
     }
   }
   return { attacker, tie, defender }
 }
 
-/** Effective attacker win probability after rerolling ties (tie mass excluded). */
-export function winProb(o: CombatOdds): number {
+/** Effective attacker win probability. Ties reroll by default (excluded); with
+ *  Fanaticism ('attacker') the tie mass is won, with Fortress ('defender') it's lost. */
+export function winProb(o: CombatOdds, ties: TieRule = 'reroll'): number {
+  if (ties === 'attacker') return o.attacker + o.tie
+  if (ties === 'defender') return o.attacker
   const decisive = o.attacker + o.defender
   return decisive > 0 ? o.attacker / decisive : 0
 }
 
-/** Single-round odds for a context (raw PMF). */
+/** Single-round odds for a context (raw PMF, with attacker/fort kept-bonuses). */
 export function oddsForContext(ctx: CombatContext): CombatOdds {
-  return combatOdds(attackerDice(ctx), defenderDice(ctx), fortBonus(ctx))
+  return combatOdds(attackerDice(ctx), defenderDice(ctx), fortBonus(ctx), ctx.attackerKeptBonus ?? 0)
+}
+
+/** Effective attacker win probability for a context (honours Fanaticism). */
+export function winProbForContext(ctx: CombatContext): number {
+  return winProb(oddsForContext(ctx), ctx.attackerWinsTies ? 'attacker' : 'reroll')
 }
 
 /** Roll `n` dice through the seeded RNG and keep the highest. */
@@ -104,17 +120,20 @@ export function rollKeepHighest(rng: Rng, n: number): number {
   return best
 }
 
-/** One decisive combat round — ties are rerolled (SPEC §5). */
+/** One decisive combat round — ties reroll by default, or go to the attacker
+ *  under Fanaticism (SPEC §5). Weaponry adds to the attacker's kept die. */
 export function resolveRound(rng: Rng, ctx: CombatContext): CombatResult {
   const aDice = attackerDice(ctx)
   const dDice = defenderDice(ctx)
-  const bonus = fortBonus(ctx)
+  const atkBonus = ctx.attackerKeptBonus ?? 0
+  const defBonus = fortBonus(ctx)
   for (let i = 0; i < 1000; i++) {
-    const a = rollKeepHighest(rng, aDice)
-    const d = rollKeepHighest(rng, dDice) + bonus
+    const a = rollKeepHighest(rng, aDice) + atkBonus
+    const d = rollKeepHighest(rng, dDice) + defBonus
     if (a > d) return 'attacker'
     if (a < d) return 'defender'
-    // exact tie → reroll
+    if (ctx.attackerWinsTies) return 'attacker' // Fanaticism
+    // else exact tie → reroll
   }
   return 'defender' // unreachable in practice (defender holds on pathological RNG)
 }

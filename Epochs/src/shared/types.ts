@@ -64,8 +64,9 @@ export type EventClass = 'greater' | 'lesser'
 
 /** Structured event effect applied to the player's upcoming empire-turn. */
 export type EventEffect =
-  | { kind: 'leader' } // attacker rolls +1 die this turn
-  | { kind: 'weaponry' } // attacker rolls +1 die this turn
+  | { kind: 'leader' } // attacker rolls 3 dice this turn
+  | { kind: 'weaponry' } // +1 to each attacker die this turn
+  | { kind: 'fanaticism' } // attacker wins all ties this turn
   | { kind: 'reallocation'; armies: number } // fleets → extra ground armies
   | { kind: 'minor_empire'; armies: number } // a small extra force (simplified)
 

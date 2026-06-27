@@ -130,9 +130,9 @@ export class HeuristicBot implements Bot {
 
   /**
    * Event policy: spend the finite hand on strong empires so it lasts the game.
-   * A strong empire presses the attack (Leader/Weaponry → +1 die); a weak one
-   * bulks up (Reallocation/Minor Empire → armies); an established empire forts
-   * its best ground (Coins). See SPEC §11/§15.
+   * A strong empire presses the attack (Leader → 3 dice, Weaponry → +1/die,
+   * Fanaticism → win ties); a weak one bulks up (Reallocation/Minor Empire →
+   * armies). See SPEC §11/§15.
    */
   chooseEvents(view: EventView, hand: EventHand): EventChoice {
     const choice: EventChoice = {}
@@ -141,7 +141,10 @@ export class HeuristicBot implements Bot {
     if (hand.greater.length > 0) {
       if (s >= 7) {
         const combat = hand.greater.find(
-          (c) => c.effect.kind === 'leader' || c.effect.kind === 'weaponry',
+          (c) =>
+            c.effect.kind === 'leader' ||
+            c.effect.kind === 'weaponry' ||
+            c.effect.kind === 'fanaticism',
         )
         choice.greater = (combat ?? hand.greater[0]).id
       } else if (s <= 4 && view.epoch >= 2) {

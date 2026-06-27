@@ -2,6 +2,26 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.11.1] — 2026-06-27
+
+Event system, slice 1 — the combat-modifier events.
+
+### Added
+- **Leader / Weaponry / Fanaticism** now work as real combat events (the payoff of
+  the v0.11 combat rewrite). The combat engine gained attacker modifiers:
+  `attackerKeptBonus` (Weaponry = +1 to each attacker die) and `attackerWinsTies`
+  (Fanaticism = win all ties this turn, using the tie mass `combatOdds` deliberately
+  preserves); Leader stays "3 dice". New `winProb(odds, tieRule)` and
+  `winProbForContext()` honour these. Threaded through `TurnEffects` →
+  `combatContext` → resolution; the AI plays them on strong attacking empires.
+  Fanaticism cards added to the deck.
+
+### Notes
+- Remaining event work (task #29): the full 9-colour-pile deck + the other ~25
+  effects (disasters, minor empires, Treachery, the targeted/fleet cards) — several
+  need a target-selection step and fleets, so they land in later slices. The full
+  card list is in the in-app **📖 Rulebook** and docs/AUTHENTIC-RULES §12.
+
 ## [0.11.0] — 2026-06-27
 
 Authentic combat + the wrong-edition mechanics removed (fidelity rebuild, P0).

@@ -29,9 +29,11 @@ describe('event deck', () => {
     expect(deck.greater.length).toBeGreaterThanOrEqual(18)
     expect(deck.lesser.length).toBe(0) // authentic 9-pile deck rebuilt in task #29
   })
-  it('Greater cards are the four kinds; no Coins (wrong-edition mechanic, removed)', () => {
+  it('Greater cards are the implemented kinds; no Coins (wrong-edition, removed)', () => {
     for (const c of deck.greater) {
-      expect(['leader', 'weaponry', 'reallocation', 'minor_empire']).toContain(c.effect.kind)
+      expect(['leader', 'weaponry', 'fanaticism', 'reallocation', 'minor_empire']).toContain(
+        c.effect.kind,
+      )
     }
     expect(deck.lesser).toHaveLength(0)
   })

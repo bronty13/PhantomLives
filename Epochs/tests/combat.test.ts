@@ -11,6 +11,7 @@ import {
   resolveRound,
   rollKeepHighest,
   winProb,
+  winProbForContext,
   type CombatResult,
 } from '../src/shared/combat'
 
@@ -158,5 +159,34 @@ describe('resolveAssault (fort = +1, no shielding)', () => {
     const withFort = trials(true)
     const noFort = trials(false)
     expect(withFort).toBeLessThan(noFort)
+  })
+})
+
+describe('event combat modifiers (Leader / Weaponry / Fanaticism)', () => {
+  it('Weaponry (+1 to the attacker kept die) raises the win probability', () => {
+    expect(winProb(combatOdds(2, 1, 0, 1))).toBeGreaterThan(winProb(combatOdds(2, 1)))
+  })
+
+  it('Fanaticism (attacker wins ties) folds the tie mass to the attacker', () => {
+    const o = combatOdds(2, 1)
+    expect(winProb(o, 'attacker')).toBeCloseTo(o.attacker + o.tie, 12) // (125+36)/216 ≈ 74.5%
+    expect(winProb(o, 'attacker')).toBeGreaterThan(winProb(o)) // beats the base reroll
+  })
+
+  it('winProbForContext honours Leader, Weaponry and Fanaticism', () => {
+    const base = winProbForContext({})
+    expect(winProbForContext({ attackerBonus: true })).toBeGreaterThan(base) // Leader (3 dice)
+    expect(winProbForContext({ attackerKeptBonus: 1 })).toBeGreaterThan(base) // Weaponry
+    expect(winProbForContext({ attackerWinsTies: true })).toBeGreaterThan(base) // Fanaticism
+  })
+
+  it('resolveRound: Fanaticism wins more than the base reroll (seeded)', () => {
+    const rate = (ctx: object): number => {
+      const rng = makeRng(2024)
+      let w = 0
+      for (let i = 0; i < 40_000; i++) if (resolveRound(rng, ctx) === 'attacker') w++
+      return w / 40_000
+    }
+    expect(rate({ attackerWinsTies: true })).toBeGreaterThan(rate({}))
   })
 })

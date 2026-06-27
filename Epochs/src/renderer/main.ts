@@ -639,7 +639,7 @@ const TEMPLATE = `
             <h4>It stays close</h4>
             <p>The <b>weakest player drafts first</b> each epoch and gets first pick of the strongest new empire — so leads don't run away. Most Victory Points after Epoch VII wins.</p>
             <h4>Events</h4>
-            <p>You hold a fixed hand of cards for the <i>whole game</i> (no refills) and may play up to two before a turn — <b>Leaders</b> and <b>Weaponry</b> sharpen your attacks. (The full event deck — disasters, minor empires and more — is being built; see the <b>📖 Rulebook</b> for everything.)</p>
+            <p>You hold a fixed hand of cards for the <i>whole game</i> (no refills) and may play up to two before a turn. <b>Leaders</b> attack with 3 dice, <b>Weaponry</b> adds +1 to each die, and <b>Fanaticism</b> wins all ties. (The rest of the deck — disasters, minor empires and more — is being built; see the <b>📖 Rulebook</b> for everything.)</p>
             <h4>Watch or play</h4>
             <p>By default you <b>watch the AI</b>. To take a seat, tick <b>“I play (seat 1)”</b> and press <b>New Game</b>. On your turn, click a highlighted land to place an army — <span class="hk g">●</span> settle · <span class="hk b">●</span> reclaim · <span class="hk r">●</span> attack (ring color = your odds). Use <b>Step</b> / <b>Auto</b> and the speed slider to control playback; <b>End Turn</b> stops placing early.</p>
           </div>

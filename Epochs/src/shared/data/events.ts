@@ -22,6 +22,7 @@ const WEAPONRY = [
   'Bronze Weapons', 'Iron Weapons', 'War Chariots', 'Heavy Cavalry',
   'Siege Engines', 'Longbowmen', 'Gunpowder',
 ]
+const FANATICISM = ['Fanaticism', 'Holy War', 'Zealotry', 'Martyrdom']
 const REALLOCATION = ['Mobilization', 'Mass Levy', 'Conscription', 'Grand Army']
 const MINOR_EMPIRE = ['Allied Tribes', 'Mercenary Host', 'Client Kingdom', 'Vassal State']
 
@@ -29,6 +30,7 @@ export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
   const greater: EventCard[] = []
   LEADERS.forEach((n, i) => greater.push(card(`g_leader_${i}`, 'greater', n, { kind: 'leader' })))
   WEAPONRY.forEach((n, i) => greater.push(card(`g_weapon_${i}`, 'greater', n, { kind: 'weaponry' })))
+  FANATICISM.forEach((n, i) => greater.push(card(`g_fanatic_${i}`, 'greater', n, { kind: 'fanaticism' })))
   REALLOCATION.forEach((n, i) =>
     greater.push(card(`g_realloc_${i}`, 'greater', n, { kind: 'reallocation', armies: 3 })),
   )

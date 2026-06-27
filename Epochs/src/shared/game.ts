@@ -46,9 +46,11 @@ export interface PlayerState {
   hand: EventHand // fixed for the whole game (SPEC §11)
 }
 
-/** Accumulated effects of the events a player plays before its turn. */
+/** Accumulated effects of the events a player plays this turn. */
 export interface TurnEffects {
-  attackerBonus: boolean // Leader/Weaponry → attacker +1 die
+  attackerBonus: boolean // Leader → attacker rolls 3 dice
+  attackerKeptBonus: number // Weaponry → +1 to each attacker die
+  attackerWinsTies: boolean // Fanaticism → attacker wins ties
   bonusArmies: number // Reallocation/Minor Empire → extra armies
 }
 
@@ -306,7 +308,7 @@ export class Game {
       }
       const opt = frontier.find((f) => f.land === targetId)
       if (!opt) break // invalid choice — stop placing
-      const outcome = this.resolveExpansion(pid, empire, opt, effects.attackerBonus)
+      const outcome = this.resolveExpansion(pid, empire, opt, effects)
       yield { type: 'placement', player: pid, land: opt.land, kind: opt.kind, outcome }
       remaining--
     }
@@ -318,7 +320,12 @@ export class Game {
     pid: PlayerId,
     empire: EmpireCard,
   ): Generator<GameEvent, TurnEffects, PlayInput> {
-    const effects: TurnEffects = { attackerBonus: false, bonusArmies: 0 }
+    const effects: TurnEffects = {
+      attackerBonus: false,
+      attackerKeptBonus: 0,
+      attackerWinsTies: false,
+      bonusArmies: 0,
+    }
     const player = this.player(pid)
     if (player.hand.greater.length === 0 && player.hand.lesser.length === 0) return effects
 
@@ -366,8 +373,13 @@ export class Game {
   private foldEffect(card: EventCard, effects: TurnEffects): void {
     switch (card.effect.kind) {
       case 'leader':
+        effects.attackerBonus = true // attacker rolls 3 dice
+        break
       case 'weaponry':
-        effects.attackerBonus = true
+        effects.attackerKeptBonus += 1 // +1 to each attacker die
+        break
+      case 'fanaticism':
+        effects.attackerWinsTies = true // attacker wins ties
         break
       case 'reallocation':
       case 'minor_empire':
@@ -483,18 +495,24 @@ export class Game {
         kind = 'own_old' // our older-epoch army → free replace
       } else {
         kind = 'enemy'
-        odds = oddsForContext(this.combatContext(land, amphibious, false))
+        odds = oddsForContext(this.combatContext(land, amphibious)) // base odds (pre-events)
       }
       options.push({ land, kind, amphibious, odds })
     }
     return options
   }
 
-  private combatContext(land: LandId, amphibious: boolean, attackerBonus: boolean): CombatContext {
+  private combatContext(
+    land: LandId,
+    amphibious: boolean,
+    effects?: TurnEffects,
+  ): CombatContext {
     const terrain = this.board.land(land)?.difficultTerrain ?? []
     const fort = this.state.pieces.some((p) => p.land === land && p.kind === 'fort')
     return {
-      attackerBonus,
+      attackerBonus: effects?.attackerBonus ?? false,
+      attackerKeptBonus: effects?.attackerKeptBonus ?? 0,
+      attackerWinsTies: effects?.attackerWinsTies ?? false,
       difficultTerrain:
         terrain.includes('forest') ||
         terrain.includes('mountain') ||
@@ -510,7 +528,7 @@ export class Game {
     pid: PlayerId,
     empire: EmpireCard,
     opt: FrontierOption,
-    attackerBonus: boolean,
+    effects: TurnEffects,
   ): CombatResult | undefined {
     const land = opt.land
     const epoch = this.state.epoch
@@ -526,7 +544,7 @@ export class Game {
       return undefined
     }
     // enemy
-    const ctx = this.combatContext(land, opt.amphibious, attackerBonus)
+    const ctx = this.combatContext(land, opt.amphibious, effects)
     const res = resolveAssault(this.state.rng, ctx)
     if (res.fortDestroyed) this.removeFortOn(land) // fort fell with the army
     if (res.outcome === 'attacker') {
