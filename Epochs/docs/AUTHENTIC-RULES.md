@@ -77,15 +77,17 @@ V 750–1300 AD · VI 1300–1550 AD · VII 1550–1914 AD.
 - **Dice:** attacker rolls **2 white dice (keep highest)**; defender rolls **1 coloured
   die**. Highest single die wins; loser removes one army. Attacker may keep placing &
   re-attacking until the Land is taken or he declines.
-- **Ties:** ⚠ RE-VERIFY (rule 8.2 obscured by the spine fold). The card logic strongly
-  implies **the defender wins ties** (Fanaticism/Fortress *grant* tie-wins to their
-  side, so the default must favour the defender). The sample-game OCR said "ties are
-  rerolled"; the current engine uses "tie = both removed." **Re-photograph rule 8.2.**
-- **Difficult terrain** (Mountain / Forest-Jungle / Wall on the defender's border, OR
+- **Ties: REROLLED** ✅ confirmed from the worked example ("the +1 modification for his
+  fort makes it a '6'. **The battle must be rerolled**"). Highest single die wins; an
+  exact tie is rerolled until decisive. *Fanaticism* (attacker) and *Fortress*
+  (defender) override this to auto-win ties for their side. **NOT "both removed"** — the
+  old engine's tie rule was wrong, and the combat-odds renormalize to
+  `P(att>def) / (P(att>def)+P(def>att))`.
+- **Difficult terrain** ✅ (Mountain / Forest-Jungle / Wall on the defender's border, OR
   an overseas/amphibious attack): the **defender rolls BOTH coloured dice, keeps the
-  highest**. Caps the defender at 2 dice — there is **no defender-rolls-3**. The Great
-  Wall is in effect all game. ⚠ RE-VERIFY (sample game says the *attacker* drops to one
-  die instead — resolve; rules-text reading is higher-confidence).
+  highest** ("a defender who rolls two dice instead of one. Both players choose the
+  highest die roll"). Caps the defender at 2 dice — **no defender-rolls-3**; amphibious
+  = the same defender-2 as terrain. The Great Wall is in effect all game.
 - **Forts:** **+1** to the defending die. Do **not** absorb losses; eliminated with the
   last defending army.
 - **Naval combat:** fleets fight like armies but get **no** fort/terrain benefit;
@@ -213,8 +215,8 @@ each card valid only in its printed Epoch band; "before turn" vs "during turn" t
 An Event may not modify another Event played the **same** turn, but may modify a
 **previous** one. **No "two-of-a-kind" restriction in this edition.**
 
-**Pile composition:** (1) Lime-Green = 7 **Minor Empires** ⚠ (the 7 names/stats were not
-captured — re-scan). (2) Dark-Blue = 3 Leaders, 2 Weaponry, 2 Fanaticism. (3) Orange =
+**Pile composition:** (1) Lime-Green = 7 **Minor Empires** ✅ (one per Epoch — see table
+below). (2) Dark-Blue = 3 Leaders, 2 Weaponry, 2 Fanaticism. (3) Orange =
 2 Elite Troops, 2 Civil Wars, 1 Jihad, 1 Crusade, 1 Jewish Revolt. (4) Purple = 2
 Migrants, 5 Kingdoms. (5) Brown = 7 Disasters (1 Flood + 2 Volcano + 3 Fire + 1 Storm).
 (6) Blue = 2 Rebellions, 3 Treachery, 1 Empires Fortify, 1 Empires Revive. (7) Red = 3
@@ -256,10 +258,20 @@ inferred — verify.
 - **Sub-Saharan Migrants** (before, II–VII) / **N. American Migrants** (before, II–VII):
   place **2 armies** (past-empire type) in that Area's vacant Lands; no Monuments, no
   attacking.
-- **Minor Empires** (×7): build & expand like a normal empire with a **different-type
-  marker**; not part of your main empire for Monuments/Expansion; resolves fully before
-  your main empire places; **does** add to your end-of-turn score. ⚠ specifics not
-  captured.
+- **Minor Empires** (×7, lime-green, **play before turn**): build & expand like a normal
+  empire with a **different-type marker**; not part of your main empire for
+  Monuments/Expansion; resolves fully before your main empire places; **does** add to
+  your end-of-turn score. ✅ The 7 cards (one per Epoch):
+
+  | Epoch | Minor Empire | Str | Capital | Leader | Navigation | Start Land |
+  |--|--|--:|--|--|--|--|
+  | I | Hittites | 3 | Hattusas | Hattusilis I | — | Eastern Anatolia |
+  | II | Phoenicia | 3 | Byblos | Hiram I (969–936 BC) | E.Med + W.Med | Levant |
+  | III | Mayans | 2 | Uucil-Abnal | Unknown | — | Mexican Valley |
+  | IV | Anglo-Saxons | 3 | — (marauder) | Hengist (c. 550 AD) | North Sea | Baltic Seaboard ⚠ confirm |
+  | V | Fujiwara | 3 | Kyoto | Fujiwara Motoisune (836–891 AD) | Sea of Japan | Honshu |
+  | VI | Safavids | 3 | Isfahan | Shah Ismail I (1501–1524 AD) | — | Persian Plateau |
+  | VII | Japan | 5 | Tokyo | Mutsuhito (1867–1912 AD) | Sea of Japan | Honshu |
 - **Disasters** (before unless noted): **Flood** destroy a Monument in a Land adjacent
   to a Sea/Ocean (City/fort destroyed, Capital→City); **Volcano** ×2 same in a Mountain
   Land; **Fire** ×3 same in **any** Land; **Storm at Sea** (during) destroy **all fleets
@@ -305,9 +317,10 @@ inferred — verify.
   `scoring.ts`.)
 - **P0 Replace the event system** with the 9-pile / 9-card-hand / ≤2-per-turn model and
   the ~30 effects above (before/during timing, Epoch bands).
-- **P0 Fix combat**: tie semantics (⚠ likely defender-wins-ties) and the dice model
-  (attacker 2 white keep-high; defender 1, or 2-keep-high in Difficult Terrain; **no
-  defender-rolls-3**). Re-derive the combat-odds fixture afterward.
+- **P0 Fix combat**: ties are **rerolled** (renormalize odds to
+  `P(att>def)/(P(att>def)+P(def>att))`), and the dice model (attacker 2 white keep-high;
+  defender 1, or 2-keep-high in Difficult Terrain/overseas; **no defender-rolls-3**;
+  fort = +1 defender die). Re-derive the combat-odds fixture afterward.
 - **P1 Replace the empire roster** with §11 (names, Start Lands, real strengths, named-
   sea navigation + `+`, correct marauders, Epoch I = 6 + Sumeria seed, Inca/Aztec
   shared card). Regenerate `world.source.json` → `empires.ts`.
@@ -322,13 +335,12 @@ inferred — verify.
 - **P3** Re-verify the full VP staircase (done — read directly) and the 7 Minor-Empire
   cards; add optional-rule toggles.
 
-## 15. Open re-verification (re-photograph flat, straight-on)
+## 15. Open re-verification
 
-1. **Rule 8.2 combat resolution** — exact tie / loser / re-attack wording (currently
-   inferred defender-wins-ties; sample game says rerolled).
-2. **Rule 8.22 Difficult Terrain** — which side's dice change (defender rolls 2 keep-high
-   vs attacker drops to 1).
-3. **The Lime-Green Minor-Empire pile** — the 7 card names, Start Lands, strengths.
-4. **Event-pile assignment** of Treachery / Empire(s) Revive-Fortify / Siegecraft.
-
-(The full Area VP table was read directly off the board and is high-confidence — §7.)
+- ✅ **Combat ties** — RESOLVED: **rerolled** (worked-example re-photo, 2026-06-27).
+- ✅ **Difficult Terrain** — RESOLVED: **defender rolls 2, keeps highest** (re-photo).
+- ✅ **The 7 Minor Empires** — RESOLVED: card re-photo (§12 table).
+- ✅ **Area VP table** — read directly off the board (§7).
+- ⚠ Minor remaining: exact Start Lands for a couple of Minor Empires (Anglo-Saxons);
+  event-pile assignment of Treachery / Empire(s) Revive-Fortify / Siegecraft (affects
+  only how many cards go undealt, not mechanics). Confirm during data entry.
