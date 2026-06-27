@@ -15,8 +15,9 @@ legal posture (we reimplement uncopyrightable mechanics only).
 > odds + VP swing), and a game-over pre-eminence reveal. 88 tests. **A real app:**
 > `./build-app.sh` builds +
 > installs a signed `/Applications/Epochs.app`; or `npm run dev:web` (browser) /
-> `npm run dev` (Electron) for development. Remaining: AI self-play re-tune, UI
-> polish.
+> `npm run dev` (Electron) for development. The AI is **self-play-tuned** (monotonic
+> easy/medium/hard) and an in-app **“How to play”** explains the rules on first
+> load. Remaining (optional): save/load.
 
 ## Stack
 

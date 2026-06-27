@@ -49,6 +49,7 @@ class GameUI {
   private speed = 320
   private timer: ReturnType<typeof setTimeout> | null = null
   private over = false
+  private helpOpen = false
 
   private fx: Fx[] = []
   private rafId: number | null = null
@@ -71,6 +72,20 @@ class GameUI {
     this.canvas.addEventListener('click', (e) => this.onClick(e))
     window.addEventListener('resize', () => this.render())
     this.newGame()
+    this.showHelp() // first-run onboarding (pauses until dismissed)
+  }
+
+  private showHelp(): void {
+    this.helpOpen = true
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    ;(this.root.querySelector('#help') as HTMLElement).classList.remove('hidden')
+  }
+
+  private hideHelp(): void {
+    this.helpOpen = false
+    ;(this.root.querySelector('#help') as HTMLElement).classList.add('hidden')
+    this.scheduleNext()
   }
 
   // ── lifecycle ──────────────────────────────────────────────────────────
@@ -125,7 +140,7 @@ class GameUI {
   private scheduleNext(): void {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
-    if (this.auto && !this.pending && !this.pendingEvents && !this.over) {
+    if (this.auto && !this.pending && !this.pendingEvents && !this.over && !this.helpOpen) {
       // dwell at least `speed`, but long enough for any running animation to finish
       const now = performance.now()
       const pend = this.fx.reduce((m, f) => Math.max(m, f.start + f.dur - now), 0)
@@ -481,6 +496,8 @@ class GameUI {
   // ── controls ──────────────────────────────────────────────────────────────
   private wireControls(): void {
     const q = <T extends HTMLElement>(s: string) => this.root.querySelector(s) as T
+    q<HTMLButtonElement>('#help-btn').onclick = () => this.showHelp()
+    q<HTMLButtonElement>('#help-close').onclick = () => this.hideHelp()
     q<HTMLButtonElement>('#step').onclick = () => {
       this.auto = false
       this.syncAuto()
@@ -539,10 +556,38 @@ const TEMPLATE = `
 <div class="app">
   <header class="topbar">
     <h1>Epochs</h1>
-    <div class="hud"><span id="epoch">Epoch I / VII</span></div>
+    <div class="hud"><span id="epoch">Epoch I / VII</span><button id="help-btn" class="help-btn">? How to play</button></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+      <div id="help" class="event-panel hidden">
+        <div class="evt-box help-box">
+          <h3>How to play Epochs</h3>
+          <div class="help-body">
+            <p class="help-lead">Lead a succession of empires across <b>seven epochs</b> of history. Whoever has the most <b>Victory Points (VP)</b> at the end wins.</p>
+            <h4>A turn</h4>
+            <p>Each epoch every player commands <b>one empire</b> of that era. You may play a couple of <b>event cards</b>, then place your armies one at a time — spreading from your homeland into bordering lands (or across seas you can sail) — and then you <b>score</b>. Empires die off between epochs; your VP carry on.</p>
+            <h4>Scoring — the heart of it</h4>
+            <p>You earn VP for controlling the colored <b>regions</b>:</p>
+            <ul>
+              <li><b>Presence</b> (≥1 army in a region) = the region's value</li>
+              <li><b>Dominance</b> (≥2 armies and more than anyone else) = <b>×2</b></li>
+              <li><b>Control</b> (≥3 and no rival there) = <b>×3</b></li>
+            </ul>
+            <p>Plus <b>★ capital</b> = 2, <b>◆ city</b> = 1, <b>▲ monument</b> = 1 each turn you hold them. A region's value changes by epoch — watch the <b>Regions</b> panel for what's worth fighting over now.</p>
+            <h4>Combat</h4>
+            <p>To take an enemy land you attack: roll 2 dice (keep the higher) vs the defender's 1 — higher wins, a tie removes both. Mountains, straits, sea-landings and <b>▮ forts</b> favor the defender. On your turn, <b>hover</b> a target to see the exact win odds.</p>
+            <h4>It stays close</h4>
+            <p>The player in <b>last place drafts first</b> each epoch and gets first pick of the strongest new empire — so leads don't run away. And each epoch's leader secretly draws a hidden <b>pre-eminence</b> bonus, revealed only at the very end.</p>
+            <h4>Events</h4>
+            <p>You hold a fixed hand of cards for the <i>whole game</i> (no refills): <b>Leaders / Weaponry</b> (stronger attacks), <b>bonus armies</b>, or <b>Coins</b> (build forts). Spend them wisely — up to one of each before a turn.</p>
+            <h4>Watch or play</h4>
+            <p>By default you <b>watch the AI</b>. To take a seat, tick <b>“I play (seat 1)”</b> and press <b>New Game</b>. On your turn, click a highlighted land to place an army — <span class="hk g">●</span> settle · <span class="hk b">●</span> reclaim · <span class="hk r">●</span> attack (ring color = your odds). Use <b>Step</b> / <b>Auto</b> and the speed slider to control playback; <b>End Turn</b> stops placing early.</p>
+          </div>
+          <div class="evt-actions"><button id="help-close" class="primary">Got it — start</button></div>
+        </div>
+      </div>
+    </div>
     <aside class="sidebar">
       <div class="status" id="status"></div>
       <section>

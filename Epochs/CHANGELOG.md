@@ -2,6 +2,16 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.8.1] — 2026-06-27
+
+### Added
+- **In-app "How to play"** — a rules overlay (goal, a turn, region scoring
+  presence/dominance/control, combat, the catch-up draft, events, pre-eminence,
+  watch-vs-play, the map key) that **shows on first load** and pauses the game
+  until you dismiss it, and is reopenable anytime via the **"? How to play"**
+  button in the top bar. Our own wording (legal posture unchanged). Fixes: on
+  launch it wasn't clear how to play.
+
 ## [0.8.0] — 2026-06-27
 
 UI polish — nicer to watch, better to play. (Designed via a 3-perspective design
