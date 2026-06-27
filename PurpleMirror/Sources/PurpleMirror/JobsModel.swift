@@ -3,10 +3,11 @@ import SwiftUI
 import Combine
 import UserNotifications
 
-/// Discovers and owns the set of managed launchd jobs. Scans
-/// `~/Library/LaunchAgents` for PhantomLives agents (see ``JobRegistry/shouldManage(label:)``),
-/// builds one ``JobController`` per agent, refreshes them on a timer, and exposes
-/// the worst-case health to drive the menu-bar glyph.
+/// Discovers and owns the set of managed launchd jobs across one or more hosts (the local Mac plus
+/// any remote runners from ``HostStore``). For each host it lists `~/Library/LaunchAgents`, keeps
+/// the PhantomLives agents (see ``JobRegistry/shouldManage(label:)``), builds one ``JobController``
+/// per (host, agent), refreshes them on a timer, and exposes the worst-case health for the menu-bar
+/// glyph. With only the local host this behaves exactly as PurpleMirror always has.
 @MainActor
 final class JobsModel: ObservableObject {
 
@@ -14,16 +15,20 @@ final class JobsModel: ObservableObject {
     /// The job whose log/settings the secondary windows show.
     @Published var selectedJobID: String?
 
+    private(set) var hostContexts: [HostContext]
     private var timer: AnyCancellable?
-    /// Forwards each child `JobController`'s changes up to this model, so views observing the model
-    /// (the menu's group headers + the menu-bar aggregate glyph) re-render when a job's health/status
-    /// changes — not just the individual row that observes the controller directly.
     private var jobObservers: [String: AnyCancellable] = [:]
+    /// Re-list agents (discovery) less often than we refresh state, to keep ssh chatter down.
+    private var tickCount = 0
+    private let rescanEveryTicks = 6   // refresh every 10s; re-discover ~every 60s
+
+    var monitoredHosts: [MonitoredHost] { hostContexts.map(\.host) }
+    var hasRemoteHosts: Bool { hostContexts.contains { !$0.host.isLocal } }
 
     init() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-        rescan()
-        Task { await refreshAll() }
+        self.hostContexts = HostStore.load().map { HostContext(host: $0) }
+        Task { await rescan(); await refreshAll() }
         // Light periodic refresh so the menu-bar glyph + rows stay current, and
         // newly-installed agents appear without a relaunch.
         timer = Timer.publish(every: 10, on: .main, in: .common)
@@ -31,52 +36,75 @@ final class JobsModel: ObservableObject {
             .sink { [weak self] _ in Task { await self?.tick() } }
     }
 
-    private var launchAgentsDir: String {
-        (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents")
+    /// Rebuild host contexts from the persisted host list (after the user edits Settings ▸ Hosts),
+    /// preserving any existing context whose host is unchanged (keeps its resolved uid/home).
+    func reloadHosts() {
+        objectWillChange.send()   // host list (monitoredHosts) is derived from hostContexts
+        let hosts = HostStore.load()
+        hostContexts = hosts.map { h in
+            hostContexts.first(where: { $0.host == h }) ?? HostContext(host: h)
+        }
+        Task { await rescan(); await refreshAll() }
     }
 
-    /// (Re)scan the LaunchAgents directory and reconcile the job list, preserving
-    /// the live `JobController` for labels we already track.
-    func rescan() {
-        let dir = launchAgentsDir
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+    /// (Re)scan every host's LaunchAgents directory and reconcile the job list, preserving the
+    /// live `JobController` for (host, label) pairs we already track. An unreachable remote host
+    /// keeps its last-known jobs (marked unreachable on refresh) rather than dropping them.
+    func rescan() async {
         var found: [JobController] = []
-        for f in files where f.hasSuffix(".plist") {
-            let path = (dir as NSString).appendingPathComponent(f)
-            guard let d = LaunchAgentPlist.read(path: path), JobRegistry.shouldManage(label: d.label) else { continue }
-            if let existing = jobs.first(where: { $0.id == d.label }) {
-                found.append(existing)
-            } else {
-                let jc = JobController(descriptor: d)
-                // Re-publish this model whenever the controller changes, so group headers + the
-                // aggregate glyph stay live (the per-row view already observes the controller).
-                jobObservers[d.label] = jc.objectWillChange.sink { [weak self] _ in
-                    self?.objectWillChange.send()
+        for ctx in hostContexts {
+            let hostID = ctx.host.id
+            if !ctx.host.isLocal {
+                await ctx.ensureResolved()
+                guard ctx.reachable else {
+                    found.append(contentsOf: jobs.filter { $0.host.id == hostID })
+                    continue
                 }
-                found.append(jc)
+            }
+            let paths = await ctx.listLaunchAgentPlists()
+            if !ctx.host.isLocal && !ctx.reachable {
+                found.append(contentsOf: jobs.filter { $0.host.id == hostID })
+                continue
+            }
+            for path in paths {
+                guard let d = await ctx.readPlist(path: path), JobRegistry.shouldManage(label: d.label) else { continue }
+                let jid = "\(hostID)/\(d.label)"
+                if let existing = jobs.first(where: { $0.id == jid }) {
+                    found.append(existing)
+                } else {
+                    let jc = JobController(descriptor: d, ctx: ctx)
+                    jobObservers[jid] = jc.objectWillChange.sink { [weak self] _ in
+                        self?.objectWillChange.send()
+                    }
+                    found.append(jc)
+                }
             }
         }
-        found.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-
-        // Drop observers for jobs that no longer exist.
-        jobObservers = jobObservers.filter { key, _ in found.contains { $0.id == key } }
-
-        // Only reassign (and churn the views) when the set of labels actually changed.
-        if found.map(\.id) != jobs.map(\.id) {
-            jobs = found
+        // Stable order: local host first, then by host name, then job name.
+        found.sort {
+            if $0.isLocalHost != $1.isLocalHost { return $0.isLocalHost }
+            if $0.hostName != $1.hostName { return $0.hostName.localizedCaseInsensitiveCompare($1.hostName) == .orderedAscending }
+            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
+
+        jobObservers = jobObservers.filter { key, _ in found.contains { $0.id == key } }
+        if found.map(\.id) != jobs.map(\.id) { jobs = found }
         if selectedJobID == nil || !jobs.contains(where: { $0.id == selectedJobID }) {
             selectedJobID = jobs.first?.id
         }
     }
 
     private func tick() async {
-        rescan()
+        tickCount += 1
+        if tickCount % rescanEveryTicks == 0 { await rescan() }
         await refreshAll()
     }
 
     func refreshAll() async {
-        for j in jobs { await j.refresh() }
+        // Refresh hosts concurrently so a slow/asleep remote can't stall the others.
+        await withTaskGroup(of: Void.self) { group in
+            for j in jobs { group.addTask { await j.refresh() } }
+        }
     }
 
     /// Worst health across all jobs → the menu-bar glyph. No jobs ⇒ attention.
@@ -84,12 +112,16 @@ final class JobsModel: ObservableObject {
         jobs.map(\.health).max(by: { $0.severity < $1.severity }) ?? .warning
     }
 
-    /// Jobs grouped by source for display (still operated on individually).
-    /// Named sources sort first (alphabetically); "Obsidian"/"Other" go last.
+    /// Jobs grouped for display. With more than one host the group name is prefixed with the host
+    /// (e.g. "Runner · Photos") so host blocks stay contiguous; single-host display is unchanged.
     var groups: [(name: String, jobs: [JobController])] {
+        let multi = hostContexts.count > 1
         var m: [String: [JobController]] = [:]
-        for j in jobs { m[j.group, default: []].append(j) }
-        func rank(_ g: String) -> Int { (g == "Obsidian" || g == "Other") ? 1 : 0 }
+        for j in jobs {
+            let key = multi ? "\(j.hostName) · \(j.group)" : j.group
+            m[key, default: []].append(j)
+        }
+        func rank(_ g: String) -> Int { (g.hasSuffix("Obsidian") || g.hasSuffix("Other")) ? 1 : 0 }
         return m.keys.sorted {
             rank($0) != rank($1) ? rank($0) < rank($1)
                                  : $0.localizedCaseInsensitiveCompare($1) == .orderedAscending

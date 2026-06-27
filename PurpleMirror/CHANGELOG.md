@@ -4,6 +4,18 @@ All notable changes to PurpleMirror are documented here.
 
 ## Unreleased
 
+- **Remote hosts — monitor & control jobs on another Mac over SSH.** PurpleMirror can now watch
+  the launchd jobs on a *remote* Mac (e.g. the dedicated archive "runner") alongside local ones,
+  so the same instance on Vortex or MB14 sees everything in one place. Add a host under
+  **Settings ▸ Hosts** (SSH user / host / optional identity file) with a **Test connection**
+  button; its jobs appear grouped by host (e.g. "Runner · Photos"). Status, logs, and **Run Now**
+  work remotely; schedule editing (enable/disable/interval) stays local-only for now. An
+  unreachable host degrades gracefully (its jobs are kept and shown as unreachable, never dropped)
+  and a slow/asleep host can't stall the refresh (per-host concurrent refresh, `BatchMode`+
+  `ConnectTimeout`, SSH ControlMaster multiplexing). New `MonitoredHost`/`HostStore`/`HostContext`/
+  `SSHCommand`; existing single-local-host installs are unchanged. (11 unit tests for the pure
+  seams: argv builder, plist-from-bytes, host persistence.)
+
 - **New menu actions: Eject Drives + Restart Safely…** A one-click guard against
   the macOS Tahoe 26 shutdown hang, where `diskarbitrationd` wedges in-kernel
   trying to unmount a still-mounted external drive (see `docs/reboot-hangs.md`).

@@ -2,16 +2,25 @@ import Foundation
 import SwiftUI
 import UserNotifications
 
-/// Observable state + actions for ONE launchd background job. A thin GUI over the
-/// job's launchd agent (and, for script-managed jobs, its install script) — the
-/// script/plist remain the single source of truth; this never reimplements the
-/// job's work. One `JobController` per agent discovered by ``JobsModel``.
+/// Observable state + actions for ONE launchd background job on ONE host. A thin GUI over the
+/// job's launchd agent (and, for script-managed jobs, its install script) — the script/plist
+/// remain the single source of truth; this never reimplements the job's work. One
+/// `JobController` per (host, agent) discovered by ``JobsModel``.
+///
+/// All execution + I/O flows through the job's ``HostContext`` (local verbatim, or ssh-wrapped),
+/// so the same controller drives a local job or one on the remote runner. Schedule edits
+/// (enable/disable/interval) are local-only for now; remote control is limited to Run-Now.
 @MainActor
 final class JobController: ObservableObject, Identifiable {
 
-    nonisolated var id: String { label }
+    /// Unique across hosts (the same label can run on Vortex AND the runner — e.g. brew-autoupdate).
+    /// Built from plain `let`s so it's safe to read from a nonisolated context (Identifiable).
+    nonisolated var id: String { "\(hostID)/\(label)" }
+    let hostID: String
     let label: String
     let profile: JobProfile
+    let ctx: HostContext
+    var host: MonitoredHost { ctx.host }
 
     @Published private(set) var descriptor: AgentDescriptor
     @Published private(set) var agentLoaded = false
@@ -23,14 +32,18 @@ final class JobController: ObservableObject, Identifiable {
     @Published private(set) var intervalSeconds: Int
     @Published private(set) var isRunning = false
     @Published private(set) var lastActionMessage: String?
+    /// False when this job's (remote) host couldn't be reached on the last refresh.
+    @Published private(set) var hostReachable = true
 
     /// The `runs` count of the most recent failed run we've already alerted on,
     /// so a single failure produces a single notification (not one per refresh).
     private var notifiedForRun: Int?
 
-    init(descriptor: AgentDescriptor) {
+    init(descriptor: AgentDescriptor, ctx: HostContext) {
         self.label = descriptor.label
+        self.hostID = ctx.host.id
         self.descriptor = descriptor
+        self.ctx = ctx
         self.profile = JobRegistry.profile(for: descriptor)
         self.intervalSeconds = descriptor.startInterval ?? 3600
     }
@@ -44,14 +57,29 @@ final class JobController: ObservableObject, Identifiable {
     var lastActivityRelative: String { SyncStatusParser.relativeAge(of: summary?.date) }
     var scriptPath: String? { if case .script(let p, _) = profile.scheduling { return p } else { return descriptor.scriptPath } }
 
-    private var plistPath: String {
-        (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents/\(label).plist")
-    }
-    private var userDomain: String { "gui/\(getuid())" }
+    /// Host this job lives on (for UI attribution when more than one host is monitored).
+    var hostName: String { host.displayName }
+    var isLocalHost: Bool { host.isLocal }
+
+    private var plistPath: String { ctx.home + "/Library/LaunchAgents/\(label).plist" }
+    private var userDomain: String { "gui/\(ctx.uid)" }
     private var domainTarget: String { "\(userDomain)/\(label)" }
-    var logPath: String { profile.activityLogPathOverride ?? descriptor.stdoutPath ?? "" }
+
+    /// The activity log path on this job's host. A profile override is built against the LOCAL
+    /// home, so for a remote host it's rebased onto that host's home; otherwise the plist's own
+    /// `StandardOutPath` (already absolute on the remote) is used.
+    var logPath: String { rebaseHome(profile.activityLogPathOverride) ?? descriptor.stdoutPath ?? "" }
+
+    private func rebaseHome(_ path: String?) -> String? {
+        guard let path else { return nil }
+        guard !host.isLocal else { return path }
+        let localHome = NSHomeDirectory()
+        if path.hasPrefix(localHome) { return ctx.home + String(path.dropFirst(localHome.count)) }
+        return path
+    }
 
     var health: SyncStatusParser.Health {
+        if !hostReachable { return .warning }
         let base = SyncStatusParser.health(agentLoaded: agentLoaded, lastExitCode: lastExitCode, isSyncing: isRunning)
         // A recognized log-level failure (e.g. a PurpleAttic sync's "pull exit: 12",
         // which the wrapper script swallows so launchd still sees exit 0) downgrades health.
@@ -63,19 +91,25 @@ final class JobController: ObservableObject, Identifiable {
     // MARK: Refresh
 
     func refresh() async {
-        let (status, out) = await Self.run("/bin/launchctl", ["print", domainTarget])
+        if !host.isLocal { await ctx.ensureResolved() }
+        guard ctx.reachable else {
+            hostReachable = false
+            return
+        }
+        let (status, out) = await ctx.run("/bin/launchctl", ["print", domainTarget])
         let agent = SyncStatusParser.parseAgentState(out, launchctlSucceeded: status == 0)
 
         // Re-read the plist so a hand-edited interval / args show up live.
-        if let d = LaunchAgentPlist.read(path: plistPath) {
+        if let d = await ctx.readPlist(path: plistPath) {
             descriptor = d
             intervalSeconds = d.startInterval ?? intervalSeconds
         }
 
-        let logText = (try? String(contentsOfFile: logPath, encoding: .utf8)) ?? ""
+        let logText = await ctx.readText(path: logPath) ?? ""
         if let sum = SyncStatusParser.summary(logText, kind: profile.logKind) { summary = sum }
         itemsLast24h = SyncStatusParser.itemsLast24h(logText, kind: profile.logKind)
 
+        hostReachable = ctx.reachable
         agentLoaded = agent.loaded
         runs = agent.runs
         lastExitCode = agent.lastExitCode
@@ -88,33 +122,39 @@ final class JobController: ObservableObject, Identifiable {
 
     private func postFailureNotification(exitCode: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "\(displayName) failed"
+        content.title = "\(displayName) failed\(host.isLocal ? "" : " on \(hostName)")"
         content.body = "The job reported an error (exit \(exitCode)). Open PurpleMirror ▸ View Log for details."
         content.sound = .default
-        let req = UNNotificationRequest(identifier: "purplemirror-\(label)-failure-\(runs ?? 0)",
+        let req = UNNotificationRequest(identifier: "purplemirror-\(id)-failure-\(runs ?? 0)",
                                         content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
     }
 
     // MARK: Actions
 
-    /// Trigger one run now. Uses the loaded agent (so the baked-in config is
-    /// honored); falls back to the script / a bootstrap+kickstart if not loaded.
+    /// Trigger one run now. For a loaded agent this is a `launchctl kickstart` — which works on
+    /// the local Mac OR the remote runner (the only control that needs no local paths). For an
+    /// *un*loaded agent the local fallbacks (script / bootstrap) only apply on the local host;
+    /// on a remote host, enable it there first.
     func runNow() {
         guard !isRunning else { return }
+        if !host.isLocal && !agentLoaded {
+            lastActionMessage = "Not loaded on \(hostName) — enable it there first"
+            return
+        }
         isRunning = true
         lastActionMessage = "Starting…"
         Task {
             var startedViaKickstart = true
             let result: (Int32, String)
             if agentLoaded {
-                result = await Self.run("/bin/launchctl", ["kickstart", "-k", domainTarget])
+                result = await ctx.run("/bin/launchctl", ["kickstart", "-k", domainTarget])
             } else if case .script(let path, let envKeys) = profile.scheduling {
                 startedViaKickstart = false
                 result = await runScript(path, [], envKeys: envKeys)
             } else {
-                _ = await Self.run("/bin/launchctl", ["bootstrap", userDomain, plistPath])
-                result = await Self.run("/bin/launchctl", ["kickstart", "-k", domainTarget])
+                _ = await ctx.run("/bin/launchctl", ["bootstrap", userDomain, plistPath])
+                result = await ctx.run("/bin/launchctl", ["kickstart", "-k", domainTarget])
             }
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             await refresh()
@@ -129,7 +169,11 @@ final class JobController: ObservableObject, Identifiable {
         }
     }
 
+    /// True when schedule edits (enable/disable/interval) are available — local host only for now.
+    var canEditSchedule: Bool { host.isLocal }
+
     func enable() {
+        guard requireLocalForScheduleEdit() else { return }
         Task {
             lastActionMessage = "Enabling…"
             switch profile.scheduling {
@@ -144,6 +188,7 @@ final class JobController: ObservableObject, Identifiable {
     }
 
     func disable() {
+        guard requireLocalForScheduleEdit() else { return }
         Task {
             lastActionMessage = "Disabling…"
             switch profile.scheduling {
@@ -159,6 +204,7 @@ final class JobController: ObservableObject, Identifiable {
     }
 
     func setInterval(_ seconds: Int) {
+        guard requireLocalForScheduleEdit() else { return }
         Task {
             lastActionMessage = "Updating schedule…"
             switch profile.scheduling {
@@ -172,7 +218,15 @@ final class JobController: ObservableObject, Identifiable {
         }
     }
 
-    // MARK: Plist interval edit (defensive)
+    /// Phase 2 limits schedule edits to the local host (they need local plist/script paths).
+    /// Remote control beyond Run-Now is a later phase.
+    private func requireLocalForScheduleEdit() -> Bool {
+        if host.isLocal { return true }
+        lastActionMessage = "Schedule edits on \(hostName) aren't supported yet — Run Now works"
+        return false
+    }
+
+    // MARK: Plist interval edit (defensive, local only)
 
     /// Rewrite ONLY `StartInterval` in the agent's plist, then reload it. Keeps a
     /// backup and restores it if the reload fails, so an operational plist (e.g. a
@@ -208,18 +262,23 @@ final class JobController: ObservableObject, Identifiable {
 
     // MARK: Log access
 
-    func readLog() -> String {
+    /// Fetch the job's log (host-aware: local read or `cat` over ssh).
+    func loadLog() async -> String {
         guard !logPath.isEmpty else { return "(this job has no log path)" }
-        return (try? String(contentsOfFile: logPath, encoding: .utf8)) ?? "(no log yet at \(logPath))"
+        if !host.isLocal { await ctx.ensureResolved() }
+        return await ctx.readText(path: logPath) ?? "(no log yet at \(logPath))"
     }
 
+    /// Reveal / open-in-Console only make sense for a local file.
+    var hasLocalLog: Bool { host.isLocal && !logPath.isEmpty }
+
     func revealLogInFinder() {
-        guard !logPath.isEmpty else { return }
+        guard hasLocalLog else { return }
         NSWorkspace.shared.selectFile(logPath, inFileViewerRootedAtPath: "")
     }
 
     func openLogInConsole() {
-        guard !logPath.isEmpty else { return }
+        guard hasLocalLog else { return }
         NSWorkspace.shared.open([URL(fileURLWithPath: logPath)],
                                 withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Console.app"),
                                 configuration: NSWorkspace.OpenConfiguration())
@@ -227,15 +286,17 @@ final class JobController: ObservableObject, Identifiable {
 
     // MARK: Process plumbing
 
-    /// Run a script via /bin/bash, carrying over the requested env keys from the
-    /// installed plist (e.g. OBSIDIAN_VAULT so --install-agent re-bakes it).
+    /// Run a script via /bin/bash on the LOCAL host, carrying over the requested env keys from the
+    /// installed plist (e.g. OBSIDIAN_VAULT so --install-agent re-bakes it). Only reached on the
+    /// local host (schedule edits are local-only).
     private func runScript(_ path: String, _ args: [String], envKeys: [String]) async -> (Int32, String) {
         var env = ProcessInfo.processInfo.environment
         for k in envKeys { if let v = descriptor.environment[k], !v.isEmpty { env[k] = v } }
         return await Self.run("/bin/bash", [path] + args, env: env)
     }
 
-    /// Run a command off the main actor; capture merged stdout+stderr.
+    /// Run a command off the main actor; capture merged stdout+stderr. The one `Process` runner;
+    /// ``HostContext`` reuses it for both local and ssh-wrapped invocations.
     nonisolated static func run(_ launchPath: String, _ args: [String],
                                 env: [String: String]? = nil) async -> (Int32, String) {
         await Task.detached(priority: .userInitiated) { () -> (Int32, String) in

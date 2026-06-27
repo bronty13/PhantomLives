@@ -70,6 +70,26 @@ The plist-managed interval edit deliberately touches **only** `StartInterval` �
 args, env, and log paths are preserved verbatim — so an operational backup plist
 can't be left in a broken state.
 
+## Remote hosts (monitor another Mac over SSH)
+
+PurpleMirror can also watch the launchd jobs on a **remote** Mac — e.g. a dedicated
+always-on "runner" that owns the scheduled archive jobs — so one instance (on Vortex
+*or* MB14) shows local and remote jobs together. Add a host under **Settings ▸ Hosts**
+(SSH user / host / optional identity file) and hit **Test connection**; its jobs appear
+grouped by host (e.g. "Runner · Photos").
+
+- The remote Mac needs **Remote Login** enabled and this Mac's SSH public key in its
+  `~/.ssh/authorized_keys`. Connections are **key-only** (`BatchMode=yes` — a missing key
+  fails fast rather than prompting) and bounded by `ConnectTimeout`; SSH ControlMaster
+  multiplexing keeps the many small status calls cheap.
+- **Status, logs, and Run Now** work for remote jobs. **Schedule editing**
+  (enable/disable/interval) is **local-only for now** — it needs the host's plist/script
+  paths; coming in a later phase.
+- An unreachable/asleep host degrades gracefully: its jobs are kept and shown as
+  unreachable (not dropped), and per-host concurrent refresh means a slow host can't stall
+  the others.
+- Everything is additive — a default install with only the local Mac behaves exactly as before.
+
 ## Notes
 
 - **Not sandboxed** — it manages launchd agents and reads `~/Library`, so the App

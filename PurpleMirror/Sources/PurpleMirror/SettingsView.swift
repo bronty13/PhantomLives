@@ -9,24 +9,32 @@ struct SettingsView: View {
     private let sidebarWidth: CGFloat = 210
 
     var body: some View {
-        Group {
-            if model.jobs.isEmpty {
-                ContentUnavailableView(
-                    "No managed jobs",
-                    systemImage: "gearshape",
-                    description: Text("PurpleMirror manages PhantomLives launchd agents in ~/Library/LaunchAgents.")
-                )
-            } else {
-                HStack(spacing: 0) {
-                    JobSidebar(model: model, width: sidebarWidth)
-                    Divider()
-                    detail
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+        TabView {
+            jobsTab
+                .tabItem { Label("Jobs", systemImage: "list.bullet") }
+            HostsSettingsView(model: model)
+                .tabItem { Label("Hosts", systemImage: "network") }
+        }
+        .frame(width: 680, height: 560)
+        .task { await model.refreshAll() }
+    }
+
+    @ViewBuilder
+    private var jobsTab: some View {
+        if model.jobs.isEmpty {
+            ContentUnavailableView(
+                "No managed jobs",
+                systemImage: "gearshape",
+                description: Text("PurpleMirror manages PhantomLives launchd agents in ~/Library/LaunchAgents — locally and on any hosts added under the Hosts tab.")
+            )
+        } else {
+            HStack(spacing: 0) {
+                JobSidebar(model: model, width: sidebarWidth)
+                Divider()
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: 680, height: 520)
-        .task { await model.refreshAll() }
     }
 
     // MARK: Detail
@@ -71,17 +79,22 @@ private struct JobSettingsForm: View {
     var body: some View {
         Form {
             Section("Schedule") {
+                if !job.canEditSchedule {
+                    Text("On \(job.hostName) — schedule editing is coming soon. Run Now works now.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Toggle("Automatic background run", isOn: Binding(
                     get: { job.agentLoaded },
                     set: { $0 ? job.enable() : job.disable() }
                 ))
                 .help("Loads/unloads the launchd agent that runs this job on a fixed interval.")
+                .disabled(!job.canEditSchedule)
 
                 Picker("Run every", selection: $selection) {
                     ForEach(presets, id: \.1) { Text($0.0).tag($0.1) }
                     Text("Custom…").tag(-1)
                 }
-                .disabled(!job.agentLoaded)
+                .disabled(!job.agentLoaded || !job.canEditSchedule)
                 .onChange(of: selection) { _, new in
                     isCustom = (new == -1)
                     if new != -1 { job.setInterval(new) }
@@ -92,7 +105,7 @@ private struct JobSettingsForm: View {
                         Text("Every \(customMinutes) minutes")
                     }
                     Button("Apply custom interval") { job.setInterval(customMinutes * 60) }
-                        .disabled(!job.agentLoaded)
+                        .disabled(!job.agentLoaded || !job.canEditSchedule)
                 }
             }
 
@@ -109,6 +122,9 @@ private struct JobSettingsForm: View {
             }
 
             Section("Locations") {
+                LabeledContent("Host") {
+                    Text(job.hostName).foregroundStyle(.secondary)
+                }
                 LabeledContent("Log") {
                     Text(job.logPath.isEmpty ? "—" : job.logPath)
                         .textSelection(.enabled).foregroundStyle(.secondary)

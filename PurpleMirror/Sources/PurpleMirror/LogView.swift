@@ -51,9 +51,12 @@ struct LogView: View {
             Button { model.selectedJob?.revealLogInFinder() } label: {
                 Label("Reveal in Finder", systemImage: "folder")
             }
+            .disabled(!(model.selectedJob?.hasLocalLog ?? false))
             Button { model.selectedJob?.openLogInConsole() } label: {
                 Label("Open in Console", systemImage: "terminal")
             }
+            .disabled(!(model.selectedJob?.hasLocalLog ?? false))
+            .help((model.selectedJob?.isLocalHost ?? true) ? "" : "Remote job — the log is read over SSH; Reveal/Console are local-only.")
         }
         .padding(10)
     }
@@ -66,7 +69,11 @@ struct LogView: View {
     }
 
     private func reload() {
-        let fresh = model.selectedJob?.readLog() ?? "(no job selected)"
-        if fresh != text { text = fresh }   // avoid needless view churn when unchanged
+        // Host-aware: local read or `cat` over ssh, so fetch off the main thread.
+        let job = model.selectedJob
+        Task {
+            let fresh = await job?.loadLog() ?? "(no job selected)"
+            if fresh != text { text = fresh }   // avoid needless view churn when unchanged
+        }
     }
 }
