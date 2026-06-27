@@ -2,6 +2,17 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.12.2] — 2026-06-27
+
+### Changed
+- **The Victory Point Table moved out of the sidebar into its own popout dialog**
+  (a 📊 Scoring Table button in the top bar, alongside How to play / Rulebook).
+  In the narrow sidebar the table was cramped and its region names were truncated
+  to "…" (unreadable). In the dialog every region name reads in full, each with a
+  colour swatch, the seven epoch columns I–VII, the current epoch highlighted, and
+  a footnote on the Presence / Dominance (×2) / Control (×3) multipliers. It's
+  reference-on-demand — there when you want it, out of the way when you don't.
+
 ## [0.12.1] — 2026-06-27
 
 ### Added

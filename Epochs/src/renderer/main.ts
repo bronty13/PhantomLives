@@ -530,7 +530,6 @@ class GameUI {
       .join('')
 
     this.renderAreaControl()
-    this.renderVPTable()
 
     const logEl = this.root.querySelector('#log')!
     logEl.innerHTML = this.log.slice(-80).map((l) => `<div>${esc(l)}</div>`).join('')
@@ -581,6 +580,17 @@ class GameUI {
     el.innerHTML = html + '</tbody></table>'
   }
 
+  private showVPTable(): void {
+    this.renderVPTable()
+    const cur = this.root.querySelector('#vpt-cur-epoch')
+    if (cur) cur.textContent = ROMAN[this.currentEpoch]
+    ;(this.root.querySelector('#vptable-modal') as HTMLElement).classList.remove('hidden')
+  }
+
+  private hideVPTable(): void {
+    ;(this.root.querySelector('#vptable-modal') as HTMLElement).classList.add('hidden')
+  }
+
   private renderGameOver(result: GameResult): void {
     const el = this.root.querySelector('#gameover') as HTMLElement
     const rows = result.standings
@@ -613,6 +623,8 @@ class GameUI {
     q<HTMLButtonElement>('#help-close').onclick = () => this.hideHelp()
     q<HTMLButtonElement>('#rulebook-btn').onclick = () => this.openRulebook()
     q<HTMLButtonElement>('#rb-close').onclick = () => this.closeRulebook()
+    q<HTMLButtonElement>('#vpt-btn').onclick = () => this.showVPTable()
+    q<HTMLButtonElement>('#vpt-close').onclick = () => this.hideVPTable()
     q<HTMLButtonElement>('#step').onclick = () => {
       this.auto = false
       this.syncAuto()
@@ -671,11 +683,12 @@ const TEMPLATE = `
 <div class="app">
   <header class="topbar">
     <h1>Epochs</h1>
-    <div class="hud"><span id="epoch">Epoch I / VII</span><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
+    <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
   </header>
   <div class="body">
     <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
       <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Original Rulebook &amp; Sample Game</h3><button id="rb-close">Close</button></div><div class="rb-pages"></div></div></div>
+      <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">
         <div class="evt-box help-box">
           <h3>How to play Epochs</h3>
@@ -713,10 +726,6 @@ const TEMPLATE = `
       <section>
         <h2>Regions (this epoch)</h2>
         <div id="areas"></div>
-      </section>
-      <section>
-        <h2>Victory Point Table</h2>
-        <div id="vptable"></div>
       </section>
       <section class="controls">
         <h2>Game</h2>
