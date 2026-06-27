@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–04 + 07–11 complete (92/105 lessons ✅) — foundation, networking, and the full forensics + development pillars done. Remaining: Parts 05 (iPadOS) & 06 (automation/ops). 105 lessons across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–05 + 07–11 complete (98/105 lessons ✅) — only Part 06 (automation/ops) remains, then the derived reference indexes. 105 lessons across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -91,12 +91,12 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [How iPadOS diverges from iOS](part-05-ipados/00-how-ipados-diverges-from-ios.md) | ⬜ |
-| 01 | [Windowing, multitasking & external display](part-05-ipados/01-windowing-multitasking-and-external-display.md) | ⬜ |
-| 02 | [Files, external storage & document providers](part-05-ipados/02-files-external-storage-and-document-providers.md) | ⬜ |
-| 03 | [Trackpad, keyboard & Apple Pencil](part-05-ipados/03-trackpad-keyboard-and-apple-pencil.md) | ⬜ |
-| 04 | [Continuity with the Mac](part-05-ipados/04-continuity-with-the-mac.md) | ⬜ |
-| 05 | [Pro & developer workflows on iPad](part-05-ipados/05-pro-and-developer-workflows-on-ipad.md) | ⬜ |
+| 00 | [How iPadOS diverges from iOS](part-05-ipados/00-how-ipados-diverges-from-ios.md) | ✅ |
+| 01 | [Windowing, multitasking & external display](part-05-ipados/01-windowing-multitasking-and-external-display.md) | ✅ |
+| 02 | [Files, external storage & document providers](part-05-ipados/02-files-external-storage-and-document-providers.md) | ✅ |
+| 03 | [Trackpad, keyboard & Apple Pencil](part-05-ipados/03-trackpad-keyboard-and-apple-pencil.md) | ✅ |
+| 04 | [Continuity with the Mac](part-05-ipados/04-continuity-with-the-mac.md) | ✅ |
+| 05 | [Pro & developer workflows on iPad](part-05-ipados/05-pro-and-developer-workflows-on-ipad.md) | ✅ |
 
 ## Part 06 — Automation & Operations
 

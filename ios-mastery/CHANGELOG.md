@@ -3,6 +3,18 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-27 — Part 05 (iPadOS as a Computer) built — 98/105 lessons ✅
+
+The iPadOS module (6 lessons): how iPadOS diverges from iOS (shared kernel, +windowing/Files/
+pointer/external-display, M-series swap, "iOS + extra evidence surface"); the iPadOS 26 windowing
++ multitasking model (four coexisting modes, traffic-light windows, Stage Manager on all 26
+iPads, applicationState.db + KTX snapshots); Files/external-storage/document-providers (the
+brokered Files view, File Provider replicated extensions, CloudDocs client.db, On-My-iPad);
+trackpad/keyboard/Apple Pencil (the adaptive pointer, the ⌘-HUD, PencilKit PKDrawing + Scribble,
+the keyboard lexicon); Continuity with the Mac (Sidecar/Universal Control/iPhone Mirroring + the
+device-linkage artifacts); and pro/dev workflows (Swift Playgrounds .swiftpm, the no-full-Xcode/
+no-JIT reality, Shortcuts). 0 review problems.
+
 ## 2026-06-27 — Part 04 (Networking & Connectivity) built — 92/105 lessons ✅
 
 The networking + connectivity module (8 lessons): the iOS networking stack (Network.framework/
