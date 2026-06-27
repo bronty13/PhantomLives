@@ -28,9 +28,20 @@ const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../resources/fonts/LiberationSan
 
 /// Columns in the thumbnail grid.
 const GRID_COLS: usize = 3;
-/// DPI used when embedding a 256px thumbnail so it lands at ~medium width
-/// (≈59 mm) inside a ~62 mm column on an A4 page with 12 mm margins.
-const THUMB_DPI: f64 = 110.0;
+/// Thumbnail grid bounding box (mm): every frame is scaled to fit *inside* this
+/// box, aspect-preserved, so even a tall portrait phone frame stays short
+/// enough that a whole row fits on a page — and `KeepTogether` then keeps the
+/// row from being sliced across a page boundary (the recurring "thumbnails cut
+/// off" bug). The box is deliberately smaller than the old fixed ~59 mm width
+/// so more rows fit per page. Width stays within the ~58 mm drawable part of a
+/// 3-column A4 row; height is chosen so several rows land on one page.
+const THUMB_MAX_W_MM: f64 = 54.0;
+const THUMB_MAX_H_MM: f64 = 60.0;
+/// Per-cell padding (mm), applied on every side via `Margins::all`.
+const GRID_CELL_PAD_MM: f64 = 2.0;
+/// Bounding box (mm) for the small per-video frame in the transcript index.
+const INDEX_THUMB_W_MM: f64 = 26.0;
+const INDEX_THUMB_H_MM: f64 = 34.0;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +61,57 @@ fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleErro
 
 fn pdf_err(context: &str, e: genpdf::error::Error) -> BundleError {
     BundleError::Io(std::io::Error::other(format!("pdf {context}: {e}")))
+}
+
+/// Wraps one block element (a thumbnail row or a transcript-index row) so
+/// genpdf never slices it across a page boundary.
+///
+/// Why this is needed: genpdf's `Image::render` always reports `has_more =
+/// false` and the image's *full natural height* even when the area it was
+/// given is too short — and `TableLayout` derives its own `has_more` from the
+/// cell. So a tall row drawn low on a page is painted straight off the bottom
+/// edge (clipped by the paper), and only *afterwards* does the layout notice
+/// the cursor passed the page bottom and start a new page with the next row.
+/// That overflow-clip is the "thumbnails get cut off" bug.
+///
+/// `KeepTogether` measures the remaining height up front: if `inner` can't fit,
+/// it paints nothing and returns `has_more = true`, which makes genpdf advance
+/// to a fresh page (full height available) and call `render` again. For the
+/// guarantee to hold, `height_mm` must be **≥** the inner block's true rendered
+/// height and **<** one page's content height (so a deferral always eventually
+/// fits — otherwise genpdf raises `PageSizeExceeded`). Our bounded-box image
+/// sizing keeps every row well under a page, so both hold.
+struct KeepTogether<E> {
+    inner: E,
+    height_mm: f64,
+    started: bool,
+}
+
+impl<E> KeepTogether<E> {
+    fn new(inner: E, height_mm: f64) -> Self {
+        Self { inner, height_mm, started: false }
+    }
+}
+
+impl<E: genpdf::Element> genpdf::Element for KeepTogether<E> {
+    fn render(
+        &mut self,
+        context: &genpdf::Context,
+        area: genpdf::render::Area<'_>,
+        style: genpdf::style::Style,
+    ) -> Result<genpdf::RenderResult, genpdf::error::Error> {
+        if !self.started && area.size().height < genpdf::Mm::from(self.height_mm) {
+            // Not enough vertical room here — defer the whole block to the next
+            // page. Empty size + has_more makes the layout add a page and retry.
+            let mut deferred = genpdf::RenderResult::default();
+            deferred.has_more = true;
+            return Ok(deferred);
+        }
+        // Once we've committed to rendering, always delegate (never re-defer),
+        // so even an unexpectedly tall inner block can't livelock the layout.
+        self.started = true;
+        self.inner.render(context, area, style)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +195,26 @@ fn format_duration_mmss(secs: f64) -> String {
 /// Bytes → `"12.4 MB"`.
 fn format_size_mb(bytes: u64) -> String {
     format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+/// Pick the DPI that scales an image of `(px_w × px_h)` pixels to fit *inside* a
+/// `max_w_mm × max_h_mm` box (aspect-preserving), and return that DPI together
+/// with the resulting rendered **height** in mm.
+///
+/// genpdf paints an `Image` at `pixels / dpi` inches regardless of the area, so
+/// a *higher* DPI yields a *smaller* image. We take the larger of the two
+/// per-axis DPIs — the binding axis (the one that would otherwise overflow)
+/// wins — which guarantees the rendered width ≤ `max_w_mm` **and** the rendered
+/// height ≤ `max_h_mm`. The returned height is what each row's `KeepTogether`
+/// reserves so the row is never sliced across a page break.
+fn fit_dpi_and_height(px_w: u32, px_h: u32, max_w_mm: f64, max_h_mm: f64) -> (f64, f64) {
+    const MMPI: f64 = 25.4; // millimeters per inch
+    let w = px_w.max(1) as f64;
+    let h = px_h.max(1) as f64;
+    // dpi such that w/dpi*MMPI == max_w_mm  →  dpi = w*MMPI/max_w_mm (and same for h).
+    let dpi = (w * MMPI / max_w_mm).max(h * MMPI / max_h_mm);
+    let rendered_h = h * MMPI / dpi;
+    (dpi, rendered_h)
 }
 
 /// Streaming SHA-256 of a file (the master cut can be hundreds of MB).
@@ -434,18 +516,37 @@ fn export_thumbs_with_rotation(conn: &Connection, uid: &str) -> Result<Vec<(Stri
     Ok(v)
 }
 
-/// Build the grid's embeddable images: prefer N rotation-corrected frames
-/// sampled across the bundle's videos; when the bundle has no video, fall back
-/// to rotation-corrected per-file image thumbnails.
-fn build_grid_images(conn: &Connection, uid: &str, workspace: &Path, count: i64) -> Vec<elements::Image> {
+/// Pixel dimensions of an encoded image already in memory (e.g. a rotated
+/// thumbnail), read with SideMolly's own `image` crate. Kept independent of
+/// genpdf's bundled (older) `image` version: we only ever hand genpdf the raw
+/// bytes, never a decoded `DynamicImage`, so the two versions never meet.
+fn image_dims_from_bytes(bytes: &[u8]) -> Option<(u32, u32)> {
+    let di = image::load_from_memory(bytes).ok()?;
+    Some((di.width(), di.height()))
+}
+
+/// Build the grid's embeddable images, each paired with its rendered **height**
+/// in mm (used to keep its row intact across page breaks). Prefer N
+/// rotation-corrected frames sampled across the bundle's videos; when the
+/// bundle has no video, fall back to rotation-corrected per-file image
+/// thumbnails. Every image is scaled to fit inside the
+/// `THUMB_MAX_W_MM × THUMB_MAX_H_MM` box (see `fit_dpi_and_height`).
+fn build_grid_images(conn: &Connection, uid: &str, workspace: &Path, count: i64) -> Vec<(elements::Image, f64)> {
     let frames_dir = workspace.join(".frames");
     let frames = crate::frames::sample_bundle_frames(conn, uid, count, &frames_dir).unwrap_or_default();
     if !frames.is_empty() {
         // ffmpeg already righted these, so embed straight from disk.
         return frames
             .iter()
-            .filter_map(|p| elements::Image::from_path(p).ok())
-            .map(|i| i.with_dpi(THUMB_DPI).with_alignment(genpdf::Alignment::Center))
+            .filter_map(|p| {
+                let (pw, ph) = image::image_dimensions(p).ok()?;
+                let (dpi, h) = fit_dpi_and_height(pw, ph, THUMB_MAX_W_MM, THUMB_MAX_H_MM);
+                let img = elements::Image::from_path(p)
+                    .ok()?
+                    .with_dpi(dpi)
+                    .with_alignment(genpdf::Alignment::Center);
+                Some((img, h))
+            })
             .collect();
     }
 
@@ -460,9 +561,14 @@ fn build_grid_images(conn: &Connection, uid: &str, workspace: &Path, count: i64)
         })
         .filter_map(|(p, rot)| {
             let bytes = crate::thumbnails::rotated_jpeg_bytes(Path::new(p), *rot)?;
-            elements::Image::from_reader(std::io::Cursor::new(bytes)).ok()
+            let (pw, ph) = image_dims_from_bytes(&bytes)?;
+            let (dpi, h) = fit_dpi_and_height(pw, ph, THUMB_MAX_W_MM, THUMB_MAX_H_MM);
+            let img = elements::Image::from_reader(std::io::Cursor::new(bytes))
+                .ok()?
+                .with_dpi(dpi)
+                .with_alignment(genpdf::Alignment::Center);
+            Some((img, h))
         })
-        .map(|i| i.with_dpi(THUMB_DPI).with_alignment(genpdf::Alignment::Center))
         .collect()
 }
 
@@ -555,6 +661,12 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
     // paginates between rows. A single big TableLayout does not break across
     // pages — it silently truncated the grid (only ~18 of 30 frames showed
     // on one page). (v0.27.4)
+    //
+    // Each row is then wrapped in `KeepTogether` (reserving the tallest cell's
+    // height plus its top+bottom padding) so a row that won't fit the remaining
+    // space drops whole to the next page instead of being painted off the page
+    // edge — the "thumbnails cut off" bug. The images are bounded-box sized
+    // (see `build_grid_images`), so every row is comfortably under a page. (v0.28.2)
     let images = build_grid_images(&conn, uid, &workspace, count);
     if !images.is_empty() {
         doc.push(heading(&format!("Thumbnails ({})", images.len()), 14));
@@ -562,14 +674,19 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
         while iter.peek().is_some() {
             let mut table = elements::TableLayout::new(vec![1; GRID_COLS]);
             let mut row = table.row();
+            let mut row_h_mm: f64 = 0.0;
             for _ in 0..GRID_COLS {
                 match iter.next() {
-                    Some(img) => row.push_element(img.padded(genpdf::Margins::all(2))),
+                    Some((img, h)) => {
+                        row_h_mm = row_h_mm.max(h);
+                        row.push_element(img.padded(genpdf::Margins::all(GRID_CELL_PAD_MM as i32)));
+                    }
                     None => row.push_element(elements::Paragraph::new("")),
                 }
             }
             row.push().map_err(|e| pdf_err("table row", e))?;
-            doc.push(table);
+            // + top & bottom cell padding around the tallest image.
+            doc.push(KeepTogether::new(table, row_h_mm + 2.0 * GRID_CELL_PAD_MM));
         }
         doc.push(elements::Break::new(1.0));
     }
@@ -587,12 +704,25 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
         );
     } else {
         // Per-video index: [thumbnail | name + first sentence], one row each,
-        // pushed individually so the list paginates.
+        // pushed individually so the list paginates — and each wrapped in
+        // KeepTogether so the (now bounded-box sized) frame is never sliced
+        // across a page break, the same fix as the thumbnail grid. (v0.28.2)
         for v in &video_summaries {
             let mut table = elements::TableLayout::new(vec![1, 3]);
             let mut row = table.row();
-            match v.frame.as_ref().and_then(|p| elements::Image::from_path(p).ok()) {
-                Some(img) => row.push_element(img.padded(genpdf::Margins::all(2))),
+            // Bound the frame to a small box so a large sampled frame can't
+            // render off the page; track its rendered height for the reserve.
+            let mut frame_h_mm: f64 = 0.0;
+            match v.frame.as_ref().and_then(|p| {
+                let (pw, ph) = image::image_dimensions(p).ok()?;
+                let img = elements::Image::from_path(p).ok()?;
+                Some((img, pw, ph))
+            }) {
+                Some((img, pw, ph)) => {
+                    let (dpi, h) = fit_dpi_and_height(pw, ph, INDEX_THUMB_W_MM, INDEX_THUMB_H_MM);
+                    frame_h_mm = h;
+                    row.push_element(img.with_dpi(dpi).padded(genpdf::Margins::all(GRID_CELL_PAD_MM as i32)));
+                }
                 None => row.push_element(elements::Paragraph::new("")),
             }
             let mut cell = elements::LinearLayout::vertical();
@@ -606,9 +736,13 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
             } else {
                 first
             }));
-            row.push_element(cell.padded(genpdf::Margins::all(2)));
+            row.push_element(cell.padded(genpdf::Margins::all(GRID_CELL_PAD_MM as i32)));
             row.push().map_err(|e| pdf_err("tx index row", e))?;
-            doc.push(table);
+            // Reserve the taller of the frame and a ~3-line text allowance
+            // (name + a capped one-sentence preview wraps short), plus padding.
+            // Over-reserving only adds whitespace; under-reserving could clip.
+            let reserve = frame_h_mm.max(INDEX_THUMB_H_MM).max(24.0) + 2.0 * GRID_CELL_PAD_MM;
+            doc.push(KeepTogether::new(table, reserve));
         }
         // The per-video index above is the transcript view. A full per-video
         // transcript dump used to follow here but was removed in v0.27.5 — it
@@ -898,5 +1032,100 @@ mod tests {
         // No terminator → capped prefix (≤160 chars), no panic.
         let long = "word ".repeat(60);
         assert!(first_sentence(&long).len() <= 160);
+    }
+
+    #[test]
+    fn fit_dpi_and_height_portrait_is_height_bound() {
+        // A tall portrait phone frame: height is the binding axis, so it lands
+        // exactly at the box height and the width tucks inside the box.
+        let (dpi, h) = fit_dpi_and_height(1080, 1920, 54.0, 60.0);
+        assert!((h - 60.0).abs() < 0.01, "height should hit box height, got {h}");
+        let w = 1080.0 * 25.4 / dpi;
+        assert!(w <= 54.0 + 0.01, "width {w} should fit within box width");
+    }
+
+    #[test]
+    fn fit_dpi_and_height_landscape_is_width_bound() {
+        // A wide landscape frame: width is the binding axis.
+        let (dpi, h) = fit_dpi_and_height(1920, 1080, 54.0, 60.0);
+        let w = 1920.0 * 25.4 / dpi;
+        assert!((w - 54.0).abs() < 0.01, "width should hit box width, got {w}");
+        assert!(h <= 60.0 + 0.01, "height {h} should fit within box height");
+    }
+
+    #[test]
+    fn fit_dpi_and_height_never_exceeds_box() {
+        // Across a spread of shapes (incl. degenerate 1×1 and extreme aspects)
+        // both rendered dimensions stay inside the box, and the reported height
+        // is self-consistent with pixels/dpi. This is the invariant that makes
+        // KeepTogether's reserve a true upper bound on the row height.
+        for (w, h) in [(1u32, 1u32), (100, 4000), (4000, 100), (640, 480), (9, 16), (4032, 3024)] {
+            let (dpi, rh) = fit_dpi_and_height(w, h, 54.0, 60.0);
+            let rw = w as f64 * 25.4 / dpi;
+            assert!(rw <= 54.0 + 0.05, "{w}x{h}: rendered width {rw} exceeds box");
+            assert!(rh <= 60.0 + 0.05, "{w}x{h}: rendered height {rh} exceeds box");
+            assert!((rh - h as f64 * 25.4 / dpi).abs() < 0.01, "{w}x{h}: height not pixels/dpi");
+        }
+    }
+
+    #[test]
+    fn keep_together_pushes_oversized_rows_to_fresh_pages() {
+        // The regression guard for the "thumbnails cut off" bug: a column of
+        // bounded-box thumbnail rows taller than one page must paginate
+        // *between* rows. We can't read pixels back from the PDF, but two
+        // observable facts prove the fix: (1) render_to_file does NOT raise
+        // PageSizeExceeded — which it would if KeepTogether deferred a row that
+        // couldn't fit even a fresh page; and (2) the document spans multiple
+        // pages — proving rows were moved to fresh pages rather than painted
+        // off a single page's bottom edge.
+        let dir = tempfile::TempDir::new().unwrap();
+
+        // A portrait JPEG on disk; genpdf decodes it with its own image version
+        // (so we never cross the image-0.23/0.25 version boundary).
+        let jpg = dir.path().join("frame.jpg");
+        {
+            let buf = image::ImageBuffer::from_fn(300u32, 540u32, |x, y| {
+                image::Rgb([((x + y) % 256) as u8, 90u8, 160u8])
+            });
+            let dynimg = image::DynamicImage::ImageRgb8(buf);
+            let mut f = std::fs::File::create(&jpg).unwrap();
+            dynimg.write_to(&mut f, image::ImageFormat::Jpeg).unwrap();
+        }
+        let (pw, ph) = image::image_dimensions(&jpg).unwrap();
+        let (dpi, row_h) = fit_dpi_and_height(pw, ph, THUMB_MAX_W_MM, THUMB_MAX_H_MM);
+        assert!(row_h <= THUMB_MAX_H_MM + 0.05);
+
+        let font_family = fonts::FontFamily {
+            regular: fonts::FontData::new(FONT_REGULAR.to_vec(), None).unwrap(),
+            bold: fonts::FontData::new(FONT_BOLD.to_vec(), None).unwrap(),
+            italic: fonts::FontData::new(FONT_ITALIC.to_vec(), None).unwrap(),
+            bold_italic: fonts::FontData::new(FONT_BOLD_ITALIC.to_vec(), None).unwrap(),
+        };
+        let mut doc = genpdf::Document::new(font_family);
+        doc.set_minimal_conformance();
+        let mut deco = genpdf::SimplePageDecorator::new();
+        deco.set_margins(genpdf::Margins::all(12));
+        doc.set_page_decorator(deco);
+
+        // 12 rows × (row_h + padding) ≫ one A4 page of content (~273 mm).
+        for _ in 0..12 {
+            let img = elements::Image::from_path(&jpg).unwrap().with_dpi(dpi);
+            let mut table = elements::TableLayout::new(vec![1]);
+            let mut row = table.row();
+            row.push_element(img.padded(genpdf::Margins::all(GRID_CELL_PAD_MM as i32)));
+            row.push().unwrap();
+            doc.push(KeepTogether::new(table, row_h + 2.0 * GRID_CELL_PAD_MM));
+        }
+
+        let out = dir.path().join("grid.pdf");
+        doc.render_to_file(&out)
+            .expect("KeepTogether rows must paginate without PageSizeExceeded");
+        let bytes = std::fs::read(&out).unwrap();
+        assert_eq!(&bytes[..4], b"%PDF");
+
+        // One /MediaBox per page; >1 proves the grid spanned multiple pages.
+        let needle: &[u8] = b"/MediaBox";
+        let pages = bytes.windows(needle.len()).filter(|w| *w == needle).count();
+        assert!(pages >= 2, "12 tall rows should span >1 page, found {pages} page(s)");
     }
 }

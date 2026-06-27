@@ -4,6 +4,28 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.2] — 2026-06-27
+
+### Fixed — Summary PDF thumbnails no longer get cut off at page breaks
+
+- **Thumbnail rows are now kept whole across page boundaries.** The Summary
+  PDF's thumbnail grid (and the per-video transcript index) was painting a row
+  that began low on a page straight off the bottom edge, so images came out
+  sliced — top half on one page, bottom half on the next. Root cause: genpdf's
+  `Image` reports it rendered fully (and at its *full* height) even when the
+  area was too short, so the layout never knew to move the row down. A new
+  `KeepTogether` wrapper measures the remaining height first and defers a row
+  that won't fit to the next page, so every thumbnail renders intact.
+- **Thumbnails are smaller and uniform.** Each frame is now scaled to fit inside
+  a fixed bounding box (≈54 × 60 mm), aspect-preserved, instead of a fixed
+  width that let tall portrait phone frames balloon to ~105 mm tall (only two
+  rows per page, the third always clipped). Three to four rows now fit cleanly
+  per page. Landscape frames are bounded by width, portrait by height — neither
+  can overflow its cell.
+- Verified against the real example bundle's 30 frames: all render in full
+  across three pages with no cut-offs. Regression-guarded by a render test that
+  fails if rows ever overflow a single page instead of paginating.
+
 ## [0.28.1] — 2026-06-14
 
 ### Changed — Post-bundles are named for the bundle
