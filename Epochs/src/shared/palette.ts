@@ -3,20 +3,23 @@
 
 import type { AreaId } from './types'
 
+// Muted, desaturated EARTH tones — regions read as terrain background, NOT as
+// player ownership. Player pieces (below) stay vivid so ownership pops on a
+// different visual channel than geography. (Kept distinct from PLAYER_COLORS.)
 export const AREA_COLORS: Record<AreaId, string> = {
-  middle_east: '#b5651d',
-  north_africa: '#c9a227',
-  china: '#c0392b',
-  india: '#cd6155',
-  southern_europe: '#8e44ad',
-  northern_europe: '#2e86c1',
-  southeast_asia: '#16a085',
-  eurasia: '#5d6d7e',
-  north_america: '#229954',
-  south_america: '#52be80',
-  nippon: '#af7ac5',
-  africa: '#d4ac0d',
-  australia: '#dc7633',
+  middle_east: '#8a6d3b',
+  north_africa: '#9b8a52',
+  china: '#9c5a52',
+  india: '#a06a5c',
+  southern_europe: '#6e5a7a',
+  northern_europe: '#5a6e85',
+  southeast_asia: '#4a7a6e',
+  eurasia: '#6a6e78',
+  north_america: '#5e7a54',
+  south_america: '#74804e',
+  nippon: '#7a6a82',
+  africa: '#93824e',
+  australia: '#9c6a4e',
 }
 
 export function areaColor(area: AreaId | null): string {
