@@ -92,18 +92,33 @@ for (const mem of seaMembers.values()) for (const a of mem) for (const b of mem)
 const nb = terrs.filter((t) => !t.barren).map((t) => t.id)
 const nbSet = new Set(nb)
 const seen = new Set()
+const compId = new Map()
 let components = 0
 for (const start of nb) {
   if (seen.has(start)) continue
-  components++
+  const id = components++
   const stack = [start]
   seen.add(start)
+  compId.set(start, id)
   while (stack.length) {
     const c = stack.pop()
-    for (const n of full.get(c)) if (nbSet.has(n) && !seen.has(n)) { seen.add(n); stack.push(n) }
+    for (const n of full.get(c)) if (nbSet.has(n) && !seen.has(n)) { seen.add(n); compId.set(n, id); stack.push(n) }
   }
 }
-if (components !== 1) warn(`non-barren graph has ${components} components (want 1)`)
+// Overseas Areas (the Americas) are an island landmass — reachable only by sea, so
+// they're EXPECTED to be a separate component until navigation/fleets land. Only
+// warn if the OLD-WORLD mainland itself splits (a real bug).
+const OVERSEAS = new Set(['north_america', 'south_america'])
+const compAreas = new Map()
+for (const t of terrs) {
+  if (t.barren) continue
+  const id = compId.get(t.id)
+  if (!compAreas.has(id)) compAreas.set(id, new Set())
+  compAreas.get(id).add(t.area)
+}
+const mainland = [...compAreas.values()].filter((areas) => ![...areas].every((a) => OVERSEAS.has(a)))
+if (mainland.length !== 1) warn(`${mainland.length} mainland components (want 1) — a non-overseas land is disconnected`)
+else if (components > 1) console.log(`  ${components} components (the Americas are a separate overseas landmass — reached by sea once navigation lands)`)
 
 // ── empires ─────────────────────────────────────────────────────────────────
 const empires = src.empires.map((e) => {

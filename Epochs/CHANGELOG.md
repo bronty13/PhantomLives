@@ -2,6 +2,20 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.15.1] — 2026-06-27
+
+### Fixed
+- **Expansion now obeys adjacency** (the rule: place units into spaces adjacent to
+  one you already hold). The position-derived Delaunay adjacency had connected
+  provinces across open water — including two transatlantic bridges (Southern
+  Iberia↔West Indies, Albion↔Appalachia) — letting expansion jump oceans. Removed
+  the bridges + 12 high-confidence cross-sea edges; longest remaining border is now
+  a real one (0.133). No province is isolated.
+- The **Americas are now correctly a separate overseas landmass** (reachable by sea
+  once navigation lands — not by land). The generator + tests recognise this as
+  expected rather than a connectivity error; only a split in the Old-World mainland
+  warns.
+
 ## [0.15.0] — 2026-06-27
 
 The complete board. South America is in, all 13 areas, re-registered to a flat

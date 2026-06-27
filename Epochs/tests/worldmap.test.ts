@@ -48,7 +48,7 @@ describe('world map — structure', () => {
     }
   })
 
-  it('non-barren lands form ONE connected component (land + sea)', () => {
+  it('the Old-World mainland is one connected component (Americas are a separate overseas landmass)', () => {
     // adjacency = land borders + shared-sea links
     const adj = new Map<LandId, Set<LandId>>(WORLD_LANDS.map((l) => [l.id, new Set(l.borders)]))
     const bySea = new Map<string, LandId[]>()
@@ -58,19 +58,25 @@ describe('world map — structure', () => {
     }
     for (const mem of bySea.values()) for (const a of mem) for (const b of mem) if (a !== b) adj.get(a)!.add(b)
 
-    const nonBarren = WORLD_LANDS.filter((l) => !l.barren).map((l) => l.id)
-    const nbSet = new Set(nonBarren)
-    const seen = new Set<LandId>()
-    const stack = [nonBarren[0]]
-    seen.add(nonBarren[0])
+    // The Americas are reachable only by sea (navigation TBD), so they're an
+    // expected separate component. Assert the OLD-WORLD mainland is fully connected.
+    const OVERSEAS = new Set(['north_america', 'south_america'])
+    const byId = new Map(WORLD_LANDS.map((l) => [l.id, l]))
+    const onMainland = (id: LandId): boolean => {
+      const l = byId.get(id)!
+      return !l.barren && !OVERSEAS.has(l.area as string)
+    }
+    const mainland = WORLD_LANDS.filter((l) => onMainland(l.id)).map((l) => l.id)
+    const seen = new Set<LandId>([mainland[0]])
+    const stack = [mainland[0]]
     while (stack.length) {
       const c = stack.pop()!
-      for (const n of adj.get(c)!) if (nbSet.has(n) && !seen.has(n)) {
+      for (const n of adj.get(c)!) if (onMainland(n) && !seen.has(n)) {
         seen.add(n)
         stack.push(n)
       }
     }
-    expect(seen.size).toBe(nonBarren.length)
+    expect(seen.size).toBe(mainland.length)
   })
 })
 
