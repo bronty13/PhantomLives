@@ -62,10 +62,73 @@ function fillCell(ctx: CanvasRenderingContext2D, cell: Cell): void {
   ctx.closePath()
 }
 
+// ── the board scan as the basemap ─────────────────────────────────────────────
+// The map is the photographed physical board (public/board.jpg). It's drawn into
+// `rect` (framed to the board's aspect ratio in main.ts), and every land's
+// normalized (x,y) is a fraction of THIS image, so projectLand drops each piece
+// exactly on its territory.
+const boardImg = typeof Image !== 'undefined' ? new Image() : null
+let boardReady = false
+if (boardImg) {
+  boardImg.onload = () => {
+    boardReady = true
+  }
+  boardImg.src = 'board.jpg'
+}
+
+// TEMP — territory-registration mode. While true, drawMap renders only the board
+// scan plus a normalized coordinate grid (and skips the live game layer) so each
+// territory's centroid can be read off the grid and entered into board.ts. Flip
+// to false once the lands are registered. (Typed `boolean` so the early return
+// doesn't mark the game-layer code below as statically unreachable.)
+const CALIBRATION: boolean = true
+
+function drawCalibrationGrid(ctx: CanvasRenderingContext2D, rect: MapRect): void {
+  ctx.save()
+  ctx.font = '10px ui-monospace, Menlo, monospace'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  for (let i = 0; i <= 20; i++) {
+    const f = i / 20
+    const major = i % 2 === 0
+    const x = rect.x + f * rect.w
+    const y = rect.y + f * rect.h
+    ctx.strokeStyle = major ? 'rgba(15,15,25,0.55)' : 'rgba(15,15,25,0.22)'
+    ctx.lineWidth = major ? 1 : 0.5
+    ctx.beginPath()
+    ctx.moveTo(x, rect.y)
+    ctx.lineTo(x, rect.y + rect.h)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(rect.x, y)
+    ctx.lineTo(rect.x + rect.w, y)
+    ctx.stroke()
+    if (major) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'
+      ctx.fillText(f.toFixed(2), x + 2, rect.y + 2)
+      ctx.fillText(f.toFixed(2), rect.x + 2, y + 1)
+    }
+  }
+  ctx.fillStyle = 'rgba(255,235,180,0.95)'
+  ctx.font = '13px ui-monospace, monospace'
+  ctx.fillText('CALIBRATION — registering territories to the board scan', rect.x + 6, rect.y + rect.h - 18)
+  ctx.restore()
+}
+
 export function drawMap(ctx: CanvasRenderingContext2D, rect: MapRect, st: MapRenderState): void {
   const { lands, pieces } = st
   const vw = st.viewW ?? rect.x * 2 + rect.w
   const vh = st.viewH ?? rect.y * 2 + rect.h
+
+  // ── backdrop + board-scan basemap ─────────────────────────────────────────
+  ctx.fillStyle = '#0c0a08'
+  ctx.fillRect(0, 0, vw, vh)
+  if (boardReady && boardImg) ctx.drawImage(boardImg, rect.x, rect.y, rect.w, rect.h)
+  if (CALIBRATION) {
+    drawCalibrationGrid(ctx, rect)
+    return
+  }
+
   const landById = new Map(lands.map((l) => [l.id, l]))
   const colorOf = (pid: PlayerId | null): string => {
     if (pid == null) return '#8a8a8a'

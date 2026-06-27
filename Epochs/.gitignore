@@ -11,3 +11,8 @@ build/icon.iconset/
 
 # Owner's scanned rulebook pages — bundled into the local app build, never committed
 src/renderer/public/rulebook/
+
+# Copyrighted board scan — basemap for the local build, never committed (owner's own scan)
+art/board-source.*
+art/board-crop.*
+src/renderer/public/board.jpg
