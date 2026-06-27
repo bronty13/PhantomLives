@@ -23,7 +23,15 @@ struct HostsSettingsView: View {
                         Image(systemName: host.isLocal ? "desktopcomputer" : "network")
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(host.displayName).fontWeight(.medium)
+                            HStack(spacing: 6) {
+                                Text(host.displayName).fontWeight(.medium)
+                                if host.fromFleet {
+                                    Text("FLEET").font(.system(size: 9, weight: .semibold))
+                                        .padding(.horizontal, 4).padding(.vertical, 1)
+                                        .background(.tint.opacity(0.18), in: Capsule())
+                                        .foregroundStyle(.tint)
+                                }
+                            }
                             Text(host.isLocal ? "this machine" : host.sshTarget)
                                 .font(.caption).foregroundStyle(.secondary)
                             if let msg = testResult[host.id] {
@@ -38,11 +46,14 @@ struct HostsSettingsView: View {
                             } else {
                                 Button("Test") { test(host) }.buttonStyle(.bordered)
                             }
-                            Button(role: .destructive) { remove(host) } label: {
-                                Image(systemName: "trash")
+                            // Fleet hosts are managed in fleet.json, not removable here.
+                            if !host.fromFleet {
+                                Button(role: .destructive) { remove(host) } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Stop monitoring \(host.displayName)")
                             }
-                            .buttonStyle(.borderless)
-                            .help("Stop monitoring \(host.displayName)")
                         }
                     }
                 }

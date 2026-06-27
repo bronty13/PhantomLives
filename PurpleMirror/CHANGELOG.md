@@ -4,6 +4,16 @@ All notable changes to PurpleMirror are documented here.
 
 ## Unreleased
 
+- **Fleet config — any node meshes with every other.** Instead of adding remote hosts one-by-one
+  per machine, define the set of Macs once in a `fleet.json` placed on each node; every node
+  identifies *itself* (by a `node-id` file, falling back to ComputerName) and turns the rest into
+  remote hosts automatically. So each PurpleMirror sees + controls every other machine's jobs.
+  The fleet file is **local-only / never committed** (it carries LAN IPs + usernames and this repo
+  is public) — `fleet.example.json` is the committed template, and the real file is distributed
+  peer-to-peer over SSH, not via the repo. Manual Settings ▸ Hosts adds still work and are merged
+  (deduped by ssh target); fleet hosts show a "FLEET" badge and are read-only in the UI. New
+  `FleetConfig`/`FleetStore` + `MonitoredHost.fromFleet`; `.gitignore` guards `fleet.json`/`hosts.json`.
+
 - **Remote hosts — monitor & control jobs on another Mac over SSH.** PurpleMirror can now watch
   the launchd jobs on a *remote* Mac (e.g. the dedicated archive "runner") alongside local ones,
   so the same instance on Vortex or MB14 sees everything in one place. Add a host under

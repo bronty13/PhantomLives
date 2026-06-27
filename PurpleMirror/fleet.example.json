@@ -1,0 +1,23 @@
+{
+  "_comment": "PurpleMirror fleet config. COPY this to ~/Library/Application Support/PurpleMirror/fleet.json on EACH Mac (it is NOT read from the repo, and must NOT be committed — this repo is public and the real file carries LAN IPs/usernames). Each node identifies ITSELF by matching `computerName` to its `scutil --get ComputerName`, and treats the other machines as remote hosts — so the same file on every node meshes them all. Each machine also needs Remote Login on + the others' SSH keys in its ~/.ssh/authorized_keys.",
+  "machines": [
+    {
+      "id": "node-a",
+      "displayName": "Node A",
+      "computerName": "Node A's Mac",
+      "sshUser": "user",
+      "sshHost": "10.0.0.10",
+      "port": 22,
+      "identityFile": "~/.ssh/purplemirror_fleet"
+    },
+    {
+      "id": "node-b",
+      "displayName": "Node B",
+      "computerName": "Node B's Mac",
+      "sshUser": "user",
+      "sshHost": "10.0.0.20",
+      "port": 22,
+      "identityFile": "~/.ssh/purplemirror_fleet"
+    }
+  ]
+}

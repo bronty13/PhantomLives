@@ -27,7 +27,7 @@ final class JobsModel: ObservableObject {
 
     init() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-        self.hostContexts = HostStore.load().map { HostContext(host: $0) }
+        self.hostContexts = HostStore.allHosts().map { HostContext(host: $0) }
         Task { await rescan(); await refreshAll() }
         // Light periodic refresh so the menu-bar glyph + rows stay current, and
         // newly-installed agents appear without a relaunch.
@@ -40,7 +40,7 @@ final class JobsModel: ObservableObject {
     /// preserving any existing context whose host is unchanged (keeps its resolved uid/home).
     func reloadHosts() {
         objectWillChange.send()   // host list (monitoredHosts) is derived from hostContexts
-        let hosts = HostStore.load()
+        let hosts = HostStore.allHosts()
         hostContexts = hosts.map { h in
             hostContexts.first(where: { $0.host == h }) ?? HostContext(host: h)
         }

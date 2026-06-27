@@ -38,4 +38,16 @@ enum HostStore {
         let remotes = hosts.filter { !$0.isLocal }
         return [.local] + remotes
     }
+
+    /// The full set of hosts PurpleMirror monitors: this Mac, every **fleet** peer (minus this node),
+    /// and any **manually**-added remote hosts not already covered by the fleet (deduped by ssh
+    /// target). Fleet peers come first so the mesh is the primary view; manual adds are extras.
+    static func allHosts() -> [MonitoredHost] {
+        let fleetRemotes = FleetStore.remoteHosts(machines: FleetStore.load(),
+                                                  localComputerName: FleetStore.localComputerName(),
+                                                  localNodeID: FleetStore.localNodeID())
+        let fleetTargets = Set(fleetRemotes.map(\.sshTarget))
+        let manual = load().filter { !$0.isLocal && !fleetTargets.contains($0.sshTarget) }
+        return [.local] + fleetRemotes + manual
+    }
 }

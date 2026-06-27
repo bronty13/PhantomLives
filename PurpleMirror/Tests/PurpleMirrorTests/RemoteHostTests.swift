@@ -125,6 +125,64 @@ import Foundation
         #expect(Backoff.shouldProbe(consecutiveFailures: 10, tick: 60))
     }
 
+    // MARK: Fleet config (mesh)
+
+    private var sampleFleet: [FleetMachine] {
+        [
+            FleetMachine(id: "vortex", displayName: "Vortex", computerName: "Vortex MacBook Pro",
+                         sshUser: "bronty13", sshHost: "10.0.0.125", port: 22, identityFile: nil),
+            FleetMachine(id: "runner", displayName: "Runner", computerName: "Archive Runner",
+                         sshUser: "bronty", sshHost: "10.0.0.30", port: 22, identityFile: "~/.ssh/k"),
+        ]
+    }
+
+    @Test func fleetExcludesSelfByComputerName() {
+        // On Vortex, the fleet's remote hosts are everyone EXCEPT Vortex.
+        let remotes = FleetStore.remoteHosts(machines: sampleFleet,
+                                             localComputerName: "Vortex MacBook Pro", localNodeID: nil)
+        #expect(remotes.count == 1)
+        #expect(remotes.first?.id == "runner")
+        #expect(remotes.first?.fromFleet == true)
+        #expect(remotes.first?.sshTarget == "bronty@10.0.0.30")
+    }
+
+    @Test func fleetSelfMatchIsCaseInsensitive() {
+        let remotes = FleetStore.remoteHosts(machines: sampleFleet,
+                                             localComputerName: "vortex macbook pro", localNodeID: nil)
+        #expect(!remotes.contains { $0.id == "vortex" })   // still excluded despite case diff
+    }
+
+    @Test func fleetNodeIDOverridesSelfMatch() {
+        // node-id is the bulletproof self-id: even with a mismatched ComputerName, the entry whose
+        // id == node-id is treated as self and excluded.
+        let remotes = FleetStore.remoteHosts(machines: sampleFleet,
+                                             localComputerName: "irrelevant", localNodeID: "runner")
+        #expect(!remotes.contains { $0.id == "runner" })
+        #expect(remotes.contains { $0.id == "vortex" })
+    }
+
+    @Test func fleetUnknownSelfKeepsAllAsRemote() {
+        // A Mac not in the fleet (no name or id match) sees every machine as a remote host.
+        let remotes = FleetStore.remoteHosts(machines: sampleFleet,
+                                             localComputerName: "Some Other Mac", localNodeID: nil)
+        #expect(remotes.count == 2)
+        #expect(remotes.allSatisfy { $0.fromFleet })
+    }
+
+    @Test func fleetConfigCodableRoundTrips() throws {
+        let cfg = FleetConfig(machines: sampleFleet)
+        let data = try JSONEncoder().encode(cfg)
+        #expect(try JSONDecoder().decode(FleetConfig.self, from: data) == cfg)
+    }
+
+    @Test func fleetHostFlagNotPersistedInHostsJSON() throws {
+        // fromFleet is transient — it must NOT round-trip through hosts.json encoding.
+        var h = MonitoredHost.remote(id: "x", displayName: "X", user: "u", host: "h")
+        h.fromFleet = true
+        let back = try JSONDecoder().decode(MonitoredHost.self, from: JSONEncoder().encode(h))
+        #expect(back.fromFleet == false)   // default, because it's excluded from CodingKeys
+    }
+
     // MARK: LaunchAgentPlist.parse(data:)
 
     @Test func parsePlistFromXMLData() throws {

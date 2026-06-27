@@ -94,6 +94,24 @@ grouped by host (e.g. "Runner · Photos").
   means a slow host can't stall the others.
 - Everything is additive — a default install with only the local Mac behaves exactly as before.
 
+### Fleet (mesh) — every node sees every other
+
+Rather than adding each Mac as a remote host on each instance, define the set **once** in a fleet
+file placed on every node; each node auto-meshes with the rest.
+
+- The file is `~/Library/Application Support/PurpleMirror/fleet.json` (see `fleet.example.json`).
+  It is **local-only and must NOT be committed** — it carries LAN IPs/usernames and this repo is
+  public. Distribute it peer-to-peer over SSH (e.g. `scp`), not through the repo. `fleet.json` and
+  `hosts.json` are in `.gitignore` as a guard.
+- Each node identifies **itself** by `~/Library/Application Support/PurpleMirror/node-id` (a file
+  containing that machine's fleet `id`), falling back to matching `computerName` against
+  `scutil --get ComputerName`. The other machines become remote hosts automatically.
+- Each machine still needs **Remote Login** on and the *others'* SSH public keys in its
+  `~/.ssh/authorized_keys` (a full mesh is N×N directed SSH links). Fleet hosts that aren't yet
+  reachable simply show offline until that's set up.
+- Fleet hosts appear with a **FLEET** badge and are read-only in Settings ▸ Hosts (edit `fleet.json`
+  to change them); manually-added hosts are merged in and deduped by ssh target.
+
 ## Notes
 
 - **Not sandboxed** — it manages launchd agents and reads `~/Library`, so the App

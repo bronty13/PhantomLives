@@ -17,6 +17,14 @@ struct MonitoredHost: Codable, Equatable, Identifiable {
     var identityFile: String?      // e.g. "~/.ssh/purplemirror_runner" (optional → ssh default keys)
     var connectTimeout: Int        // seconds; keeps an unreachable/asleep host from stalling refresh
 
+    /// True when this host came from the shared fleet config (vs. a manual Settings add). Transient
+    /// — not persisted to hosts.json (excluded from CodingKeys) — used to mark fleet hosts read-only.
+    var fromFleet: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case id, displayName, isLocal, sshUser, sshHost, port, identityFile, connectTimeout
+    }
+
     /// The always-present local machine. Existing installs (no hosts.json) run with just this.
     static let local = MonitoredHost(id: "local", displayName: "This Mac", isLocal: true,
                                      sshUser: "", sshHost: "", port: 22, identityFile: nil, connectTimeout: 6)

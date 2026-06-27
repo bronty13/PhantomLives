@@ -4,3 +4,5 @@
 AppIcon.iconset/
 *.icns
 .DS_Store
+fleet.json
+hosts.json
