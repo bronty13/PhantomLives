@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–03 + 07–09 complete (60/105 lessons ✅) — foundation tier + the full forensics pillar (acquisition, artifacts, timeline) done. 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–03 + 07–10 complete (72/105 lessons ✅) — foundation, the full forensics pillar, and iOS app engineering done. 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -156,18 +156,18 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [Xcode & the iOS build system](part-10-app-engineering/00-ios-xcode-and-the-build-system.md) | ⬜ |
-| 01 | [Simulator internals & on-disk filesystem](part-10-app-engineering/01-simulator-internals-and-on-disk-filesystem.md) | ⬜ |
-| 02 | [Swift, SwiftUI, UIKit & app architecture](part-10-app-engineering/02-swift-swiftui-uikit-and-app-architecture.md) | ⬜ |
-| 03 | [App lifecycle, scenes & background execution](part-10-app-engineering/03-app-lifecycle-scenes-and-background-execution.md) | ⬜ |
-| 04 | [The app bundle & .ipa structure](part-10-app-engineering/04-the-app-bundle-and-ipa-structure.md) | ⬜ |
-| 05 | [The app sandbox from the developer side](part-10-app-engineering/05-the-app-sandbox-from-the-developer-side.md) | ⬜ |
-| 06 | [Code signing & provisioning in depth](part-10-app-engineering/06-code-signing-and-provisioning-in-depth.md) | ⬜ |
-| 07 | [Frameworks, dylibs & dynamic linking](part-10-app-engineering/07-frameworks-dylibs-and-dynamic-linking.md) | ⬜ |
-| 08 | [Extensions, App Clips, widgets & WidgetKit](part-10-app-engineering/08-extensions-app-clips-widgets-and-widgetkit.md) | ⬜ |
-| 09 | [Distribution: TestFlight, App Store, enterprise](part-10-app-engineering/09-distribution-testflight-appstore-enterprise.md) | ⬜ |
-| 10 | [EU DMA sideloading & alternative marketplaces](part-10-app-engineering/10-eu-dma-sideloading-and-alternative-marketplaces.md) | ⬜ |
-| 11 | [Debugging, Instruments & lldb for iOS](part-10-app-engineering/11-debugging-instruments-and-lldb-for-ios.md) | ⬜ |
+| 00 | [Xcode & the iOS build system](part-10-app-engineering/00-ios-xcode-and-the-build-system.md) | ✅ |
+| 01 | [Simulator internals & on-disk filesystem](part-10-app-engineering/01-simulator-internals-and-on-disk-filesystem.md) | ✅ |
+| 02 | [Swift, SwiftUI, UIKit & app architecture](part-10-app-engineering/02-swift-swiftui-uikit-and-app-architecture.md) | ✅ |
+| 03 | [App lifecycle, scenes & background execution](part-10-app-engineering/03-app-lifecycle-scenes-and-background-execution.md) | ✅ |
+| 04 | [The app bundle & .ipa structure](part-10-app-engineering/04-the-app-bundle-and-ipa-structure.md) | ✅ |
+| 05 | [The app sandbox from the developer side](part-10-app-engineering/05-the-app-sandbox-from-the-developer-side.md) | ✅ |
+| 06 | [Code signing & provisioning in depth](part-10-app-engineering/06-code-signing-and-provisioning-in-depth.md) | ✅ |
+| 07 | [Frameworks, dylibs & dynamic linking](part-10-app-engineering/07-frameworks-dylibs-and-dynamic-linking.md) | ✅ |
+| 08 | [Extensions, App Clips, widgets & WidgetKit](part-10-app-engineering/08-extensions-app-clips-widgets-and-widgetkit.md) | ✅ |
+| 09 | [Distribution: TestFlight, App Store, enterprise](part-10-app-engineering/09-distribution-testflight-appstore-enterprise.md) | ✅ |
+| 10 | [EU DMA sideloading & alternative marketplaces](part-10-app-engineering/10-eu-dma-sideloading-and-alternative-marketplaces.md) | ✅ |
+| 11 | [Debugging, Instruments & lldb for iOS](part-10-app-engineering/11-debugging-instruments-and-lldb-for-ios.md) | ✅ |
 
 ## Part 11 — Reverse Engineering & App Security
 

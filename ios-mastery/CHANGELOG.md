@@ -3,6 +3,21 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 10 (iOS App Engineering) built — 72/105 lessons ✅ — development pillar (1/2)
+
+The app-building half of the dev pillar (12 lessons): Xcode + the iOS build system (device vs
+Simulator SDK, .xcframework, .xcarchive); Simulator/CoreSimulator internals (the no-device lab
+substrate); Swift/SwiftUI/UIKit architecture (+ the __swift5_* metadata a reverser reads); the
+app lifecycle + scenes + background execution (BGTaskScheduler, jetsam, the watchdog codes); the
+.app/.ipa structure (Info.plist keys, _CodeSignature, embedded.mobileprovision, SC_Info/FairPlay,
+the two on-device containers); the sandbox from the dev side (entitlements/capabilities/App
+Groups); code signing & provisioning in depth (the signing triad, free-vs-paid, the subset rule);
+frameworks/dylibs/dynamic linking (@rpath, mergeable libraries, vs the shared cache); extensions/
+App-Clips/widgets/WidgetKit (each .appex its own container); distribution (TestFlight/App-Store/
+enterprise/Custom-Apps + Notarization-for-iOS); EU DMA sideloading + alternative marketplaces
+(MarketplaceKit, ADP, BrowserEngineKit, CTF->CTC, flagged volatile); and debugging/Instruments/
+lldb (get-task-allow, OSLogStore, MetricKit). 0 review problems.
+
 ## 2026-06-26 — Part 09 (Timeline, Analysis & Anti-Forensics) built — 60/105 lessons ✅ — FORENSICS PILLAR COMPLETE
 
 The forensics capstone (3 lessons): the iOS timestamp zoo + exact conversions (Mac-Absolute
