@@ -7,11 +7,13 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.7 — full game, self-play-tuned AI.** The whole game: 97-territory world,
+> **Status: v0.8 — polished, full game.** The whole game: 97-territory world,
 > 49 historical empires, area-control scoring, **and the event system** (finite
 > hands of Leaders/Weaponry/Reallocation/Minor-Empire + Coins→forts). Watch the
 > AI or **play a seat** (click-to-place + an event panel), with a scoreboard,
-> epoch HUD, and log. 79 tests. **Now a real app:** `./build-app.sh` builds +
+> epoch HUD, and log. Animated combat/placement, hover decision-support (combat
+> odds + VP swing), and a game-over pre-eminence reveal. 88 tests. **A real app:**
+> `./build-app.sh` builds +
 > installs a signed `/Applications/Epochs.app`; or `npm run dev:web` (browser) /
 > `npm run dev` (Electron) for development. Remaining: AI self-play re-tune, UI
 > polish.
@@ -46,7 +48,7 @@ src/
       fixtureEmpires.ts small empire deck for unit tests
   main/          # Electron main process (window lifecycle)
   preload/       # contextBridge surface
-  renderer/      # the game UI: main.ts (session + controls) + map.ts (Canvas)
+  renderer/      # the game UI: main.ts (session/controls) + map.ts + anim.ts (fx)
 scripts/
   world.source.json  # researched roster + geography (edit to retune the map)
   build-data.mjs     # generator → board.ts + empires.ts (npm run gen:data)

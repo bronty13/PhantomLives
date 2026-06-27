@@ -2,6 +2,38 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.8.0] — 2026-06-27
+
+UI polish — nicer to watch, better to play. (Designed via a 3-perspective design
+panel → prioritized plan.)
+
+### Added
+- **Animated effects layer** (`src/renderer/anim.ts`) — a self-stopping
+  `requestAnimationFrame` overlay (render-only, so the engine stays
+  deterministic): army **spawns** pulse in, **combat** plays a win/tie/loss clash
+  (green/amber/red) at the contested land with the attacker's win% floating up,
+  and **+VP** floats over the scoring empire. Auto-play pacing now waits for the
+  current animation to finish.
+- **Decision support** when you play a seat: placeable lands ring by kind —
+  **green = settle, blue = reclaim, red→amber = attack (color = odds)**, dashed
+  for amphibious — and a hover **tooltip** shows the verb, exact combat odds, the
+  region VP swing (presence→dominance etc.), and structure captures — all from
+  the engine's own scoring (`src/shared/boardInsight.ts`).
+- **Whose-turn clarity** — the active player gets a colored status pill, a
+  highlighted scoreboard row, and a white "live-army" ring on its territories.
+- **Regions panel** — who leads each scoring area this epoch, its value, tier,
+  and banked VP (contested marked).
+- **Game-over overlay** with a staggered **pre-eminence reveal** (the hidden
+  markers flip face-up and bump each total) + Play Again.
+- VP **bars** in the scoreboard (CSS-tweened), structure-glyph halos for
+  legibility.
+- Tests → **88** (+9, `boardInsight.test.ts`): the pure placement-preview and
+  area-control math (verified against the engine's scoring).
+
+### Changed
+- Bumped to 0.8.0. `MapRenderState` / `drawMap` extended (placeable is now a Map
+  with kind+odds; active-player + epoch + tooltip lines).
+
 ## [0.7.0] — 2026-06-27
 
 Smarter AI + proper difficulty, via self-play tuning.

@@ -84,3 +84,30 @@ input[type=range] { flex: 1; }
 .evt:hover { border-color: var(--accent); }
 .evt.sel { background: #2a2140; border-color: var(--accent); color: #fff; }
 .evt-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+
+/* active player + VP bars */
+.score { position: relative; padding-bottom: 5px; }
+.score.active { background: var(--panel2); border-radius: 6px; padding: 3px 6px 6px; margin-left: -6px; font-weight: 600; }
+.bar { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 2px; transition: width 0.5s ease; opacity: 0.85; }
+
+/* regions panel */
+#areas { display: flex; flex-direction: column; gap: 2px; }
+.area { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+.area.active { background: var(--panel2); border-radius: 5px; padding-left: 5px; margin-left: -5px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; opacity: 0.85; }
+.aname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aval { color: var(--muted); font-variant-numeric: tabular-nums; }
+.dot.empty { background: #3a4151; }
+.atier { color: var(--muted); width: 62px; text-align: right; text-transform: capitalize; }
+.atier.contested { color: #e1bc29; }
+.abank { width: 22px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* game over */
+.go-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; }
+.go-row { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 8px; background: var(--panel2); }
+.go-row.winner { border: 1px solid var(--accent); background: #221a36; }
+.go-name { flex: 1; font-weight: 600; }
+.go-pre { display: flex; gap: 4px; }
+.go-vp { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 16px; min-width: 38px; text-align: right; }
+.pre-chip { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; background: #2c2440; color: #6a6080; font-size: 12px; font-weight: 700; transition: transform 0.4s ease, background 0.4s ease, color 0.4s ease; }
+.pre-chip.flip { background: var(--accent); color: #1a1026; transform: rotateY(360deg); }
