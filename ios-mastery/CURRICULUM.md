@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–05 + 07–11 complete (98/105 lessons ✅) — only Part 06 (automation/ops) remains, then the derived reference indexes. 105 lessons across 12 parts; reference layer is
+> **Corpus status:** **all 105 lessons written ✅** across all 12 parts. Final step remaining: generate the 7 derived reference indexes (forensic-artifacts, acquisition-matrix, tooling, sql-queries, timestamps, entitlements, study-guide) and populate the glossary/acronyms spines from the finished corpus. The reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -102,13 +102,13 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [Shortcuts & the automation surface](part-06-automation-ops/00-shortcuts-and-the-automation-surface.md) | ⬜ |
-| 01 | [Screen Time & Content/Privacy restrictions](part-06-automation-ops/01-screen-time-and-content-privacy-restrictions.md) | ⬜ |
-| 02 | [MDM, supervision & ABM](part-06-automation-ops/02-mdm-supervision-and-abm.md) | ⬜ |
-| 03 | [Declarative Device Management](part-06-automation-ops/03-declarative-device-management.md) | ⬜ |
-| 04 | [Configuration profiles & .mobileconfig](part-06-automation-ops/04-configuration-profiles-and-mobileconfig.md) | ⬜ |
-| 05 | [Backup, restore, migration & transfer](part-06-automation-ops/05-backup-restore-migration-and-transfer.md) | ⬜ |
-| 06 | [Lockdown Mode & enterprise posture](part-06-automation-ops/06-lockdown-mode-and-enterprise-posture.md) | ⬜ |
+| 00 | [Shortcuts & the automation surface](part-06-automation-ops/00-shortcuts-and-the-automation-surface.md) | ✅ |
+| 01 | [Screen Time & Content/Privacy restrictions](part-06-automation-ops/01-screen-time-and-content-privacy-restrictions.md) | ✅ |
+| 02 | [MDM, supervision & ABM](part-06-automation-ops/02-mdm-supervision-and-abm.md) | ✅ |
+| 03 | [Declarative Device Management](part-06-automation-ops/03-declarative-device-management.md) | ✅ |
+| 04 | [Configuration profiles & .mobileconfig](part-06-automation-ops/04-configuration-profiles-and-mobileconfig.md) | ✅ |
+| 05 | [Backup, restore, migration & transfer](part-06-automation-ops/05-backup-restore-migration-and-transfer.md) | ✅ |
+| 06 | [Lockdown Mode & enterprise posture](part-06-automation-ops/06-lockdown-mode-and-enterprise-posture.md) | ✅ |
 
 ## Part 07 — Forensic Acquisition & Imaging
 

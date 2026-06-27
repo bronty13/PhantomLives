@@ -3,6 +3,22 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-27 — Part 06 (Automation & Operations) built — 105/105 lessons ✅ — ALL LESSONS COMPLETE
+
+The final module (7 lessons): Shortcuts + the automation surface (WorkflowKit, App Intents, the
+.shortcut/Shortcuts.sqlite artifacts); Screen Time + Content/Privacy restrictions (RMAdminStore,
+the Screen-Time passcode, pinfinder); MDM/supervision/ABM (the check-in protocol, ADE, what
+supervision unlocks, detecting management); Declarative Device Management (declarations + status
+channel, ProfileAssetReference, the re-run-ADE-after-restore change); configuration profiles +
+.mobileconfig (the payload taxonomy, signed vs unsigned, the malicious-profile/rogue-root-CA
+threat, where profiles land on disk); backup/restore/migration/transfer (Quick Start, eSIM
+transfer, the encrypted-backup password); and the Lockdown-Mode + enterprise-hardening capstone.
+0 review problems.
+
+**All 12 modules / 105 lessons are now written** (foundation 00–03, networking 04, iPadOS 05,
+automation/ops 06, the forensics pillar 07–09, the development pillar 10–11). Remaining work is
+the derived reference layer only.
+
 ## 2026-06-27 — Part 05 (iPadOS as a Computer) built — 98/105 lessons ✅
 
 The iPadOS module (6 lessons): how iPadOS diverges from iOS (shared kernel, +windowing/Files/
