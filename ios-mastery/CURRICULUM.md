@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–03 + 07–11 complete (84/105 lessons ✅) — foundation, the full forensics pillar, and the full development pillar (app engineering + reverse engineering) done. Remaining: Parts 04–06 (networking, iPadOS, automation/ops). 105 lessons across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–04 + 07–11 complete (92/105 lessons ✅) — foundation, networking, and the full forensics + development pillars done. Remaining: Parts 05 (iPadOS) & 06 (automation/ops). 105 lessons across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -78,14 +78,14 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [The iOS networking stack](part-04-networking/00-the-ios-networking-stack.md) | ⬜ |
-| 01 | [NetworkExtension & VPN](part-04-networking/01-networkextension-and-vpn.md) | ⬜ |
-| 02 | [Traffic interception & TLS](part-04-networking/02-traffic-interception-and-tls.md) | ⬜ |
-| 03 | [Certificate pinning & bypass](part-04-networking/03-certificate-pinning-and-bypass.md) | ⬜ |
-| 04 | [Wi-Fi, Bluetooth & proximity](part-04-networking/04-wifi-bluetooth-and-proximity.md) | ⬜ |
-| 05 | [Find My & the BLE mesh](part-04-networking/05-find-my-and-the-ble-mesh.md) | ⬜ |
-| 06 | [Cellular, baseband, eSIM & identifiers](part-04-networking/06-cellular-baseband-esim-and-identifiers.md) | ⬜ |
-| 07 | [Apple Account, iCloud & APNs](part-04-networking/07-apple-account-icloud-and-apns.md) | ⬜ |
+| 00 | [The iOS networking stack](part-04-networking/00-the-ios-networking-stack.md) | ✅ |
+| 01 | [NetworkExtension & VPN](part-04-networking/01-networkextension-and-vpn.md) | ✅ |
+| 02 | [Traffic interception & TLS](part-04-networking/02-traffic-interception-and-tls.md) | ✅ |
+| 03 | [Certificate pinning & bypass](part-04-networking/03-certificate-pinning-and-bypass.md) | ✅ |
+| 04 | [Wi-Fi, Bluetooth & proximity](part-04-networking/04-wifi-bluetooth-and-proximity.md) | ✅ |
+| 05 | [Find My & the BLE mesh](part-04-networking/05-find-my-and-the-ble-mesh.md) | ✅ |
+| 06 | [Cellular, baseband, eSIM & identifiers](part-04-networking/06-cellular-baseband-esim-and-identifiers.md) | ✅ |
+| 07 | [Apple Account, iCloud & APNs](part-04-networking/07-apple-account-icloud-and-apns.md) | ✅ |
 
 ## Part 05 — iPadOS as a Computer
 

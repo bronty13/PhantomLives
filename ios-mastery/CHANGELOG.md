@@ -3,6 +3,22 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-27 — Part 04 (Networking & Connectivity) built — 92/105 lessons ✅
+
+The networking + connectivity module (8 lessons): the iOS networking stack (Network.framework/
+URLSession/NECP, no CLI introspection); NetworkExtension + VPN (provider families, per-app VPN,
+the forensic VPN artifacts); traffic interception + TLS (the two-step CA-trust, ATS, mitmproxy);
+certificate pinning + bypass (NSPinnedDomains/TrustKit, objection/Frida, the SPKI pin); Wi-Fi/
+Bluetooth/proximity (private MAC, RPA/IRK, AWDL->Wi-Fi Aware, the known-networks + pairing
+artifacts); Find My + the BLE mesh (the rolling-key ECIES offline-finding design, AirTag anti-
+stalking/DULT, Observations.db, OpenHaystack/OWL); cellular/baseband/eSIM + the identifier zoo
+(IMEI/IMSI/ICCID/EID, SIM EF files, CommCenter artifacts); and Apple Account/iCloud/APNs (GSA/
+anisette tokens, CloudKit, apsd's persistent push, IDS PQ3/Contact Key Verification).
+
+- Ran fully through the workflow (0 review problems) — the traffic-interception and pinning-bypass
+  lessons authored AND reviewed cleanly, confirming the approved cyber use case removed the filter
+  trips.
+
 ## 2026-06-27 — Part 11 (Reverse Engineering & App Security) built — 84/105 lessons ✅ — DEVELOPMENT PILLAR COMPLETE
 
 The RE/app-security half of the dev pillar (12 lessons), all framed for authorized RE /
