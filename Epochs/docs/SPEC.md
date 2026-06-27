@@ -552,12 +552,19 @@ monuments count only **current-epoch** armies on resource lands.
 (§13). The engine rebuilds the `BotView` (with a fresh `pieces` snapshot) on
 **every** placement, because `state.pieces` is reassigned on each mutation.
 
-**Difficulty / personas** are pure weight overlays: `easy/medium/hard` trade
-foresight (`rhoBase`), opponent-awareness (`denialBase`), and noise (`tieEps`).
-The knob is monotonic at the extreme (medium & hard crush easy ~97%), but the
-fine `hard` vs `medium` ordering does **not** hold on the tiny fixture
-(long-horizon weights overfit) — **re-tune via self-play once the real board
-lands** (§14). Weights in `DEFAULT_WEIGHTS` are provisional fixture placeholders.
+**Tuned by self-play (v0.7).** `DEFAULT_WEIGHTS` is the strength peak found by a
+coordinate-descent search on the real world board (`tests/tuning.test.ts`, run
+with `TUNE=1`) — it beats the pre-tuning default ~77% head-to-head. The search's
+lesson: be **risk-averse** (`riskAversion` 0.75 — don't fling armies into bad
+attacks) and **low-denial** (`denialBase` 0.35 — grow before spiting opponents).
+
+**Difficulty** is a single monotonic **ε-greedy** dial (`randomMoveProb`): `hard`
+plays the tuned peak (ε=0), `medium`/`easy` play a random legal move with
+probability 0.16 / 0.40 (easy is also myopic + timid). Because more random moves
+strictly weaken play *regardless of opponent*, the ladder is monotonic by
+construction — `hard > medium > easy` (observed 60% / 74% / 83%), asserted in
+`tests/tournament.test.ts`. (`tieEps` jitter is scale-tiny — only a deterministic
+tie-breaker, not the skill axis.)
 
 **Future** (reuse the same primitives): bot-controlled empire **draft** and
 **event** play (currently engine-controlled / unmodeled), fort building, and an

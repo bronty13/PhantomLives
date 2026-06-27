@@ -2,6 +2,28 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.7.0] — 2026-06-27
+
+Smarter AI + proper difficulty, via self-play tuning.
+
+### Changed
+- **AI weights tuned by self-play.** A coordinate-descent search on the real
+  world board (`tests/tuning.test.ts`, env-guarded `TUNE=1`) found a stronger
+  `DEFAULT_WEIGHTS` that beats the previous default **~77%** head-to-head. The
+  bot is now more **risk-averse** (`riskAversion` 0.5 → 0.75 — stops flinging
+  armies into low-odds attacks) and **less spiteful** (`denialBase` 0.6 → 0.35 —
+  grows itself before denying opponents).
+- **Difficulty is now a monotonic ε-greedy dial** (`randomMoveProb`): `hard`
+  plays the tuned peak; `medium`/`easy` play a random legal move with prob.
+  0.16 / 0.40 (easy also myopic + timid). Fixes the old non-monotonic ladder —
+  now **`hard > medium > easy`** holds by construction (observed 60% / 74% / 83%,
+  asserted in `tests/tournament.test.ts`). The old `tieEps` jitter was
+  scale-tiny and never a real skill axis.
+
+### Added
+- `randomMoveProb` weight + `tests/tuning.test.ts` (the reproducible self-play
+  search harness).
+
 ## [0.6.1] — 2026-06-26
 
 Packaged as a real macOS app.

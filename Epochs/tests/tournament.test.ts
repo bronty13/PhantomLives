@@ -37,18 +37,20 @@ describe('AI strength (seat-averaged headless tournaments)', () => {
     expect(hVs3G).toBeGreaterThan(0.4) // ~56% observed, well above 25% chance
   })
 
-  it('the difficulty knob works at the extreme: medium and hard both crush easy', () => {
-    const hVsE = vsField(heuristic('hard'), [heuristic('easy')])
+  it('difficulty is monotonic: hard > medium > easy', () => {
+    const hVsM = vsField(heuristic('hard'), [heuristic('medium')])
     const mVsE = vsField(heuristic('medium'), [heuristic('easy')])
+    const hVsE = vsField(heuristic('hard'), [heuristic('easy')])
     // eslint-disable-next-line no-console
-    console.log(`\n  hard vs easy (2p): ${pct(hVsE)}` + `\n  medium vs easy (2p): ${pct(mVsE)}`)
-    // Deterministic (seeded) win rates; thresholds sit below the observed
-    // real-world-map values (~68% / ~75%) with margin.
-    expect(hVsE).toBeGreaterThan(0.55)
-    expect(mVsE).toBeGreaterThan(0.55)
-    // NOTE: the FINE ordering (hard vs medium) is intentionally NOT asserted —
-    // the long-horizon "hard" weights are provisional and medium currently edges
-    // it; re-tune difficulty via self-play (SPEC §15). The knob is monotonic at
-    // the extreme (both clearly beat easy).
+    console.log(
+      `\n  hard vs medium (2p): ${pct(hVsM)}` +
+        `\n  medium vs easy (2p): ${pct(mVsE)}` +
+        `\n  hard vs easy (2p): ${pct(hVsE)}`,
+    )
+    // Deterministic (seeded) win rates. Post-self-play-tuning the difficulty is
+    // a monotonic ε-greedy handicap of the tuned peak (observed 60 / 74 / 83%).
+    expect(hVsM).toBeGreaterThan(0.55)
+    expect(mVsE).toBeGreaterThan(0.65)
+    expect(hVsE).toBeGreaterThan(0.75)
   })
 })

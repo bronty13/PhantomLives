@@ -7,7 +7,7 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.6 — full rules + playable UI.** The whole game: 97-territory world,
+> **Status: v0.7 — full game, self-play-tuned AI.** The whole game: 97-territory world,
 > 49 historical empires, area-control scoring, **and the event system** (finite
 > hands of Leaders/Weaponry/Reallocation/Minor-Empire + Coins→forts). Watch the
 > AI or **play a seat** (click-to-place + an event panel), with a scoreboard,
