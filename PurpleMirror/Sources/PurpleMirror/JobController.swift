@@ -91,12 +91,13 @@ final class JobController: ObservableObject, Identifiable {
     // MARK: Refresh
 
     func refresh() async {
-        if !host.isLocal { await ctx.ensureResolved() }
-        guard ctx.reachable else {
-            hostReachable = false
-            return
+        if !host.isLocal {
+            await ctx.ensureResolved()
+            if ctx.uid < 0 { hostReachable = false; return }   // never reached yet — can't address it
         }
         let (status, out) = await ctx.run("/bin/launchctl", ["print", domainTarget])
+        hostReachable = host.isLocal || ctx.reachable
+        guard hostReachable else { return }                    // host dropped during this refresh
         let agent = SyncStatusParser.parseAgentState(out, launchctlSucceeded: status == 0)
 
         // Re-read the plist so a hand-edited interval / args show up live.
@@ -109,7 +110,6 @@ final class JobController: ObservableObject, Identifiable {
         if let sum = SyncStatusParser.summary(logText, kind: profile.logKind) { summary = sum }
         itemsLast24h = SyncStatusParser.itemsLast24h(logText, kind: profile.logKind)
 
-        hostReachable = ctx.reachable
         agentLoaded = agent.loaded
         runs = agent.runs
         lastExitCode = agent.lastExitCode

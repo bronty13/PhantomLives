@@ -12,12 +12,15 @@ All notable changes to PurpleMirror are documented here.
   full **schedule editing** (enable/disable + change interval) all work remotely — the plist
   interval edit uses `plutil -replace … -integer` over ssh (touching only `StartInterval`, with a
   backup restored if the reload fails), and script-managed jobs carry their env (e.g.
-  `OBSIDIAN_VAULT`) inlined into the remote command since ssh doesn't forward it. An
-  unreachable host degrades gracefully (its jobs are kept and shown as unreachable, never dropped)
-  and a slow/asleep host can't stall the refresh (per-host concurrent refresh, `BatchMode`+
-  `ConnectTimeout`, SSH ControlMaster multiplexing). New `MonitoredHost`/`HostStore`/`HostContext`/
-  `SSHCommand`; existing single-local-host installs are unchanged. (11 unit tests for the pure
-  seams: argv builder, plist-from-bytes, host persistence.)
+  `OBSIDIAN_VAULT`) inlined into the remote command since ssh doesn't forward it. An offline host
+  degrades gracefully: it's **detected live** (ssh exit 255 mid-session, not just at startup),
+  shown in a **menu offline banner** with a "last seen" time, has its jobs kept (never dropped),
+  and is **retried with backoff** (every tick when healthy → ~once a minute when down) so it never
+  burns an ssh connect-timeout on every refresh. Per-host concurrent refresh + `BatchMode` +
+  `ConnectTimeout` + SSH ControlMaster multiplexing keep a slow host from stalling the others. New
+  `MonitoredHost`/`HostStore`/`HostContext`/`SSHCommand`/`Backoff`; existing single-local-host
+  installs are unchanged. (Pure seams unit-tested: argv builder, env-inlined remoteBash,
+  plist-from-bytes, host persistence, backoff cadence.)
 
 - **New menu actions: Eject Drives + Restart Safely…** A one-click guard against
   the macOS Tahoe 26 shutdown hang, where `diskarbitrationd` wedges in-kernel

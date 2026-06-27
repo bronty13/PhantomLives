@@ -97,14 +97,28 @@ final class JobsModel: ObservableObject {
     private func tick() async {
         tickCount += 1
         if tickCount % rescanEveryTicks == 0 { await rescan() }
-        await refreshAll()
+        // Backoff: a failing remote host is probed progressively less often (it doesn't burn an
+        // ssh ConnectTimeout every tick), while healthy/local hosts refresh every tick.
+        let probe = Set(hostContexts
+            .filter { $0.host.isLocal || Backoff.shouldProbe(consecutiveFailures: $0.consecutiveFailures, tick: tickCount) }
+            .map(\.host.id))
+        await refresh(hostIDs: probe)
     }
 
-    func refreshAll() async {
-        // Refresh hosts concurrently so a slow/asleep remote can't stall the others.
+    /// User-initiated full refresh — try every host regardless of backoff.
+    func refreshAll() async { await refresh(hostIDs: Set(hostContexts.map(\.host.id))) }
+
+    /// Refresh the jobs on the given hosts concurrently, so a slow/asleep remote can't stall others.
+    private func refresh(hostIDs: Set<String>) async {
         await withTaskGroup(of: Void.self) { group in
-            for j in jobs { group.addTask { await j.refresh() } }
+            for j in jobs where hostIDs.contains(j.hostID) { group.addTask { await j.refresh() } }
         }
+    }
+
+    /// Remote hosts currently unreachable, with a "last seen" string for the offline banner.
+    var offlineHosts: [(host: MonitoredHost, lastSeen: String)] {
+        hostContexts.filter { !$0.host.isLocal && !$0.reachable }
+            .map { ($0.host, $0.lastSeenRelative) }
     }
 
     /// Worst health across all jobs → the menu-bar glyph. No jobs ⇒ attention.

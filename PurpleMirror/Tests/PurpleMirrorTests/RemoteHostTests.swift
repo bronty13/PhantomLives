@@ -100,6 +100,31 @@ import Foundation
         #expect(back == h)
     }
 
+    // MARK: Backoff (Phase 4: don't hammer an offline host)
+
+    @Test func backoffIntervalGrowsThenCaps() {
+        #expect(Backoff.probeInterval(consecutiveFailures: 0) == 1)
+        #expect(Backoff.probeInterval(consecutiveFailures: 1) == 2)
+        #expect(Backoff.probeInterval(consecutiveFailures: 2) == 3)
+        #expect(Backoff.probeInterval(consecutiveFailures: 5) == 6)
+        #expect(Backoff.probeInterval(consecutiveFailures: 99) == 6)
+    }
+
+    @Test func healthyHostProbesEveryTick() {
+        for tick in 1...10 {
+            #expect(Backoff.shouldProbe(consecutiveFailures: 0, tick: tick))
+        }
+    }
+
+    @Test func failingHostProbesOnlyOnItsInterval() {
+        // 2 failures → interval 3 → probe on ticks divisible by 3
+        #expect(!Backoff.shouldProbe(consecutiveFailures: 2, tick: 4))
+        #expect(Backoff.shouldProbe(consecutiveFailures: 2, tick: 6))
+        // deep failure → interval 6 → ~once a minute at a 10s tick
+        #expect(!Backoff.shouldProbe(consecutiveFailures: 10, tick: 61))
+        #expect(Backoff.shouldProbe(consecutiveFailures: 10, tick: 60))
+    }
+
     // MARK: LaunchAgentPlist.parse(data:)
 
     @Test func parsePlistFromXMLData() throws {

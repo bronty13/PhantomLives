@@ -12,6 +12,7 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            if !model.offlineHosts.isEmpty { offlineBanner }
             Divider()
             if model.jobs.isEmpty {
                 Text("No managed jobs found.\nPurpleMirror watches PhantomLives launchd agents in ~/Library/LaunchAgents.")
@@ -40,6 +41,18 @@ struct MenuView: View {
         .padding(14)
         .frame(width: 360)
         .task { await model.refreshAll() }
+    }
+
+    private var offlineBanner: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(model.offlineHosts, id: \.host.id) { entry in
+                HStack(spacing: 6) {
+                    Image(systemName: "wifi.slash").font(.caption2).foregroundStyle(.orange)
+                    Text("\(entry.host.displayName) offline — last seen \(entry.lastSeen)")
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
     }
 
     private var header: some View {
