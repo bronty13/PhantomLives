@@ -3,6 +3,25 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-27 — Part 11 (Reverse Engineering & App Security) built — 84/105 lessons ✅ — DEVELOPMENT PILLAR COMPLETE
+
+The RE/app-security half of the dev pillar (12 lessons), all framed for authorized RE /
+app-security testing: Mach-O ARM64 deep dive; the code-signature blob + entitlements (RE
+inspection); the dyld shared cache (extraction for Ghidra/IDA); FairPlay + decrypting App Store
+apps (the memory-dump boundary; Simulator/UnCrackable no-device alternative); static analysis
+(class-dump/dsdump, Ghidra/Hopper/IDA/Binary Ninja); dynamic analysis with Frida (Simulator-
+attach path); objection + swizzling + runtime exploration; the 2026 jailbreak landscape;
+TrollStore + the CoreTrust bug; Theos tweak development; OWASP MASTG/MASVS; and anti-tamper /
+pinning / detection from both sides (App Attest, jailbreak detection, pinning bypass).
+
+- 11/12 via the workflow (0 review problems); **`07-the-jailbreak-landscape-2026` was hand-
+  authored** because the workflow author tripped the cyber content-filter (the last such gap —
+  Anthropic has since approved the maintainer's cybersecurity use case, so subsequent modules run
+  unblocked). Lesson 08 (TrollStore) landed despite its review tripping the filter.
+
+With Parts 10–11 done, **the full development pillar (24 lessons) is complete.** Remaining: the
+platform-breadth modules — Part 04 (Networking), 05 (iPadOS), 06 (Automation/Ops).
+
 ## 2026-06-26 — Part 10 (iOS App Engineering) built — 72/105 lessons ✅ — development pillar (1/2)
 
 The app-building half of the dev pillar (12 lessons): Xcode + the iOS build system (device vs

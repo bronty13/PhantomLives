@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–03 + 07–10 complete (72/105 lessons ✅) — foundation, the full forensics pillar, and iOS app engineering done. 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–03 + 07–11 complete (84/105 lessons ✅) — foundation, the full forensics pillar, and the full development pillar (app engineering + reverse engineering) done. Remaining: Parts 04–06 (networking, iPadOS, automation/ops). 105 lessons across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -173,18 +173,18 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [Mach-O ARM64 deep dive](part-11-reverse-engineering/00-mach-o-arm64-deep-dive.md) | ⬜ |
-| 01 | [The code-signature blob & entitlements](part-11-reverse-engineering/01-the-code-signature-blob-and-entitlements-on-ios.md) | ⬜ |
-| 02 | [The dyld shared cache](part-11-reverse-engineering/02-the-dyld-shared-cache.md) | ⬜ |
-| 03 | [FairPlay encryption & decrypting App Store apps](part-11-reverse-engineering/03-fairplay-encryption-and-decrypting-app-store-apps.md) | ⬜ |
-| 04 | [Static analysis: class-dump & disassemblers](part-11-reverse-engineering/04-static-analysis-class-dump-and-disassemblers.md) | ⬜ |
-| 05 | [Dynamic analysis with Frida](part-11-reverse-engineering/05-dynamic-analysis-with-frida.md) | ⬜ |
-| 06 | [objection, swizzling & runtime exploration](part-11-reverse-engineering/06-objection-swizzling-and-runtime-exploration.md) | ⬜ |
-| 07 | [The jailbreak landscape (2026)](part-11-reverse-engineering/07-the-jailbreak-landscape-2026.md) | ⬜ |
-| 08 | [TrollStore & the CoreTrust bug](part-11-reverse-engineering/08-trollstore-and-the-coretrust-bug.md) | ⬜ |
-| 09 | [Tweak development with Theos](part-11-reverse-engineering/09-tweak-development-with-theos.md) | ⬜ |
-| 10 | [OWASP MASTG & app-security testing](part-11-reverse-engineering/10-owasp-mastg-and-app-security-testing.md) | ⬜ |
-| 11 | [Anti-tamper, pinning & detection (both sides)](part-11-reverse-engineering/11-anti-tamper-pinning-and-detection-both-sides.md) | ⬜ |
+| 00 | [Mach-O ARM64 deep dive](part-11-reverse-engineering/00-mach-o-arm64-deep-dive.md) | ✅ |
+| 01 | [The code-signature blob & entitlements](part-11-reverse-engineering/01-the-code-signature-blob-and-entitlements-on-ios.md) | ✅ |
+| 02 | [The dyld shared cache](part-11-reverse-engineering/02-the-dyld-shared-cache.md) | ✅ |
+| 03 | [FairPlay encryption & decrypting App Store apps](part-11-reverse-engineering/03-fairplay-encryption-and-decrypting-app-store-apps.md) | ✅ |
+| 04 | [Static analysis: class-dump & disassemblers](part-11-reverse-engineering/04-static-analysis-class-dump-and-disassemblers.md) | ✅ |
+| 05 | [Dynamic analysis with Frida](part-11-reverse-engineering/05-dynamic-analysis-with-frida.md) | ✅ |
+| 06 | [objection, swizzling & runtime exploration](part-11-reverse-engineering/06-objection-swizzling-and-runtime-exploration.md) | ✅ |
+| 07 | [The jailbreak landscape (2026)](part-11-reverse-engineering/07-the-jailbreak-landscape-2026.md) | ✅ |
+| 08 | [TrollStore & the CoreTrust bug](part-11-reverse-engineering/08-trollstore-and-the-coretrust-bug.md) | ✅ |
+| 09 | [Tweak development with Theos](part-11-reverse-engineering/09-tweak-development-with-theos.md) | ✅ |
+| 10 | [OWASP MASTG & app-security testing](part-11-reverse-engineering/10-owasp-mastg-and-app-security-testing.md) | ✅ |
+| 11 | [Anti-tamper, pinning & detection (both sides)](part-11-reverse-engineering/11-anti-tamper-pinning-and-detection-both-sides.md) | ✅ |
 
 ---
 
