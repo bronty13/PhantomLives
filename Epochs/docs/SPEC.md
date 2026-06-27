@@ -395,24 +395,25 @@ monuments ×1.
 
 ### 9.3 Victory Point Table (base / presence value per Area per Epoch)
 
-Transcribed from Manual §VI / back-page VP Table. Columns are Epochs I–VII; a
-dash (—) means the Area scores **0** that epoch.
+**AUTHENTIC — transcribed from the physical board's Victory Point Table** (owner's
+scan, 2026-06-27), replacing earlier partly-invented values. Columns are Epochs
+I–VII; a dash (—) means the Area scores **0** that epoch.
 
 | Area | I | II | III | IV | V | VI | VII |
 |---|--:|--:|--:|--:|--:|--:|--:|
-| Middle East     | 2 | 3 | 3 | 3 | 3 | 2 | 1 |
-| North Africa    | 1 | 2 | 2 | 2 | 2 | 2 | 1 |
-| China           | 1 | 2 | 3 | 3 | 3 | 3 | 3 |
-| India           | 1 | 2 | 3 | 3 | 3 | 3 | 3 |
-| Southern Europe | 1 | 2 | 3 | 3 | 3 | 3 | 2 |
-| Northern Europe | — | — | 1 | 2 | 2 | 3 | 4 |
-| Southeast Asia  | — | — | 1 | 2 | 2 | 2 | 2 |
-| Eurasia         | — | — | — | — | 1 | 1 | 2 |
-| North America   | — | — | — | — | 1 | 1 | 3 |
-| South America   | — | — | — | — | 1 | 2 | 2 |
-| Nippon          | — | — | — | — | 1 | 1 | 2 |
-| Africa          | — | — | — | — | — | 1 | 2 |
-| Australia       | — | — | — | — | — | — | 2 |
+| Middle East        | 2 | 3 | 3 | 3 | 2 | 2 | 1 |
+| North Africa       | 1 | 2 | 2 | 2 | 2 | 2 | 1 |
+| China              | 1 | 2 | 3 | 3 | 3 | 3 | 3 |
+| India              | 1 | 2 | 3 | 3 | 3 | 3 | 3 |
+| Southern Europe    | — | 2 | 3 | 3 | 3 | 2 | 2 |
+| Northern Europe    | — | — | 1 | 2 | 2 | 2 | 4 |
+| South-East Asia    | — | — | 1 | 2 | 2 | 2 | 2 |
+| Eurasia            | — | — | — | — | 1 | 1 | 2 |
+| North America      | — | — | — | — | 1 | 1 | 3 |
+| South America      | — | — | — | — | — | 2 | 2 |
+| Sub-Saharan Africa | — | — | — | — | — | 1 | 2 |
+| Nippon             | — | — | — | — | — | 1 | 2 |
+| Australasia        | — | — | — | — | — | — | 1 |
 
 > Dominance doubles and Control triples these base values. This table is the
 > heart of the AI value function (§15) — a placement's worth is largely "what
