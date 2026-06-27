@@ -2,6 +2,15 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.10.1] — 2026-06-27
+
+### Added
+- **📖 Rulebook viewer** — a top-bar button opens the original scanned rulebook +
+  sample-game pages, packaged into the local build. The scans live in
+  `src/renderer/public/rulebook/` (**git-ignored** — the owner's own scans, bundled
+  into their personal build, never committed). Degrades gracefully with a note if
+  the folder isn't present on a given machine.
+
 ## [0.10.0] — 2026-06-27
 
 Authentic empire roster (fidelity rebuild, phase 2).

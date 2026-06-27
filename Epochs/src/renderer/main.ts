@@ -102,6 +102,43 @@ class GameUI {
     this.scheduleNext()
   }
 
+  // The original scanned rulebook + sample game, bundled into the build (the
+  // owner's own scans). Pages are probed sequentially until one is missing.
+  private openRulebook(): void {
+    this.helpOpen = true
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    const el = this.root.querySelector('#rulebook') as HTMLElement
+    const box = el.querySelector('.rb-pages') as HTMLElement
+    if (!box.dataset.loaded) {
+      box.dataset.loaded = '1'
+      const tryPage = (n: number): void => {
+        const img = new Image()
+        img.alt = `Rulebook page ${n}`
+        img.className = 'rb-page'
+        img.onload = (): void => {
+          box.appendChild(img)
+          tryPage(n + 1)
+        }
+        img.onerror = (): void => {
+          if (n === 1) {
+            box.innerHTML =
+              '<p class="muted" style="padding:20px">The original rulebook scans aren’t bundled on this machine. They live in <code>src/renderer/public/rulebook/</code> (git-ignored) and are packaged into the local build.</p>'
+          }
+        }
+        img.src = `rulebook/page-${String(n).padStart(2, '0')}.jpg`
+      }
+      tryPage(1)
+    }
+    el.classList.remove('hidden')
+  }
+
+  private closeRulebook(): void {
+    this.helpOpen = false
+    ;(this.root.querySelector('#rulebook') as HTMLElement).classList.add('hidden')
+    this.scheduleNext()
+  }
+
   // ── lifecycle ──────────────────────────────────────────────────────────
   private newGame(): void {
     if (this.timer) clearTimeout(this.timer)
@@ -536,6 +573,8 @@ class GameUI {
     const q = <T extends HTMLElement>(s: string) => this.root.querySelector(s) as T
     q<HTMLButtonElement>('#help-btn').onclick = () => this.showHelp()
     q<HTMLButtonElement>('#help-close').onclick = () => this.hideHelp()
+    q<HTMLButtonElement>('#rulebook-btn').onclick = () => this.openRulebook()
+    q<HTMLButtonElement>('#rb-close').onclick = () => this.closeRulebook()
     q<HTMLButtonElement>('#step').onclick = () => {
       this.auto = false
       this.syncAuto()
@@ -594,10 +633,11 @@ const TEMPLATE = `
 <div class="app">
   <header class="topbar">
     <h1>Epochs</h1>
-    <div class="hud"><span id="epoch">Epoch I / VII</span><button id="help-btn" class="help-btn">? How to play</button></div>
+    <div class="hud"><span id="epoch">Epoch I / VII</span><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
   </header>
   <div class="body">
     <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+      <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Original Rulebook &amp; Sample Game</h3><button id="rb-close">Close</button></div><div class="rb-pages"></div></div></div>
       <div id="help" class="event-panel hidden">
         <div class="evt-box help-box">
           <h3>How to play Epochs</h3>
