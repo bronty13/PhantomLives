@@ -2,6 +2,23 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.14.0] — 2026-06-27
+
+The play experience begins — you play by default, and your empire rises with drama.
+(Phase 35, slice 1 of: epoch intro → keep/pass draft → empire panel → full
+parchment shell.)
+
+### Added
+- **Epoch intro splash** — when your empire rises each epoch, a parchment card
+  announces it (EPOCH N + era, a player-coloured seal, the empire name, and its
+  homeland / strength / capital / navigation), pausing until you "Take command".
+  AI turns roll on without interruption. The first taste of the cohesive antique
+  look. (`turnStart` → `pendingIntro`; new `#epoch-intro` panel + `.intro-*` CSS.)
+
+### Changed
+- **You play by default** — new games seat you as P1 (the "I play" box defaults on),
+  so Epochs opens as a game you play rather than one you watch.
+
 ## [0.13.0] — 2026-06-27
 
 The board IS the map. The game now plays on the real History of the World board.

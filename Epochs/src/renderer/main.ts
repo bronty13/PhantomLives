@@ -16,11 +16,14 @@ import { nearestLand, type MapRect } from '../shared/mapProjection'
 import { areaColor, playerColor } from '../shared/palette'
 import { areaControl, placementInfo } from '../shared/boardInsight'
 import { AREA_NAMES, AREA_VALUES } from '../shared/data/areaValues'
-import type { EpochId, Land, PlayerId } from '../shared/types'
+import type { EmpireCard, EpochId, Land, PlayerId } from '../shared/types'
 import { drawMap, type PlaceableEntry } from './map'
 import { drawFx, fxDone, type Fx } from './anim'
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
+// Rough historical span per epoch (I & II match the original; the rest are
+// reasonable eras) — flavour for the empire-rises splash.
+const EPOCH_ERA = ['', '3000–1900 BC', '1900–950 BC', '950 BC – AD 1', 'AD 1 – 700', 'AD 700 – 1300', 'AD 1300 – 1700', 'AD 1700 – 2000']
 const lands = WORLD_MAP_DATA.lands
 const LAND_BY_ID = new Map<string, Land>(lands.map((l) => [l.id, l]))
 // The board scan (art/board-crop.jpg → public/board.jpg) is the map. Land
@@ -50,6 +53,7 @@ class GameUI {
   private pending: AwaitEvent | null = null
   private pendingEvents: AwaitEventsEvent | null = null
   private pendingTarget: { card: string; targets: string[] } | null = null
+  private pendingIntro: { player: PlayerId; empire: string; epoch: EpochId } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
   private auto = false
   private speed = 320
@@ -62,7 +66,7 @@ class GameUI {
   private activePlayer: PlayerId | null = null
   private attackOdds: number | null = null // win% of the human's pending attack (clash float)
 
-  private opts: NewGameOpts = { players: 4, difficulty: 'medium', humanSeat: 0, seed: 1 }
+  private opts: NewGameOpts = { players: 4, difficulty: 'medium', humanSeat: 1, seed: 1 }
   private playerOrder: string[] = []
   private status = ''
   private currentEpoch: EpochId = 1
@@ -154,8 +158,10 @@ class GameUI {
     this.placeable = null
     this.pendingEvents = null
     this.pendingTarget = null
+    this.pendingIntro = null
     this.eventSel = {}
     this.hideEventPanel()
+    ;(this.root.querySelector('#epoch-intro') as HTMLElement | null)?.classList.add('hidden')
     if (this.rafId != null) cancelAnimationFrame(this.rafId)
     this.rafId = null
     this.fx = []
@@ -189,6 +195,7 @@ class GameUI {
       !this.pending &&
       !this.pendingEvents &&
       !this.pendingTarget &&
+      !this.pendingIntro &&
       !this.over &&
       !this.helpOpen
     ) {
@@ -209,6 +216,11 @@ class GameUI {
       case 'turnStart':
         this.activePlayer = ev.player
         this.status = `Epoch ${ROMAN[ev.epoch]}: ${ev.empire} (${this.nameOf(ev.player)})`
+        // Your empire rises — pause on the dramatic intro card (AI turns roll on).
+        if (this.opts.humanSeat && ev.player === `P${this.opts.humanSeat}`) {
+          this.pendingIntro = { player: ev.player, empire: ev.empire, epoch: ev.epoch }
+          this.showEpochIntro()
+        }
         break
       case 'awaitEvents':
         this.pendingEvents = ev
@@ -387,7 +399,7 @@ class GameUI {
    * timer, so this is a no-op there.)
    */
   private drainToInteractive(): void {
-    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget) {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro) {
       this.advance()
     }
   }
@@ -398,6 +410,54 @@ class GameUI {
       panel.classList.add('hidden')
       panel.innerHTML = ''
     }
+  }
+
+  private empireCard(name: string, epoch: EpochId): EmpireCard | undefined {
+    return WORLD_EMPIRES.find((e) => e.epoch === epoch && e.name === name)
+  }
+
+  // The empire-rises splash: a parchment card announcing your new empire each
+  // epoch (homeland, strength, capital, navigation). Pauses until you Proceed.
+  private showEpochIntro(): void {
+    const intro = this.pendingIntro
+    if (!intro) return
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    const card = this.empireCard(intro.empire, intro.epoch)
+    const home = card ? this.landName(card.startLand) : '—'
+    const nav = !card
+      ? '—'
+      : 'all' in card.navigation
+        ? 'Worldwide seas'
+        : card.navigation.seas.length
+          ? card.navigation.seas.map((s) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())).join(', ')
+          : 'No navigation'
+    const cap = card?.hasCapital ? 'Fortified capital' : 'No capital'
+    const el = this.root.querySelector('#epoch-intro') as HTMLElement
+    el.innerHTML =
+      `<div class="evt-box intro-box">` +
+      `<div class="intro-epoch">Epoch ${ROMAN[intro.epoch]}<span>${EPOCH_ERA[intro.epoch]}</span></div>` +
+      `<div class="intro-seal" style="background:${this.colorOf(intro.player)}">${esc(intro.empire.slice(0, 1))}</div>` +
+      `<h2 class="intro-name">${esc(intro.empire)}</h2>` +
+      `<p class="intro-sub">rises in ${esc(home)} — ${this.nameOf(intro.player)}</p>` +
+      `<div class="intro-rows">` +
+      `<div><span>Homeland</span><b>${esc(home)}</b></div>` +
+      `<div><span>Strength</span><b>${card?.strength ?? '—'}</b></div>` +
+      `<div><span>Capital</span><b>${cap}</b></div>` +
+      `<div><span>Navigation</span><b>${esc(nav)}</b></div>` +
+      `</div>` +
+      `<div class="evt-actions"><button id="intro-proceed" class="primary">Take command ▶</button></div>` +
+      `</div>`
+    el.classList.remove('hidden')
+    ;(el.querySelector('#intro-proceed') as HTMLButtonElement).onclick = () => this.hideEpochIntro()
+  }
+
+  private hideEpochIntro(): void {
+    this.pendingIntro = null
+    ;(this.root.querySelector('#epoch-intro') as HTMLElement).classList.add('hidden')
+    this.render()
+    this.drainToInteractive()
+    this.scheduleNext()
   }
 
   private toCanvas(e: MouseEvent): { px: number; py: number } {
@@ -663,7 +723,7 @@ const TEMPLATE = `
     <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
       <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Original Rulebook &amp; Sample Game</h3><button id="rb-close">Close</button></div><div class="rb-pages"></div></div></div>
       <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">
@@ -712,7 +772,7 @@ const TEMPLATE = `
           <label>Players <select id="players"><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
           <label>AI <select id="difficulty"><option>easy</option><option selected>medium</option><option>hard</option></select></label>
         </div>
-        <div class="row"><label><input type="checkbox" id="human" /> I play (seat 1)</label><label>Seed <input type="number" id="seed" value="1" min="1" style="width:64px" /></label></div>
+        <div class="row"><label><input type="checkbox" id="human" checked /> I play (seat 1)</label><label>Seed <input type="number" id="seed" value="1" min="1" style="width:64px" /></label></div>
         <div class="row"><button id="newgame" class="primary">New Game</button></div>
       </section>
       <section class="legend">
