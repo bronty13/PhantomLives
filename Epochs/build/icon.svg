@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Epochs app icon (plain-text source; build/make-icon.sh rasterizes it).
+       A world of empires (player-colored territories) circled by an epoch orbit. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1436"/>
+      <stop offset="1" stop-color="#0b0912"/>
+    </linearGradient>
+    <radialGradient id="globe" cx="0.38" cy="0.32" r="0.78">
+      <stop offset="0" stop-color="#c2a0ff"/>
+      <stop offset="0.5" stop-color="#7c4dff"/>
+      <stop offset="1" stop-color="#371d63"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="212" fill="url(#bg)"/>
+
+  <!-- epoch orbit -->
+  <circle cx="512" cy="512" r="372" fill="none" stroke="#e1bc29" stroke-opacity="0.4"
+          stroke-width="7" stroke-dasharray="3 30" stroke-linecap="round"/>
+
+  <!-- globe -->
+  <circle cx="512" cy="512" r="298" fill="url(#globe)"/>
+
+  <!-- meridians + parallels -->
+  <g stroke="#ffffff" stroke-opacity="0.26" fill="none" stroke-width="5">
+    <ellipse cx="512" cy="512" rx="118" ry="298"/>
+    <ellipse cx="512" cy="512" rx="232" ry="298"/>
+    <line x1="214" y1="512" x2="810" y2="512"/>
+    <path d="M 238 398 Q 512 356 786 398"/>
+    <path d="M 238 626 Q 512 668 786 626"/>
+  </g>
+
+  <!-- territories (player colors) -->
+  <g stroke="#0b0912" stroke-width="6">
+    <circle cx="430" cy="424" r="30" fill="#e15554"/>
+    <circle cx="612" cy="470" r="30" fill="#4d9de0"/>
+    <circle cx="468" cy="612" r="30" fill="#7eb74f"/>
+    <circle cx="596" cy="600" r="26" fill="#e1bc29"/>
+  </g>
+</svg>

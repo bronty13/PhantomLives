@@ -30,11 +30,18 @@ npm run typecheck
 echo "Running tests…"
 npm test
 
+echo "Generating app icon…"
+bash build/make-icon.sh
+
 echo "Building renderer + main (electron-vite)…"
 npm run build
 
 echo "Packaging ${PWD##*/}.app (electron-builder --dir)…"
-npx electron-builder --mac dir
+CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir
+
+echo "Ad-hoc signing (required for Apple Silicon)…"
+BUILT_APP="$(find dist -maxdepth 2 -name 'Epochs.app' -type d 2>/dev/null | head -n1)"
+[[ -n "${BUILT_APP}" ]] && codesign --force --deep --sign - "${BUILT_APP}"
 
 if [[ "${DO_INSTALL}" -eq 1 ]]; then
   ./install.sh ${OPEN_FLAG}

@@ -5,3 +5,6 @@ dist/
 *.log
 *.tsbuildinfo
 .DS_Store
+build/icon.icns
+build/icon.png
+build/icon.iconset/

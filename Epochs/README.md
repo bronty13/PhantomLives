@@ -11,9 +11,10 @@ legal posture (we reimplement uncopyrightable mechanics only).
 > 49 historical empires, area-control scoring, **and the event system** (finite
 > hands of Leaders/Weaponry/Reallocation/Minor-Empire + Coins→forts). Watch the
 > AI or **play a seat** (click-to-place + an event panel), with a scoreboard,
-> epoch HUD, and log. 79 tests. Run it with **`npm run dev:web`** (browser) or
-> `npm run dev` (Electron). Remaining: package as a real `.app`, AI self-play
-> re-tune, UI polish.
+> epoch HUD, and log. 79 tests. **Now a real app:** `./build-app.sh` builds +
+> installs a signed `/Applications/Epochs.app`; or `npm run dev:web` (browser) /
+> `npm run dev` (Electron) for development. Remaining: AI self-play re-tune, UI
+> polish.
 
 ## Stack
 
@@ -67,9 +68,11 @@ docs/SPEC.md     # canonical rules + data model + open questions
 
 `./build-app.sh` supports `--no-install`, `--no-open`, and `BUILD_ONLY=1`.
 
-> **Note:** `build-app.sh` / `install.sh` follow the PhantomLives `.app` standard
-> but have not yet been exercised end-to-end (they need the Electron binary and a
-> first real packaged build). Treat them as ready-to-validate, not yet proven.
+> `build-app.sh` / `install.sh` follow the PhantomLives `.app` standard
+> (force-kill running instance → `ditto` to `/Applications` → relaunch →
+> freshness proof) and are verified end-to-end. The app is **adhoc-signed** (local
+> use; not notarized). The icon is generated from `build/icon.svg` via
+> `build/make-icon.sh`.
 
 ## Default output location
 

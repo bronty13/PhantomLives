@@ -2,6 +2,27 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.6.1] — 2026-06-26
+
+Packaged as a real macOS app.
+
+### Added
+- **App icon** — `build/icon.svg` (plain-text source) + `build/make-icon.sh`
+  (rsvg-convert → iconset → `iconutil` → `icon.icns`), a globe of player-colored
+  territories circled by an epoch orbit. Generated deterministically (no
+  committed binary); wired into electron-builder.
+- **`build-app.sh` works end-to-end**: type-check → test → generate icon →
+  `electron-vite build` → `electron-builder --mac dir` → **adhoc-sign** (required
+  for Apple Silicon) → `install.sh` (force-kill any running instance → `ditto`
+  to `/Applications/Epochs.app` → relaunch → **freshness proof**). Verified:
+  `Epochs 0.6.1 running fresh`.
+
+### Notes
+- Local-use app: adhoc-signed, not notarized (no Developer ID / Sparkle). It's a
+  real double-clickable `/Applications/Epochs.app` now, not just `npm run dev`.
+- The generated `icon.icns`/`icon.png` and `dist/` are gitignored; only the SVG +
+  generator are committed.
+
 ## [0.6.0] — 2026-06-26
 
 The event system — the last major rules gap. Each player now manages a finite
