@@ -3,7 +3,7 @@
 
 import type { Board } from './board'
 import type { FrontierKind } from './bot'
-import type { CombatOdds } from './combat'
+import { winProb, type CombatOdds } from './combat'
 import { AREA_NAMES, areaValue } from './data/areaValues'
 import { areaTier, armiesByPlayerInArea, TIER_MULTIPLIER, type Tier } from './scoring'
 import type { AreaId, BoardPiece, EpochId, LandId, PlayerId } from './types'
@@ -35,9 +35,10 @@ export function placementInfo(
   if (kind === 'empty') lines.push('Settle — gain presence')
   else if (kind === 'own_old') lines.push('Reclaim your old army')
   else {
-    const o = odds ?? { attacker: 0, tie: 0, defender: 0 }
-    lines.push(`Attack: ${pct(o.attacker)} win · ${pct(o.tie)} tie · ${pct(o.defender)} hold`)
-    if (amphibious) lines.push('Amphibious — defender advantage')
+    const o = odds ?? { attacker: 0, tie: 0, defender: 1 }
+    const win = winProb(o)
+    lines.push(`Attack: ${pct(win)} win · ${pct(1 - win)} hold`)
+    if (amphibious) lines.push('Amphibious — defender rolls 2 dice')
   }
 
   const area = ctx.board.areaOf(land)

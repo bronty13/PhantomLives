@@ -233,11 +233,10 @@ class GameUI {
         break
       case 'placement': {
         if (ev.outcome) {
-          const color =
-            ev.outcome === 'attacker' ? '#7cfc9a' : ev.outcome === 'tie' ? '#e1bc29' : '#e15554'
+          const color = ev.outcome === 'attacker' ? '#7cfc9a' : '#e15554'
           const text = this.attackOdds != null ? `${Math.round(this.attackOdds * 100)}%` : undefined
           this.fx.push({ kind: 'clash', land: ev.land, color, start: now, dur: 380, text })
-          const verb = ev.outcome === 'attacker' ? 'WON' : ev.outcome === 'tie' ? 'TIED' : 'REPELLED'
+          const verb = ev.outcome === 'attacker' ? 'WON' : 'REPELLED'
           this.pushLog(`${this.nameOf(ev.player)} attacked ${this.landName(ev.land)} — ${verb}`)
         } else {
           this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
@@ -654,7 +653,7 @@ const TEMPLATE = `
             </ul>
             <p>Plus <b>★ capital</b> = 2, <b>◆ city</b> = 1, <b>▲ monument</b> = 1 each turn you hold them. A region's value changes by epoch — watch the <b>Regions</b> panel for what's worth fighting over now.</p>
             <h4>Combat</h4>
-            <p>To take an enemy land you attack: roll 2 dice (keep the higher) vs the defender's 1 — higher wins, a tie removes both. Mountains, straits, sea-landings and <b>▮ forts</b> favor the defender. On your turn, <b>hover</b> a target to see the exact win odds.</p>
+            <p>To take an enemy land you attack: roll <b>2 dice, keep the higher</b>, vs the defender's <b>1</b> — higher wins, an exact <b>tie is rerolled</b>. Mountains, forests, the Great Wall, straits and sea-landings make the <b>defender roll 2 dice</b> (keep higher); a <b>▮ fort</b> adds +1 to the defender. On your turn, <b>hover</b> a target to see the exact win odds.</p>
             <h4>It stays close</h4>
             <p>The player in <b>last place drafts first</b> each epoch and gets first pick of the strongest new empire — so leads don't run away. And each epoch's leader secretly draws a hidden <b>pre-eminence</b> bonus, revealed only at the very end.</p>
             <h4>Events</h4>

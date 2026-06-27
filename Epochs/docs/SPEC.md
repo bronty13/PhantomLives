@@ -264,75 +264,63 @@ Expansion ends when the player has no armies left to place or chooses to stop
 > This is the most important engine routine. It is **closed-form** — no
 > simulation needed — which is what makes strong AI tractable (§15).
 
+> **Authentic AH 1993 (docs/AUTHENTIC-RULES.md §5).** Ties are **rerolled** (not
+> "both removed" — the pre-v0.11 model was wrong); the defender caps at 2 dice; the
+> fort is a simple +1.
+
 ### 7.1 Base resolution
 
 - **Attacker** rolls `attackerDice` dice, **keeps the single highest**.
 - **Defender** rolls `defenderDice` dice, **keeps the single highest**, then adds
-  any **fort bonus**.
+  any **fort bonus** (+1).
 - **Higher value wins**; the loser's army is removed.
-- **Tie ⇒ BOTH armies removed**, and the Land is left **vacant** (attacker does
-  *not* occupy it; any capital/city there stays in its current state).
+- **Tie ⇒ the battle is REROLLED** until decisive — a resolved combat is only
+  *attacker-wins* or *defender-wins*. (The *Fanaticism* Event makes the attacker
+  win ties; a *Fortress* makes the defender win ties — §11.)
 
 ### 7.2 Dice counts
 
-`attackerDice`:
-- Base **2**.
-- **3** if the attacker has a qualifying bonus (Leader, Weaponry, or certain
-  Events). (Bonuses do not stack beyond 3 — confirm in §16.)
+`attackerDice`: base **2**; **3** with a Leader / Weaponry / qualifying Event
+(still kept-highest of the 3; does not stack beyond 3).
 
-`defenderDice` (take the **maximum** applicable, base 1):
-- Base **1**.
-- **2** if attacking *into* a Land whose border/terrain is **Difficult Terrain**
-  (forest, mountain, Great Wall). Difficult terrain on the *attacker's* own Land
-  gives no bonus.
-- **3** if attacking **across a Strait** or **landing from the Sea**
-  (amphibious). (Strait/sea override the terrain-2 bonus.)
+`defenderDice`: base **1**; **2** in any difficult case — **Difficult Terrain**
+(forest / mountain / Great Wall on the defender's border), a **Strait** crossing
+without sea control, or an **amphibious** landing. **Capped at 2** — there is no
+defender-rolls-3. Difficult terrain on the attacker's own Land gives no bonus.
 
 `fortBonus`: **+1** to the defender's kept value if a **fort** is present (§7.4).
 
-### 7.3 Combat odds (engine must reproduce these — test fixture)
+### 7.3 Combat odds (engine reproduces these — test fixture)
 
-For d6, `P(max of k dice = x) = (x^k − (x−1)^k)/6^k`. Standard combat
-(attacker max-of-2 vs defender max-of-1):
+For d6, `P(max of k dice = x) = (x^k − (x−1)^k)/6^k`. `combatOdds` returns the
+**raw single-roll** split (attacker / tie / defender); because ties are rerolled,
+the **effective win probability** is `winProb = attacker / (attacker + defender)`.
 
-| Outcome | Probability | ≈ |
-|---|---:|---:|
-| Attacker wins (defender removed, attacker occupies) | 125/216 | 57.9% |
-| Tie (both removed, land vacant) | 36/216 | 16.7% |
-| Defender wins (attacker army removed) | 55/216 | 25.5% |
+| Attacker × Defender | atk | tie | def | **winProb** | Exact (atk/tie/def) |
+|---|---:|---:|---:|---:|---|
+| 2 × 1 (standard) | 57.9% | 16.7% | 25.5% | **69.4%** | 125 / 36 / 55 over 216 |
+| 2 × 2 (difficult / amphibious) | 39.0% | 22.1% | 39.0% | **50.0%** | 505 / 286 / 505 over 1296 |
+| 3 × 1 (attacker bonus) | 66.0% | 16.7% | 17.4% | **79.1%** | 855 / 216 / 225 over 1296 |
 
-Other matchups (engine computes generically; included as regression anchors):
+> `tests/combat.test.ts` asserts each raw row against its exact rational, plus
+> `winProb` and the seeded reroll resolution. No context produces defender-3 now;
+> the 2×3 closed form is still tested as a generic anchor.
 
-| Attacker × Defender | Atk win | Tie | Def win | Exact (atk/tie/def) |
-|---|---:|---:|---:|---|
-| 2 × 1 (standard) | 57.9% | 16.7% | 25.5% | 125 / 36 / 55 over 216 |
-| 2 × 2 (difficult terrain) | 39.0% | 22.1% | 39.0% | 505 / 286 / 505 over 1296 |
-| 3 × 1 (attacker bonus) | 66.0% | 16.7% | 17.4% | 855 / 216 / 225 over 1296 |
-| 2 × 3 (strait / amphibious) | 28.1% | 24.8% | 47.2% | 2183 / 1926 / 3667 over 7776 |
+### 7.4 Forts
 
-> The engine derives the full table from the max-of-k distribution
-> (`combat.ts::combatOdds`); `tests/combat.test.ts` asserts every row above
-> against its exact rational fraction. Fort `+1` shifts the defender's
-> distribution up by one and is modeled in 7.4. (These exact values supersede
-> any hand-estimate — they were corrected after the test pinned them down.)
-
-### 7.4 Forts (multi-round)
-
-- A fort gives the defender **+1** and is **destroyed before the army**: if the
-  defender **loses or ties**, the **fort** is removed first (not the army), and
-  if the attacker still has its army, combat **continues another round** against
-  the now-unforted defender.
-- Max **one fort per Land**; a fort may sit on a Land that also has a capital or
-  city. A fort costs one unplaced army (or a Coin) to build.
+- A fort gives the defender **+1** to its kept die and **absorbs no losses** — it
+  is removed automatically when the **last defending army** is eliminated (i.e.
+  when the attacker wins). One decisive round (ties rerolled).
+- Max **one fort per Land**; may sit with a capital or city. Built by removing one
+  unplaced army (optionally upgraded to a **Fortress** for 2 strength — §11).
 - Forts are worth **0 VP**.
 
 ### 7.5 Outcome → board effects
 
 | Result | Board effect |
 |---|---|
-| Attacker wins | Defender army removed; attacker army occupies the Land; apply sack/pillage to any structure (§8). |
-| Tie | Both armies removed; Land vacant; structures unchanged. |
-| Defender wins | Attacker army removed; defender stays; structures unchanged. |
+| Attacker wins | Defender army removed (and any fort falls with it); attacker army occupies the Land; apply sack/pillage to any structure (§8). |
+| Defender wins | Attacker army removed; defender + fort stay; structures unchanged. |
 
 ---
 
@@ -345,8 +333,9 @@ Other matchups (engine computes generically; included as regression anchors):
 - Capture a Land containing a **city** → the city is **sacked and removed**.
 - **Monuments** are never destroyed — they remain and transfer to whoever
   controls the Land.
-- If a Land is left **vacant** (tie), structures stay in their current state.
 - A **Marauder** scores **+1 VP** each time it razes a structure this way (§5).
+  *(NOTE: this bonus is invented — authentic Marauders just have no Capital;
+  removal is task #32 / docs/AUTHENTIC-RULES §14.)*
 
 ### 8.2 Monuments (built from resources)
 

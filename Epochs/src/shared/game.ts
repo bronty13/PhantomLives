@@ -573,16 +573,14 @@ export class Game {
     // enemy
     const ctx = this.combatContext(land, opt.amphibious, attackerBonus)
     const res = resolveAssault(this.state.rng, ctx)
-    if (res.fortDestroyed) this.removeFortOn(land) // fort fell during the assault
+    if (res.fortDestroyed) this.removeFortOn(land) // fort fell with the army
     if (res.outcome === 'attacker') {
       this.removeArmyOn(land) // defender removed
       this.removeFortOn(land) // any surviving fort falls with the land
-      this.onOccupy(land, pid, empire) // sack/pillage + transfer + marauder bonus
+      this.onOccupy(land, pid, empire) // sack/pillage + structure transfer
       this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch })
-    } else if (res.outcome === 'tie') {
-      this.removeArmyOn(land) // both removed; attacker army consumed, land vacant
     }
-    // 'defender': attacker army consumed, board unchanged
+    // 'defender': attacker army consumed, board unchanged (ties are rerolled)
     return res.outcome
   }
 

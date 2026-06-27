@@ -10,6 +10,7 @@ import {
   resolveAssault,
   resolveRound,
   rollKeepHighest,
+  winProb,
   type CombatResult,
 } from '../src/shared/combat'
 
@@ -56,7 +57,9 @@ describe('combatOdds (closed-form)', () => {
     expect(o.defender).toBeCloseTo(225 / 1296, 12)
   })
 
-  it('strait / amphibious 2 vs 3 = 2183/1926/3667 over 7776', () => {
+  it('defender 3 dice (2 vs 3) closed-form = 2183/1926/3667 over 7776', () => {
+    // No context produces defender-3 anymore (capped at 2), but the closed form
+    // must stay correct for k=3.
     const o = combatOdds(2, 3)
     expect(o.attacker).toBeCloseTo(2183 / 7776, 12)
     expect(o.tie).toBeCloseTo(1926 / 7776, 12)
@@ -70,6 +73,12 @@ describe('combatOdds (closed-form)', () => {
     expect(withFort.defender).toBeGreaterThan(noFort.defender)
     expect(withFort.attacker + withFort.tie + withFort.defender).toBeCloseTo(1, 12)
   })
+
+  it('winProb folds the rerolled ties into the decisive pool', () => {
+    expect(winProb(combatOdds(2, 1))).toBeCloseTo(125 / 180, 12) // ties (36) rerolled
+    expect(winProb(combatOdds(2, 2))).toBeCloseTo(0.5, 12) // symmetric
+    expect(winProb(combatOdds(2, 1, 1))).toBeLessThan(winProb(combatOdds(2, 1, 0))) // fort hurts
+  })
 })
 
 describe('context → dice mapping (SPEC §7.2)', () => {
@@ -78,12 +87,12 @@ describe('context → dice mapping (SPEC §7.2)', () => {
     expect(attackerDice({ attackerBonus: true })).toBe(3)
   })
 
-  it('defender dice take the max applicable bonus', () => {
+  it('defender rolls 2 in any difficult case, capped at 2 (no defender-3)', () => {
     expect(defenderDice({})).toBe(1)
     expect(defenderDice({ difficultTerrain: true })).toBe(2)
-    expect(defenderDice({ strait: true })).toBe(3)
-    expect(defenderDice({ amphibious: true })).toBe(3)
-    expect(defenderDice({ difficultTerrain: true, strait: true })).toBe(3)
+    expect(defenderDice({ strait: true })).toBe(2)
+    expect(defenderDice({ amphibious: true })).toBe(2)
+    expect(defenderDice({ difficultTerrain: true, amphibious: true })).toBe(2)
     expect(defenderDice({ fort: true })).toBe(1) // fort is a +1, not a die
   })
 
@@ -117,19 +126,18 @@ describe('seeded resolution', () => {
     expect(seq(42)).not.toEqual(seq(43))
   })
 
-  it('empirical frequencies converge to the closed-form odds (2 vs 1)', () => {
+  it('empirical frequencies converge to the post-reroll win odds (2 vs 1)', () => {
     const rng = makeRng(12345)
     const N = 200_000
-    const tally = { attacker: 0, tie: 0, defender: 0 }
-    for (let i = 0; i < N; i++) tally[resolveRound(rng, {})]++
-    const o = combatOdds(2, 1)
-    expect(tally.attacker / N).toBeCloseTo(o.attacker, 2)
-    expect(tally.tie / N).toBeCloseTo(o.tie, 2)
-    expect(tally.defender / N).toBeCloseTo(o.defender, 2)
+    const tally = { attacker: 0, defender: 0 }
+    for (let i = 0; i < N; i++) tally[resolveRound(rng, {})]++ // ties rerolled away
+    const p = winProb(combatOdds(2, 1)) // 125/180 ≈ 0.694
+    expect(tally.attacker / N).toBeCloseTo(p, 2)
+    expect(tally.defender / N).toBeCloseTo(1 - p, 2)
   })
 })
 
-describe('resolveAssault (fort shielding, SPEC §7.4)', () => {
+describe('resolveAssault (fort = +1, no shielding)', () => {
   it('without a fort, an assault is a single round', () => {
     const rng = makeRng(7)
     const res = resolveAssault(rng, {})

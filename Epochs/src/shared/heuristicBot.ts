@@ -18,7 +18,7 @@
 //    beat the best safe placement (opportunity cost).
 
 import type { Bot, BotView, EventChoice, EventView, FrontierOption } from './bot'
-import { combatOdds } from './combat'
+import { combatOdds, winProb } from './combat'
 import { scoreArea } from './scoring'
 import type { AreaId, BoardPiece, EpochId, EventCard, EventHand, LandId, PlayerId } from './types'
 
@@ -109,7 +109,8 @@ export function hash01(seed: number, player: string, epoch: number, land: string
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296
 }
 
-const DEFENSE_BASELINE = combatOdds(2, 1).defender // ≈ 0.2546
+// Post-reroll probability the defender HOLDS on flat terrain (1 − attacker win).
+const DEFENSE_BASELINE = 1 - winProb(combatOdds(2, 1))
 
 export interface HeuristicBotOptions {
   name?: string
@@ -221,7 +222,7 @@ export class HeuristicBot implements Bot {
         terrain.includes('forest') || terrain.includes('mountain') || terrain.includes('great_wall')
           ? 2
           : 1
-      const hold = combatOdds(2, defDice).defender
+      const hold = 1 - winProb(combatOdds(2, defDice))
       const rhoArea = clamp(
         w.rhoBase + w.terrainRetention * (hold - DEFENSE_BASELINE) - w.threatPenalty * adjEnemy(land),
         w.rhoMin,
@@ -355,20 +356,12 @@ export class HeuristicBot implements Bot {
       const win =
         selfAreaWin + w.selfBias * (selfStruct + monMargin(land, fam)) + maraud + denyStruct + denialWin
 
-      // TIE: both armies removed, I do not occupy (structures unchanged). My own
-      // tier can still rise because the defender dropped (self-upgrade).
-      let selfAreaTie = 0
-      let denialTie = 0
-      if (area && d) {
-        const tieMap = adjusted(base, [[d, -1]])
-        selfAreaTie = w.selfBias * (fwdScore(area, rhoArea, me, tieMap) - fwdScore(area, rhoArea, me, base))
-        denialTie = wDeny(d) * (fwdScore(area, rhoArea, d, base) - fwdScore(area, rhoArea, d, tieMap))
-      }
-      const tie = selfAreaTie + denialTie
-
+      // Ties are rerolled, so the assault is win-or-lose; `p` is the effective
+      // (post-reroll) win probability. Win → `win`; lose → a wasted army.
+      const p = winProb(odds)
       const oppCost = Math.max(w.armyFloor, bestPeaceful)
-      let s = odds.attacker * win + odds.tie * tie - w.riskAversion * odds.defender * oppCost
-      if (odds.attacker < w.minWinProb) s -= 1e6 // timid skip (low difficulty)
+      let s = p * win - w.riskAversion * (1 - p) * oppCost
+      if (p < w.minWinProb) s -= 1e6 // timid skip (low difficulty)
       return s
     }
 

@@ -1,8 +1,11 @@
-// Combat resolution (SPEC §7). The system is closed-form: attacker rolls
-// `attackerDice` keeping the highest; defender rolls `defenderDice` keeping the
-// highest, +1 if a fort is present. Higher wins; a TIE removes BOTH (land
-// vacant). Because it's max-of-k on a d6, we can compute exact odds with no
-// simulation — which is what makes strong heuristic AI tractable (SPEC §15).
+// Combat resolution (SPEC §7, authentic AH 1993 — docs/AUTHENTIC-RULES.md §5).
+// The attacker rolls `attackerDice` keeping the highest; the defender rolls
+// `defenderDice` keeping the highest, +1 if a fort is present. Higher wins; an
+// exact TIE is REROLLED until decisive (so the outcome is only attacker|defender).
+// Because it's max-of-k on a d6 we keep the exact single-roll PMF (attacker/tie/
+// defender) closed-form — the tie mass is the reroll pool, and `winProb` folds it
+// in. Keeping the raw tie probability lets us later value tie-changing Events
+// (Fanaticism = attacker wins ties; Fortress = defender wins ties).
 
 import type { Rng } from './rng'
 
@@ -11,18 +14,20 @@ const SIDES = 6
 export interface CombatContext {
   /** Leader / Weaponry / Event bonus → attacker rolls 3 dice instead of 2. */
   attackerBonus?: boolean
-  /** Forest / mountain / Great Wall on the attacked land → defender rolls 2. */
+  /** Forest / mountain / Great Wall on the defender's border → defender rolls 2. */
   difficultTerrain?: boolean
-  /** Attacking across a strait → defender rolls 3 (overrides terrain). */
+  /** Attacking across a strait without controlling the sea → defender rolls 2. */
   strait?: boolean
-  /** Landing from the sea (amphibious) → defender rolls 3. */
+  /** Landing from the sea (amphibious) → defender rolls 2 (same as terrain). */
   amphibious?: boolean
-  /** Defender sits in a fort → +1 and the fort shields the army (SPEC §7.4). */
+  /** Defender sits in a fort → +1 to its die (absorbs no losses; SPEC §5). */
   fort?: boolean
 }
 
-export type CombatResult = 'attacker' | 'tie' | 'defender'
+/** Ties are rerolled, so a resolved combat is only attacker or defender. */
+export type CombatResult = 'attacker' | 'defender'
 
+/** Raw single-roll probabilities (sum to 1); `tie` is the reroll mass. */
 export interface CombatOdds {
   attacker: number
   tie: number
@@ -34,12 +39,9 @@ export function attackerDice(ctx: CombatContext): number {
   return ctx.attackerBonus ? 3 : 2
 }
 
-/** Dice the defender rolls (keeps highest); take the max applicable bonus. */
+/** Dice the defender rolls (keeps highest): 2 in any difficult case, else 1. */
 export function defenderDice(ctx: CombatContext): number {
-  let n = 1
-  if (ctx.difficultTerrain) n = Math.max(n, 2)
-  if (ctx.strait || ctx.amphibious) n = Math.max(n, 3)
-  return n
+  return ctx.difficultTerrain || ctx.strait || ctx.amphibious ? 2 : 1
 }
 
 /** Flat bonus added to the defender's kept value when a fort is present. */
@@ -58,9 +60,9 @@ export function pmfMaxOfK(k: number, sides = SIDES): number[] {
 }
 
 /**
- * Closed-form odds: attacker (max of `aDice`) vs defender (max of `dDice`) + bonus.
- * Single-round only — the fort's multi-round shielding is handled in
- * {@link resolveAssault}.
+ * Closed-form single-roll odds: attacker (max of `aDice`) vs defender
+ * (max of `dDice`) + bonus. `tie` is the probability of an exact tie (which is
+ * rerolled at resolution); use {@link winProb} for the effective win chance.
  */
 export function combatOdds(aDice: number, dDice: number, bonus = 0): CombatOdds {
   const atk = pmfMaxOfK(aDice)
@@ -84,7 +86,13 @@ export function combatOdds(aDice: number, dDice: number, bonus = 0): CombatOdds 
   return { attacker, tie, defender }
 }
 
-/** Single-round odds for a context (ignores fort multi-round shielding). */
+/** Effective attacker win probability after rerolling ties (tie mass excluded). */
+export function winProb(o: CombatOdds): number {
+  const decisive = o.attacker + o.defender
+  return decisive > 0 ? o.attacker / decisive : 0
+}
+
+/** Single-round odds for a context (raw PMF). */
 export function oddsForContext(ctx: CombatContext): CombatOdds {
   return combatOdds(attackerDice(ctx), defenderDice(ctx), fortBonus(ctx))
 }
@@ -96,13 +104,19 @@ export function rollKeepHighest(rng: Rng, n: number): number {
   return best
 }
 
-/** One combat round (no fort shielding sequence). */
+/** One decisive combat round — ties are rerolled (SPEC §5). */
 export function resolveRound(rng: Rng, ctx: CombatContext): CombatResult {
-  const a = rollKeepHighest(rng, attackerDice(ctx))
-  const d = rollKeepHighest(rng, defenderDice(ctx)) + fortBonus(ctx)
-  if (a > d) return 'attacker'
-  if (a === d) return 'tie'
-  return 'defender'
+  const aDice = attackerDice(ctx)
+  const dDice = defenderDice(ctx)
+  const bonus = fortBonus(ctx)
+  for (let i = 0; i < 1000; i++) {
+    const a = rollKeepHighest(rng, aDice)
+    const d = rollKeepHighest(rng, dDice) + bonus
+    if (a > d) return 'attacker'
+    if (a < d) return 'defender'
+    // exact tie → reroll
+  }
+  return 'defender' // unreachable in practice (defender holds on pathological RNG)
 }
 
 export interface AssaultResult {
@@ -112,27 +126,11 @@ export interface AssaultResult {
 }
 
 /**
- * Full assault including fort shielding (SPEC §7.4, INTERPRETATION — verify
- * against the manual, §16): while a fort stands, the defender gets +1; the
- * first non-defender-win result destroys the fort (not the army) and the
- * attacker refights without it. A defender win repels the assault with the fort
- * intact.
+ * An assault: one decisive round (the fort gives the defender +1 but absorbs no
+ * losses). The fort falls automatically when the last defending army is
+ * eliminated — i.e. when the attacker wins (SPEC §5 / docs/AUTHENTIC-RULES §5).
  */
 export function resolveAssault(rng: Rng, ctx: CombatContext): AssaultResult {
-  let rounds = 0
-  let fortDestroyed = false
-
-  if (ctx.fort) {
-    rounds++
-    const r = resolveRound(rng, { ...ctx, fort: true })
-    if (r === 'defender') {
-      return { outcome: 'defender', fortDestroyed: false, rounds }
-    }
-    // attacker win or tie → the fort absorbs the blow; refight without it
-    fortDestroyed = true
-  }
-
-  rounds++
-  const r = resolveRound(rng, { ...ctx, fort: false })
-  return { outcome: r, fortDestroyed, rounds }
+  const outcome = resolveRound(rng, ctx)
+  return { outcome, fortDestroyed: !!ctx.fort && outcome === 'attacker', rounds: 1 }
 }
