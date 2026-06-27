@@ -15,6 +15,7 @@ import { HeuristicBot, type Difficulty } from '../shared/heuristicBot'
 import { nearestLand, type MapRect } from '../shared/mapProjection'
 import { areaColor, playerColor } from '../shared/palette'
 import { areaControl, placementInfo } from '../shared/boardInsight'
+import { AREA_NAMES, AREA_VALUES } from '../shared/data/areaValues'
 import type { EpochId, Land, PlayerId } from '../shared/types'
 import { drawMap, type PlaceableEntry } from './map'
 import { drawFx, fxDone, type Fx } from './anim'
@@ -529,6 +530,7 @@ class GameUI {
       .join('')
 
     this.renderAreaControl()
+    this.renderVPTable()
 
     const logEl = this.root.querySelector('#log')!
     logEl.innerHTML = this.log.slice(-80).map((l) => `<div>${esc(l)}</div>`).join('')
@@ -556,6 +558,27 @@ class GameUI {
         )
       })
       .join('')
+  }
+
+  // The per-epoch Victory-Point table — a planning reference (the current epoch's
+  // column is highlighted). Presence ×1, Domination ×2, Control ×3 of these.
+  private renderVPTable(): void {
+    const el = this.root.querySelector('#vptable')
+    if (!el) return
+    const epochs = [1, 2, 3, 4, 5, 6, 7] as const
+    let html = '<table class="vpt"><thead><tr><th></th>'
+    for (const e of epochs) html += `<th class="${e === this.currentEpoch ? 'cur' : ''}">${ROMAN[e]}</th>`
+    html += '</tr></thead><tbody>'
+    for (const id of Object.keys(AREA_VALUES)) {
+      const vals = AREA_VALUES[id]
+      html += `<tr><td class="an"><span class="sw" style="background:${areaColor(id)}"></span><span>${esc(AREA_NAMES[id] ?? id)}</span></td>`
+      for (const e of epochs) {
+        const v = vals[e - 1]
+        html += `<td class="${e === this.currentEpoch ? 'cur' : ''}${v ? '' : ' z'}">${v || '·'}</td>`
+      }
+      html += '</tr>'
+    }
+    el.innerHTML = html + '</tbody></table>'
   }
 
   private renderGameOver(result: GameResult): void {
@@ -690,6 +713,10 @@ const TEMPLATE = `
       <section>
         <h2>Regions (this epoch)</h2>
         <div id="areas"></div>
+      </section>
+      <section>
+        <h2>Victory Point Table</h2>
+        <div id="vptable"></div>
       </section>
       <section class="controls">
         <h2>Game</h2>

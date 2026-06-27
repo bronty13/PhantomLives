@@ -7,7 +7,7 @@
 
 import type { FrontierKind } from '../shared/bot'
 import type { CombatOdds } from '../shared/combat'
-import { areaParchment, PARCHMENT_BARREN, playerColor } from '../shared/palette'
+import { areaColor, areaParchment, PARCHMENT_BARREN, playerColor } from '../shared/palette'
 import { projectLand, type MapRect } from '../shared/mapProjection'
 import { medianSpacing, voronoiCells, type Cell, type VSite } from '../shared/voronoi'
 import type { BoardPiece, EpochId, Land, PlayerId } from '../shared/types'
@@ -103,6 +103,27 @@ export function drawMap(ctx: CanvasRenderingContext2D, rect: MapRect, st: MapRen
     ctx.lineWidth = 1.1
     ctx.strokeStyle = 'rgba(107,79,42,0.6)'
     ctx.stroke()
+    // Barren = impassable (desert/ice). Stipple it so it reads as un-enterable.
+    if (l.barren) {
+      ctx.save()
+      fillCell(ctx, cell)
+      ctx.clip()
+      let minx = Infinity
+      let miny = Infinity
+      let maxx = -Infinity
+      let maxy = -Infinity
+      for (const pt of cell) { minx = Math.min(minx, pt[0]); miny = Math.min(miny, pt[1]); maxx = Math.max(maxx, pt[0]); maxy = Math.max(maxy, pt[1]) }
+      ctx.fillStyle = 'rgba(120,95,55,0.4)'
+      let seed = 0
+      for (let i = 0; i < l.id.length; i++) seed = (seed * 31 + l.id.charCodeAt(i)) & 0x7fffffff
+      const rnd = (): number => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)
+      for (let i = 0; i < 90; i++) {
+        ctx.beginPath()
+        ctx.arc(minx + rnd() * (maxx - minx), miny + rnd() * (maxy - miny), 0.9, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
   }
 
   // ── terrain: ridgeline mountains, forest stipple, resource rings ──────────
@@ -131,11 +152,22 @@ export function drawMap(ctx: CanvasRenderingContext2D, rect: MapRect, st: MapRen
         ctx.fill()
       }
     }
-    if (l.hasResource && !l.barren && !armyAt.has(l.id)) {
+    // Resource symbol — a small region-coloured gem (always shown; offset so it
+    // sits beside any army counter). Pairs of these build Monuments (SPEC §8).
+    if (l.hasResource && !l.barren) {
+      const rx = p.x - R - 3
+      const ry = p.y + R + 3
+      const g = 4.2
       ctx.beginPath()
-      ctx.arc(p.x, p.y + R + 4, 3, 0, Math.PI * 2)
-      ctx.strokeStyle = '#7a5a1f'
-      ctx.lineWidth = 1.6
+      ctx.moveTo(rx, ry - g)
+      ctx.lineTo(rx + g, ry)
+      ctx.lineTo(rx, ry + g)
+      ctx.lineTo(rx - g, ry)
+      ctx.closePath()
+      ctx.fillStyle = areaColor(l.area)
+      ctx.fill()
+      ctx.strokeStyle = '#3a2a10'
+      ctx.lineWidth = 1.3
       ctx.stroke()
     }
   }

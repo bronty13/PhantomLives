@@ -2,6 +2,22 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.12.1] — 2026-06-27
+
+### Added
+- **Victory Point Table** reference panel in the sidebar — the per-epoch value of
+  every region, current epoch highlighted, for planning your moves.
+- **Resource symbols** on the map — a region-coloured gem on each resource land
+  (pairs of these build Monuments).
+- **Impassable lands** (Siberia, Amazonia, Sahara, the deserts, etc.) now carry a
+  stippled desert texture so they read as un-enterable; mountains (ridgelines) and
+  forests (stipple) clearer.
+
+### Note
+- The map's *shape* fidelity is still limited by the procedural Voronoi approach
+  and the generic territory set — making it match the board's actual lines &
+  proportions needs the territory data rebuilt to the board (task #34, next).
+
 ## [0.12.0] — 2026-06-27
 
 The look & feel pivot — an antique parchment board (phase 1 of recreating the
