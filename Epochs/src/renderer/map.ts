@@ -96,7 +96,15 @@ export function drawMap(ctx: CanvasRenderingContext2D, rect: MapRect, st: MapRen
       let i = 0
       for (const s of ss) {
         const glyph =
-          s.kind === 'capital' ? '★' : s.kind === 'city' ? '◆' : s.kind === 'monument' ? '▲' : ''
+          s.kind === 'capital'
+            ? '★'
+            : s.kind === 'city'
+              ? '◆'
+              : s.kind === 'monument'
+                ? '▲'
+                : s.kind === 'fort'
+                  ? '▮'
+                  : ''
         if (!glyph) continue
         ctx.fillStyle = colorOf(s.owner)
         ctx.fillText(glyph, p.x + r + 5 + i * 9, p.y - r + 2)

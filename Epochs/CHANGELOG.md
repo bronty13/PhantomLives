@@ -2,6 +2,40 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.6.0] — 2026-06-26
+
+The event system — the last major rules gap. Each player now manages a finite
+hand of event cards across the whole game.
+
+### Added
+- **Events (SPEC §11).** Each player is dealt a fixed **3 Greater + 7 Lesser**
+  hand at game start (seeded, disjoint, no refills). Before each turn a player
+  may play **≤1 Greater + ≤1 Lesser**:
+  - **Leader / Weaponry** (Greater) → attacker rolls **+1 die** this turn.
+  - **Reallocation / Minor Empire** (Greater) → **bonus armies** this turn.
+  - **Coins** (Lesser) → buy **forts** on your best-held lands — which finally
+    activates the multi-round fort combat that's been in `resolveAssault` since
+    v0.1.
+- `data/events.ts` — the deck (24 Greater + 49 Lesser, our own flavor names).
+- **AI event policy** (`HeuristicBot.chooseEvents`): press the attack on strong
+  empires, bulk up weak ones, fort established ones — spaced so the finite hand
+  lasts.
+- **Human event UI:** a panel before your turn to play or skip cards (the engine
+  yields `awaitEvents`; the renderer resolves it). Fort glyph (▮) on the map.
+- Tests → **79** (+7, `events.test.ts`): deck composition, dealing (disjoint
+  hands), events-played + forts in a full game, finite-hand depletion, ≤1
+  fort/land, and the human play-and-consume path.
+
+### Changed
+- The engine deals hands in the constructor (shifts RNG → game outcomes differ
+  from v0.5, but determinism/invariants hold). The AI is now *stronger* (it uses
+  events; the stub bots don't) — hard vs 3×greedy rose to ~98%.
+- Bumped to 0.6.0.
+
+### Notes
+- **Minor Empire** is simplified to bonus armies (not a full separate sub-empire)
+  — documented in `game.ts` + SPEC §16. The whole game's rules are now modeled.
+
 ## [0.5.0] — 2026-06-26
 
 You can finally *see and play* it. An interactive Canvas world-map UI on a

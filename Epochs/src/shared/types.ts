@@ -59,6 +59,30 @@ export interface EmpireCard {
   hasCapital: boolean
 }
 
+// ── Events (SPEC §11) ───────────────────────────────────────────────────────
+export type EventClass = 'greater' | 'lesser'
+
+/** Structured event effect applied to the player's upcoming empire-turn. */
+export type EventEffect =
+  | { kind: 'leader' } // attacker rolls +1 die this turn
+  | { kind: 'weaponry' } // attacker rolls +1 die this turn
+  | { kind: 'reallocation'; armies: number } // fleets → extra ground armies
+  | { kind: 'minor_empire'; armies: number } // a small extra force (simplified)
+  | { kind: 'coins'; coins: number } // Lesser: coins, spent on forts
+
+export interface EventCard {
+  id: string
+  class: EventClass
+  name: string
+  effect: EventEffect
+}
+
+/** A player's fixed event hand for the whole game (no refills — SPEC §11). */
+export interface EventHand {
+  greater: EventCard[]
+  lesser: EventCard[]
+}
+
 export type StructureKind = 'capital' | 'city' | 'monument' | 'fort'
 export type PieceKind = 'army' | StructureKind
 

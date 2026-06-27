@@ -454,10 +454,15 @@ true score.
 **Lesser Events** — grant **Coins** (do not carry between turns), spent to return
 a combat-lost army to your pool or to buy a fort. ("22 types" per manual text.)
 
-> The rulebook gives kinds/counts but **not** every card's exact effect — those
-> are a data-entry task (§14). Model each event as a structured `EventEffect`
-> the engine can apply; start with the kinds above and fill specific cards as
-> transcribed.
+> **IMPLEMENTED (v0.6).** Hands are dealt at game start (`Game.dealEvents`); an
+> event-play step (`eventPhase`) runs before each turn. Effects modeled as a
+> structured `EventEffect` (`data/events.ts` is the deck): Leader/Weaponry →
+> attacker +1 die this turn; Reallocation/Minor Empire → bonus armies; Coins →
+> buy forts on best-held lands (activating the fort combat). The bot decides via
+> `chooseEvents`; a human seat resolves the `awaitEvents` yield via the UI panel.
+> **Simplifications (verify vs manual, §16):** Minor Empire is bonus armies (not
+> a full separate sub-empire); Coins buy forts only (not army-retrieval yet); the
+> "no two Disasters" restriction isn't needed (no Disaster cards modeled).
 
 ---
 
@@ -496,9 +501,8 @@ geography and historical-empire facts are uncopyrightable; the map is ours.
 - ✅ **`empires.ts`** (generated) — the **49 empires** (7 epochs × 7), real
   historical empires in their homelands, with calibrated strengths, navigation,
   and marauder (no-capital) flags (Celts, Goths, Huns, Vikings, Mongols).
-- ⏳ **`events.ts`** — the event deck (§11). **Deferred** until the engine models
-  events (it doesn't yet); building event data now would be premature. The kinds
-  in §11 are the scaffold.
+- ✅ **`events.ts`** — the event deck (§11): 24 Greater + 49 Lesser, dealt as
+  fixed hands; effects modeled by the engine (v0.6).
 
 > **Retuning:** edit `scripts/world.source.json` and re-run `npm run gen:data`.
 > The generated TS is committed; the engine never runs the generator at build

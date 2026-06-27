@@ -4,17 +4,23 @@ import './style.css'
 import { Board } from '../shared/board'
 import { WORLD_MAP_DATA } from '../shared/data/board'
 import { WORLD_EMPIRES } from '../shared/data/empires'
-import { Game, type GameEvent, type GameResult, type PlayerConfig } from '../shared/game'
+import {
+  Game,
+  type GameEvent,
+  type GameResult,
+  type PlayInput,
+  type PlayerConfig,
+} from '../shared/game'
 import { HeuristicBot, type Difficulty } from '../shared/heuristicBot'
 import { nearestLand, type MapRect } from '../shared/mapProjection'
 import { playerColor } from '../shared/palette'
-import type { LandId } from '../shared/types'
 import { drawMap } from './map'
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 const lands = WORLD_MAP_DATA.lands
 
 type AwaitEvent = Extract<GameEvent, { type: 'awaitPlacement' }>
+type AwaitEventsEvent = Extract<GameEvent, { type: 'awaitEvents' }>
 
 interface NewGameOpts {
   players: number
@@ -25,7 +31,7 @@ interface NewGameOpts {
 
 class GameUI {
   private game!: Game
-  private iter!: Generator<GameEvent, GameResult, LandId | undefined>
+  private iter!: Generator<GameEvent, GameResult, PlayInput>
   private readonly canvas: HTMLCanvasElement
   private readonly ctx: CanvasRenderingContext2D
   private rect: MapRect = { x: 0, y: 0, w: 0, h: 0 }
@@ -33,6 +39,8 @@ class GameUI {
   private hovered: string | null = null
   private placeable: Set<string> | null = null
   private pending: AwaitEvent | null = null
+  private pendingEvents: AwaitEventsEvent | null = null
+  private eventSel: { greater?: string; lesser?: string } = {}
   private auto = false
   private speed = 320
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -77,14 +85,17 @@ class GameUI {
     this.over = false
     this.pending = null
     this.placeable = null
+    this.pendingEvents = null
+    this.eventSel = {}
+    this.hideEventPanel()
     this.log = []
-    this.status = humanSeat ? `You are P${humanSeat}. Press Auto or Step to begin.` : 'Watching the AI. Press Auto or Step.'
-    this.auto = !humanSeat // auto-watch all-AI games
+    this.status = humanSeat ? `You are P${humanSeat}.` : 'Watching the AI.'
+    this.auto = true // auto-play; it pauses for the human's own decisions
     this.render()
     this.scheduleNext()
   }
 
-  private advance(input?: LandId): void {
+  private advance(input?: PlayInput): void {
     if (this.over) return
     const step = this.iter.next(input)
     if (step.done) {
@@ -99,7 +110,7 @@ class GameUI {
   private scheduleNext(): void {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
-    if (this.auto && !this.pending && !this.over) {
+    if (this.auto && !this.pending && !this.pendingEvents && !this.over) {
       this.timer = setTimeout(() => this.advance(), this.speed)
     }
   }
@@ -112,6 +123,15 @@ class GameUI {
         break
       case 'turnStart':
         this.status = `Epoch ${ROMAN[ev.epoch]}: ${ev.empire} (${this.nameOf(ev.player)})`
+        break
+      case 'awaitEvents':
+        this.pendingEvents = ev
+        this.eventSel = {}
+        this.status = `Your turn — ${ev.empire}: play events? (optional)`
+        this.showEventPanel(ev)
+        break
+      case 'eventsPlayed':
+        this.pushLog(`${this.nameOf(ev.player)} played ${ev.played.join(', ')}`)
         break
       case 'awaitPlacement':
         this.pending = ev
@@ -139,6 +159,8 @@ class GameUI {
     this.over = true
     this.pending = null
     this.placeable = null
+    this.pendingEvents = null
+    this.hideEventPanel()
     if (this.timer) clearTimeout(this.timer)
     const win = result.standings[0]
     this.status = `Game over — winner: ${this.nameOf(win.id)} (${win.vp} VP)`
@@ -162,6 +184,65 @@ class GameUI {
     const { px, py } = this.toCanvas(e)
     const l = nearestLand(lands, this.rect, px, py, 14)
     if (l && this.placeable?.has(l.id)) this.advance(l.id)
+  }
+
+  // ── event panel (human's event phase) ──────────────────────────────────
+  private showEventPanel(ev: AwaitEventsEvent): void {
+    const panel = this.root.querySelector('#event-panel') as HTMLElement
+    const chip = (c: { id: string; name: string }, cls: string) =>
+      `<button class="evt" data-cls="${cls}" data-id="${c.id}">${esc(c.name)}</button>`
+    panel.innerHTML = `
+      <div class="evt-box">
+        <h3>${esc(ev.empire)} — play events? <span class="muted">(optional, ≤1 each)</span></h3>
+        <div class="evt-group"><span>Greater</span>${
+          ev.hand.greater.map((c) => chip(c, 'greater')).join('') || '<em>none</em>'
+        }</div>
+        <div class="evt-group"><span>Lesser</span>${
+          ev.hand.lesser.map((c) => chip(c, 'lesser')).join('') || '<em>none</em>'
+        }</div>
+        <div class="evt-actions"><button id="evt-skip">Skip</button><button id="evt-play" class="primary">Play Selected</button></div>
+      </div>`
+    panel.classList.remove('hidden')
+    panel.querySelectorAll('.evt').forEach((el) => {
+      el.addEventListener('click', () => {
+        const cls = (el as HTMLElement).dataset.cls as 'greater' | 'lesser'
+        const id = (el as HTMLElement).dataset.id as string
+        if (this.eventSel[cls] === id) delete this.eventSel[cls]
+        else this.eventSel[cls] = id
+        panel
+          .querySelectorAll(`.evt[data-cls="${cls}"]`)
+          .forEach((e) => e.classList.toggle('sel', (e as HTMLElement).dataset.id === this.eventSel[cls]))
+      })
+    })
+    ;(panel.querySelector('#evt-skip') as HTMLButtonElement).onclick = () => this.resolveEvents(undefined)
+    ;(panel.querySelector('#evt-play') as HTMLButtonElement).onclick = () => this.resolveEvents({ ...this.eventSel })
+  }
+
+  private resolveEvents(choice: { greater?: string; lesser?: string } | undefined): void {
+    this.pendingEvents = null
+    this.hideEventPanel()
+    this.advance(choice)
+    this.drainToInteractive()
+  }
+
+  /**
+   * When stepping manually (auto off), progress through the non-interactive
+   * yields (eventsPlayed, setup, …) to the player's next decision so the human
+   * isn't parked on a stale, non-actionable state. (Auto mode drains via the
+   * timer, so this is a no-op there.)
+   */
+  private drainToInteractive(): void {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents) {
+      this.advance()
+    }
+  }
+
+  private hideEventPanel(): void {
+    const panel = this.root.querySelector('#event-panel') as HTMLElement | null
+    if (panel) {
+      panel.classList.add('hidden')
+      panel.innerHTML = ''
+    }
   }
 
   private toCanvas(e: MouseEvent): { px: number; py: number } {
@@ -238,7 +319,7 @@ class GameUI {
     q<HTMLButtonElement>('#step').onclick = () => {
       this.auto = false
       this.syncAuto()
-      if (!this.pending) this.advance()
+      if (!this.pending && !this.pendingEvents) this.advance()
     }
     q<HTMLButtonElement>('#auto').onclick = () => {
       this.auto = !this.auto
@@ -290,7 +371,7 @@ const TEMPLATE = `
     <div class="hud"><span id="epoch">Epoch I / VII</span></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div></div>
     <aside class="sidebar">
       <div class="status" id="status"></div>
       <section>
@@ -310,7 +391,7 @@ const TEMPLATE = `
       </section>
       <section class="legend">
         <h2>Legend</h2>
-        <div>★ capital&nbsp; ◆ city&nbsp; ▲ monument&nbsp; <span class="res">●</span> resource</div>
+        <div>★ capital&nbsp; ◆ city&nbsp; ▲ monument&nbsp; ▮ fort&nbsp; <span class="res">●</span> resource</div>
         <div class="muted">Big dots = territories, tinted by region; filled = controlled by a player.</div>
       </section>
       <section><h2>Log</h2><div id="log" class="log"></div></section>

@@ -65,3 +65,22 @@ input[type=range] { flex: 1; }
 
 .log { background: var(--panel2); border-radius: 8px; padding: 8px 10px; height: 160px; overflow-y: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .log div { padding: 1px 0; }
+
+.hidden { display: none !important; }
+.event-panel {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 9, 16, 0.55); z-index: 10;
+}
+.evt-box {
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 12px;
+  padding: 18px 20px; width: min(560px, 86%); box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.evt-box h3 { margin: 0 0 14px; font-size: 16px; }
+.evt-box h3 .muted { font-weight: 400; font-size: 12px; }
+.evt-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.evt-group > span { color: var(--muted); width: 58px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+.evt-group em { color: var(--muted); }
+.evt { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; cursor: pointer; }
+.evt:hover { border-color: var(--accent); }
+.evt.sel { background: #2a2140; border-color: var(--accent); color: #fff; }
+.evt-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }

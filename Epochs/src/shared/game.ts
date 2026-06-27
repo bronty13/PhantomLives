@@ -13,12 +13,22 @@
 //  - Fort assaults use combat.ts::resolveAssault's documented interpretation.
 
 import { Board } from './board'
-import type { Bot, BotView, FrontierKind, FrontierOption } from './bot'
+import type { Bot, BotView, EventChoice, EventView, FrontierKind, FrontierOption } from './bot'
 import { oddsForContext, resolveAssault, type CombatContext, type CombatResult } from './combat'
+import { areaValue } from './data/areaValues'
+import { makeEventDeck } from './data/events'
 import { scoreEmpireTurn } from './scoring'
 import { makeRng, type Rng } from './rng'
 import { EPOCHS } from './types'
-import type { BoardPiece, EmpireCard, EpochId, LandId, PlayerId } from './types'
+import type {
+  BoardPiece,
+  EmpireCard,
+  EpochId,
+  EventCard,
+  EventHand,
+  LandId,
+  PlayerId,
+} from './types'
 
 const TOTAL_MONUMENTS = 36
 // 8 markers: two 3s, three 4s, two 5s, one 6 (SPEC §10).
@@ -37,7 +47,18 @@ export interface PlayerState {
   name: string
   vp: number
   preeminence: number[] // hidden until game end
+  hand: EventHand // fixed for the whole game (SPEC §11)
 }
+
+/** Accumulated effects of the events a player plays before its turn. */
+export interface TurnEffects {
+  attackerBonus: boolean // Leader/Weaponry → attacker +1 die
+  bonusArmies: number // Reallocation/Minor Empire → extra armies
+  coins: number // Lesser/Coins → forts
+}
+
+/** What the driver may pass back into `play()` when resuming a yield. */
+export type PlayInput = LandId | EventChoice | undefined
 
 export interface GameState {
   epoch: EpochId
@@ -65,6 +86,8 @@ export type GameEvent =
   | { type: 'epochStart'; epoch: EpochId }
   | { type: 'draft'; epoch: EpochId; assignments: { player: PlayerId; empire: string }[] }
   | { type: 'turnStart'; player: PlayerId; empire: string; epoch: EpochId }
+  | { type: 'awaitEvents'; player: PlayerId; empire: string; hand: EventHand }
+  | { type: 'eventsPlayed'; player: PlayerId; played: string[] }
   | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
   | {
       type: 'awaitPlacement'
@@ -158,12 +181,33 @@ export class Game {
     const rng = makeRng(opts.seed)
     this.state = {
       epoch: 1,
-      players: opts.players.map((p) => ({ id: p.id, name: p.name, vp: 0, preeminence: [] })),
+      players: opts.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        vp: 0,
+        preeminence: [],
+        hand: { greater: [], lesser: [] },
+      })),
       pieces: [],
       preeminencePool: shuffle(PREEMINENCE_MARKERS, rng),
       monumentsBuilt: 0,
       rng,
       log: [],
+    }
+    this.dealEvents(rng)
+  }
+
+  /** Deal each player a fixed hand of 3 Greater + 7 Lesser events (SPEC §11). */
+  private dealEvents(rng: Rng): void {
+    const deck = makeEventDeck()
+    const greater = shuffle(deck.greater, rng)
+    const lesser = shuffle(deck.lesser, rng)
+    let gi = 0
+    let li = 0
+    for (const p of this.state.players) {
+      p.hand = { greater: greater.slice(gi, gi + 3), lesser: lesser.slice(li, li + 7) }
+      gi += 3
+      li += 7
     }
   }
 
@@ -181,7 +225,7 @@ export class Game {
    * seat's expansion it yields `awaitPlacement` and must be resumed via
    * `.next(landId)` (or `.next(undefined)` to stop placing). `run()` drains it.
    */
-  *play(): Generator<GameEvent, GameResult, LandId | undefined> {
+  *play(): Generator<GameEvent, GameResult, PlayInput> {
     for (const epoch of EPOCHS) {
       this.state.epoch = epoch
       yield { type: 'epochStart', epoch }
@@ -212,12 +256,14 @@ export class Game {
   private *playEmpireTurnGen(
     pid: PlayerId,
     empire: EmpireCard,
-  ): Generator<GameEvent, void, LandId | undefined> {
+  ): Generator<GameEvent, void, PlayInput> {
     yield { type: 'turnStart', player: pid, empire: empire.name, epoch: this.state.epoch }
+    const effects = yield* this.eventPhase(pid, empire)
     this.setupEmpire(pid, empire)
     yield { type: 'setup', player: pid, land: empire.startLand, empire: empire.name }
-    yield* this.expandGen(pid, empire)
+    yield* this.expandGen(pid, empire, effects)
     this.buildMonuments(pid)
+    this.spendCoinsOnForts(pid, effects.coins)
     const gained = scoreEmpireTurn(
       this.state.pieces,
       this.board.areaOfFn,
@@ -234,23 +280,24 @@ export class Game {
   private *expandGen(
     pid: PlayerId,
     empire: EmpireCard,
-  ): Generator<GameEvent, void, LandId | undefined> {
+    effects: TurnEffects,
+  ): Generator<GameEvent, void, PlayInput> {
     const bot = this.bots.get(pid)
     const isHuman = this.humanSeats.has(pid)
     if (!bot && !isHuman) return
-    let remaining = empire.strength - 1 // first army placed at setup
+    let remaining = empire.strength - 1 + effects.bonusArmies // first army placed at setup
     while (remaining > 0) {
       const frontier = this.computeFrontier(pid, empire)
       if (frontier.length === 0) break
       let targetId: LandId | undefined
       if (isHuman) {
-        targetId = yield {
+        targetId = (yield {
           type: 'awaitPlacement',
           player: pid,
           empire: empire.name,
           frontier,
           remaining,
-        }
+        }) as LandId | undefined
         if (targetId == null) break // human chose to stop placing
       } else {
         // Rebuild the view each iteration: state.pieces is reassigned on every
@@ -271,9 +318,91 @@ export class Game {
       }
       const opt = frontier.find((f) => f.land === targetId)
       if (!opt) break // invalid choice — stop placing
-      const outcome = this.resolveExpansion(pid, empire, opt)
+      const outcome = this.resolveExpansion(pid, empire, opt, effects.attackerBonus)
       yield { type: 'placement', player: pid, land: opt.land, kind: opt.kind, outcome }
       remaining--
+    }
+  }
+
+  // ── event phase ───────────────────────────────────────────────────────────
+  /** Before a turn, the player may play ≤1 Greater + ≤1 Lesser event (SPEC §11). */
+  private *eventPhase(
+    pid: PlayerId,
+    empire: EmpireCard,
+  ): Generator<GameEvent, TurnEffects, PlayInput> {
+    const effects: TurnEffects = { attackerBonus: false, bonusArmies: 0, coins: 0 }
+    const player = this.player(pid)
+    if (player.hand.greater.length === 0 && player.hand.lesser.length === 0) return effects
+
+    let choice: EventChoice | undefined
+    if (this.humanSeats.has(pid)) {
+      choice = (yield {
+        type: 'awaitEvents',
+        player: pid,
+        empire: empire.name,
+        hand: { greater: [...player.hand.greater], lesser: [...player.hand.lesser] },
+      }) as EventChoice | undefined
+    } else {
+      const view: EventView = {
+        epoch: this.state.epoch,
+        empire,
+        player: pid,
+        standings: this.state.players.map((p) => ({ id: p.id, vp: p.vp })),
+      }
+      choice = this.bots.get(pid)?.chooseEvents?.(view, player.hand)
+    }
+
+    const played: string[] = []
+    if (choice?.greater) this.applyEvent(player, 'greater', choice.greater, effects, played)
+    if (choice?.lesser) this.applyEvent(player, 'lesser', choice.lesser, effects, played)
+    if (played.length) yield { type: 'eventsPlayed', player: pid, played }
+    return effects
+  }
+
+  /** Remove a chosen card from the hand and fold its effect into `effects`. */
+  private applyEvent(
+    player: PlayerState,
+    cls: 'greater' | 'lesser',
+    cardId: string,
+    effects: TurnEffects,
+    played: string[],
+  ): void {
+    const hand = cls === 'greater' ? player.hand.greater : player.hand.lesser
+    const idx = hand.findIndex((c) => c.id === cardId)
+    if (idx < 0) return // not in hand — ignore
+    const [card] = hand.splice(idx, 1)
+    this.foldEffect(card, effects)
+    played.push(card.name)
+  }
+
+  private foldEffect(card: EventCard, effects: TurnEffects): void {
+    switch (card.effect.kind) {
+      case 'leader':
+      case 'weaponry':
+        effects.attackerBonus = true
+        break
+      case 'reallocation':
+      case 'minor_empire':
+        effects.bonusArmies += card.effect.armies
+        break
+      case 'coins':
+        effects.coins += card.effect.coins
+        break
+    }
+  }
+
+  /** Spend coins on forts: place one on each of the player's best held lands. */
+  private spendCoinsOnForts(pid: PlayerId, coins: number): void {
+    if (coins <= 0) return
+    const epoch = this.state.epoch
+    const hasFort = (land: LandId): boolean =>
+      this.state.pieces.some((p) => p.land === land && p.kind === 'fort')
+    const held = this.state.pieces
+      .filter((p) => p.owner === pid && p.kind === 'army' && p.epochColor === epoch && !hasFort(p.land))
+      .map((p) => p.land)
+      .sort((a, b) => areaValue(this.board.areaOf(b) ?? '', epoch) - areaValue(this.board.areaOf(a) ?? '', epoch))
+    for (let i = 0; i < coins && i < held.length; i++) {
+      this.addPiece({ land: held[i], kind: 'fort', owner: pid, epochColor: epoch })
     }
   }
 
@@ -399,17 +528,18 @@ export class Game {
         kind = 'own_old' // our older-epoch army → free replace
       } else {
         kind = 'enemy'
-        odds = oddsForContext(this.combatContext(land, amphibious))
+        odds = oddsForContext(this.combatContext(land, amphibious, false))
       }
       options.push({ land, kind, amphibious, odds })
     }
     return options
   }
 
-  private combatContext(land: LandId, amphibious: boolean): CombatContext {
+  private combatContext(land: LandId, amphibious: boolean, attackerBonus: boolean): CombatContext {
     const terrain = this.board.land(land)?.difficultTerrain ?? []
     const fort = this.state.pieces.some((p) => p.land === land && p.kind === 'fort')
     return {
+      attackerBonus,
       difficultTerrain:
         terrain.includes('forest') ||
         terrain.includes('mountain') ||
@@ -425,6 +555,7 @@ export class Game {
     pid: PlayerId,
     empire: EmpireCard,
     opt: FrontierOption,
+    attackerBonus: boolean,
   ): CombatResult | undefined {
     const land = opt.land
     const epoch = this.state.epoch
@@ -440,7 +571,7 @@ export class Game {
       return undefined
     }
     // enemy
-    const ctx = this.combatContext(land, opt.amphibious)
+    const ctx = this.combatContext(land, opt.amphibious, attackerBonus)
     const res = resolveAssault(this.state.rng, ctx)
     if (res.fortDestroyed) this.removeFortOn(land) // fort fell during the assault
     if (res.outcome === 'attacker') {

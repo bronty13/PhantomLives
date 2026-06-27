@@ -10,7 +10,7 @@
 import type { CombatOdds } from './combat'
 import type { Board } from './board'
 import { areaValue } from './data/areaValues'
-import type { BoardPiece, EmpireCard, EpochId, LandId, PlayerId } from './types'
+import type { BoardPiece, EmpireCard, EpochId, EventHand, LandId, PlayerId } from './types'
 
 export type FrontierKind = 'empty' | 'own_old' | 'enemy'
 
@@ -40,10 +40,26 @@ export interface BotView {
   armiesRemaining: number
 }
 
+/** Context a bot sees when deciding which events to play before its turn. */
+export interface EventView {
+  epoch: EpochId
+  empire: EmpireCard
+  player: PlayerId
+  standings: readonly { id: PlayerId; vp: number }[]
+}
+
+/** Which event cards (by id) to play this turn — at most one of each class. */
+export interface EventChoice {
+  greater?: string
+  lesser?: string
+}
+
 export interface Bot {
   readonly name: string
   /** Choose a frontier land to expand into, or null to stop expanding. */
   chooseExpansion(view: BotView, frontier: FrontierOption[]): LandId | null
+  /** Optionally play events before the turn (default: play none). */
+  chooseEvents?(view: EventView, hand: EventHand): EventChoice
 }
 
 export class GreedyStubBot implements Bot {

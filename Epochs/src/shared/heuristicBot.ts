@@ -17,10 +17,10 @@
 //  - RISK: enemy attacks are folded by closed-form (win/tie/loss) odds and must
 //    beat the best safe placement (opportunity cost).
 
-import type { Bot, BotView, FrontierOption } from './bot'
+import type { Bot, BotView, EventChoice, EventView, FrontierOption } from './bot'
 import { combatOdds } from './combat'
 import { scoreArea } from './scoring'
-import type { AreaId, BoardPiece, EpochId, LandId, PlayerId } from './types'
+import type { AreaId, BoardPiece, EpochId, EventCard, EventHand, LandId, PlayerId } from './types'
 
 export interface HeuristicWeights {
   rhoBase: number
@@ -113,6 +113,38 @@ export class HeuristicBot implements Bot {
     const base = opts.difficulty ? difficultyWeights(opts.difficulty) : DEFAULT_WEIGHTS
     this.w = { ...base, ...(opts.weights ?? {}) }
     this.name = opts.name ?? `Heuristic-${opts.difficulty ?? 'default'}`
+  }
+
+  /**
+   * Event policy: spend the finite hand on strong empires so it lasts the game.
+   * A strong empire presses the attack (Leader/Weaponry → +1 die); a weak one
+   * bulks up (Reallocation/Minor Empire → armies); an established empire forts
+   * its best ground (Coins). See SPEC §11/§15.
+   */
+  chooseEvents(view: EventView, hand: EventHand): EventChoice {
+    const choice: EventChoice = {}
+    const s = view.empire.strength
+
+    if (hand.greater.length > 0) {
+      if (s >= 7) {
+        const combat = hand.greater.find(
+          (c) => c.effect.kind === 'leader' || c.effect.kind === 'weaponry',
+        )
+        choice.greater = (combat ?? hand.greater[0]).id
+      } else if (s <= 4 && view.epoch >= 2) {
+        const armies = hand.greater.find(
+          (c) => c.effect.kind === 'reallocation' || c.effect.kind === 'minor_empire',
+        )
+        if (armies) choice.greater = armies.id
+      }
+    }
+
+    if (hand.lesser.length > 0 && view.epoch >= 3 && s >= 5) {
+      const coinValue = (c: EventCard): number => (c.effect.kind === 'coins' ? c.effect.coins : 0)
+      const best = [...hand.lesser].sort((a, b) => coinValue(b) - coinValue(a))[0]
+      choice.lesser = best.id
+    }
+    return choice
   }
 
   chooseExpansion(view: BotView, frontier: FrontierOption[]): LandId | null {

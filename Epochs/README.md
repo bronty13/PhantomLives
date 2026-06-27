@@ -7,12 +7,13 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.5 — playable map UI.** An interactive Canvas world map on a
-> 97-territory globe: **watch the AI** play, or **play a seat yourself**
-> (click-to-place), with a scoreboard, epoch HUD, and event log. The engine is a
-> step-driven generator. 72 tests. Run it with **`npm run dev:web`** (browser) or
-> `npm run dev` (Electron). Still to come: the event system and the first packaged
-> app. AI weights are provisional — re-tune via self-play.
+> **Status: v0.6 — full rules + playable UI.** The whole game: 97-territory world,
+> 49 historical empires, area-control scoring, **and the event system** (finite
+> hands of Leaders/Weaponry/Reallocation/Minor-Empire + Coins→forts). Watch the
+> AI or **play a seat** (click-to-place + an event panel), with a scoreboard,
+> epoch HUD, and log. 79 tests. Run it with **`npm run dev:web`** (browser) or
+> `npm run dev` (Electron). Remaining: package as a real `.app`, AI self-play
+> re-tune, UI polish.
 
 ## Stack
 
@@ -39,6 +40,7 @@ src/
       areaValues.ts    the real per-epoch Victory-Point table (13 areas)
       board.ts         GENERATED — the 97-land real-geography world map
       empires.ts       GENERATED — the 49 historical empires (7×7)
+      events.ts        the event deck (Greater + Lesser cards)
       fixtureMap.ts    small board for fast deterministic unit tests
       fixtureEmpires.ts small empire deck for unit tests
   main/          # Electron main process (window lifecycle)
@@ -48,7 +50,7 @@ scripts/
   world.source.json  # researched roster + geography (edit to retune the map)
   build-data.mjs     # generator → board.ts + empires.ts (npm run gen:data)
 tests/           # vitest (combat, scoring, game, heuristic, tournament, worldmap,
-                 #         session, projection)
+                 #         session, projection, events)
 docs/SPEC.md     # canonical rules + data model + open questions
 ```
 
