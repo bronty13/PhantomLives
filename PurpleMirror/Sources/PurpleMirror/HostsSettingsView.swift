@@ -13,6 +13,7 @@ struct HostsSettingsView: View {
     @State private var newKey = ""
     @State private var testResult: [String: String] = [:]   // host.id → message
     @State private var testing: Set<String> = []
+    @State private var addError: String?
 
     var body: some View {
         Form {
@@ -48,14 +49,21 @@ struct HostsSettingsView: View {
             }
 
             Section("Add a remote host (SSH)") {
-                TextField("Display name", text: $newName, prompt: Text("Runner"))
-                TextField("SSH user", text: $newUser, prompt: Text("bronty"))
-                TextField("Host or IP", text: $newHost, prompt: Text("10.0.0.50"))
-                TextField("Port", text: $newPort)
+                TextField("Display name", text: $newName, prompt: Text("e.g. Runner"))
+                TextField("SSH user", text: $newUser, prompt: Text("e.g. bronty"))
+                TextField("Host or IP", text: $newHost, prompt: Text("e.g. 10.0.0.50"))
+                TextField("Port", text: $newPort)   // 22 is a real default, not a placeholder
                 TextField("Identity file (optional)", text: $newKey,
-                          prompt: Text("~/.ssh/purplemirror_runner"))
+                          prompt: Text("e.g. ~/.ssh/id_ed25519"))
                 Button("Add Host") { add() }
-                    .disabled(newName.trimmed.isEmpty || newUser.trimmed.isEmpty || newHost.trimmed.isEmpty)
+                    .disabled(!canAdd)
+                if let addError {
+                    Text(addError).font(.caption).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !canAdd {
+                    Text("Enter a display name, SSH user, and host to add.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -66,19 +74,32 @@ struct HostsSettingsView: View {
         .formStyle(.grouped)
     }
 
+    private var canAdd: Bool {
+        !newName.trimmed.isEmpty && !newUser.trimmed.isEmpty && !newHost.trimmed.isEmpty
+    }
+
     // MARK: Actions
 
     private func add() {
+        addError = nil
         let id = slug(newName)
-        var hosts = HostStore.load()
-        guard !hosts.contains(where: { $0.id == id }) else {
-            testResult[id] = "A host named “\(newName.trimmed)” already exists"; return
+        if HostStore.load().contains(where: { $0.id == id }) {
+            addError = "A host named “\(newName.trimmed)” already exists."; return
+        }
+        // Validate the identity file up front — a mistyped key path is the easiest way to add a
+        // host that silently never connects (it just shows no jobs).
+        var key: String? = newKey.trimmed
+        if let k = key, !k.isEmpty {
+            if !FileManager.default.fileExists(atPath: (k as NSString).expandingTildeInPath) {
+                addError = "Identity file not found:\n\(k)"; return
+            }
+        } else {
+            key = nil
         }
         let port = Int(newPort.trimmed) ?? 22
-        let key = newKey.trimmed
+        var hosts = HostStore.load()
         hosts.append(.remote(id: id, displayName: newName.trimmed, user: newUser.trimmed,
-                             host: newHost.trimmed, port: port,
-                             identityFile: key.isEmpty ? nil : key))
+                             host: newHost.trimmed, port: port, identityFile: key))
         HostStore.save(hosts)
         model.reloadHosts()
         newName = ""; newUser = ""; newHost = ""; newPort = "22"; newKey = ""
