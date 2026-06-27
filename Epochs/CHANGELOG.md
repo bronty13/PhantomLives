@@ -2,6 +2,26 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.10.0] — 2026-06-27
+
+Authentic empire roster (fidelity rebuild, phase 2).
+
+### Changed
+- **The 49-empire roster is now the real one** (`docs/AUTHENTIC-RULES.md` §11),
+  transcribed from the owner's physical epoch cards: authentic names, **real
+  strengths** (Persia 15, Romans 25, Mongols/Britain 20 — was a 3–9 band), the
+  correct **9 marauders** (Aryans, Scythians, Celts, Hsiung-Nu, Goths, Huns,
+  Vikings, Seljuk Turks, Mongols), and the right epochs (**Mongols are Epoch V**).
+  Regenerated `empires.ts` from `world.source.json`. 88 tests green; the AI
+  difficulty ladder still holds (hard 60% vs medium, 92% vs easy).
+
+### Notes (flagged for later phases)
+- Start-lands are mapped to the nearest *current* territory (the coarse 97-land
+  map); a board-accurate territory rebuild will make them exact.
+- Sumeria still appears as a drafted Epoch-I empire (should become a neutral
+  pre-game seed); Inca/Aztec share one card (only Aztec listed); Spain & Portugal
+  share Iberia. These are engine-phase follow-ups.
+
 ## [0.9.0] — 2026-06-27
 
 Map overhaul — it reads as a real map now. (Phase 1 of a fidelity pass driven by
