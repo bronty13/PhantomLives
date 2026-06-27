@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { Board } from '../src/shared/board'
 import { WORLD_MAP_DATA } from '../src/shared/data/board'
 import { WORLD_EMPIRES } from '../src/shared/data/empires'
-import { makeEventDeck } from '../src/shared/data/events'
+import { describeEffect, makeEventDeck } from '../src/shared/data/events'
+import type { EventEffect } from '../src/shared/types'
 import { Game, type GameEvent, type PlayerConfig } from '../src/shared/game'
 import { HeuristicBot } from '../src/shared/heuristicBot'
 
@@ -132,5 +133,33 @@ describe('human event play', () => {
     expect(playedId).toBeDefined()
     expect(game.state.players[0].hand.greater.some((c) => c.id === playedId)).toBe(false)
     expect(game.state.players[0].hand.greater).toHaveLength(before - 1)
+  })
+})
+
+describe('describeEffect (event card text for the panel)', () => {
+  const kinds: EventEffect[] = [
+    { kind: 'leader' },
+    { kind: 'weaponry' },
+    { kind: 'fanaticism' },
+    { kind: 'reallocation', armies: 3 },
+    { kind: 'minor_empire', armies: 4 },
+    { kind: 'disaster_structure', terrain: 'mountain' },
+    { kind: 'plague' },
+  ]
+  it('gives non-empty text + a valid timing for every effect kind', () => {
+    for (const e of kinds) {
+      const d = describeEffect(e)
+      expect(d.text.length).toBeGreaterThan(10)
+      expect(d.timing === 'during' || d.timing === 'before').toBe(true)
+    }
+  })
+  it('combat boons play during the turn; disasters play before it', () => {
+    expect(describeEffect({ kind: 'fanaticism' }).timing).toBe('during')
+    expect(describeEffect({ kind: 'leader' }).timing).toBe('during')
+    expect(describeEffect({ kind: 'plague' }).timing).toBe('before')
+    expect(describeEffect({ kind: 'disaster_structure', terrain: 'any' }).timing).toBe('before')
+  })
+  it('interpolates the army count', () => {
+    expect(describeEffect({ kind: 'reallocation', armies: 5 }).text).toContain('5')
   })
 })

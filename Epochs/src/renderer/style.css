@@ -185,3 +185,24 @@ input[type=range] { flex: 1; }
   font-size: 15px; padding: 9px 22px; border-radius: 8px; font-family: Georgia, serif;
 }
 .intro-box .primary:hover { filter: brightness(1.08); border-color: #c8a23a; }
+
+/* event panel — parchment event cards (reuses the intro-box parchment base) */
+.evt-box-wide { width: min(640px, 94%); padding: 0 0 18px; }
+.evt-box-wide .evt-body { padding: 16px 22px 4px; max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.evt-section-h { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6a4a1a; margin-bottom: 8px; display: flex; align-items: baseline; gap: 8px; }
+.evt-section-h span { font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; color: #8a6a3a; font-style: italic; }
+.evt-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.evt-card {
+  text-align: left; background: linear-gradient(#f3e8c8, #e7d7ad);
+  border: 1px solid #b09356; border-radius: 9px; padding: 9px 11px; cursor: pointer;
+  color: #3a2c14; font-family: Georgia, serif; transition: transform 0.08s, box-shadow 0.12s, border-color 0.12s;
+}
+.evt-card:hover { border-color: #8a5a2a; box-shadow: 0 3px 12px rgba(80,50,10,0.25); transform: translateY(-1px); }
+.evt-card.sel { background: linear-gradient(#e9d39a, #d9bd78); border-color: #8a5a2a; box-shadow: 0 0 0 2px rgba(138,90,42,0.55), 0 3px 12px rgba(80,50,10,0.3); }
+.evt-card-name { font-size: 16px; font-weight: 700; color: #2c2012; }
+.evt-card-meta { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; color: #8a6a3a; margin: 1px 0 5px; }
+.evt-card-text { font-size: 12.5px; line-height: 1.4; color: #4a3a1e; }
+.evt-none { grid-column: 1 / -1; color: #8a6a3a; font-size: 13px; font-style: italic; padding: 4px 0; }
+.evt-box-wide .evt-actions { padding: 8px 22px 0; justify-content: flex-end; gap: 10px; }
+.evt-box-wide #evt-skip { background: #dccc9e; color: #4a3a1e; border: 1px solid #a08552; font-family: Georgia, serif; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+.evt-box-wide #evt-skip:hover { border-color: #8a5a2a; }

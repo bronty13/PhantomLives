@@ -7,6 +7,30 @@
 
 import type { EventCard, EventEffect } from '../types'
 
+/** Plain-English card text (our own wording of the mechanics) + when it's played:
+ *  'during' = during your turn (combat buffs); 'before' = before your turn, aimed
+ *  at an enemy Land (disasters). Drives the event panel + tooltips. */
+export function describeEffect(e: EventEffect): { text: string; timing: 'during' | 'before' } {
+  switch (e.kind) {
+    case 'leader':
+      return { text: 'Your attacking armies roll 3 dice (keep the highest) for the rest of this turn.', timing: 'during' }
+    case 'weaponry':
+      return { text: 'Add +1 to each of your attack dice for the rest of this turn.', timing: 'during' }
+    case 'fanaticism':
+      return { text: 'Your empire wins every tied combat roll while attacking this turn.', timing: 'during' }
+    case 'reallocation':
+      return { text: `Call up the fleets — raise ${e.armies} extra ground armies this turn.`, timing: 'during' }
+    case 'minor_empire':
+      return { text: `A minor people rallies to you — ${e.armies} extra armies this turn.`, timing: 'during' }
+    case 'disaster_structure': {
+      const where = e.terrain === 'coastal' ? 'a coastal enemy land' : e.terrain === 'mountain' ? 'a mountain enemy land' : 'any enemy land'
+      return { text: `Strike ${where}: raze its city, fort, or monument (a capital is reduced to a city).`, timing: 'before' }
+    }
+    case 'plague':
+      return { text: 'Strike an enemy land: its army rolls 4 dice — a single 1 wipes it out.', timing: 'before' }
+  }
+}
+
 const card = (id: string, cls: 'greater' | 'lesser', name: string, effect: EventEffect): EventCard => ({
   id,
   class: cls,

@@ -2,6 +2,23 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.14.1] — 2026-06-27
+
+The events were the weak spot — you saw bare card names with no idea what they did.
+Now they read like the original's Event window.
+
+### Changed
+- **Event panel rebuilt as parchment event cards.** Each card shows its name, epoch
+  band, *when* to play (during your turn vs before it, aimed at an enemy land), and
+  a plain-English description of its effect — Greater (combat boons) and Lesser
+  (disasters) sections, click to select, Play/Skip. New shared `describeEffect()`
+  (our own wording of the mechanics) drives the text; `.evt-card` parchment CSS.
+
+### Note
+- The deck itself is still the interim hand (combat boons + the four disasters) —
+  the full 9-colour-pile rebuild with the remaining ~25 effects + true Minor
+  Empires is still task #29; the panel is now ready to present them clearly.
+
 ## [0.14.0] — 2026-06-27
 
 The play experience begins — you play by default, and your empire rises with drama.

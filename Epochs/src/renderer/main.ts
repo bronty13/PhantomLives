@@ -16,7 +16,8 @@ import { nearestLand, type MapRect } from '../shared/mapProjection'
 import { areaColor, playerColor } from '../shared/palette'
 import { areaControl, placementInfo } from '../shared/boardInsight'
 import { AREA_NAMES, AREA_VALUES } from '../shared/data/areaValues'
-import type { EmpireCard, EpochId, Land, PlayerId } from '../shared/types'
+import { describeEffect } from '../shared/data/events'
+import type { EmpireCard, EpochId, EventCard, Land, PlayerId } from '../shared/types'
 import { drawMap, type PlaceableEntry } from './map'
 import { drawFx, fxDone, type Fx } from './anim'
 
@@ -356,28 +357,37 @@ class GameUI {
   // ── event panel (human's event phase) ──────────────────────────────────
   private showEventPanel(ev: AwaitEventsEvent): void {
     const panel = this.root.querySelector('#event-panel') as HTMLElement
-    const chip = (c: { id: string; name: string }, cls: string) =>
-      `<button class="evt" data-cls="${cls}" data-id="${c.id}">${esc(c.name)}</button>`
+    const cardHtml = (c: EventCard, cls: string): string => {
+      const d = describeEffect(c.effect)
+      const when = d.timing === 'before' ? 'Play before turn · aim at an enemy land' : 'Play during your turn'
+      return (
+        `<button class="evt-card" data-cls="${cls}" data-id="${c.id}">` +
+        `<div class="evt-card-name">${esc(c.name)}</div>` +
+        `<div class="evt-card-meta">Epochs I–VII · ${when}</div>` +
+        `<div class="evt-card-text">${esc(d.text)}</div></button>`
+      )
+    }
+    const section = (label: string, sub: string, cards: EventCard[], cls: string): string =>
+      `<div class="evt-section"><div class="evt-section-h">${label}<span>${sub}</span></div>` +
+      `<div class="evt-cards">${cards.map((c) => cardHtml(c, cls)).join('') || '<em class="evt-none">— none drawn —</em>'}</div></div>`
     panel.innerHTML = `
-      <div class="evt-box">
-        <h3>${esc(ev.empire)} — play events? <span class="muted">(optional, ≤1 each)</span></h3>
-        <div class="evt-group"><span>Greater</span>${
-          ev.hand.greater.map((c) => chip(c, 'greater')).join('') || '<em>none</em>'
-        }</div>
-        <div class="evt-group"><span>Lesser</span>${
-          ev.hand.lesser.map((c) => chip(c, 'lesser')).join('') || '<em>none</em>'
-        }</div>
-        <div class="evt-actions"><button id="evt-skip">Skip</button><button id="evt-play" class="primary">Play Selected</button></div>
+      <div class="evt-box intro-box evt-box-wide">
+        <div class="intro-epoch">Events — ${esc(ev.empire)}<span>play up to one of each, or skip</span></div>
+        <div class="evt-body">
+          ${section('Greater', 'a boon for your campaign', ev.hand.greater, 'greater')}
+          ${section('Lesser', 'a disaster to unleash', ev.hand.lesser, 'lesser')}
+        </div>
+        <div class="evt-actions"><button id="evt-skip">Skip events</button><button id="evt-play" class="primary">Play selected ▶</button></div>
       </div>`
     panel.classList.remove('hidden')
-    panel.querySelectorAll('.evt').forEach((el) => {
+    panel.querySelectorAll('.evt-card').forEach((el) => {
       el.addEventListener('click', () => {
         const cls = (el as HTMLElement).dataset.cls as 'greater' | 'lesser'
         const id = (el as HTMLElement).dataset.id as string
         if (this.eventSel[cls] === id) delete this.eventSel[cls]
         else this.eventSel[cls] = id
         panel
-          .querySelectorAll(`.evt[data-cls="${cls}"]`)
+          .querySelectorAll(`.evt-card[data-cls="${cls}"]`)
           .forEach((e) => e.classList.toggle('sel', (e as HTMLElement).dataset.id === this.eventSel[cls]))
       })
     })
