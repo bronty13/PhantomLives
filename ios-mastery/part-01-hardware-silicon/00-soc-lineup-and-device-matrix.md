@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-In [[ios-platform-landscape-and-history]] you met the thesis: the **System-on-Chip generation is a harder version axis than the OS number**. This lesson turns that thesis into a *lookup discipline*. A forensicator who walks up to a seized phone and says "iPhone, iOS 26" has said almost nothing actionable. A forensicator who says "`iPhone18,1`, board `V53AP`, `CPID 0x8150` → A19 Pro → above the checkm8 wall, SPTM/TXM-hardened, MIE-enforced → no public foothold → logical/backup or commercial-tool only, and confirm the tool supports build `23F77`" has, in one breath, pruned the entire acquisition decision tree. That sentence is the skill. The identifiers are not trivia you look up once; they are the join keys that every tool — `ipsw`, `libimobiledevice`, `idevicerestore`, GrayKey, Cellebrite — uses internally, and the values that personalize firmware, gate signing, and stamp themselves into backups and images. Get fluent at extracting and interpreting `ProductType → board → CPID/BDID → SoC` and you can place a device on the acquisition ladder from a cable-less artifact set alone.
+In [[01-ios-platform-landscape-and-history]] you met the thesis: the **System-on-Chip generation is a harder version axis than the OS number**. This lesson turns that thesis into a *lookup discipline*. A forensicator who walks up to a seized phone and says "iPhone, iOS 26" has said almost nothing actionable. A forensicator who says "`iPhone18,1`, board `V53AP`, `CPID 0x8150` → A19 Pro → above the checkm8 wall, SPTM/TXM-hardened, MIE-enforced → no public foothold → logical/backup or commercial-tool only, and confirm the tool supports build `23F77`" has, in one breath, pruned the entire acquisition decision tree. That sentence is the skill. The identifiers are not trivia you look up once; they are the join keys that every tool — `ipsw`, `libimobiledevice`, `idevicerestore`, GrayKey, Cellebrite — uses internally, and the values that personalize firmware, gate signing, and stamp themselves into backups and images. Get fluent at extracting and interpreting `ProductType → board → CPID/BDID → SoC` and you can place a device on the acquisition ladder from a cable-less artifact set alone.
 
 ## Concepts
 
@@ -74,7 +74,7 @@ The forensic consequence is sharp: **you can no longer distinguish a base from a
 
 The **`CPID`** names the die; the **`BDID`** (Board ID, `ApBoardID`) names *which board within that die's board space* — the variant. One SoC ships in several boards: Wi‑Fi vs cellular, region, dev vs production. `BDID` is a small integer (`0x0C`, `0x0E`, `0x08`…), even values for production, odd for development/internal boards (the low bit is the "this is a dev board" flag — a detail that matters when you encounter a prototype). The **`DeviceClass`** (also called the *board config* or, live, `HardwareModel`) is the human-facing name for that same board: historically lowercase like `d22ap` (iPhone X), `n61ap` (iPhone 6); the iPhone 17 / iPad M5 generation uses uppercase `V53AP` / `J817AP`. The trailing `ap` = "application processor"; you'll also see `dev`-suffixed internal boards.
 
-`CPID` + `BDID` together are the **personalization coordinates**: they're exactly the two values Apple's signing server (TSS) hashes into an **SHSH/APTicket** so that a firmware image is bound to a specific (chip, board) pair. That's why you'll see them paired everywhere in [[image4-personalization-shsh]] — they are the address of the device on the silicon map.
+`CPID` + `BDID` together are the **personalization coordinates**: they're exactly the two values Apple's signing server (TSS) hashes into an **SHSH/APTicket** so that a firmware image is bound to a specific (chip, board) pair. That's why you'll see them paired everywhere in [[02-image4-personalization-shsh]] — they are the address of the device on the silicon map.
 
 | Field | What it identifies | Granularity | Example |
 |---|---|---|---|
@@ -105,7 +105,7 @@ The single biggest source of confusion is mixing **model identifiers** (which te
 | **UDID** | one unit | regenerable in some flows | the 40-hex/`-`-form pairing/lockdown identity; `ideviceinfo -k UniqueDeviceID` |
 | IMEI / MEID | one cellular unit | no (per radio) | carrier/GSMA identity; TAC → model; CDR/legal correlation |
 | EID | one eSIM | per-eSIM | eSIM provisioning identity (modern eSIM-only units) |
-| Wi‑Fi / Bluetooth MAC | one unit | randomized per-network (privacy MAC) | proximity/network artifacts; note iOS randomizes the *advertised* MAC ([[wifi-bluetooth-and-proximity]]) |
+| Wi‑Fi / Bluetooth MAC | one unit | randomized per-network (privacy MAC) | proximity/network artifacts; note iOS randomizes the *advertised* MAC ([[04-wifi-bluetooth-and-proximity]]) |
 
 The practical rule: **model identifiers drive the acquisition method; instance identifiers drive correlation and chain-of-custody.** The `ProductType` decides *how* you get in; the ECID/serial/UDID/IMEI decide *whose* device it is and *which* extraction/backup/account it ties to. A report needs both ledgers.
 
@@ -121,17 +121,17 @@ Layered on top of the `CPID` is a **marketing/project codename** — Apple names
 
 | Component (manifest key) | What it is |
 |---|---|
-| `iBSS` / `iBEC` / `iBoot` / `LLB` | the boot-chain stages ([[boot-chain-securerom-iboot]]) |
+| `iBSS` / `iBEC` / `iBoot` / `LLB` | the boot-chain stages ([[01-boot-chain-securerom-iboot]]) |
 | `KernelCache` | the prelinked XNU kernel |
-| `RestoreSEP` / `SEP` (`sepi`/`sepfw`) | **Secure Enclave** OS/firmware — its own signed image, its own boot ([[sep-sepos-deep-dive]]) |
-| `BasebandFirmware` (`bbfw`) | the cellular **baseband** stack — separate processor, separate signing ([[baseband-and-cellular]]) |
+| `RestoreSEP` / `SEP` (`sepi`/`sepfw`) | **Secure Enclave** OS/firmware — its own signed image, its own boot ([[01-sep-sepos-deep-dive]]) |
+| `BasebandFirmware` (`bbfw`) | the cellular **baseband** stack — separate processor, separate signing ([[04-baseband-and-cellular]]) |
 | `DeviceTree` | the board's hardware description, **keyed by `DeviceClass`** |
 | `RestoreRamDisk` / `OS` | restore environment + the system image |
 | `ANE` / `AOP` / `Ap,…` | Neural Engine, Always-On Processor, and a long tail of co-processor blobs |
 
 The forensic and RE payoff: **personalization is per-component and per-device.** Apple's TSS signs the *whole set* against your `(CPID, BDID, ECID)`, which is why you can't graft one device's SEP image onto another, why a downgrade needs SHSH for *every* trusted component, and why the SEP and baseband are independent trust domains you attack (or fail to attack) separately from the AP. When this lesson says "the `CPID` decides the foothold," that's the **AP** `CPID`; the SEP and baseband sit behind their own walls on the same die. The `BuildManifest` is, in effect, the parts list of the federation — and `DeviceTree` being board-keyed is the cleanest proof that `DeviceClass`/`BDID`, not just `CPID`, is load-bearing in the restore pipeline.
 
-> 🔬 **Forensics note:** This federation is *why* "did the acquisition touch the SEP?" is a meaningful question. A checkm8 full-file-system extraction gets you the AP's view of the filesystem, but the **SEP-held keybag** is a separate domain — you get ciphertext you still can't decrypt without the passcode-entangled keys the SEP guards ([[data-protection-and-keybags]]). Identifying the SoC tells you the AP foothold; it does *not* by itself tell you the SEP is open. Keep the two ledgers separate in your notes.
+> 🔬 **Forensics note:** This federation is *why* "did the acquisition touch the SEP?" is a meaningful question. A checkm8 full-file-system extraction gets you the AP's view of the filesystem, but the **SEP-held keybag** is a separate domain — you get ciphertext you still can't decrypt without the passcode-entangled keys the SEP guards ([[02-data-protection-and-keybags]]). Identifying the SoC tells you the AP foothold; it does *not* by itself tell you the SEP is open. Keep the two ledgers separate in your notes.
 
 ### One firmware, many models: `SupportedProductTypes` and OTA vs restore
 
@@ -178,7 +178,7 @@ Here is the comprehensive map. Read it as the SoC ladder with the *identifiers a
 **Footnotes:**
 - † **A9 was dual-sourced** — Samsung `s8000` (`0x8000`) and TSMC `s8003` (`0x8003`) dies shipped in the same model ("chipgate"). The `CPID` differs by fab; resolve per unit.
 - ‡ **A11 needs the passcode disabled** for palera1n's checkm8 boot (a SEP/keybag interaction unique to A11); A8–A10 do not. A11 is the checkm8 **upper bound**; A12 closed *checkm8* at fabrication — but see ✦.
-- ✦ **usbliter8** (public **2026-06-18**, Paradigm Shift) is a checkm8-style **unpatchable SecureROM / USB-DMA exploit** covering **A12–A13** (+S4/S5, A12 iPads). So the BootROM-exploit foothold now spans **A8–A13** and the hard wall is **A13→A14**, not A11→A12; **A14+ has no public BootROM exploit**. A BootROM exploit is code-exec, *not* a full jailbreak (there is no public kernel jailbreak for A12+ on iOS 18/26) and does not itself defeat the SEP or the passcode. Brand-new and maturing — verify coverage/tooling at [[the-jailbreak-landscape-2026]].
+- ✦ **usbliter8** (public **2026-06-18**, Paradigm Shift) is a checkm8-style **unpatchable SecureROM / USB-DMA exploit** covering **A12–A13** (+S4/S5, A12 iPads). So the BootROM-exploit foothold now spans **A8–A13** and the hard wall is **A13→A14**, not A11→A12; **A14+ has no public BootROM exploit**. A BootROM exploit is code-exec, *not* a full jailbreak (there is no public kernel jailbreak for A12+ on iOS 18/26) and does not itself defeat the SEP or the passcode. Brand-new and maturing — verify coverage/tooling at [[07-the-jailbreak-landscape-2026]].
 - § **iPhone 15 / 15 Plus reuse the A16** (`0x8120`) — a base-model chip reuse, so the `iPhone15,4/5` identifier sits a generation behind its Pro siblings on the SoC ladder. Never assume same-year models share a SoC.
 - ‖ iPhone **Air** (`iPhone18,4`) and **17e** (`iPhone18,5`, shipped 2026-03) board configs were not pinned at author time — resolve with `ipsw device-list`.
 - ¶ **MIE on M5 is unconfirmed** at author time; Apple's Memory Integrity Enforcement messaging centered on A19. Verify before asserting MIE for the M5 iPad Pro. SPTM/TXM (M2+) is solid.
@@ -208,8 +208,8 @@ The rightmost three columns are not academic — each marks a *capability change
    enforced in HW)                  │              memory-safety in HW
 ```
 
-- **checkm8 (A8–A11) + usbliter8 (A12–A13 ✦).** Two unpatchable SecureROM vulnerabilities. Below the wall you get a hardware-rooted, OS-version-independent foothold → **full-file-system acquisition** is on the table (subject to BFU/AFU and passcode; see [[full-file-system-acquisition]]). checkm8's silicon range historically reached earlier A5/A7-class and the Mac T2, but those can't run a modern supported iOS, so its forensically relevant window is A8–A11; **usbliter8** (public 2026-06-18) extends the analogous foothold to **A12–A13**, so the combined BootROM-exploit window is **A8–A13** and **A14+ stays clean**.
-- **SPTM/TXM (A15+ / M2+).** The Secure Page Table Monitor and Trusted Execution Monitor move page-table and code-trust enforcement into hardware-isolated monitors, so a kernel read/write primitive (the historical jailbreak win) no longer equals total control — the monitor re-validates. This is why post-A14 exploitation got dramatically harder and commercial-tool lag is common (see [[kernel-hardening-pac-sptm-txm-mie]]).
+- **checkm8 (A8–A11) + usbliter8 (A12–A13 ✦).** Two unpatchable SecureROM vulnerabilities. Below the wall you get a hardware-rooted, OS-version-independent foothold → **full-file-system acquisition** is on the table (subject to BFU/AFU and passcode; see [[05-full-file-system-acquisition]]). checkm8's silicon range historically reached earlier A5/A7-class and the Mac T2, but those can't run a modern supported iOS, so its forensically relevant window is A8–A11; **usbliter8** (public 2026-06-18) extends the analogous foothold to **A12–A13**, so the combined BootROM-exploit window is **A8–A13** and **A14+ stays clean**.
+- **SPTM/TXM (A15+ / M2+).** The Secure Page Table Monitor and Trusted Execution Monitor move page-table and code-trust enforcement into hardware-isolated monitors, so a kernel read/write primitive (the historical jailbreak win) no longer equals total control — the monitor re-validates. This is why post-A14 exploitation got dramatically harder and commercial-tool lag is common (see [[06-kernel-hardening-pac-sptm-txm-mie]]).
 - **MIE / EMTE (A19).** Memory Integrity Enforcement uses Enhanced Memory Tagging at allocation granularity, enforced in hardware, to kill whole classes of memory-corruption bugs that exploit chains depend on. A19 is the current hardest-target tier.
 
 These stack: an A19 sits above the checkm8 wall **and** under SPTM/TXM **and** under MIE. Each layer independently removes a category of attack, which is why "newest silicon" maps directly to "hardest to acquire."
@@ -236,7 +236,7 @@ Now connect the chain to the decision it drives. The identity you extract routes
                                     iCloud (if no ADP) → backup-only branch
 ```
 
-The `CPID` decides the *branch*; the build decides the *exploit/tool matrix and data-protection behavior*; the lock state (BFU/AFU) decides *what's decryptable right now*. You cannot choose a method until all three are pinned — which is exactly why the very first step of every acquisition SOP ([[acquisition-sop-and-chain-of-custody]]) is identification, and why this lesson is the foundation of Part 07.
+The `CPID` decides the *branch*; the build decides the *exploit/tool matrix and data-protection behavior*; the lock state (BFU/AFU) decides *what's decryptable right now*. You cannot choose a method until all three are pinned — which is exactly why the very first step of every acquisition SOP ([[08-acquisition-sop-and-chain-of-custody]]) is identification, and why this lesson is the foundation of Part 07.
 
 > 🔬 **Forensics note:** Identity travels with the *artifacts*, not just the live device, so you can run step-zero on an extraction you inherited. An iTunes/Finder backup's top-level **`Info.plist`** records `ProductType`, `ProductVersion`, `BuildVersion`, `Serial Number`, `Unique Identifier` (UDID), and `IMEI`; the **`Manifest.plist`** repeats the model/version. A full-file-system image carries the SoC facts in MobileGestalt and the OS facts in `/System/Library/CoreServices/SystemVersion.plist` (`ProductVersion`, `ProductBuildVersion` — the *same* file you read on macOS). Cross-check those against your seizure notes; a backup whose `ProductVersion` is *newer* than the device you logged is a chain-of-custody red flag.
 
@@ -348,11 +348,11 @@ The presence/absence of `BasebandFirmware` is itself a tell: a Wi‑Fi-only boar
 ipsw download tss --device iPhone18,1 --version 26.5 --signed   # is this build still signable for this model?
 ```
 
-A device can generally only be restored/downgraded to a build Apple still signs — a constraint on both an examiner and a suspect ([[image4-personalization-shsh]]).
+A device can generally only be restored/downgraded to a build Apple still signs — a constraint on both an examiner and a suspect ([[02-image4-personalization-shsh]]).
 
 ### The live-device path (walkthrough — requires a paired iPhone)
 
-You have no device, but this is the field path you'll exercise against an image in the labs and revisit in [[logical-acquisition-with-libimobiledevice]]:
+You have no device, but this is the field path you'll exercise against an image in the labs and revisit in [[04-logical-acquisition-with-libimobiledevice]]:
 
 ```bash
 brew install libimobiledevice
@@ -422,7 +422,7 @@ For each of: **iPhone X (A11)**, **iPhone XS (A12), iOS 18**, **iPhone 17 Pro (A
 
 1. Enumerate `BuildIdentities.0.Manifest`'s component keys (Hands-on snippet). List which are **independent trust domains** you'd attack separately: AP boot chain (`iBSS`/`iBEC`/`iBoot`/`KernelCache`), `RestoreSEP`/`SEP`, `BasebandFirmware`.
 2. Confirm `DeviceTree` exists and note that it is **board-keyed** — evidence that `DeviceClass`/`BDID`, not just `CPID`, drives personalization.
-3. Compare a Wi‑Fi-only board's manifest to a cellular sibling's (e.g. `iPad17,1` vs `iPad17,2`): the cellular one carries `BasebandFirmware`. Write one sentence on why "I have a full-file-system image" does **not** imply "I have the SEP keybag or the baseband" — they are separate walls on the same die ([[data-protection-and-keybags]], [[sep-sepos-deep-dive]]).
+3. Compare a Wi‑Fi-only board's manifest to a cellular sibling's (e.g. `iPad17,1` vs `iPad17,2`): the cellular one carries `BasebandFirmware`. Write one sentence on why "I have a full-file-system image" does **not** imply "I have the SEP keybag or the baseband" — they are separate walls on the same die ([[02-data-protection-and-keybags]], [[01-sep-sepos-deep-dive]]).
 
 ## Pitfalls & gotchas
 
@@ -489,4 +489,4 @@ For each of: **iPhone X (A11)**, **iPhone XS (A12), iOS 18**, **iPhone 17 Pro (A
 - **`man plutil`**, **`man unzip`** — exact flag semantics for the `BuildManifest` dissection.
 
 ---
-*Related lessons: [[ios-platform-landscape-and-history]] | [[cpu-gpu-npu-microarchitecture]] | [[secure-enclave-hardware]] | [[image4-personalization-shsh]] | [[the-acquisition-taxonomy]] | [[the-jailbreak-landscape-2026]]*
+*Related lessons: [[01-ios-platform-landscape-and-history]] | [[01-cpu-gpu-npu-microarchitecture]] | [[02-secure-enclave-hardware]] | [[02-image4-personalization-shsh]] | [[01-the-acquisition-taxonomy]] | [[07-the-jailbreak-landscape-2026]]*

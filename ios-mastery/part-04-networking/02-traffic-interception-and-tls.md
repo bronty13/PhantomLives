@@ -93,7 +93,7 @@ Read top to bottom that is three findings: a host that accepts plaintext, a host
 
 The app-sec payoff is that the `Info.plist` *is* a static report card. Reading `NSAppTransportSecurity` out of an IPA (or a Simulator-installed bundle) tells you, before you send a single packet, whether the app permits cleartext, downgrades TLS, or disables forward secrecy on any host — this is exactly OWASP MASTG's ATS check (MASVS-NETWORK).
 
-> 🔬 **Forensics note:** ATS posture is a durable static artifact. In a full-file-system extraction the installed app bundle lives under `/private/var/containers/Bundle/Application/<UUID>/<App>.app/Info.plist`; `NSAllowsArbitraryLoads == true` on a "secure messenger" is an immediate lead. ATS is **not** pinning — it validates the chain against the trust store but says nothing about *which* root is acceptable. That distinction is why a trusted interception CA sails straight through ATS (covered in [[certificate-pinning-and-bypass]]).
+> 🔬 **Forensics note:** ATS posture is a durable static artifact. In a full-file-system extraction the installed app bundle lives under `/private/var/containers/Bundle/Application/<UUID>/<App>.app/Info.plist`; `NSAllowsArbitraryLoads == true` on a "secure messenger" is an immediate lead. ATS is **not** pinning — it validates the chain against the trust store but says nothing about *which* root is acceptable. That distinction is why a trusted interception CA sails straight through ATS (covered in [[03-certificate-pinning-and-bypass]]).
 
 > ⚠️ **ATS does not stop you.** A common misconception is that ATS blocks proxying. It does not. ATS checks that the presented chain is valid and modern; a leaf minted by your *trusted* CA with a TLS-1.3 ECDHE handshake satisfies every ATS rule. ATS only bites when your proxy presents an *untrusted* chain — which is the trust-store problem, not an ATS problem.
 
@@ -157,7 +157,7 @@ On hardware there is no `simctl`, so the CA reaches the device as a **configurat
 </dict>
 ```
 
-Installing this profile (Settings → General → VPN & Device Management) puts the root in the **user** trust store — present but inert until the full-trust toggle. An *unsigned* profile shows a red "Not Verified" warning, which is exactly the friction Apple wants on a self-signed interception root. The profile format, payload types, and signing are covered in depth in [[configuration-profiles-and-mobileconfig]].
+Installing this profile (Settings → General → VPN & Device Management) puts the root in the **user** trust store — present but inert until the full-trust toggle. An *unsigned* profile shows a red "Not Verified" warning, which is exactly the friction Apple wants on a self-signed interception root. The profile format, payload types, and signing are covered in depth in [[04-configuration-profiles-and-mobileconfig]].
 
 > 🔬 **Forensics note:** Installed configuration profiles are themselves artifacts, recorded by `profiled` / the `ManagedConfiguration` framework (the on-device profiles store; **verify the exact path on your target build** — it has moved across iOS versions). A CA-bearing profile in that store, paired with a matching root in `TrustStore.sqlite3` and the full-trust flag set, is a three-point corroboration that the device was deliberately configured for TLS interception — distinguishable from a benign cert merely sideloaded and never trusted. If the profile is *unsigned* and *removable* and the issuer is a known proxy vendor, that points at analyst/attacker setup rather than enterprise MDM (which ships signed, often non-removable, profiles).
 
@@ -192,7 +192,7 @@ All four still require the **same two-step trust on a device** and a trusted roo
 
 A trusted-CA MITM beats *default* TLS validation and ATS. It does **not** beat:
 
-- **Certificate / public-key pinning** — apps that ship the expected leaf/intermediate/SPKI hash and reject anything else, including your trusted CA. This is the next lesson, [[certificate-pinning-and-bypass]]; bypassing it needs runtime instrumentation (Frida/objection) or a patched binary, not just a trusted root.
+- **Certificate / public-key pinning** — apps that ship the expected leaf/intermediate/SPKI hash and reject anything else, including your trusted CA. This is the next lesson, [[03-certificate-pinning-and-bypass]]; bypassing it needs runtime instrumentation (Frida/objection) or a patched binary, not just a trusted root.
 - **Non-`URLSession` TLS stacks that ignore the system proxy** — capture these with WireGuard/transparent mode (still subject to pinning).
 - **End-to-end-encrypted payloads inside TLS** — if the app encrypts the *body* (e.g. Signal's protocol, MLS, a custom envelope) you'll see the TLS plaintext but the application payload is still ciphertext.
 - **Data-Protection-encrypted state at rest** — irrelevant to live interception, but the reason Simulator captures can't tell you anything about on-device key handling.
@@ -207,7 +207,7 @@ A decrypted flow list is raw material; the assessment is what you extract from i
 - **Payload-level crypto** — if the body is itself encrypted/signed inside TLS, note the scheme; you've found defense-in-depth (or a custom rolled cipher worth scrutinizing).
 - **Transport hardening** — missing HSTS, weak ciphers, cleartext fallbacks the `triage.py` addon flags automatically.
 
-The mindset shift from forensics is that here you may *modify* and *replay*, not just observe — interception is the gateway to active testing, and every later RE technique ([[dynamic-analysis-with-frida]], pinning bypass) exists to keep that gateway open against hardened apps.
+The mindset shift from forensics is that here you may *modify* and *replay*, not just observe — interception is the gateway to active testing, and every later RE technique ([[05-dynamic-analysis-with-frida]], pinning bypass) exists to keep that gateway open against hardened apps.
 
 ## Hands-on
 
@@ -388,7 +388,7 @@ If `curl` succeeds but the **Simulator** still fails, the gap is the iOS-side tr
 
 - **The full-trust toggle (device) / re-trust (Simulator) is the #1 silent failure.** Cert installed, listed under profiles, and *still* every HTTPS request fails: you skipped *Settings → General → About → Certificate Trust Settings*. macOS muscle-memory (install = trusted) is the trap.
 - **System proxy ≠ all traffic.** An explicit proxy only catches proxy-aware (`URLSession`/`CFNetwork`) clients. Apps with their own sockets/TLS bypass it entirely — switch to WireGuard/transparent mode. Seeing *some* but not *all* of an app's traffic is usually this, not a partial-pinning situation.
-- **Pinning looks like a trust failure but isn't.** If most apps decrypt fine but one fails *only after* the CA is trusted, suspect pinning, not a misconfigured proxy. Confirm in mitmproxy: a pinned client completes the handshake then drops/sends an alert, versus an untrusted-CA client that rejects the certificate. Bypass is [[certificate-pinning-and-bypass]].
+- **Pinning looks like a trust failure but isn't.** If most apps decrypt fine but one fails *only after* the CA is trusted, suspect pinning, not a misconfigured proxy. Confirm in mitmproxy: a pinned client completes the handshake then drops/sends an alert, versus an untrusted-CA client that rejects the certificate. Bypass is [[03-certificate-pinning-and-bypass]].
 - **The CA private key is a loaded weapon.** `~/.mitmproxy/mitmproxy-ca.pem` (and the Burp/Charles equivalents) can mint a valid leaf for *any* host any client that trusts it talks to. Don't commit it, don't share it, and revoke trust on every device when the engagement ends.
 - **Forgetting to unset the proxy.** After testing, `networksetup -setwebproxystate "Wi-Fi" off` (and the secure variant). A left-on proxy pointing at a dead mitmproxy makes the Mac and Simulator look "offline."
 - **Per-app re-trust on iOS 26 is not automatic across reboots/wipes.** A reset Simulator (`xcrun simctl erase`) loses the injected root; re-run `add-root-cert`.
@@ -447,4 +447,4 @@ If `curl` succeeds but the **Simulator** still fails, the gap is the iOS-side tr
 - `networksetup(8)` man page — scripting the host proxy the Simulator inherits.
 
 ---
-*Related lessons: [[the-ios-networking-stack]] | [[certificate-pinning-and-bypass]] | [[the-sandbox-and-tcc]] | [[configuration-profiles-and-mobileconfig]] | [[simulator-internals-and-on-disk-filesystem]] | [[dynamic-analysis-with-frida]] | [[owasp-mastg-and-app-security-testing]]*
+*Related lessons: [[00-the-ios-networking-stack]] | [[03-certificate-pinning-and-bypass]] | [[05-the-sandbox-and-tcc]] | [[04-configuration-profiles-and-mobileconfig]] | [[01-simulator-internals-and-on-disk-filesystem]] | [[05-dynamic-analysis-with-frida]] | [[10-owasp-mastg-and-app-security-testing]]*

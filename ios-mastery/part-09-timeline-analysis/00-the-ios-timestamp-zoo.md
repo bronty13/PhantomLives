@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-A timeline is only as trustworthy as its worst timestamp conversion, and a phone exam touches more epochs in one case than a whole disk image on most other platforms. You will pull `sms.db` (nanosecond Mac-Absolute), `History.db` (seconds Mac-Absolute), Chrome's `History` (microsecond 1601), PowerLog (Unix-on-a-monotonic-clock), the unified log (Mach ticks you cannot read without a boot anchor), and an exported ZIP whose entries carry FAT/DOS local time with no timezone at all — and you will join them into one sorted ledger. Get one epoch wrong and you do not get a *missing* row; you get a *plausible-looking, wrong* row that sails through review and into a report. A defense expert who finds one 31-year-shifted cell in your timeline has a free pass to call the whole exhibit unreliable. This is the lesson that makes every conversion in [[building-a-unified-timeline]] defensible: every epoch the course touches, the exact arithmetic for each, the SQLite/`date`/Python recipe, and — most useful in the field — the *signature* of each mixing error so you can recognize a bad conversion at a glance instead of trusting it.
+A timeline is only as trustworthy as its worst timestamp conversion, and a phone exam touches more epochs in one case than a whole disk image on most other platforms. You will pull `sms.db` (nanosecond Mac-Absolute), `History.db` (seconds Mac-Absolute), Chrome's `History` (microsecond 1601), PowerLog (Unix-on-a-monotonic-clock), the unified log (Mach ticks you cannot read without a boot anchor), and an exported ZIP whose entries carry FAT/DOS local time with no timezone at all — and you will join them into one sorted ledger. Get one epoch wrong and you do not get a *missing* row; you get a *plausible-looking, wrong* row that sails through review and into a report. A defense expert who finds one 31-year-shifted cell in your timeline has a free pass to call the whole exhibit unreliable. This is the lesson that makes every conversion in [[01-building-a-unified-timeline]] defensible: every epoch the course touches, the exact arithmetic for each, the SQLite/`date`/Python recipe, and — most useful in the field — the *signature* of each mixing error so you can recognize a bad conversion at a glance instead of trusting it.
 
 ## Concepts
 
@@ -42,7 +42,7 @@ Two derived numbers you will use constantly and should be able to defend on the 
 - **`11644473600`** = seconds from 1601-01-01 to 1970-01-01 = **134,774 days × 86,400** (369 years). This is the same constant Windows examiners know as the FILETIME offset.
 - **`2082844800`** = seconds from 1904-01-01 to 1970-01-01 (66 years) — the classic Mac / HFS epoch.
 
-> 🖥️ **macOS contrast:** None of this is new arithmetic — it is the *exact* set of constants you used in macOS-mastery. `knowledgeC.db` on the Mac was `+978307200`; `chat.db` on the Mac was the nanosecond `/1e9` divide; Safari and Chrome on the Mac were the 2001-vs-1601 split. iOS reuses the same Cocoa/Core Data/WebKit machinery, so the conversion bench transfers one-to-one. What changes is *density*: a Mac exam might cross three epochs; a phone exam routinely crosses all of them in a single case, because the device fuses a dozen pattern-of-life stores that the Mac never had ([[knowledgec-db-deep-dive]], [[powerlog-and-aggregate-dictionary]], [[location-history]]).
+> 🖥️ **macOS contrast:** None of this is new arithmetic — it is the *exact* set of constants you used in macOS-mastery. `knowledgeC.db` on the Mac was `+978307200`; `chat.db` on the Mac was the nanosecond `/1e9` divide; Safari and Chrome on the Mac were the 2001-vs-1601 split. iOS reuses the same Cocoa/Core Data/WebKit machinery, so the conversion bench transfers one-to-one. What changes is *density*: a Mac exam might cross three epochs; a phone exam routinely crosses all of them in a single case, because the device fuses a dozen pattern-of-life stores that the Mac never had ([[01-knowledgec-db-deep-dive]], [[03-powerlog-and-aggregate-dictionary]], [[07-location-history]]).
 
 ### Five questions to ask of every timestamp
 
@@ -65,7 +65,7 @@ datetime(ZSTARTDATE + 978307200, 'unixepoch')              -- UTC
 datetime(ZSTARTDATE + 978307200, 'unixepoch', 'localtime') -- Mac's local TZ (see caveat)
 ```
 
-The same double also hides *outside* SQLite. Inside a binary plist, a `CFDate` is encoded as a marker byte `0x33` followed by a big-endian IEEE-754 `float64` of Mac-Absolute seconds — so when you `plutil`-dump a `composing.plist` draft, a notification payload, or an `NSKeyedArchiver` blob and see a bare floating-point number near a date field, try `+978307200` before assuming it's Unix. Biome's SEGB records carry the same little-endian `float64` Cocoa double in their framing ([[biome-and-segb-streams]]).
+The same double also hides *outside* SQLite. Inside a binary plist, a `CFDate` is encoded as a marker byte `0x33` followed by a big-endian IEEE-754 `float64` of Mac-Absolute seconds — so when you `plutil`-dump a `composing.plist` draft, a notification payload, or an `NSKeyedArchiver` blob and see a bare floating-point number near a date field, try `+978307200` before assuming it's Unix. Biome's SEGB records carry the same little-endian `float64` Cocoa double in their framing ([[02-biome-and-segb-streams]]).
 
 > 🔬 **Forensics note:** Because the value is a `Double`, not an integer, a Mac-Absolute timestamp legitimately carries fractional seconds — `769879834.812`. Don't truncate silently when you export to CSV: sub-second ordering is exactly what lets you sequence two events that share the same wall-clock second (e.g. an `App.InFocus` start vs. the unlock that enabled it). Keep the fraction; round only for display.
 
@@ -78,7 +78,7 @@ The one Mac-Absolute store that does **not** store seconds is the Messages datab
 datetime(message.date/1000000000 + 978307200, 'unixepoch', 'localtime')
 ```
 
-This is the [[communications-imessage-and-sms]] trap, and it has two distinct failure modes with two distinct signatures:
+This is the [[04-communications-imessage-and-sms]] trap, and it has two distinct failure modes with two distinct signatures:
 
 - **Forget the `/1e9` divide:** you feed `7×10¹⁷` "seconds" into the converter and land tens of thousands of years in the future (or overflow to garbage). Signature: **year 50,000+** or a NaN/empty cell.
 - **Forget the `+978307200` offset:** you treat Cocoa time as Unix time and every date is **~31 years early** — a 2026 conversation rendering in 1995. Signature: dates in the early-to-mid 1990s that *look* plausible.
@@ -102,7 +102,7 @@ POSIX seconds since **1970-01-01 00:00:00 UTC** is the format every tool nativel
 - **Aggregate Dictionary** (`ADDataStore.sqlitedb`) buckets by `DAYSSINCE1970` — integer **days**, not seconds. Convert with `DATE(DAYSSINCE1970*86400,'unixepoch')`; there is no sub-day precision to recover.
 - The mail **`Envelope Index`** `date_sent`/`date_received`, many `mDNSResponder`/networking stores, and countless third-party-app SQLite columns use plain Unix seconds (or **milliseconds** — `/1e3`, common in cross-platform apps built on JavaScript/Java stacks; or **microseconds** — `/1e6`).
 
-The recurring third-party headache is *which sub-second unit*. A column called `timestamp` might be seconds (`~1.7×10⁹` for 2026), milliseconds (`~1.7×10¹²`), or microseconds (`~1.7×10¹⁵`). Read the magnitude, not the column name ([[third-party-app-methodology]]):
+The recurring third-party headache is *which sub-second unit*. A column called `timestamp` might be seconds (`~1.7×10⁹` for 2026), milliseconds (`~1.7×10¹²`), or microseconds (`~1.7×10¹⁵`). Read the magnitude, not the column name ([[11-third-party-app-methodology]]):
 
 ```
 ~1.7e9   → seconds        datetime(t,'unixepoch')
@@ -120,7 +120,7 @@ Chromium-family browsers (Chrome, Edge, Brave, and any iOS browser that bundles 
 datetime(last_visit_time/1000000 - 11644473600, 'unixepoch', 'localtime')
 ```
 
-The 369-year base gap means a 1601↔1970 mix-up throws you ~369 years off; the microsecond unit means a unit slip throws you a *further* factor of a million. Both gross errors are usually obvious. The dangerous part is the **naming trap**: "WebKit epoch" is a misnomer. **Safari** is literally built on WebKit yet stores Mac-Absolute (2001) seconds in its SQLite; **Chrome** descends from WebKit/Blink yet uses the 1601 microsecond clock; **Firefox** uses 1970 microseconds. The engine name tells you nothing. Bind the epoch to the *file you opened*, never to the word "WebKit" ([[safari-and-third-party-browsers]]).
+The 369-year base gap means a 1601↔1970 mix-up throws you ~369 years off; the microsecond unit means a unit slip throws you a *further* factor of a million. Both gross errors are usually obvious. The dangerous part is the **naming trap**: "WebKit epoch" is a misnomer. **Safari** is literally built on WebKit yet stores Mac-Absolute (2001) seconds in its SQLite; **Chrome** descends from WebKit/Blink yet uses the 1601 microsecond clock; **Firefox** uses 1970 microseconds. The engine name tells you nothing. Bind the epoch to the *file you opened*, never to the word "WebKit" ([[08-safari-and-third-party-browsers]]).
 
 > 🔬 **Forensics note:** In one case, on one phone, you can be staring at Safari `History.db` (2001 s), Chrome `History` (1601 µs), and a Firefox profile (1970 µs) — three browsers, three epochs. The `WKWebView` embedded inside every third-party app that shows web content keeps a *fourth* set of WebKit stores inside that app's own container, on yet another schedule. Tag each store's epoch in your notes the moment you open it; do not carry one browser's conversion to the next.
 
@@ -143,12 +143,12 @@ The `timebase_numer`/`timebase_denom` come from `mach_timebase_info()`. **On Int
 
 How this plays out in the two stores that matter:
 
-- **Unified log (`.tracev3`)** — each entry records a Mach continuous-time value. The wall-clock you see from `log show` is *reconstructed* by `logd` using the **timesync** boot records in `/var/db/diagnostics/timesync/*.timesync`, keyed by the entry's **boot UUID**. If a `.timesync` record exists for that boot, its numer/denom/anchor are used; if not, the timebase fields baked into the `.tracev3` header are the fallback. This is why you must collect `/var/db/diagnostics/` (and `/var/db/uuidtext/`) as a set, and why a `.logarchive` is self-contained: it packages the timesync data so any Mac can re-derive wall time ([[unified-logs-sysdiagnose-crash-network]]).
-- **PowerLog** — stores Unix seconds against the monotonic clock and carries its *own* anchor table, `PLSTORAGEOPERATOR_EVENTFORWARD_TIMEOFFSET`. Add the `SYSTEM` offset *in effect at each event's time* to recover wall-clock ([[powerlog-and-aggregate-dictionary]]).
+- **Unified log (`.tracev3`)** — each entry records a Mach continuous-time value. The wall-clock you see from `log show` is *reconstructed* by `logd` using the **timesync** boot records in `/var/db/diagnostics/timesync/*.timesync`, keyed by the entry's **boot UUID**. If a `.timesync` record exists for that boot, its numer/denom/anchor are used; if not, the timebase fields baked into the `.tracev3` header are the fallback. This is why you must collect `/var/db/diagnostics/` (and `/var/db/uuidtext/`) as a set, and why a `.logarchive` is self-contained: it packages the timesync data so any Mac can re-derive wall time ([[12-unified-logs-sysdiagnose-crash-network]]).
+- **PowerLog** — stores Unix seconds against the monotonic clock and carries its *own* anchor table, `PLSTORAGEOPERATOR_EVENTFORWARD_TIMEOFFSET`. Add the `SYSTEM` offset *in effect at each event's time* to recover wall-clock ([[03-powerlog-and-aggregate-dictionary]]).
 
 **Where the boot anchor comes from.** Anchoring a Mach value to wall-clock requires the instant the device booted. On a *live* Mac you read it from `sysctl kern.boottime` (it returns a `timeval` of Unix seconds). On a *device image* you don't have that syscall, so you recover the boot instant from the artifacts themselves: the unified-log `timesync` boot record is authoritative; failing that, the first "Boot" / "BootTime" entries in the log, PowerLog's earliest sample for a boot session, or the kernel's reported uptime at acquisition all triangulate it. Each boot session has its **own** anchor — never carry one boot's anchor across a reboot, or every event after the reboot drifts by the sleep+uptime delta.
 
-> 🔬 **Forensics note:** The monotonic design is a gift, not just a hazard. Because Mach-anchored stores order events independent of the wall clock, they are your **tamper-evident reference** for detecting clock manipulation in the *other* stores. If `knowledgeC.db` (which trusts wall time) shows an event the PowerLog/unified-log monotonic sequence says is impossible, the wall-clock store was backdated. This is the spine of the anti-forensics work in [[correlation-and-anti-forensics]].
+> 🔬 **Forensics note:** The monotonic design is a gift, not just a hazard. Because Mach-anchored stores order events independent of the wall clock, they are your **tamper-evident reference** for detecting clock manipulation in the *other* stores. If `knowledgeC.db` (which trusts wall time) shows an event the PowerLog/unified-log monotonic sequence says is impossible, the wall-clock store was backdated. This is the spine of the anti-forensics work in [[02-correlation-and-anti-forensics]].
 
 ### APFS and HFS+ — the filesystem's own timestamps
 
@@ -223,7 +223,7 @@ Getting the *epoch* right still leaves a second question that wrecks timelines: 
 - **Write time** — when the daemon *recorded* the row. `ZCREATIONDATE` in knowledgeC, the SEGB container timestamp in Biome, PowerLog's flush. It can trail event time by seconds to minutes because donations are coalesced and flushed in batches (especially across an app suspend or reboot), so write-time clusters are *bookkeeping*, not simultaneity of behavior.
 - **Handling time** — when the *file* was last touched: APFS `mtime`/`crtime`, rewritten by any copy, restore, iCloud re-download, or AFC pull. This is an **acquisition** artifact, not a user event.
 
-The same split appears inside Messages as distinct columns: `date` (sent/received) vs. `date_delivered` vs. `date_read` vs. `date_edited` — four different events, four conversions, and three of them are `0` when the thing never happened. When a write time and an event time legitimately *disagree* (a notification delivered at 02:14 but written to Biome at 02:17 after a wake), keep **both** and label them; the gap is sometimes the analytically interesting part ([[biome-and-segb-streams]]). The rule for a report: cite **event time** for "when it happened," name the column explicitly, and never silently promote a write or handling time into the timeline.
+The same split appears inside Messages as distinct columns: `date` (sent/received) vs. `date_delivered` vs. `date_read` vs. `date_edited` — four different events, four conversions, and three of them are `0` when the thing never happened. When a write time and an event time legitimately *disagree* (a notification delivered at 02:14 but written to Biome at 02:17 after a wake), keep **both** and label them; the gap is sometimes the analytically interesting part ([[02-biome-and-segb-streams]]). The rule for a report: cite **event time** for "when it happened," name the column explicitly, and never silently promote a write or handling time into the timeline.
 
 ### Recognizing an epoch-mixing error at a glance
 
@@ -247,7 +247,7 @@ Burn the two headline numbers into reflex: **a ~31-year offset is the 2001-vs-19
 
 ## Hands-on
 
-> All commands run on the **Mac** — there is no on-device shell. Copy databases (with their `-wal`/`-shm` sidecars) before querying; a bare `SELECT` write-locks SQLite and can checkpoint away deleted rows ([[communications-imessage-and-sms]]).
+> All commands run on the **Mac** — there is no on-device shell. Copy databases (with their `-wal`/`-shm` sidecars) before querying; a bare `SELECT` write-locks SQLite and can checkpoint away deleted rows ([[04-communications-imessage-and-sms]]).
 
 ### One copy-paste recipe per epoch
 
@@ -394,11 +394,11 @@ log show --archive /path/to/sysdiagnose.logarchive \
 - **The nanosecond divide and the epoch offset are two separate steps.** `sms.db` needs *both* (`/1e9` then `+978307200`). Doing one without the other is the two most common Messages-timeline errors, each with its own signature (far-future vs. ~1995).
 - **`'localtime'` is your Mac's timezone, not the phone's.** It silently injects your zone and DST into the suspect's timeline. For experienced-local time use `ZSECONDSFROMGMT`; keep storage in UTC.
 - **"WebKit epoch" names an engine, not a fact.** Safari (WebKit) is 2001-seconds; Chrome (Blink/WebKit) is 1601-microseconds. Tie the epoch to the file, never to the engine.
-- **Magnitude beats column names.** A column called `timestamp`, `date`, or `created` can be s/ms/µs/ns and any of four bases. Read the order of magnitude (~1.7e9/12/15/18) and the plausible-year window before you trust a name ([[third-party-app-methodology]]).
+- **Magnitude beats column names.** A column called `timestamp`, `date`, or `created` can be s/ms/µs/ns and any of four bases. Read the order of magnitude (~1.7e9/12/15/18) and the plausible-year window before you trust a name ([[11-third-party-app-methodology]]).
 - **Mach ticks are not nanoseconds on Apple hardware.** Every modern iPhone/iPad (and Apple Silicon Mac) needs the 125/3 timebase multiply; assuming 1:1 throws you ~30× off. And Mach values have no epoch at all until anchored to boot wall-time.
 - **Don't convert sentinels.** `0` (never read/delivered), `NULL`, and `-1` are not 1970/2001 — filter them out *before* `datetime()` or you manufacture phantom epoch-edge events.
 - **Filesystem times are handling times.** A restore, iCloud re-download, or AFC pull rewrites `mtime`/`crtime` to the transfer instant. Cite the in-app store time for *when the event happened*.
-- **Sub-second alignment is fuzzy at ±1 s.** Leap seconds aren't in Unix/Cocoa counts and independent clocks can disagree by up to a second; don't over-claim precision when correlating two stores at the same wall-clock second — use the monotonic ordering ([[powerlog-and-aggregate-dictionary]]) to break ties.
+- **Sub-second alignment is fuzzy at ±1 s.** Leap seconds aren't in Unix/Cocoa counts and independent clocks can disagree by up to a second; don't over-claim precision when correlating two stores at the same wall-clock second — use the monotonic ordering ([[03-powerlog-and-aggregate-dictionary]]) to break ties.
 - **A bad conversion is invisible until someone checks.** A 31-year-early date *looks* like a date. Always cross-check at least one converted value against an independent ground truth (a known message time, a `log` event, a photo's EXIF), and sanity-bound every converted column to your case window.
 
 ## Key takeaways
@@ -410,7 +410,7 @@ log show --archive /path/to/sysdiagnose.logarchive \
 - **`ZSECONDSFROMGMT` is the only trustworthy source of the suspect's experienced local time**, because it captures the device's own UTC offset per event — never substitute the analysis host's `'localtime'`.
 - **Recognize errors by their offset:** ~31 years = 2001-vs-1970, ~369 years = 1601-vs-1970, ×10⁹/×10⁶ = a missed nanosecond/microsecond divide.
 - **Filesystem times are handling times, not event times**; restores and AFC pulls rewrite them — cite the in-store timestamp for when something happened.
-- **A single wrong epoch invalidates the whole timeline** — sanity-bound every converted column to the case window and cross-check one value against independent ground truth before you build [[building-a-unified-timeline]].
+- **A single wrong epoch invalidates the whole timeline** — sanity-bound every converted column to the case window and cross-check one value against independent ground truth before you build [[01-building-a-unified-timeline]].
 
 ## Terms introduced
 
@@ -450,4 +450,4 @@ log show --archive /path/to/sysdiagnose.logarchive \
 - ZIP / DOS date-time specification (PKWARE APPNOTE §4.4.6) — the packed 32-bit FAT field layout.
 
 ---
-*Related lessons: [[knowledgec-db-deep-dive]] | [[communications-imessage-and-sms]] | [[powerlog-and-aggregate-dictionary]] | [[safari-and-third-party-browsers]] | [[building-a-unified-timeline]] | [[correlation-and-anti-forensics]]*
+*Related lessons: [[01-knowledgec-db-deep-dive]] | [[04-communications-imessage-and-sms]] | [[03-powerlog-and-aggregate-dictionary]] | [[08-safari-and-third-party-browsers]] | [[01-building-a-unified-timeline]] | [[02-correlation-and-anti-forensics]]*

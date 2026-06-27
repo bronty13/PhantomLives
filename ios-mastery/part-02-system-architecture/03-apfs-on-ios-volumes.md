@@ -38,9 +38,9 @@ Internal NAND (one physical disk, e.g. /dev/disk0)
       └─ (iOS)  Baseband Data        | (iPadOS) User + Update
 ```
 
-The first, tiny container exists purely to support **preboot and secure boot** — it is the on-disk counterpart of the boot chain you study in [[boot-chain-securerom-iboot]]. The second container holds the **boot volume group**: the System+Data pair plus the helper volumes. Everything a user ever creates is in that second container, on the Data volume.
+The first, tiny container exists purely to support **preboot and secure boot** — it is the on-disk counterpart of the boot chain you study in [[01-boot-chain-securerom-iboot]]. The second container holds the **boot volume group**: the System+Data pair plus the helper volumes. Everything a user ever creates is in that second container, on the Data volume.
 
-> 🖥️ **macOS contrast:** Same APFS, same `spaceman`/`omap`/B-tree object model, same volume-group concept, same `diskutil apfs list` output structure. The differences are subtractive and additive: **iOS has no `Recovery` volume and no `VM` volume** (iOS doesn't page to disk — see [[memory-jetsam-app-lifecycle]]), it *adds* the small secure-boot container, a `xART` volume, and (per device class) a `Baseband Data`, `User`, or `Update` volume. If you can read `diskutil apfs list` on your Mac, you can read an iOS container dump — the labels just differ.
+> 🖥️ **macOS contrast:** Same APFS, same `spaceman`/`omap`/B-tree object model, same volume-group concept, same `diskutil apfs list` output structure. The differences are subtractive and additive: **iOS has no `Recovery` volume and no `VM` volume** (iOS doesn't page to disk — see [[06-memory-jetsam-app-lifecycle]]), it *adds* the small secure-boot container, a `xART` volume, and (per device class) a `Baseband Data`, `User`, or `Update` volume. If you can read `diskutil apfs list` on your Mac, you can read an iOS container dump — the labels just differ.
 
 ### The APFS object model, briefly (same bytes as the Mac)
 
@@ -60,11 +60,11 @@ Everything in this lesson — roles, sealing, firmlinks, encryption — is layer
 | Volume (APFS role) | Encrypted? | What it holds | Forensic relevance |
 |---|---|---|---|
 | **System** (`System`) | No (sealed) | The OS: `/System`, `/bin`, `/usr`, frameworks, the dyld shared cache (via cryptex). Read-only, hash-sealed. | **No user data.** Identical across all units of a model+build. The SSV seal is what you verify, not what you carve. |
-| **Data** (`Data`) | **Yes — Data Protection** | *Everything the user touches:* `/private/var`, `/private/var/mobile`, every app container, every SQLite store, Photos, Messages, location, keychain blobs. | **This is the evidence.** Per-file keys, class-keyed (see [[data-protection-and-keybags]]). Readability gated by BFU/AFU lock state. |
+| **Data** (`Data`) | **Yes — Data Protection** | *Everything the user touches:* `/private/var`, `/private/var/mobile`, every app container, every SQLite store, Photos, Messages, location, keychain blobs. | **This is the evidence.** Per-file keys, class-keyed (see [[02-data-protection-and-keybags]]). Readability gated by BFU/AFU lock state. |
 | **Preboot** (`Preboot`) | No | Per-OS boot manifests, the booter's view of the system snapshot, and **cryptex staging** (`/private/preboot/Cryptexes/...`). | Build/version fingerprinting; cryptex inventory. |
-| **xART** (`xART`) | n/a (SEP-managed) | Anti-replay state ferried to/from the Secure Enclave (eXtended Anti-Replay Technology). | Couples to SEP counters; not user-readable. Ties to [[secure-enclave-hardware]] and effaceable storage in [[storage-nand-aes-effaceable]]. |
+| **xART** (`xART`) | n/a (SEP-managed) | Anti-replay state ferried to/from the Secure Enclave (eXtended Anti-Replay Technology). | Couples to SEP counters; not user-readable. Ties to [[02-secure-enclave-hardware]] and effaceable storage in [[03-storage-nand-aes-effaceable]]. |
 | **Hardware** (`Hardware`) | No | Device-class hardware config. | Rarely investigative. |
-| **Baseband Data** (iOS only) | varies | Cellular/baseband working state. | Couples to [[baseband-and-cellular]]. |
+| **Baseband Data** (iOS only) | varies | Cellular/baseband working state. | Couples to [[04-baseband-and-cellular]]. |
 | **User** + **Update** (iPadOS only) | User: yes | iPadOS multi-user data (`User`) and a scratch volume for OS updates (`Update`). | iPad multi-user means **per-user Data** — check which user's container you're in. |
 
 > 🔬 **Forensics note:** When an acquisition report says "full file system" but you only got `/private/var/mobile/...` and not `/System/...`, that's not a failed extraction — the **System volume is a separate, sealed, user-data-free volume** and a competent tool simply doesn't bother carving it (it's reconstructable byte-for-byte from the matching IPSW). Conversely, if a tool hands you a "System" tree full of someone's photos, something merged the volumes wrong. Sanity-check by mapping each path back to its source volume.
@@ -76,8 +76,8 @@ The **System volume is mounted from an APFS *snapshot*, not from the live volume
 How the seal works, mechanically:
 
 1. At build time, Apple computes a **Merkle tree of cryptographic hashes over every byte of the System volume's file data and metadata**. The root of that tree is the **seal** (the "root hash").
-2. The seal is stored in the APFS **integrity metadata** and carried in the snapshot's metadata. It is signed as part of the personalized boot manifest (`Image4`/`apticket` — see [[image4-personalization-shsh]]).
-3. At boot, **iBoot verifies the seal matches the Apple-signed value** before it will start the kernel (see [[boot-chain-securerom-iboot]]). If a single byte of the System volume changed, the recomputed root hash won't match and the device refuses to boot.
+2. The seal is stored in the APFS **integrity metadata** and carried in the snapshot's metadata. It is signed as part of the personalized boot manifest (`Image4`/`apticket` — see [[02-image4-personalization-shsh]]).
+3. At boot, **iBoot verifies the seal matches the Apple-signed value** before it will start the kernel (see [[01-boot-chain-securerom-iboot]]). If a single byte of the System volume changed, the recomputed root hash won't match and the device refuses to boot.
 4. At runtime, the seal is also enforced **in the read path**: as blocks are read off NAND they are hashed and checked against the tree, so even a runtime flip is caught — this is why a jailbreak can't just patch a system binary on disk.
 
 Because the System volume is a snapshot, an update that fails can roll back to the prior sealed snapshot without a full reinstall. After boot the **underlying writable System volume is typically unmounted** — your running `/System` is served from the sealed snapshot, and the live read-write System volume isn't exposed (it's only remounted during an OS update to lay down the next snapshot).
@@ -136,7 +136,7 @@ Firmlinks are **not** symlinks and **not** mountpoints — they are an APFS-nati
 
 This is the single most important sentence in the lesson: **per-file encryption (Data Protection) applies to the Data volume, and only the Data volume.** The System volume is sealed-but-not-Data-Protection-encrypted (it's the same on every device, so there's nothing secret to protect); the Data volume is where every file is wrapped in its own key.
 
-Mechanically (full treatment in [[data-protection-and-keybags]] and [[storage-nand-aes-effaceable]]):
+Mechanically (full treatment in [[02-data-protection-and-keybags]] and [[03-storage-nand-aes-effaceable]]):
 
 - The NAND is encrypted at the hardware AES engine with a per-device key fused into the SoC. That gives you **"erase by throwing away the key"** (effaceable storage) but no per-file granularity by itself.
 - On top of that, **each file on the Data volume gets its own per-file (really per-extent) key**, stored in the file's metadata, **wrapped by a *class key*.**
@@ -149,7 +149,7 @@ This is exactly the BFU vs AFU distinction:
 | **BFU** (Before First Unlock) | Booted, never unlocked since boot | Only `NSFileProtectionNone`-class files (and metadata). Most user data is sealed ciphertext. |
 | **AFU** (After First Unlock) | Unlocked at least once since boot | `Complete`, `CompleteUnlessOpen`, `CompleteUntilFirstUserAuthentication` class keys are in memory → the bulk of user data is decryptable. |
 
-> ⚖️ **Authorization:** Reading the Data volume in the clear is exactly the act that needs lawful authority *and* a favorable lock state. A device seized in **AFU** (e.g., it was on and recently unlocked) exposes far more than the same device after the **inactivity reboot** drops it to **BFU** (72 h of no unlock forces a reboot → BFU on iOS 18.1+; verify the exact threshold for the target build). Your acquisition SOP (see [[acquisition-sop-and-chain-of-custody]]) must record lock state at seizure — it determines what is even legally and technically obtainable.
+> ⚖️ **Authorization:** Reading the Data volume in the clear is exactly the act that needs lawful authority *and* a favorable lock state. A device seized in **AFU** (e.g., it was on and recently unlocked) exposes far more than the same device after the **inactivity reboot** drops it to **BFU** (72 h of no unlock forces a reboot → BFU on iOS 18.1+; verify the exact threshold for the target build). Your acquisition SOP (see [[08-acquisition-sop-and-chain-of-custody]]) must record lock state at seizure — it determines what is even legally and technically obtainable.
 
 > 🖥️ **macOS contrast:** On Apple Silicon Macs the analogue is FileVault on the Data volume, with the Secure Enclave holding the volume key — but Mac Data Protection is coarser (volume-level for most files; per-file classes exist but the default posture is "unlocked once you log in"). iOS applies **per-file classes aggressively by default**, so even on a running device, specific high-value items (some keychain entries, Mail, certain app data marked `Complete`) re-lock when the screen locks. The Mac's "logged in = readable" intuition under-counts what iOS keeps encrypted on a live, locked phone.
 
@@ -165,7 +165,7 @@ The wrapping hierarchy spans three physical homes, and knowing which is which is
 
 - **Per-file keys** sit in each file's APFS metadata **on the Data volume** — encrypted, useless without the class key.
 - **Class keys** live in the **keybag** (historically `/private/var/keybags/systembag.kb` and the in-memory user keybag). The protected classes' keys are wrapped such that they can only be unwrapped after a passcode unlock entangled with the SEP.
-- The top of the chain is anchored in **effaceable storage** — a small, specially managed NAND region whose keys can be cryptographically erased instantly (see [[storage-nand-aes-effaceable]]). Erasing that region renders the entire Data volume unrecoverable in milliseconds; that *is* "Erase All Content and Settings."
+- The top of the chain is anchored in **effaceable storage** — a small, specially managed NAND region whose keys can be cryptographically erased instantly (see [[03-storage-nand-aes-effaceable]]). Erasing that region renders the entire Data volume unrecoverable in milliseconds; that *is* "Erase All Content and Settings."
 
 So the System volume needs none of this (nothing secret to protect — it's sealed, not encrypted-per-file), and the Data volume's readability is entirely a function of whether the class keys are currently unwrapped (AFU) or not (BFU).
 
@@ -175,7 +175,7 @@ So the System volume needs none of this (nothing secret to protect — it's seal
 
 If the System volume is sealed at build time, how does Apple ship a Safari update, or a new Apple-Intelligence model, without re-sealing the whole OS? **Cryptexes** (cryptographically-sealed disk-image extensions). A cryptex is its own signed, verified APFS image that gets **grafted into the running namespace at boot**, mounted under `/private/preboot/Cryptexes/`:
 
-- **OS cryptex** (`/private/preboot/Cryptexes/OS`) — carries the **dyld shared cache** and core system libraries (see [[dyld-shared-cache-and-amfi]]). This is why the shared cache lives "outside" `/System/Library/dyld` on modern iOS.
+- **OS cryptex** (`/private/preboot/Cryptexes/OS`) — carries the **dyld shared cache** and core system libraries (see [[07-dyld-shared-cache-and-amfi]]). This is why the shared cache lives "outside" `/System/Library/dyld` on modern iOS.
 - **App cryptex** (`/private/preboot/Cryptexes/App`) — Safari and WebKit, so the browser can update on its own cadence.
 - **Apple-Intelligence / model cryptexes** — iOS 26 stores **a sizeable set of additional cryptexes** for on-device foundation models, image-diffusion, handwriting, etc. (reported on the order of ~two dozen "PFK" volumes spread across Preboot and Data; treat the exact count and naming as version-volatile and confirm against the target build). They let Apple push or swap model assets without touching the sealed OS.
 
@@ -187,7 +187,7 @@ Each cryptex is independently signed and seal-verified, then firmlinked/grafted 
 
 The boot volume group on iPadOS diverges from iPhone in two volumes that matter forensically:
 
-- **`User` volume** — iPadOS supports **multiple local users** (Shared iPad in education/enterprise, plus the consumer multi-user surface), so it carries a distinct encrypted `User`-role volume separate from the primary `Data` volume. On a multi-user iPad, **each user's Data Protection scope is its own** — a given user's class keys unwrap only that user's data. Attributing activity requires knowing *whose* container you carved (see [[how-ipados-diverges-from-ios]]).
+- **`User` volume** — iPadOS supports **multiple local users** (Shared iPad in education/enterprise, plus the consumer multi-user surface), so it carries a distinct encrypted `User`-role volume separate from the primary `Data` volume. On a multi-user iPad, **each user's Data Protection scope is its own** — a given user's class keys unwrap only that user's data. Attributing activity requires knowing *whose* container you carved (see [[00-how-ipados-diverges-from-ios]]).
 - **`Update` volume** — a scratch/working volume used to stage OS updates. iPhone does the equivalent work without a standing `Update` volume.
 
 Neither iOS nor iPadOS carries a `Recovery` or `VM` volume; iPhone instead carries a `Baseband Data` volume that iPad lacks. So the *shape* of the volume group is itself a coarse device-class fingerprint: see `User`+`Update` and you're on iPad; see `Baseband Data` and you're on a cellular iPhone.
@@ -201,11 +201,11 @@ On the Mac you learned to mount an APFS local snapshot read-only to recover a fi
 - iOS uses APFS snapshots in exactly **one durable, user-facing place: the sealed System snapshot** (the SSV). That snapshot is point-in-time evidence of *the OS build*, not of user activity.
 - The **Data volume does not retain rolling user-data snapshots.** There is **no Time Machine on iOS**, no automatic hourly local snapshot of `/private/var`. iOS may create a *transient* Data snapshot during an OTA update (to enable rollback), but it is short-lived and not a standing recovery point.
 
-The consequence: **deleted-data recovery on iOS leans on within-file structures, not snapshot mounting.** You recover from SQLite **WAL/`-shm`** journals, freelist pages and unallocated B-tree space inside each `.sqlite`/`.db`, leftover blobs in app caches, and the occasional un-overwritten extent — *not* from "mount yesterday's snapshot." (Full treatment in [[deleted-data-recovery]].)
+The consequence: **deleted-data recovery on iOS leans on within-file structures, not snapshot mounting.** You recover from SQLite **WAL/`-shm`** journals, freelist pages and unallocated B-tree space inside each `.sqlite`/`.db`, leftover blobs in app caches, and the occasional un-overwritten extent — *not* from "mount yesterday's snapshot." (Full treatment in [[14-deleted-data-recovery]].)
 
 > 🖥️ **macOS contrast:** This is the single biggest behavioral divergence in the whole APFS story. macOS gives you `tmutil listlocalsnapshots /` and a wall of mountable point-in-time images; iOS gives you one sealed System snapshot and effectively zero user-data snapshots. The instinct "check the snapshots for the deleted file" — reflexive on macOS — is usually a dead end on iOS. Reach for SQLite freelist/WAL carving instead.
 
-> 🔬 **Forensics note:** Because there's no snapshot safety net, **SQLite WAL hygiene is decisive on iOS.** A `-wal` file can hold the only copy of a "deleted" message that was never checkpointed back into the main DB. This is exactly why the artifact discipline is *copy the `.db`, `-wal`, and `-shm` together, never let a tool checkpoint them, never open the live DB* — and why a careless `sqlite3 chat.db "SELECT ..."` that triggers a checkpoint can destroy recoverable evidence. (See [[app-sandbox-and-filesystem-layout]] and [[communications-imessage-and-sms]].)
+> 🔬 **Forensics note:** Because there's no snapshot safety net, **SQLite WAL hygiene is decisive on iOS.** A `-wal` file can hold the only copy of a "deleted" message that was never checkpointed back into the main DB. This is exactly why the artifact discipline is *copy the `.db`, `-wal`, and `-shm` together, never let a tool checkpoint them, never open the live DB* — and why a careless `sqlite3 chat.db "SELECT ..."` that triggers a checkpoint can destroy recoverable evidence. (See [[00-app-sandbox-and-filesystem-layout]] and [[04-communications-imessage-and-sms]].)
 
 ### Physical vs logical — two ways a tool meets the container
 
@@ -216,7 +216,7 @@ How the volume layout *presents to you* depends on the acquisition class, and th
 | What you get | A block-level image of the **encrypted APFS container** | A decrypted **logical file tree** (the merged `/`) |
 | Volume layout visible? | Yes — you see container, all volumes, roles, snapshots | Partially — you see the *merged* tree (System+Data via firmlinks); volume boundaries are implicit |
 | Decryption | You must decrypt per-file using **class keys recovered from the SEP** after defeating the passcode | Already decrypted at acquisition time, **gated by AFU/BFU** at the moment of extraction |
-| Where it works | **BootROM-exploit SoCs (A8–A13: checkm8 A8–A11 + usbliter8 A12–A13)** for a true raw NAND path; see [[connectivity-power-sensors-dfu]] | Newer SoCs (A14+) via exploit/agent FFS tooling, lock-state permitting |
+| Where it works | **BootROM-exploit SoCs (A8–A13: checkm8 A8–A11 + usbliter8 A12–A13)** for a true raw NAND path; see [[07-connectivity-power-sensors-dfu]] | Newer SoCs (A14+) via exploit/agent FFS tooling, lock-state permitting |
 | Forensic posture | Cleanest provenance (raw, then decrypt) but SoC-limited | Broadest device coverage but trusts the agent and the lock state |
 
 > ⚠️ **ADVANCED:** A BootROM raw acquisition (entering **DFU**, running a SecureROM exploit, imaging the NAND, then bruteforcing the passcode to recover class keys from the SEP) is an **A8–A13** option in 2026 — **checkm8 (A8–A11)** plus the June-2026 **usbliter8 (A12–A13)** — while **A14+ has no public BootROM exploit** and there is no public kernel jailbreak for A12+ on iOS 18/26. On A14+ you are confined to agent-based FFS and the lock state you were handed. Never run a BootROM/jailbreak step outside an authorized lab on imaged, documented hardware.
@@ -404,10 +404,10 @@ There is no `diskutil apfs` object for the Simulator because it isn't a containe
 - **"Full file system" ≠ "every volume."** A correct iOS FFS extraction gives you the **Data** volume merged into the tree; it deliberately skips the sealed **System** volume (rebuildable from the IPSW). Don't flag a missing `/System` carve as a failed acquisition.
 - **The System volume holds zero user evidence.** Don't hash-hunt it for tampered user files; it physically cannot contain them. Its only evidentiary value is the **seal** (build provenance + tamper detection).
 - **The macOS snapshot-recovery reflex fails on iOS.** There is no Time Machine, no rolling local snapshots of `/private/var`. Reaching for "mount yesterday's snapshot" wastes time. Carve SQLite WAL/freelist instead.
-- **Checkpoints destroy evidence.** Any tool (or a stray `sqlite3 ... "SELECT"`) that checkpoints a `-wal` back into its `.db` can erase the only copy of "deleted" rows. Copy `.db` + `-wal` + `-shm` together; analyze the copies; never the live file. (Cross-ref [[app-sandbox-and-filesystem-layout]].)
+- **Checkpoints destroy evidence.** Any tool (or a stray `sqlite3 ... "SELECT"`) that checkpoints a `-wal` back into its `.db` can erase the only copy of "deleted" rows. Copy `.db` + `-wal` + `-shm` together; analyze the copies; never the live file. (Cross-ref [[00-app-sandbox-and-filesystem-layout]].)
 - **Lock state determines reality, not the extraction method.** The slickest FFS tool returns ciphertext for `Complete`-class files if the device is **BFU**. The **inactivity reboot** (72 h → BFU on recent iOS; verify per build) silently degrades a device's obtainability between seizure and lab. Record lock state at seizure.
 - **Device-node numbers are not stable.** `/private/var` at `disk1s2` vs `disk1s8` depends on upgrade-vs-clean-restore history and OS version. Don't hard-code node numbers into SOPs or tooling.
-- **iPadOS is multi-user.** On iPad you may be looking at one of several `User`-volume containers. Confirm *whose* Data you have before attributing activity. (See [[how-ipados-diverges-from-ios]].)
+- **iPadOS is multi-user.** On iPad you may be looking at one of several `User`-volume containers. Confirm *whose* Data you have before attributing activity. (See [[00-how-ipados-diverges-from-ios]].)
 - **Cryptex paths drift.** The Apple-Intelligence model cryptexes are new and moving release-to-release in the iOS 26 line; verify their exact paths/inventory against the specific build rather than trusting a prior case's map.
 - **The Simulator misleads on encryption.** Its containers sit in the clear on your Mac's volume — great for schema, actively misleading for anything about Data Protection, lock state, or the SSV.
 
@@ -452,4 +452,4 @@ There is no `diskutil apfs` object for the Simulator because it isn't a containe
 - Tooling: `blacktop/ipsw`, `sgan81/apfs-fuse` + `apfsutil`, `apfsprogs`; man pages `diskutil(8)`, `hdiutil(1)`, `tmutil(8)`, `apfs.util(8)`.
 
 ---
-*Related lessons: [[storage-nand-aes-effaceable]] | [[boot-chain-securerom-iboot]] | [[image4-personalization-shsh]] | [[data-protection-and-keybags]] | [[passcode-bfu-afu-and-inactivity]] | [[filesystem-layout-and-containers]] | [[app-sandbox-and-filesystem-layout]] | [[deleted-data-recovery]] | [[full-file-system-acquisition]]*
+*Related lessons: [[03-storage-nand-aes-effaceable]] | [[01-boot-chain-securerom-iboot]] | [[02-image4-personalization-shsh]] | [[02-data-protection-and-keybags]] | [[03-passcode-bfu-afu-and-inactivity]] | [[08-filesystem-layout-and-containers]] | [[00-app-sandbox-and-filesystem-layout]] | [[14-deleted-data-recovery]] | [[05-full-file-system-acquisition]]*

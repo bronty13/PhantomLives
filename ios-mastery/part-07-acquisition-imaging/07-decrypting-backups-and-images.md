@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-You already know from [[data-protection-and-keybags]] that an iOS file is sealed by a per-file key, wrapped by a class key, wrapped by a keybag, rooted in `passcode ⊗ UID`. That lesson ended at "and exactly which class keys were resident at capture decides what you can read." This lesson is the *next* step: you are holding wrapped bytes — an encrypted iTunes/Finder backup, or a full-file-system image whose class keys you have not yet unwrapped — and you need readable evidence out of it. The single most important judgement you will make is **which of the two unwrap problems you are even looking at**, because they have opposite difficulty.
+You already know from [[02-data-protection-and-keybags]] that an iOS file is sealed by a per-file key, wrapped by a class key, wrapped by a keybag, rooted in `passcode ⊗ UID`. That lesson ended at "and exactly which class keys were resident at capture decides what you can read." This lesson is the *next* step: you are holding wrapped bytes — an encrypted iTunes/Finder backup, or a full-file-system image whose class keys you have not yet unwrapped — and you need readable evidence out of it. The single most important judgement you will make is **which of the two unwrap problems you are even looking at**, because they have opposite difficulty.
 
 Get this wrong and you waste a GPU cluster running a passcode wordlist that *cannot* succeed off-device, or you tell a court a backup was "unbreakable" when its owner used `1234` as the backup password and a laptop would have cracked it over lunch. The crackable surface on iOS is narrow and specific — the **user-chosen backup password**, which protects a re-wrapped, *portable* keybag and is therefore brute-forceable on hardware you control. Everything else (the device passcode, hence an unkeyed BFU image) is bound to silicon you don't have. Knowing precisely where that line sits — and being able to state it defensibly in a report — is the deliverable.
 
@@ -71,7 +71,7 @@ PLAINTEXT FILE  ──►  Manifest.db maps fileID→domain/relativePath  ──
 Five things to lock in from that diagram:
 
 1. **The password never touches a file key directly.** It derives a key that unwraps *class keys*; class keys unwrap the `ManifestKey` and the per-file keys. Same RFC 3394 wrapping you saw on-device — just re-rooted to a password instead of `passcode ⊗ UID`.
-2. **`Manifest.plist` is plaintext and tells you the posture before you crack anything.** `IsEncrypted`, the base64 `BackupKeyBag` (TLV — same `VERS`/`TYPE`/`SALT`/`ITER`/`DPIC`/`DPSL`/per-`CLAS` `WPKY` layout from [[data-protection-and-keybags]]), and `ManifestKey`. You read the salts and iteration counts straight out of it.
+2. **`Manifest.plist` is plaintext and tells you the posture before you crack anything.** `IsEncrypted`, the base64 `BackupKeyBag` (TLV — same `VERS`/`TYPE`/`SALT`/`ITER`/`DPIC`/`DPSL`/per-`CLAS` `WPKY` layout from [[02-data-protection-and-keybags]]), and `ManifestKey`. You read the salts and iteration counts straight out of it.
 3. **`Manifest.db` is itself encrypted as a whole** (iOS 10.2+) under the `ManifestKey`. Until you unwrap it you cannot even see the file *index* — domains, paths, sizes. This is why "I can see the backup folder but every file is a 2-hex-named blob of noise" is the normal encrypted-backup state, not a corruption.
 4. **Each backed-up file is stored by hash, not by name.** `fileID = SHA-1("<domain>-<relativePath>")`, sharded into a subdirectory named by its first two hex chars. `Manifest.db.Files` is the only map from that hash back to `CameraRollDomain`/`Media/DCIM/...`.
 5. **The class number rides with every key.** `ManifestKey` is prefixed with a 4-byte little-endian class number; each `MBFile` carries `ProtectionClass`. That tells you *which* unwrapped class key to apply — and, forensically, the intended protection class of every file even before you decrypt it.
@@ -80,7 +80,7 @@ Five things to lock in from that diagram:
 
 ### Inside the `BackupKeyBag`: the TLV fields and the `WRAP` flag that decides portability
 
-The base64 `BackupKeyBag` decodes to the same **Type-Length-Value** grammar as the on-device keybags ([[data-protection-and-keybags]]): a 4-byte ASCII **tag**, a 4-byte big-endian **length**, then the value. It splits into a **header** followed by one **per-class block** repeated for every protection class:
+The base64 `BackupKeyBag` decodes to the same **Type-Length-Value** grammar as the on-device keybags ([[02-data-protection-and-keybags]]): a 4-byte ASCII **tag**, a 4-byte big-endian **length**, then the value. It splits into a **header** followed by one **per-class block** repeated for every protection class:
 
 ```
 HEADER
@@ -194,7 +194,7 @@ Manifest.plist keybag ─┘   (hash-named blobs       │
 
 ### Decrypting a full-file-system image with recovered class keys
 
-A backup is the *easy* decrypt because the password is your way in. A **full-file-system (FFS) image** — the kind a `checkm8`/`usbliter8` or agent-based AFU acquisition produces — is different: there is no backup password, and the encryption is the *device's* Data Protection, rooted in `passcode ⊗ UID`. You can only decrypt an FFS image's protected files if the acquisition **captured the class keys** while they were resident (AFU) or recovered them via the passcode on-device. The image alone, with no keys, is a **BFU** problem: you get Class D and structure, nothing else (see [[bfu-vs-afu-and-data-protection-classes]]).
+A backup is the *easy* decrypt because the password is your way in. A **full-file-system (FFS) image** — the kind a `checkm8`/`usbliter8` or agent-based AFU acquisition produces — is different: there is no backup password, and the encryption is the *device's* Data Protection, rooted in `passcode ⊗ UID`. You can only decrypt an FFS image's protected files if the acquisition **captured the class keys** while they were resident (AFU) or recovered them via the passcode on-device. The image alone, with no keys, is a **BFU** problem: you get Class D and structure, nothing else (see [[02-bfu-vs-afu-and-data-protection-classes]]).
 
 So the FFS decrypt path assumes the keys came *with* the image:
 
@@ -355,7 +355,7 @@ mkdir -p /tmp/ffs && fsapfsmount -X allow_other -p "$VOLUME_PASSPHRASE" sample_f
 # raw-class-key CLI flag and marks T2/hardware encryption unsupported.
 ```
 
-Expected: the `persistent_class` listing appears even on a BFU image (structure is free); decrypting the actual *content* needs the class keys an AFU/keyed acquisition captured. `fsapfsmount -p` only unlocks a FileVault-style passphrase-encrypted APFS volume — iOS per-file content is decrypted by the keyed commercial workflow — but the keyless `fsapfsinfo` read alone already proves, on the command line, the BFU-vs-AFU divide from [[bfu-vs-afu-and-data-protection-classes]].
+Expected: the `persistent_class` listing appears even on a BFU image (structure is free); decrypting the actual *content* needs the class keys an AFU/keyed acquisition captured. `fsapfsmount -p` only unlocks a FileVault-style passphrase-encrypted APFS volume — iOS per-file content is decrypted by the keyed commercial workflow — but the keyless `fsapfsinfo` read alone already proves, on the command line, the BFU-vs-AFU divide from [[02-bfu-vs-afu-and-data-protection-classes]].
 
 ## 🧪 Labs
 
@@ -459,4 +459,4 @@ Expected: the `persistent_class` listing appears even on a BFU image (structure 
 - **Satish Bommisetty et al.**, *Practical Mobile Forensics* (4th ed.) — the `Manifest.db` schema and backup-analysis workflow in a forensic frame.
 
 ---
-*Related lessons: [[the-itunes-finder-backup-format]] | [[data-protection-and-keybags]] | [[bfu-vs-afu-and-data-protection-classes]] | [[passcode-bfu-afu-and-inactivity]] | [[full-file-system-acquisition]] | [[icloud-acquisition-and-advanced-data-protection]] | [[logical-acquisition-with-libimobiledevice]] | [[keychain-on-ios]] | [[acquisition-sop-and-chain-of-custody]]*
+*Related lessons: [[03-the-itunes-finder-backup-format]] | [[02-data-protection-and-keybags]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[03-passcode-bfu-afu-and-inactivity]] | [[05-full-file-system-acquisition]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[04-logical-acquisition-with-libimobiledevice]] | [[08-keychain-on-ios]] | [[08-acquisition-sop-and-chain-of-custody]]*

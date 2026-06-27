@@ -68,7 +68,7 @@ The discipline is **explode, don't average**: emit one canonical row per meaning
 
 ### Normalizing the epoch zoo to one timezone
 
-You met the full taxonomy in [[the-ios-timestamp-zoo]]; fusion is where it bites, because an iOS image mixes **several epochs in one case** and a single conversion slip plants events decades away. The rule is mechanical: **convert every source time to Unix-epoch seconds, render as UTC for the canonical `datetime`, and render device-local separately for the narrative.** The per-store epoch map you apply (verify each against the file in front of you — these are the durable defaults, not guarantees):
+You met the full taxonomy in [[00-the-ios-timestamp-zoo]]; fusion is where it bites, because an iOS image mixes **several epochs in one case** and a single conversion slip plants events decades away. The rule is mechanical: **convert every source time to Unix-epoch seconds, render as UTC for the canonical `datetime`, and render device-local separately for the narrative.** The per-store epoch map you apply (verify each against the file in front of you — these are the durable defaults, not guarantees):
 
 | Store / file | On-disk epoch | To Unix seconds |
 |---|---|---|
@@ -127,7 +127,7 @@ The reason an iOS super-timeline is so powerful is the sheer number of *independ
 
 The forensic point of the table is the rightmost column married to the daemon column: each row is an **independent observer**. `routined` does not know what `knowledged` recorded; `powerlogHelperd` does not coordinate with `imagent`. That independence is precisely what makes their agreement evidentially load-bearing.
 
-> 🔬 **Forensics note:** Several of these are **full-file-system-only** ([[full-file-system-acquisition]]) — `knowledgeC.db`, Biome, PowerLog, `routined`, health, `interactionC.db` are *not* in an encrypted iTunes/Finder backup or a logical AFC pull. A timeline built only from a backup is dominated by `sms.db`, Safari, Photos, and Calls; the pattern-of-life spine appears only on an FFS image. State your acquisition class up front, because it bounds which lanes of the timeline can even exist ([[the-acquisition-taxonomy]]).
+> 🔬 **Forensics note:** Several of these are **full-file-system-only** ([[05-full-file-system-acquisition]]) — `knowledgeC.db`, Biome, PowerLog, `routined`, health, `interactionC.db` are *not* in an encrypted iTunes/Finder backup or a logical AFC pull. A timeline built only from a backup is dominated by `sms.db`, Safari, Photos, and Calls; the pattern-of-life spine appears only on an FFS image. State your acquisition class up front, because it bounds which lanes of the timeline can even exist ([[01-the-acquisition-taxonomy]]).
 
 ### Independence is the whole game (and the trap)
 
@@ -167,7 +167,7 @@ The point of the spine is that a tight time window reads as a *narrative* once i
 21:25:10 (16:25)  knowledgeC  /audio/outputRoute → speaker               [knowledged]
 ```
 
-The defensible reading: *"Between 21:11 and 21:25 UTC (16:11–16:25 device-local) the device unplugged, connected to CarPlay audio, ran Maps in the foreground, departed one location and arrived at another ~17 km away, consistent with a drive."* Note the discipline applied live: the `App.InFocus` (Biome) and the `/app/intents` Maps donation (knowledgeC) at 21:12 are flagged as *possibly the same donation seen twice* — you verify against the donation id before counting them as two. The CarPlay route, the visit DEPART/ARRIVE pair from `routined`, and the PowerLog unplug are **independent** of the Maps activity and of each other — that is the corroboration. And what you must *not* say: this proves the *device* drove, not *who* held it — identity is a separate burden ([[passcode-bfu-afu-and-inactivity]]).
+The defensible reading: *"Between 21:11 and 21:25 UTC (16:11–16:25 device-local) the device unplugged, connected to CarPlay audio, ran Maps in the foreground, departed one location and arrived at another ~17 km away, consistent with a drive."* Note the discipline applied live: the `App.InFocus` (Biome) and the `/app/intents` Maps donation (knowledgeC) at 21:12 are flagged as *possibly the same donation seen twice* — you verify against the donation id before counting them as two. The CarPlay route, the visit DEPART/ARRIVE pair from `routined`, and the PowerLog unplug are **independent** of the Maps activity and of each other — that is the corroboration. And what you must *not* say: this proves the *device* drove, not *who* held it — identity is a separate burden ([[03-passcode-bfu-afu-and-inactivity]]).
 
 > 🔬 **Forensics note:** A fused window is also where **gaps become meaningful**. If the routined visit pair and the CarPlay route exist but `/app/inFocus` is empty for the whole drive, that is consistent (screen off while driving) — *not* a missing-data problem. But if every lane goes silent simultaneously for a span and then resumes, suspect a power-off or BFU window, and confirm it against PowerLog's boot/shutdown rows before narrating the gap. Absence in one lane is normal; synchronized absence across *all* lanes is an event in itself.
 
@@ -200,7 +200,7 @@ You will use three tools, and they are complementary, not interchangeable:
 
 ### The fusion methodology (the actual workflow)
 
-1. **Census the acquisition.** Note the class (FFS vs backup vs logical) and the image's OS version — they bound which lanes exist (a thin Biome on a "iOS 18" image is a red flag, per [[knowledgec-db-deep-dive]]).
+1. **Census the acquisition.** Note the class (FFS vs backup vs logical) and the image's OS version — they bound which lanes exist (a thin Biome on a "iOS 18" image is a red flag, per [[01-knowledgec-db-deep-dive]]).
 2. **Build the UUID→bundle map** from container metadata plists / `applicationState.db` before anything else.
 3. **Run the parsers** against the extracted Library tree / mounted image: APOLLO (SQLite spine), iLEAPP (Biome + breadth + UUID resolution), plaso (filesystem + format breadth).
 4. **Normalize each output** to the canonical record: every time → Unix → UTC `datetime`; add `timestamp_desc`, `message`, `source_store`; apply the UUID map; add `datetime_devlocal`.
@@ -214,11 +214,11 @@ Once fused, the timeline splits into two layers, and conflating them is an integ
 
 The report-grade output then falls out cleanly: a short **time-boxed narrative** per anchor (the pivoted window, read as testimony), each claim backed by the *independent* store rows behind it, with the per-artifact APOLLO/iLEAPP/plaso exports as appendices and your epoch-conversion math reproducible from the raw-value column. The spine is what you put on the stand; the appendices are how you defend it.
 
-> ⚖️ **Authorization:** A fused pattern-of-life timeline can vastly exceed a narrowly drawn warrant. "The messages from the 3rd" does not obviously authorize reconstructing a month of minute-by-minute presence, location, and app use across every store on the device. Confirm your legal authority covers *behavioral-timeline* analysis before you build the full super-timeline, scope the output to the authorized window where required, and log the acquisition method, tool builds, and the device's power/lock state at seizure ([[acquisition-sop-and-chain-of-custody]]). And hold the attribution line: the timeline proves what the *device* did, never *who* held it.
+> ⚖️ **Authorization:** A fused pattern-of-life timeline can vastly exceed a narrowly drawn warrant. "The messages from the 3rd" does not obviously authorize reconstructing a month of minute-by-minute presence, location, and app use across every store on the device. Confirm your legal authority covers *behavioral-timeline* analysis before you build the full super-timeline, scope the output to the authorized window where required, and log the acquisition method, tool builds, and the device's power/lock state at seizure ([[08-acquisition-sop-and-chain-of-custody]]). And hold the attribution line: the timeline proves what the *device* did, never *who* held it.
 
 ## Hands-on
 
-All commands run **on the Mac** — there is no on-device shell. They operate on an extracted FFS tree (or a public sample image; see Labs). Treat the extraction read-only; copy SQLite trios (`db` + `-wal` + `-shm`) before querying ([[knowledgec-db-deep-dive]]).
+All commands run **on the Mac** — there is no on-device shell. They operate on an extracted FFS tree (or a public sample image; see Labs). Treat the extraction read-only; copy SQLite trios (`db` + `-wal` + `-shm`) before querying ([[01-knowledgec-db-deep-dive]]).
 
 **Build the UUID → bundle map from the filesystem** (the prerequisite for a readable timeline):
 
@@ -447,4 +447,4 @@ timesketch_importer --sketch_id 1 --timeline_name "iOS FFS fused" /tmp/timeline_
 - `man sqlite3` (`.import`, `.mode csv`), plaso `psteal.py`/`psort.py -h`, `apollo.py extract -h`, `ileapp.py -h` — always the authoritative flag reference for the build you hold.
 
 ---
-*Related lessons: [[the-ios-timestamp-zoo]] | [[knowledgec-db-deep-dive]] | [[biome-and-segb-streams]] | [[powerlog-and-aggregate-dictionary]] | [[location-history]] | [[correlation-and-anti-forensics]] | [[full-file-system-acquisition]] | [[acquisition-sop-and-chain-of-custody]]*
+*Related lessons: [[00-the-ios-timestamp-zoo]] | [[01-knowledgec-db-deep-dive]] | [[02-biome-and-segb-streams]] | [[03-powerlog-and-aggregate-dictionary]] | [[07-location-history]] | [[02-correlation-and-anti-forensics]] | [[05-full-file-system-acquisition]] | [[08-acquisition-sop-and-chain-of-custody]]*

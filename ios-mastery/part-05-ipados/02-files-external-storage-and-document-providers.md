@@ -189,7 +189,7 @@ iCloud Drive is a File Provider domain whose backing daemon is **`bird`** (the C
 
 `com~apple~CloudDocs` is the iCloud Drive *root*; third-party apps that store *their* data in iCloud appear as sibling `com~apple~<appcontainer>` directories under `Mobile Documents/`. The `~` substitution (for `.`) is the literal on-disk encoding.
 
-> 🔬 **Forensics note:** `client.db`'s `client_uploads` table is direct evidence of **exfiltration via iCloud Drive** — it records what this device pushed *up*, by name and time, independent of whether the local copy still exists. Pair it with `account.1` (the DSID ties the activity to a specific Apple Account) and the `.Trash` contents. This survives even when the file itself has been removed locally. ⚖️ Cloud-side content for the same account is reachable only through iCloud acquisition, and **Advanced Data Protection (ADP), if enabled, end-to-end-encrypts iCloud Drive and breaks server-side acquisition** — see [[icloud-acquisition-and-advanced-data-protection]].
+> 🔬 **Forensics note:** `client.db`'s `client_uploads` table is direct evidence of **exfiltration via iCloud Drive** — it records what this device pushed *up*, by name and time, independent of whether the local copy still exists. Pair it with `account.1` (the DSID ties the activity to a specific Apple Account) and the `.Trash` contents. This survives even when the file itself has been removed locally. ⚖️ Cloud-side content for the same account is reachable only through iCloud acquisition, and **Advanced Data Protection (ADP), if enabled, end-to-end-encrypts iCloud Drive and breaks server-side acquisition** — see [[06-icloud-acquisition-and-advanced-data-protection]].
 
 ### External USB-C drives and SMB shares
 
@@ -213,8 +213,8 @@ The Files **Recents** tab is *not* a stored list you can dump. It is a live **`N
 
 1. **Materialized content + timestamps** in the provider/working store (it was opened ⇒ it was fetched).
 2. **Per-app recents** — each editor keeps its own (often an `NSUserDefaults` plist or small DB inside *its* container) holding bookmarks/paths to recently opened documents.
-3. **Behavioral stores** — Biome / SEGB streams and the `knowledgeC`-class app-usage records (which app was foreground, when) → see [[knowledgec-db-deep-dive]] and [[biome-and-segb-streams]].
-4. **Unified logs / sysdiagnose** — `fileproviderd` and `bird` log materialization and sync events → see [[unified-logs-sysdiagnose-crash-network]].
+3. **Behavioral stores** — Biome / SEGB streams and the `knowledgeC`-class app-usage records (which app was foreground, when) → see [[01-knowledgec-db-deep-dive]] and [[02-biome-and-segb-streams]].
+4. **Unified logs / sysdiagnose** — `fileproviderd` and `bird` log materialization and sync events → see [[12-unified-logs-sysdiagnose-crash-network]].
 5. **Security-scoped bookmarks** — an app that retained access to a user-picked file serialized a bookmark (commonly in its `NSUserDefaults` plist or a small store in its container); resolving it recovers the *original path/provider* of a document the user explicitly handed that app, which is strong "this user opened this specific file in this app" evidence.
 
 Confirm the Files app itself is installed and find its container via `applicationState.db` (the system's per-app state DB keyed by `com.apple.DocumentsApp`); from there pivot to the app-group containers above.
@@ -240,7 +240,7 @@ A consolidated examiner's map of this layer (all paths device-relative; copy SQL
 
 ### Timestamps across the document layer
 
-Like every Apple subsystem, the document layer mixes epochs — get them wrong and your timeline is decades off (see [[the-ios-timestamp-zoo]]):
+Like every Apple subsystem, the document layer mixes epochs — get them wrong and your timeline is decades off (see [[00-the-ios-timestamp-zoo]]):
 
 | Source | Epoch / encoding | Convert |
 |---|---|---|
@@ -307,7 +307,7 @@ plutil -p /mnt/img/private/var/mobile/Library/Application\ Support/CloudDocs/acc
 
 ### Pull the documents container over USB (libimobiledevice / AFC)
 
-The AFC channel exposes the *media* domain and, with the right service, app `Documents/` of apps that set `UIFileSharingEnabled`/`LSSupportsOpeningDocumentsInPlace` — useful for grabbing On-My-iPad-visible app folders without a full extraction. (Most File Provider working stores are **outside** AFC's reach and need a logical/full-filesystem acquisition — see [[logical-acquisition-with-libimobiledevice]].)
+The AFC channel exposes the *media* domain and, with the right service, app `Documents/` of apps that set `UIFileSharingEnabled`/`LSSupportsOpeningDocumentsInPlace` — useful for grabbing On-My-iPad-visible app folders without a full extraction. (Most File Provider working stores are **outside** AFC's reach and need a logical/full-filesystem acquisition — see [[04-logical-acquisition-with-libimobiledevice]].)
 
 ```bash
 idevicepair pair                                  # trust must be established on-device
@@ -317,7 +317,7 @@ ifuse --documents <bundle-id> /mnt/appdocs        # FUSE mount (or use pymobiled
 pymobiledevice3 afc pull /Documents /tmp/appdocs --bundle-id <bundle-id>
 ```
 
-For the iCloud Drive root and the CloudDocs databases specifically, AFC's media domain is not enough — those sit under `/private/var/mobile/Library/…` and require a logical-plus or full-filesystem acquisition. Plan the acquisition method around *which* part of this layer you need (see [[the-acquisition-taxonomy]]).
+For the iCloud Drive root and the CloudDocs databases specifically, AFC's media domain is not enough — those sit under `/private/var/mobile/Library/…` and require a logical-plus or full-filesystem acquisition. Plan the acquisition method around *which* part of this layer you need (see [[01-the-acquisition-taxonomy]]).
 
 ### Drive the whole layer with iLEAPP
 
@@ -443,4 +443,4 @@ log show --archive /path/to/sysdiagnose.logarchive \
 - Claudio Cambra — "Build your own cloud sync using Apple's FileProvider APIs" (replicated-extension implementation walkthrough).
 
 ---
-*Related lessons: [[how-ipados-diverges-from-ios]] | [[app-sandbox-and-filesystem-layout]] | [[filesystem-layout-and-containers]] | [[icloud-acquisition-and-advanced-data-protection]] | [[knowledgec-db-deep-dive]] | [[simulator-internals-and-on-disk-filesystem]]*
+*Related lessons: [[00-how-ipados-diverges-from-ios]] | [[00-app-sandbox-and-filesystem-layout]] | [[08-filesystem-layout-and-containers]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[01-knowledgec-db-deep-dive]] | [[01-simulator-internals-and-on-disk-filesystem]]*

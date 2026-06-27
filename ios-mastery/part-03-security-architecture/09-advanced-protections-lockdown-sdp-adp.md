@@ -68,7 +68,7 @@ Two different mechanisms gate the Lightning/USB-C **data** pins, and an examiner
 | Trigger | Data pins disabled after the device has been **locked ~1 hour** (and *immediately on lock* if no wired data accessory has connected in the past **3 days**; a previously-paired accessory — remembered 30 days — may still attach inside the 1-hour window) | Data connection refused **whenever the device is locked** — no 1-hour grace |
 | Effect on acquisition | You have a ~1-hour window after last unlock to attach a forensic bridge | You must get the device **unlocked first**, every time, before any wired link |
 
-So on a default device you race the ~1-hour USB Restricted Mode clock; on a Lockdown-Mode device that clock is effectively **zero** — locked means no data, period. Both are why field seizure procedure is "keep it powered, keep it unlocked (or in a Faraday bag with charge), get it to the lab fast." See [[passcode-bfu-afu-and-inactivity]] for the lock-state machine these ride on.
+So on a default device you race the ~1-hour USB Restricted Mode clock; on a Lockdown-Mode device that clock is effectively **zero** — locked means no data, period. Both are why field seizure procedure is "keep it powered, keep it unlocked (or in a Faraday bag with charge), get it to the lab fast." See [[03-passcode-bfu-afu-and-inactivity]] for the lock-state machine these ride on.
 
 ### Stolen Device Protection: killing the passcode fallback
 
@@ -79,7 +79,7 @@ Two mechanisms, both gated on **"away from familiar locations"**:
 1. **Biometric-only, no passcode fallback.** Sensitive *access* actions require a live **Face ID / Touch ID** match with **no "enter passcode instead" escape hatch**. Covered actions include: viewing/using saved passwords & passkeys (Keychain), viewing a stored payment method, applying for an Apple Card, turning off Lost Mode, erasing all content and settings, setting up a new device with the iPhone, and using the iPhone to access certain account settings.
 2. **One-hour Security Delay.** The highest-stakes account-control actions — changing the Apple Account password, changing the device passcode, disabling Face ID/Touch ID, turning **off** Stolen Device Protection itself, changing trusted phone numbers, updating account recovery (recovery key/contact), eSIM transfer — require biometric → **wait one hour** → **biometric again**. The window exists so the rightful owner has time to mark the device lost and lock the account before the thief can re-key it.
 
-**"Familiar locations"** are computed from the system's learned **Significant Locations** (the same `routined`-maintained home/work model used elsewhere; see [[location-history]]). At home or work, SDP's extra requirements relax (the passcode fallback and delay can be skipped) — which is why the *user-chosen* setting "Require Security Delay: Away from Familiar Locations" vs. "Always" matters to you: the stricter "Always" removes the home/work relaxation entirely.
+**"Familiar locations"** are computed from the system's learned **Significant Locations** (the same `routined`-maintained home/work model used elsewhere; see [[07-location-history]]). At home or work, SDP's extra requirements relax (the passcode fallback and delay can be skipped) — which is why the *user-chosen* setting "Require Security Delay: Away from Familiar Locations" vs. "Always" matters to you: the stricter "Always" removes the home/work relaxation entirely.
 
 Note what SDP **deliberately leaves alone**: it does not require biometrics to *unlock the phone for normal use*, and it does not block **Find My** / Activation Lock — those are the rightful owner's recovery levers, so SDP is careful not to wall them off. The actions it gates are exactly the ones a thief would use to **sever the owner's recovery** (re-key the account, kill Find My's usefulness, wipe-and-resell). Crucially for an examiner, **Erase All Content and Settings** is on the biometric-required list when away from familiar locations — a passcode-only operator cannot trivially wipe the device, but neither can they use "erase" as a path to a clean re-setup.
 
@@ -272,7 +272,7 @@ open "https://www.apple.com/legal/privacy/law-enforcement-guidelines-us.pdf"
 
 ## Pitfalls & gotchas
 
-- **Don't try to "just turn off Lockdown Mode" to ease acquisition.** Disabling LDM requires a **restart**, which drops the device from AFU to **BFU** and destroys live key access — you'd trade an inconvenience for a catastrophe. (Same trap as letting the 72 h inactivity-reboot fire; see [[passcode-bfu-afu-and-inactivity]].)
+- **Don't try to "just turn off Lockdown Mode" to ease acquisition.** Disabling LDM requires a **restart**, which drops the device from AFU to **BFU** and destroys live key access — you'd trade an inconvenience for a catastrophe. (Same trap as letting the 72 h inactivity-reboot fire; see [[03-passcode-bfu-afu-and-inactivity]].)
 - **Conflating Lockdown *Mode* with `lockdownd`/lockdown *records*.** They're unrelated and pull in opposite directions. Re-read the naming-collision callout until it's reflexive.
 - **Assuming ADP blocks local acquisition.** It does not. ADP is cloud-only; on-device Data Protection is identical with or without it. A subject's lawyer flagging "ADP" should never deter a local FFS/AFU pull.
 - **Assuming ADP encrypts Mail/Contacts/Calendar.** It never has — those three stay producible by Apple. If those are your target categories, ADP doesn't help the subject and the warrant route is open.
@@ -322,4 +322,4 @@ open "https://www.apple.com/legal/privacy/law-enforcement-guidelines-us.pdf"
 - EFF Deeplinks — coverage of the UK Investigatory Powers Act ADP order and its 2025 reversals (for the jurisdiction-availability angle).
 
 ---
-*Related lessons: [[data-protection-and-keybags]] | [[passcode-bfu-afu-and-inactivity]] | [[the-ios-security-model]] | [[icloud-acquisition-and-advanced-data-protection]] | [[logical-acquisition-with-libimobiledevice]] | [[lockdown-mode-and-enterprise-posture]] | [[location-history]] | [[the-jailbreak-landscape-2026]]*
+*Related lessons: [[02-data-protection-and-keybags]] | [[03-passcode-bfu-afu-and-inactivity]] | [[00-the-ios-security-model]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[04-logical-acquisition-with-libimobiledevice]] | [[06-lockdown-mode-and-enterprise-posture]] | [[07-location-history]] | [[07-the-jailbreak-landscape-2026]]*

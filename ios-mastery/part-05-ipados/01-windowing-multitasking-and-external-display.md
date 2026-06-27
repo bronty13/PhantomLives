@@ -60,11 +60,11 @@ There is no process literally named `WindowServer` on iOS/iPadOS. The Mac's sing
  └──────────────────────────────────────────────────────────────┘
 ```
 
-- **`backboardd`** (BackBoard) is the closest thing to the Mac's `WindowServer`: since iOS 6 it hosts the **Core Animation render server** that composites every process's layer tree, and it owns the hardware-event pipeline (touch, Apple Pencil, trackpad, keyboard) — see [[trackpad-keyboard-and-apple-pencil]].
+- **`backboardd`** (BackBoard) is the closest thing to the Mac's `WindowServer`: since iOS 6 it hosts the **Core Animation render server** that composites every process's layer tree, and it owns the hardware-event pipeline (touch, Apple Pencil, trackpad, keyboard) — see [[03-trackpad-keyboard-and-apple-pencil]].
 - **`frontboardd`** / the **FrontBoard** framework manages **scene and application lifecycle** — which app is foreground, which scenes exist, their state. This is the layer iPadOS 26 leans on hardest, because "many windows live at once" is fundamentally a scene-lifecycle problem.
 - **`SpringBoard`** is the system UI process (Home Screen + Dock + app switcher + status bar) — functionally the iPad's Finder + Dock + `loginwindow` rolled into one. It *arranges* scenes into the four modes above.
 
-The app side is the **`UIScene`** model (introduced iOS 13 for the first "multiple windows on iPad" support). One app **process** can vend multiple `UIWindowScene`s, each with its own `UISceneSession`. The `UIApplicationDelegate` owns process-level lifecycle; the `UISceneDelegate` owns per-window UI lifecycle. Every window you see in Windowed Apps mode is a `UIWindowScene` backed by a `UISceneSession`. This matters for the dev lessons ([[app-lifecycle-scenes-and-background-execution]]) and for forensics: scene sessions are what get **persisted**.
+The app side is the **`UIScene`** model (introduced iOS 13 for the first "multiple windows on iPad" support). One app **process** can vend multiple `UIWindowScene`s, each with its own `UISceneSession`. The `UIApplicationDelegate` owns process-level lifecycle; the `UISceneDelegate` owns per-window UI lifecycle. Every window you see in Windowed Apps mode is a `UIWindowScene` backed by a `UISceneSession`. This matters for the dev lessons ([[03-app-lifecycle-scenes-and-background-execution]]) and for forensics: scene sessions are what get **persisted**.
 
 > 🔬 **Forensics note:** Because one process can own many scenes, "app X was in use" is no longer one-dimensional. A single Safari process can have four `UIWindowScene`s across two displays. Reconstructing activity means reconstructing **scenes**, not just **apps** — and the scene-to-app mapping is exactly what `FrontBoard/applicationState.db` stores (covered below).
 
@@ -73,7 +73,7 @@ The app side is the **`UIScene`** model (introduced iOS 13 for the first "multip
 Apple's own framing is that iPadOS 26 ships a **rebuilt windowing engine** that "optimizes window rendering by analyzing which windows are being actively used." Decode that as an engineer:
 
 - Each open window is a `UIWindowScene`. Keeping a scene **foreground-live** (rendering, receiving events, holding its full layer tree resident) costs memory and GPU. The old 4-app Stage Manager cap was fundamentally a budget on simultaneously-live scenes.
-- The new engine distinguishes **actively-used (live) windows** from **inactive** ones. Inactive windows are demoted toward a backgrounded/suspended scene state — their last frame is preserved as a **snapshot** (see artifacts), and they are not fully composited until touched. This is the same jetsam/scene-suspension machinery from [[memory-jetsam-app-lifecycle]], now driving window *visibility* policy rather than just app backgrounding.
+- The new engine distinguishes **actively-used (live) windows** from **inactive** ones. Inactive windows are demoted toward a backgrounded/suspended scene state — their last frame is preserved as a **snapshot** (see artifacts), and they are not fully composited until touched. This is the same jetsam/scene-suspension machinery from [[06-memory-jetsam-app-lifecycle]], now driving window *visibility* policy rather than just app backgrounding.
 - The consequence: window counts are **RAM-bound**, not fixed. Reported ceilings are roughly **12 simultaneously-active windows on M-series / 2024–2025 iPads**, fewer on older hardware. On non-M iPads you can *open* many windows but only ~4 stay live at once; the rest render from their snapshot until activated. *Verify the exact ceiling per device at author time — it is tuning, not contract.*
 
 > 🖥️ **macOS contrast:** On the Mac, every window's backing store stays resident and `WindowServer` composites them all; memory pressure is handled by compression/swap, not by suspending windows. iPadOS instead **suspends inactive scenes** and composites a cached snapshot — the same philosophy as background-app suspension. An iPad "window" is closer to a suspendable app scene than to a Mac window with a permanent backing store.
@@ -83,9 +83,9 @@ Apple's own framing is that iPadOS 26 ships a **rebuilt windowing engine** that 
 Two macOS borrowings define the look:
 
 - **Traffic-light controls** sit at a window's top-left: **close (red), minimize (yellow), full-screen (green)** — the same glyph order and semantics as macOS. Minimize sends the window's scene to an inactive/stashed state (its snapshot survives); full-screen promotes that scene to Full-Screen mode. Pulling a window's corner resizes it via the geometry APIs below.
-- A **menu bar** appears by swiping down from the top edge (or pushing a pointer to the top with a trackpad/mouse — see [[trackpad-keyboard-and-apple-pencil]]). It surfaces the app's commands, which apps populate via the **`UIMenuBuilder`/`UIKeyCommand`** main-menu system that has existed since iPadOS 15 but was rarely seen without a hardware keyboard. When a window goes full-screen, the traffic lights relocate **into** the menu bar, exactly as on macOS.
+- A **menu bar** appears by swiping down from the top edge (or pushing a pointer to the top with a trackpad/mouse — see [[03-trackpad-keyboard-and-apple-pencil]]). It surfaces the app's commands, which apps populate via the **`UIMenuBuilder`/`UIKeyCommand`** main-menu system that has existed since iPadOS 15 but was rarely seen without a hardware keyboard. When a window goes full-screen, the traffic lights relocate **into** the menu bar, exactly as on macOS.
 
-For developers this is mostly *free* — a well-behaved scene-based app with a populated main menu already works. What changed is enforcement: **resize is now always available.** Where iPadOS 18 let an app opt out of resizing/multitasking with the `UIRequiresFullScreen` Info.plist key, iPadOS 26 **deprecates that key and ignores it** — *"people can always resize your app's scenes if they have enabled multitasking"* — so your app must cope with arbitrary sizes. You constrain via the `UISceneSizeRestrictions` on a `UIWindowScene` (`sizeRestrictions.minimumSize` / `maximumSize`, UIKit) or `.frame(minWidth:minHeight:)` + `.windowResizability(.contentMinSize)` (SwiftUI), and you *request* a size with `UIWindowScene.requestGeometryUpdate(_:errorHandler:)` passing a `UIWindowSceneGeometryPreferencesIOS`. Full treatment is in [[pro-and-developer-workflows-on-ipad]] and the dev module; here the point is that the **geometry contract moved toward the Mac's**.
+For developers this is mostly *free* — a well-behaved scene-based app with a populated main menu already works. What changed is enforcement: **resize is now always available.** Where iPadOS 18 let an app opt out of resizing/multitasking with the `UIRequiresFullScreen` Info.plist key, iPadOS 26 **deprecates that key and ignores it** — *"people can always resize your app's scenes if they have enabled multitasking"* — so your app must cope with arbitrary sizes. You constrain via the `UISceneSizeRestrictions` on a `UIWindowScene` (`sizeRestrictions.minimumSize` / `maximumSize`, UIKit) or `.frame(minWidth:minHeight:)` + `.windowResizability(.contentMinSize)` (SwiftUI), and you *request* a size with `UIWindowScene.requestGeometryUpdate(_:errorHandler:)` passing a `UIWindowSceneGeometryPreferencesIOS`. Full treatment is in [[05-pro-and-developer-workflows-on-ipad]] and the dev module; here the point is that the **geometry contract moved toward the Mac's**.
 
 ### Stage Manager 2.0: every iPad, no 4-app cap
 
@@ -119,7 +119,7 @@ Pre-26, attaching a display mostly meant **mirroring** (plus a few Stage-Manager
 - **iPad mini and non-M iPads:** **mirror only** — they can run multiple windows on the built-in display but cannot drive an independent external canvas.
 - **The 8 GB RAM floor:** multitasking *on the external screen* requires ≥ 8 GB RAM; below that you get mirroring even on otherwise-capable models. *Re-verify the exact RAM/model matrix at author time.*
 
-Each display is effectively its own workspace with its own mode, which is why "what mode is the iPad in?" is the wrong question — it is per-display state. Continuity-driven display use (Sidecar/Universal Control with a Mac) is a different path covered in [[continuity-with-the-mac]].
+Each display is effectively its own workspace with its own mode, which is why "what mode is the iPad in?" is the wrong question — it is per-display state. Continuity-driven display use (Sidecar/Universal Control with a Mac) is a different path covered in [[04-continuity-with-the-mac]].
 
 ### Window & multitasking state as a forensic artifact
 
@@ -143,13 +143,13 @@ When a scene is backgrounded/minimized/inactivated, the system caches its last f
 `/private/var/mobile/Containers/Data/Application/<App-UUID>/Library/Caches/Snapshots/<bundleID>/…`
 and `/private/var/mobile/Library/Caches/Snapshots/…`, stored in the GPU-friendly **KTX** texture format. They are a direct **visual record of the last on-screen content** of each window — message threads, documents, banking balances. The relationship from app → its snapshots is recorded in the `applicationState.db` blob. Community tooling: `SnapshotImageFinder.py` / `SnapshotTriage.py` (KTX → PNG + HTML report).
 
-> ⚖️ **Authorization:** Snapshots can expose content from apps the user never granted you (a banking app's balance, a private message). They are **Data-Protection-class** files — fully readable only **after first unlock (AFU)**; in a **before-first-unlock (BFU)** acquisition many are still encrypted. Treat the lock-state at seizure as decisive (see [[bfu-vs-afu-and-data-protection-classes]]), and scope any examination to lawful authority — recoverable on-screen content from third-party apps is exactly the kind of overcollection a warrant's scope limits.
+> ⚖️ **Authorization:** Snapshots can expose content from apps the user never granted you (a banking app's balance, a private message). They are **Data-Protection-class** files — fully readable only **after first unlock (AFU)**; in a **before-first-unlock (BFU)** acquisition many are still encrypted. Treat the lock-state at seizure as decisive (see [[02-bfu-vs-afu-and-data-protection-classes]]), and scope any examination to lawful authority — recoverable on-screen content from third-party apps is exactly the kind of overcollection a warrant's scope limits.
 
 **3. Home-screen + switcher layout.**
 `IconState.plist` (SpringBoard) holds the Home Screen / Dock icon layout — page order, folder membership, which apps are docked. Combined with `applicationState.db`, it reconstructs how the device was *organized* and which apps were reachable/offloaded. Magnet's "Home Screen Items" artifact and iLEAPP both parse this.
 
 **4. Cross-corroboration with pattern-of-life stores.**
-Window/scene state tells you *what was arranged*; the **`/app/inFocus`** stream in `knowledgeC.db` and the equivalent **Biome/SEGB** app-focus segments tell you *what was actually frontmost and when* — see [[knowledgec-db-deep-dive]] and [[biome-and-segb-streams]]. Correlating an `applicationState.db` scene grouping with a `knowledgeC`/Biome focus interval places a *specific window arrangement* on a *specific timeline*.
+Window/scene state tells you *what was arranged*; the **`/app/inFocus`** stream in `knowledgeC.db` and the equivalent **Biome/SEGB** app-focus segments tell you *what was actually frontmost and when* — see [[01-knowledgec-db-deep-dive]] and [[02-biome-and-segb-streams]]. Correlating an `applicationState.db` scene grouping with a `knowledgeC`/Biome focus interval places a *specific window arrangement* on a *specific timeline*.
 
 > 🔬 **Forensics note:** Multi-window changes the inference. On a phone, foreground = one app. On an iPadOS-26 iPad, several scenes can be foreground at once across a stage or an external display. A focus record for "Messages" plus a live Safari scene in the same stage is *concurrent* activity, not sequential — your timeline must model overlapping scene intervals, not a single active-app track.
 
@@ -248,16 +248,16 @@ xcrun simctl launch "$UDID" com.example.YourApp
 
 ### Lab 3 — Snapshot triage and the AFU/BFU gate [Walkthrough]
 
-> ⚠️ **ADVANCED / device-bound.** You cannot run this without a full-file-system extraction ([[full-file-system-acquisition]]) of a real device; narrate the workflow.
+> ⚠️ **ADVANCED / device-bound.** You cannot run this without a full-file-system extraction ([[05-full-file-system-acquisition]]) of a real device; narrate the workflow.
 
 1. From an FFS extraction, enumerate `Library/Caches/Snapshots/` under each app's data container and the system Snapshots path.
 2. Run `SnapshotTriage.py` (or equivalent) to convert **KTX** → PNG and build an HTML contact sheet per app.
 3. For each recovered snapshot, record the source bundle ID, the file mtime, and the Data-Protection class.
-4. State explicitly, for a hypothetical seizure: if the device was acquired **BFU**, which snapshots would still be encrypted and *unrecoverable*? (Answer with the class → lock-state mapping from [[bfu-vs-afu-and-data-protection-classes]].) This is the difference between "we recovered the last screen of their banking app" and "we recovered nothing."
+4. State explicitly, for a hypothetical seizure: if the device was acquired **BFU**, which snapshots would still be encrypted and *unrecoverable*? (Answer with the class → lock-state mapping from [[02-bfu-vs-afu-and-data-protection-classes]].) This is the difference between "we recovered the last screen of their banking app" and "we recovered nothing."
 
 ### Lab 4 — Build a concurrent-scene timeline [Sample image]
 
-1. On the same reference image, pull the `/app/inFocus` rows from `knowledgeC.db` (copy-first, `+ 978307200` epoch) — see [[knowledgec-db-deep-dive]].
+1. On the same reference image, pull the `/app/inFocus` rows from `knowledgeC.db` (copy-first, `+ 978307200` epoch) — see [[01-knowledgec-db-deep-dive]].
 2. From `applicationState.db`, list the apps that had live scene state.
 3. Find a window where two different bundle IDs have overlapping focus/scene intervals. Diagram it as **two parallel tracks**, not one.
 4. Write the one-line interpretation: "At HH:MM the user had App A and App B *simultaneously* on screen (a stage / split / external-display arrangement)." This is the inference iPad multi-window forces that a phone never did.
@@ -317,4 +317,4 @@ xcrun simctl launch "$UDID" com.example.YourApp
 - `man sqlite3`, `man plutil`, `xcrun simctl help` — exact flag semantics on your toolchain
 
 ---
-*Related lessons: [[how-ipados-diverges-from-ios]] | [[app-lifecycle-scenes-and-background-execution]] | [[app-sandbox-and-filesystem-layout]] | [[knowledgec-db-deep-dive]] | [[continuity-with-the-mac]] | [[bfu-vs-afu-and-data-protection-classes]]*
+*Related lessons: [[00-how-ipados-diverges-from-ios]] | [[03-app-lifecycle-scenes-and-background-execution]] | [[00-app-sandbox-and-filesystem-layout]] | [[01-knowledgec-db-deep-dive]] | [[04-continuity-with-the-mac]] | [[02-bfu-vs-afu-and-data-protection-classes]]*

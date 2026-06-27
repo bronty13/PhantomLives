@@ -14,13 +14,13 @@ last_reviewed: 2026-06-26
 
 ---
 
-> ⚖️ **AUTHORIZED USE ONLY.** Choosing *and* running an acquisition method is itself a search. Everything below assumes lawful authority — your own device, authorized IR work, or a matter under a warrant/consent/court order whose scope you have read ([[ios-forensics-landscape-and-authorization]] carries the full legal frame, incl. *Riley v. California*). The tiers are inert facts; *which* rung your authority permits — and the standing obligation to take the **least-intrusive method that satisfies the warrant**, then climb only as needed — is the whole job. A heavier method run "to be thorough" can both exceed scope and trip an irreversible device state change.
+> ⚖️ **AUTHORIZED USE ONLY.** Choosing *and* running an acquisition method is itself a search. Everything below assumes lawful authority — your own device, authorized IR work, or a matter under a warrant/consent/court order whose scope you have read ([[00-ios-forensics-landscape-and-authorization]] carries the full legal frame, incl. *Riley v. California*). The tiers are inert facts; *which* rung your authority permits — and the standing obligation to take the **least-intrusive method that satisfies the warrant**, then climb only as needed — is the whole job. A heavier method run "to be thorough" can both exceed scope and trip an irreversible device state change.
 
 ---
 
 ## Why this matters
 
-On macOS you made one decision: image the disk. Every artifact you learned in [`macos-mastery`](../../macos-mastery/CURRICULUM.md) — `knowledgeC.db`, FSEvents, Unified Logs, Quarantine — lived inside that one image, and the only real variable was whether FileVault was on. iOS deletes that single decision and replaces it with a *branching ladder*. The same iPhone, with the same NAND, yields wildly different evidence depending on which acquisition method the silicon and the lock state even permit you to run — and choosing the wrong rung first can burn the chance to run a better one. The single most valuable skill in mobile forensics is not running a tool; it is **matching the method to the specific target before you start**, and being able to defend that choice. This lesson is the map: the five tiers, exactly what each yields and misses, and the decision tree that turns "what chip / what build / what lock state" into "this method, in this order, for this reason." [[ios-forensics-landscape-and-authorization]] gave you the *why* (no write-blocker, encrypted-by-default, lock-state-bounded); this lesson gives you the *which*.
+On macOS you made one decision: image the disk. Every artifact you learned in [`macos-mastery`](../../macos-mastery/CURRICULUM.md) — `knowledgeC.db`, FSEvents, Unified Logs, Quarantine — lived inside that one image, and the only real variable was whether FileVault was on. iOS deletes that single decision and replaces it with a *branching ladder*. The same iPhone, with the same NAND, yields wildly different evidence depending on which acquisition method the silicon and the lock state even permit you to run — and choosing the wrong rung first can burn the chance to run a better one. The single most valuable skill in mobile forensics is not running a tool; it is **matching the method to the specific target before you start**, and being able to defend that choice. This lesson is the map: the five tiers, exactly what each yields and misses, and the decision tree that turns "what chip / what build / what lock state" into "this method, in this order, for this reason." [[00-ios-forensics-landscape-and-authorization]] gave you the *why* (no write-blocker, encrypted-by-default, lock-state-bounded); this lesson gives you the *which*.
 
 ---
 
@@ -28,7 +28,7 @@ On macOS you made one decision: image the disk. Every artifact you learned in [`
 
 ### There is no "image the disk" — there is a ladder
 
-On a passive block device, "physical image" is both the most complete *and* the default acquisition: you copy every sector, encrypted or not, and decrypt later. iOS breaks that equivalence in two ways at once. First, the most-complete method (raw NAND) yields **ciphertext you cannot break** (the inline AES engine keys every block from a UID fused into the SEP — [[storage-nand-aes-effaceable]]). Second, the *useful* methods all run **through the live, cooperating OS**, so each one is a different negotiation with a different daemon, gated by a different precondition. The result is a ladder, not a button:
+On a passive block device, "physical image" is both the most complete *and* the default acquisition: you copy every sector, encrypted or not, and decrypt later. iOS breaks that equivalence in two ways at once. First, the most-complete method (raw NAND) yields **ciphertext you cannot break** (the inline AES engine keys every block from a UID fused into the SEP — [[03-storage-nand-aes-effaceable]]). Second, the *useful* methods all run **through the live, cooperating OS**, so each one is a different negotiation with a different daemon, gated by a different precondition. The result is a ladder, not a button:
 
 ```
         DATA YIELD ───────────────────────────────────────────────►
@@ -57,13 +57,13 @@ This is the core of the lesson. Each tier below names the **channel** (the daemo
 
 #### Tier 1 — Logical (a backup)
 
-**Channel:** `mobilebackup2` over `lockdownd`/`usbmuxd` — the same protocol Finder/iTunes uses for "Back Up Now." Tools: `idevicebackup2` (libimobiledevice), `pymobiledevice3 backup2`. → [[the-itunes-finder-backup-format]], [[logical-acquisition-with-libimobiledevice]].
+**Channel:** `mobilebackup2` over `lockdownd`/`usbmuxd` — the same protocol Finder/iTunes uses for "Back Up Now." Tools: `idevicebackup2` (libimobiledevice), `pymobiledevice3 backup2`. → [[03-the-itunes-finder-backup-format]], [[04-logical-acquisition-with-libimobiledevice]].
 
 **Minimum lock state:** AFU **and** an existing trust/pairing relationship (or the ability to tap "Trust" on the device). A backup is a *cooperative* operation; the device must agree.
 
 **Yields:** the user-visible communications-and-content core — SMS/iMessage (`sms.db`), call history, Contacts, Calendar, Notes, Safari history/bookmarks, the **camera-roll photos** the backup domain includes, and the app data each app *opts in* to back up. With an **encrypted backup** (you set a backup password, which mutates the device — see pitfalls), you additionally get **Health data**, the **Keychain** (re-encrypted under the backup password, so recoverable with it), Wi-Fi passwords, and call-history/screen-time detail that the unencrypted backup withholds.
 
-**Misses (this is the important half):** **no system files**, **no app binaries**, and — the part disk examiners under-weight — **almost none of the pattern-of-life corpus**. `knowledgeC`/Biome/SEGB streams, the powerlog, `locationd`'s caches, `routined`'s significant-locations, Mail's on-disk store, and any app data flagged `NSURLIsExcludedFromBackupKey` are **not in a backup**. A backup is what the *user* could restore to a new phone — not what the *device* did. It is the floor of the ladder for a reason. → those stores live in Part 08 ([[knowledgec-db-deep-dive]], [[biome-and-segb-streams]], [[powerlog-and-aggregate-dictionary]], [[location-history]]) and are reachable only at Tier 3.
+**Misses (this is the important half):** **no system files**, **no app binaries**, and — the part disk examiners under-weight — **almost none of the pattern-of-life corpus**. `knowledgeC`/Biome/SEGB streams, the powerlog, `locationd`'s caches, `routined`'s significant-locations, Mail's on-disk store, and any app data flagged `NSURLIsExcludedFromBackupKey` are **not in a backup**. A backup is what the *user* could restore to a new phone — not what the *device* did. It is the floor of the ladder for a reason. → those stores live in Part 08 ([[01-knowledgec-db-deep-dive]], [[02-biome-and-segb-streams]], [[03-powerlog-and-aggregate-dictionary]], [[07-location-history]]) and are reachable only at Tier 3.
 
 **State mutated:** establishes/refreshes a host **pairing-trust record** (and its escrow keybag) through `lockdownd`, and runs the on-device `com.apple.mobilebackup2` service; setting an encryption password is a **persistent device change**.
 
@@ -72,7 +72,7 @@ This is the core of the lesson. Each tier below names the **channel** (the daemo
 **Channel:** the backup **plus** a set of additional `lockdownd` services pulled directly:
 - **AFC** (`com.apple.afc`, *Apple File Conduit*) → the **full media partition** at `/var/mobile/Media` (the complete `DCIM`/PhotoData tree, originals and all — far more than the backup's photo subset). Mount with `ifuse`, or `pymobiledevice3 afc`.
 - **`house_arrest`** (`com.apple.mobile.house_arrest`) → the **Documents** containers of apps that set `UIFileSharingEnabled` (the iTunes File Sharing surface). `ifuse --documents <bundle-id>`, or `pymobiledevice3 apps pull`.
-- **sysdiagnose** + the **crash-report** relay (`com.apple.crashreportcopymobile`) + the **syslog/os_trace** relay → crash logs, the live system log, and the giant `sysdiagnose` tarball (logs, network state, power snapshots, process lists). → [[unified-logs-sysdiagnose-crash-network]].
+- **sysdiagnose** + the **crash-report** relay (`com.apple.crashreportcopymobile`) + the **syslog/os_trace** relay → crash logs, the live system log, and the giant `sysdiagnose` tarball (logs, network state, power snapshots, process lists). → [[12-unified-logs-sysdiagnose-crash-network]].
 - **diagnostics_relay** / MobileGestalt → device-identity and state metadata.
 
 **Minimum lock state:** AFU + trust, same as Tier 1.
@@ -88,14 +88,14 @@ This is the core of the lesson. Each tier below names the **channel** (the daemo
 #### Tier 3 — Full file system (the data partition + keychain)
 
 **Channel:** code execution on the device, by one of two routes:
-1. **Bootloader-based** — a **BootROM/SecureROM exploit** (`checkm8` on A8–A11; `usbliter8` on A12–A13, public 2026-06-18) loads a custom ramdisk *below* the signature chain, mounts the data volume, and images the live filesystem. → [[boot-chain-securerom-iboot]], [[full-file-system-acquisition]].
+1. **Bootloader-based** — a **BootROM/SecureROM exploit** (`checkm8` on A8–A11; `usbliter8` on A12–A13, public 2026-06-18) loads a custom ramdisk *below* the signature chain, mounts the data volume, and images the live filesystem. → [[01-boot-chain-securerom-iboot]], [[05-full-file-system-acquisition]].
 2. **Agent-based** — a signed **extraction agent** (a small app the commercial tool installs and runs) reads the filesystem from *inside* a running, AFU/unlocked OS, using a kernel/userspace primitive to escalate. This is the only Tier-3 route on devices with **no BootROM exploit** (A14+).
 
-**Minimum lock state:** the agent route needs **AFU/unlocked** (you must be able to install and run the agent). The bootloader route can be **BFU-capable** in that it gets code-exec on a BFU device — **but the SEP, Data Protection, and the passcode still stand**, so a BFU bootloader extraction still only decrypts the classes whose keys are available (mostly metadata; see [[bfu-vs-afu-and-data-protection-classes]]). A BootROM exploit is *not* a passcode bypass.
+**Minimum lock state:** the agent route needs **AFU/unlocked** (you must be able to install and run the agent). The bootloader route can be **BFU-capable** in that it gets code-exec on a BFU device — **but the SEP, Data Protection, and the passcode still stand**, so a BFU bootloader extraction still only decrypts the classes whose keys are available (mostly metadata; see [[02-bfu-vs-afu-and-data-protection-classes]]). A BootROM exploit is *not* a passcode bypass.
 
-**Yields:** the **entire data partition** — every app's private container (`Documents/`, `Library/`, `tmp/`, the SQLite stores apps *don't* back up), **all** the pattern-of-life DBs (knowledgeC, Biome/SEGB, powerlog, `locationd`, `routined`, the full Photos catalog), Mail's on-disk store, the Unified Log database, and the **decrypted Keychain**. This is the tier that turns "what the user kept" into "what the device *recorded*." It is the practical gold standard of modern iOS forensics. → [[keychain-on-ios]], [[app-sandbox-and-filesystem-layout]].
+**Yields:** the **entire data partition** — every app's private container (`Documents/`, `Library/`, `tmp/`, the SQLite stores apps *don't* back up), **all** the pattern-of-life DBs (knowledgeC, Biome/SEGB, powerlog, `locationd`, `routined`, the full Photos catalog), Mail's on-disk store, the Unified Log database, and the **decrypted Keychain**. This is the tier that turns "what the user kept" into "what the device *recorded*." It is the practical gold standard of modern iOS forensics. → [[08-keychain-on-ios]], [[00-app-sandbox-and-filesystem-layout]].
 
-**Misses:** it is a **live filesystem read, not a raw image** — so there is **no unallocated space and no slack** to carve. "Deleted data" recovery at Tier 3 means SQLite freelist/WAL/journal recovery and not-yet-overwritten records *inside the files you copied* ([[deleted-data-recovery]]), **not** block-level carving of erased regions. It also misses anything BFU-locked (if BFU) and anything that only ever lived in the cloud.
+**Misses:** it is a **live filesystem read, not a raw image** — so there is **no unallocated space and no slack** to carve. "Deleted data" recovery at Tier 3 means SQLite freelist/WAL/journal recovery and not-yet-overwritten records *inside the files you copied* ([[14-deleted-data-recovery]]), **not** block-level carving of erased regions. It also misses anything BFU-locked (if BFU) and anything that only ever lived in the cloud.
 
 **State mutated:** the agent installs and runs a process (and may leave install/provisioning traces); the bootloader route reboots into DFU and a custom ramdisk (a documented, expected mutation you log).
 
@@ -113,13 +113,13 @@ This is the core of the lesson. Each tier below names the **channel** (the daemo
 
 #### Tier 5 — Cloud (iCloud backups + CloudKit-synced data)
 
-**Channel:** Apple's servers, reached either with the account holder's **Apple Account credentials / an authentication token** (often lifted from a seized, trusted computer) or via **legal process to Apple**. Tools: Elcomsoft Phone Breaker and equivalents; `mvt` for the on-device traces of what *is* synced. → [[icloud-acquisition-and-advanced-data-protection]], [[apple-account-icloud-and-apns]].
+**Channel:** Apple's servers, reached either with the account holder's **Apple Account credentials / an authentication token** (often lifted from a seized, trusted computer) or via **legal process to Apple**. Tools: Elcomsoft Phone Breaker and equivalents; `mvt` for the on-device traces of what *is* synced. → [[06-icloud-acquisition-and-advanced-data-protection]], [[07-apple-account-icloud-and-apns]].
 
 **Minimum lock state:** none on the *device* — this is an orthogonal track. What you need is **credentials/token** (and, for 2FA, a trusted device or SMS) **or** a subpoena/warrant served on Apple.
 
 **Yields:** data that **may never have been on the seized device** — historical iCloud backups (sometimes of *other* devices on the account), CloudKit-synced Photos, Notes, Messages-in-iCloud, iCloud Drive, Health, and the iCloud Keychain. It is the only tier that reaches *deleted-from-device-but-still-in-cloud* and *cross-device* data.
 
-**Misses / hard wall:** **Advanced Data Protection (ADP)**. With ADP enabled, the bulk of iCloud categories become **end-to-end encrypted** — Apple holds no decryption key, so a legal-process pull returns ciphertext, and a credentials-based pull can't decrypt without the device or a recovery contact/key. ADP **slams the cloud tier shut** for those categories. → [[advanced-protections-lockdown-sdp-adp]].
+**Misses / hard wall:** **Advanced Data Protection (ADP)**. With ADP enabled, the bulk of iCloud categories become **end-to-end encrypted** — Apple holds no decryption key, so a legal-process pull returns ciphertext, and a credentials-based pull can't decrypt without the device or a recovery contact/key. ADP **slams the cloud tier shut** for those categories. → [[09-advanced-protections-lockdown-sdp-adp]].
 
 **State mutated:** server-side access is logged to the account (and may notify the user's other devices — an operational-security consideration); the device itself is untouched.
 
@@ -137,7 +137,7 @@ This is the core of the lesson. Each tier below names the **channel** (the daemo
 
 This is the skill the whole lesson exists to install. The available rung is fixed by three inputs you read **first** (from `lockdownd` and an honest look at the screen):
 
-1. **Lock state** — unlocked / passcode-known? AFU-locked? BFU? (the master variable — [[passcode-bfu-afu-and-inactivity]]).
+1. **Lock state** — unlocked / passcode-known? AFU-locked? BFU? (the master variable — [[03-passcode-bfu-afu-and-inactivity]]).
 2. **SoC** — from `ProductType` → the exploit band (checkm8 A8–A11 / usbliter8 A12–A13 / agent-only A14+ / **MIE-blocked A19/M5**).
 3. **iOS build** — from `ProductVersion`; the agent/exploit must support the *exact* build.
 
@@ -170,7 +170,7 @@ This is the skill the whole lesson exists to install. The available rung is fixe
 
 Two rules the tree encodes that you must not violate:
 
-- **Least-mutating method that satisfies the warrant goes first.** Climbing the ladder is a one-way ratchet of footprint and risk; a heavier method can trip a state change (an inactivity reboot, a lockout, a wipe) that a lighter one would have avoided. You do not run a full file system "to be safe" when the warrant is satisfied by a backup. → [[acquisition-sop-and-chain-of-custody]].
+- **Least-mutating method that satisfies the warrant goes first.** Climbing the ladder is a one-way ratchet of footprint and risk; a heavier method can trip a state change (an inactivity reboot, a lockout, a wipe) that a lighter one would have avoided. You do not run a full file system "to be safe" when the warrant is satisfied by a backup. → [[08-acquisition-sop-and-chain-of-custody]].
 - **The chip decides the ceiling; the lock state decides the floor.** A14+ in BFU is a near-brick; an A11 unlocked is a full-house. The two inputs are independent and you need both before you pick a method.
 
 ### The 2026 method-availability matrix (perishable — verify per device/build)
@@ -184,7 +184,7 @@ Two rules the tree encodes that you must not violate:
 | **A14–A18** | iPhone 12–16 | **none public** (the wall is A13→A14) | yes (AFU/unlocked) — Elcomsoft agent, Cellebrite, GrayKey | **FFS via agent** (AFU/unlocked) or advanced logical |
 | **A19 / M5** | iPhone 17 / Air / 17 Pro/Max, iPad Pro M5 | none | **BLOCKED — agent extraction fails on MIE** (hardware Memory Integrity Enforcement on A19/M5) | **Advanced logical** is the current ceiling — no public FFS path (verify) |
 
-The A19/M5 row is the 2026 development to internalize: **Memory Integrity Enforcement** ([[kernel-hardening-pac-sptm-txm-mie]]) doesn't just harden the kernel against attackers — it knocks out the *memory-corruption escalation primitive the commercial extraction agents rely on*, so the newest devices have **regressed** the available ceiling from "full file system" back down to "advanced logical." Elcomsoft's iOS Forensic Toolkit (10.02-era release notes) report that agent-based extraction does not work on the iPhone 17 series and M5 iPads for exactly this reason — confirm the exact tool version and per-device coverage against the *current* vendor release notes, not this snapshot. The wall has, for the newest silicon, moved *down the ladder*.
+The A19/M5 row is the 2026 development to internalize: **Memory Integrity Enforcement** ([[06-kernel-hardening-pac-sptm-txm-mie]]) doesn't just harden the kernel against attackers — it knocks out the *memory-corruption escalation primitive the commercial extraction agents rely on*, so the newest devices have **regressed** the available ceiling from "full file system" back down to "advanced logical." Elcomsoft's iOS Forensic Toolkit (10.02-era release notes) report that agent-based extraction does not work on the iPhone 17 series and M5 iPads for exactly this reason — confirm the exact tool version and per-device coverage against the *current* vendor release notes, not this snapshot. The wall has, for the newest silicon, moved *down the ladder*.
 
 > 🔬 **Forensics note:** Two devices that look identical to a juror — both "an iPhone, both running iOS 26" — can sit in different bands with different ceilings. An iPhone 11 (A13) seized AFU is a full-file-system target; an iPhone 17 (A19) seized AFU is, in mid-2026, an *advanced-logical* target. Your report must state the device's `ProductType`→SoC, the `ProductVersion`, the lock state at seizure, **and** the resulting tier ceiling, because "we obtained an advanced logical, not a full file system" is a defensible, chip-grounded statement — not a failure to try.
 
@@ -207,7 +207,7 @@ ideviceinfo -k ActivationState
 idevicepair validate                  # paired & trusted? (Tier 1/2 precondition)
 ```
 
-`ProductType` → SoC → band is your *ceiling* lookup; pair it with the observed lock state (your *floor*) to pick a rung. Cross-reference [[soc-lineup-and-device-matrix]] for the full `iPhoneN,M` → SoC table.
+`ProductType` → SoC → band is your *ceiling* lookup; pair it with the observed lock state (your *floor*) to pick a rung. Cross-reference [[00-soc-lineup-and-device-matrix]] for the full `iPhoneN,M` → SoC table.
 
 **A triage helper — turn the three inputs into a recommended tier.** Drop this in a script; it encodes the decision tree's chip half (you still supply lock state):
 
@@ -239,7 +239,7 @@ sqlite3 /path/to/sample_backup/Manifest.db \
 # e.g. no knowledgeC/Biome/powerlog domains: that's Tier 1's 'misses' made concrete.
 ```
 
-The mechanics of *making* the backup (and the encrypted-vs-unencrypted distinction) are [[logical-acquisition-with-libimobiledevice]] and [[the-itunes-finder-backup-format]].
+The mechanics of *making* the backup (and the encrypted-vs-unencrypted distinction) are [[04-logical-acquisition-with-libimobiledevice]] and [[03-the-itunes-finder-backup-format]].
 
 **Tier 2 — the advanced-logical service surface (what AFC/house_arrest/diagnostics expose).** With a device these pull the media library, file-sharing Documents, and logs; the subcommands themselves show the Tier-2 channel set:
 
@@ -265,7 +265,7 @@ DEV=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Application/
 ```
 
-→ [[simulator-internals-and-on-disk-filesystem]] for the full Simulator-vs-device fidelity map.
+→ [[01-simulator-internals-and-on-disk-filesystem]] for the full Simulator-vs-device fidelity map.
 
 ---
 
@@ -279,7 +279,7 @@ ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Applicati
 
 1. For each of four hypothetical devices — **(a)** iPhone X (A11) unlocked, **(b)** iPhone 11 (A13) AFU-locked, **(c)** iPhone 14 (A16) AFU-locked, **(d)** iPhone 17 (A19) AFU-locked, all on iOS 26.x — write the **tier ceiling** and the **single first method** you'd run, citing the band and the lock state.
 2. For device (d), explain in two sentences why the *newest* phone yields *less* than device (b) — name MIE and the agent-block.
-3. Produce a one-page table: **device → SoC band → lock state → tier ceiling → first method → state mutated.** Keep it; [[acquisition-sop-and-chain-of-custody]] turns it into the SOP.
+3. Produce a one-page table: **device → SoC band → lock state → tier ceiling → first method → state mutated.** Keep it; [[08-acquisition-sop-and-chain-of-custody]] turns it into the SOP.
 
 ### Lab 2 — Prove Tier 1's misses from a backup Manifest (substrate: public sample backup)
 
@@ -311,7 +311,7 @@ ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Applicati
 
 1. Read two vendor descriptions that use "physical extraction" for iOS (e.g., a Cellebrite/GrayKey/Elcomsoft page). For each, decide whether it means **raw NAND (Tier 4)** or a **decrypted full file system (Tier 3)** — and justify from what they claim to return (decrypted keychain + process memory = Tier 3, not raw NAND).
 2. Write the one-line correction you'd put in a report: "The vendor's 'physical extraction' of this A-series device is a decrypted full-file-system image (Tier 3); the platform does not support evidentiary raw-NAND acquisition, so no block-level unallocated/slack carving is possible."
-3. State why this matters to a deleted-data claim ([[deleted-data-recovery]]): on iOS, "deleted" recovery is in-file (SQLite WAL/freelist), not NAND carving.
+3. State why this matters to a deleted-data claim ([[14-deleted-data-recovery]]): on iOS, "deleted" recovery is in-file (SQLite WAL/freelist), not NAND carving.
 
 ---
 
@@ -324,7 +324,7 @@ ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Applicati
 - **Mixing up the agent floor and the BootROM floor.** Agent-based FFS needs **AFU/unlocked** (you must run the agent); BootROM gives code-exec on **BFU** but the passcode still bounds user-data classes. Neither is a passcode bypass. A "BFU full file system" on a strong-passcode A12 yields mostly metadata, not the user's data.
 - **Setting a backup password without recording it.** Enabling backup encryption to capture Keychain/Health is a **persistent device mutation**, and if you set a password the *device* didn't have, you must log it (and you've changed the device's backup-encryption state for everyone downstream). If an encryption password is already set and unknown, an unencrypted backup may be refused — a known operational trap.
 - **Conflating vendor tier names with the taxonomy.** Cellebrite "Advanced Logical," Elcomsoft "Extended Logical," GrayKey "full file system" each map *imperfectly* onto these five tiers and drift release to release. Always determine *which services/channels actually ran*, not the marketing label, when you read or write a report.
-- **Ignoring ADP on the cloud track.** Advanced Data Protection makes most iCloud categories end-to-end encrypted — a legal-process pull returns ciphertext and a creds pull can't decrypt. "Serve Apple" is not a guaranteed path; check ADP first. → [[icloud-acquisition-and-advanced-data-protection]].
+- **Ignoring ADP on the cloud track.** Advanced Data Protection makes most iCloud categories end-to-end encrypted — a legal-process pull returns ciphertext and a creds pull can't decrypt. "Serve Apple" is not a guaranteed path; check ADP first. → [[06-icloud-acquisition-and-advanced-data-protection]].
 - **Quoting the stale exploit boundary.** The public BootROM frontier is **A8–A13** (usbliter8, 2026-06-18), the wall is **A13→A14**, and the *agent* ceiling now stops at **A18** (A19/M5 blocked by MIE). All of this is perishable — re-verify per device and per OS build at author time.
 
 ---
@@ -371,4 +371,4 @@ ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Applicati
 - **man pages / tools** — `ideviceinfo(1)`, `idevicebackup2(1)`, `idevicepair(1)`, `ifuse(1)`; `pymobiledevice3 --help` (backup2 / afc / apps / crash / syslog / diagnostics).
 
 ---
-*Related lessons: [[ios-forensics-landscape-and-authorization]] | [[bfu-vs-afu-and-data-protection-classes]] | [[the-itunes-finder-backup-format]] | [[logical-acquisition-with-libimobiledevice]] | [[full-file-system-acquisition]] | [[icloud-acquisition-and-advanced-data-protection]] | [[acquisition-sop-and-chain-of-custody]] | [[soc-lineup-and-device-matrix]]*
+*Related lessons: [[00-ios-forensics-landscape-and-authorization]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[03-the-itunes-finder-backup-format]] | [[04-logical-acquisition-with-libimobiledevice]] | [[05-full-file-system-acquisition]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[08-acquisition-sop-and-chain-of-custody]] | [[00-soc-lineup-and-device-matrix]]*

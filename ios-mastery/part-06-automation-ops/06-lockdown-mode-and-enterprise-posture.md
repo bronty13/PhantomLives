@@ -10,11 +10,11 @@ last_reviewed: 2026-06-26
 
 # Lockdown Mode & enterprise posture
 
-> **In one sentence:** This is the operations capstone — taking the *individual* opt-in controls you dissected mechanically in [[advanced-protections-lockdown-sdp-adp]] (Lockdown Mode, Stolen Device Protection, Advanced Data Protection) and combining them with the *fleet* machinery from the rest of Part 06 (supervision, DDM, configuration-profile restrictions) into one coherent, deployable hardening posture for a managed fleet **and** a single high-risk person — and learning to read, at intake, which of those defenses is in force, because each one quietly forecloses a different acquisition avenue.
+> **In one sentence:** This is the operations capstone — taking the *individual* opt-in controls you dissected mechanically in [[09-advanced-protections-lockdown-sdp-adp]] (Lockdown Mode, Stolen Device Protection, Advanced Data Protection) and combining them with the *fleet* machinery from the rest of Part 06 (supervision, DDM, configuration-profile restrictions) into one coherent, deployable hardening posture for a managed fleet **and** a single high-risk person — and learning to read, at intake, which of those defenses is in force, because each one quietly forecloses a different acquisition avenue.
 
 ## Why this matters
 
-You already know the *mechanism* of each defensive feature: [[advanced-protections-lockdown-sdp-adp]] enumerated what Lockdown Mode subtracts, how Stolen Device Protection demotes the passcode, and how Advanced Data Protection deletes Apple's cloud keys. What that lesson deliberately left for here is **operations**: *when* to turn each on, *who* needs them, what they *cost* the user day-to-day, and — the part that ties the whole module together — how to **compose** them with [[mdm-supervision-and-abm]], [[declarative-device-management]], and [[configuration-profiles-and-mobileconfig]] into a single posture you could actually deploy to a journalist, an executive, or ten thousand corporate handsets.
+You already know the *mechanism* of each defensive feature: [[09-advanced-protections-lockdown-sdp-adp]] enumerated what Lockdown Mode subtracts, how Stolen Device Protection demotes the passcode, and how Advanced Data Protection deletes Apple's cloud keys. What that lesson deliberately left for here is **operations**: *when* to turn each on, *who* needs them, what they *cost* the user day-to-day, and — the part that ties the whole module together — how to **compose** them with [[02-mdm-supervision-and-abm]], [[03-declarative-device-management]], and [[04-configuration-profiles-and-mobileconfig]] into a single posture you could actually deploy to a journalist, an executive, or ten thousand corporate handsets.
 
 This serves all three of your hats. As an **advisor**, you'll be asked "how do I lock down a phone for someone who's being targeted?" — and the answer is a stack, not a single toggle, with a non-obvious *order of operations*. As a **fleet operator**, the 2026 management story (DDM, the death of legacy software-update commands) changes what "hardened" even means. And as a **forensicator**, every one of these postures reshapes — and usually shrinks — your acquisition surface; a device that arrives at the lab supervised, in Lockdown Mode, with ADP on, and rebooted into BFU is a fundamentally different evidence object than a default phone, and recognizing that *before* you start is what separates a productive intake from a wasted one.
 
@@ -38,7 +38,7 @@ The two overlap exactly where it gets interesting — a **high-risk person on a 
 
 ### Lockdown Mode in practice: who, when, and the cost
 
-[[advanced-protections-lockdown-sdp-adp]] gave you the enumerated subtraction list (JIT off, attachments/link-previews blocked, unsolicited inbound refused, Shared Albums off, config-profile install blocked, wired data blocked while locked, 2G off). The operational questions it left open:
+[[09-advanced-protections-lockdown-sdp-adp]] gave you the enumerated subtraction list (JIT off, attachments/link-previews blocked, unsolicited inbound refused, Shared Albums off, config-profile install blocked, wired data blocked while locked, 2G off). The operational questions it left open:
 
 **Who actually needs it.** Lockdown Mode is *not* general advice. Apple is explicit that it's for "the very few" who are *personally targeted* by state-grade attackers. The honest triage:
 
@@ -61,7 +61,7 @@ The two overlap exactly where it gets interesting — a **high-risk person on a 
 
 **Apply it everywhere.** Lockdown Mode is per-device. A target's Mac and iPad are part of the same attack surface — enabling it only on the iPhone leaves the laptop as the soft entry point. The advisor's job is to turn it on across the user's **entire Apple ecosystem**, not one device.
 
-> 🔬 **Forensics note — Lockdown Mode is an artifact of *omission*, and now also a managed status item.** Recall from [[advanced-protections-lockdown-sdp-adp]] the two-pronged detection: the **state flag** (`LDMGlobalEnabled = 1` in `/private/var/mobile/Library/Preferences/.GlobalPreferences.plist` / NSGlobalDomain — *verify the exact key against the iOS version you're examining*) and the more robust **negative-space** signature (no link-preview cache, no non-image Messages attachments after enablement, no Shared Albums, FaceTime history only with prior contacts, failed config-profile installs). New from the **WWDC26 (June 2026)** device-management updates: **Lockdown Mode status is becoming a Declarative Device Management *status item*** — a supervised/managed device *reports* its Lockdown-Mode state up the DDM status channel (alongside enrollment type and APNs details; a companion **device-system-health** status item for baseband/camera/Face ID/Touch ID and more lands on **iOS/iPadOS 27**). Rollout spans the 26→27 cycle, so confirm support for the OS you're examining. The payoff: for a *managed* device you may be able to establish the posture from MDM server records, not just the on-disk image.
+> 🔬 **Forensics note — Lockdown Mode is an artifact of *omission*, and now also a managed status item.** Recall from [[09-advanced-protections-lockdown-sdp-adp]] the two-pronged detection: the **state flag** (`LDMGlobalEnabled = 1` in `/private/var/mobile/Library/Preferences/.GlobalPreferences.plist` / NSGlobalDomain — *verify the exact key against the iOS version you're examining*) and the more robust **negative-space** signature (no link-preview cache, no non-image Messages attachments after enablement, no Shared Albums, FaceTime history only with prior contacts, failed config-profile installs). New from the **WWDC26 (June 2026)** device-management updates: **Lockdown Mode status is becoming a Declarative Device Management *status item*** — a supervised/managed device *reports* its Lockdown-Mode state up the DDM status channel (alongside enrollment type and APNs details; a companion **device-system-health** status item for baseband/camera/Face ID/Touch ID and more lands on **iOS/iPadOS 27**). Rollout spans the 26→27 cycle, so confirm support for the OS you're examining. The payoff: for a *managed* device you may be able to establish the posture from MDM server records, not just the on-disk image.
 
 ### When the alarm has already gone off: Apple threat notifications & self-triage
 
@@ -70,7 +70,7 @@ The cleanest answer to "is this person in the *targeted few* who need Lockdown M
 Receiving one moves the user unambiguously into the Lockdown-Mode-and-ADP column. The operational response — the bit you'll be asked to run:
 
 1. **Don't panic-wipe.** A reflexive erase destroys the very evidence that would confirm and characterize the compromise. Preserve first (an encrypted backup + a `sysdiagnose`), triage, *then* decide on remediation.
-2. **Run `mvt` against the preserved data** to match known-campaign **IOCs**. `mvt` is **not** real-time AV — it's indicator matching against curated STIX2 files (Amnesty Security Lab, Citizen Lab et al.) over artifacts like `shutdown.log`, network-usage rows, and WebKit/Safari traces ([[unified-logs-sysdiagnose-crash-network]]). **Absence of detections ≠ clean** (it only knows *known* indicators); a *hit* is high-signal.
+2. **Run `mvt` against the preserved data** to match known-campaign **IOCs**. `mvt` is **not** real-time AV — it's indicator matching against curated STIX2 files (Amnesty Security Lab, Citizen Lab et al.) over artifacts like `shutdown.log`, network-usage rows, and WebKit/Safari traces ([[12-unified-logs-sysdiagnose-crash-network]]). **Absence of detections ≠ clean** (it only knows *known* indicators); a *hit* is high-signal.
 3. **Harden + rotate from a clean device.** Enable Lockdown Mode and ADP, update to the latest build (kills the patched delivery chain), and rotate the Apple Account password and critical credentials from a *different, trusted* device.
 4. **Escalate to specialists.** Citizen Lab and the **Access Now Digital Security Helpline** / Amnesty Security Lab triage these for at-risk users; for a journalist/activist this is the right referral.
 
@@ -87,11 +87,11 @@ What MDM *does* collide with:
 
 That asymmetry is the **order-of-operations trap** for the "high-risk person on a managed fleet" case: you must **enroll/supervise first, then have the user enable Lockdown Mode.** Do it in the other order and the device is stranded — locked-down but unmanageable, and you can't push the corporate restriction profile without the user temporarily disabling Lockdown Mode.
 
-> 🔬 **Forensics note — pairing "lockdown" vs. Lockdown Mode, again.** The single most common terminology crash in iOS forensics (flagged hard in [[advanced-protections-lockdown-sdp-adp]]): **`lockdownd`** + the **pairing/"lockdown records"** in `/var/db/lockdown/` (macOS) / `%ProgramData%\Apple\Lockdown\` (Windows) are the *acquisition gold* you extract from a trusted host to do AFU logical without re-pairing — that subsystem predates the attack-surface **Lockdown *Mode*** by a decade. They pull in *opposite* directions: a pairing record helps you in; Lockdown Mode blocks the wired path that record rides. When any tool or report says "lockdown," resolve which one before you act.
+> 🔬 **Forensics note — pairing "lockdown" vs. Lockdown Mode, again.** The single most common terminology crash in iOS forensics (flagged hard in [[09-advanced-protections-lockdown-sdp-adp]]): **`lockdownd`** + the **pairing/"lockdown records"** in `/var/db/lockdown/` (macOS) / `%ProgramData%\Apple\Lockdown\` (Windows) are the *acquisition gold* you extract from a trusted host to do AFU logical without re-pairing — that subsystem predates the attack-surface **Lockdown *Mode*** by a decade. They pull in *opposite* directions: a pairing record helps you in; Lockdown Mode blocks the wired path that record rides. When any tool or report says "lockdown," resolve which one before you act.
 
 ### The seizure-time countermeasure landscape — the defender's view
 
-[[passcode-bfu-afu-and-inactivity]] taught the lock-state machine (BFU/AFU) and the on-device timers as *mechanism*. Here they are as **deployable defenses** — the controls a hardening posture actually leans on at the moment of physical compromise. Two matter most:
+[[03-passcode-bfu-afu-and-inactivity]] taught the lock-state machine (BFU/AFU) and the on-device timers as *mechanism*. Here they are as **deployable defenses** — the controls a hardening posture actually leans on at the moment of physical compromise. Two matter most:
 
 **1. Inactivity reboot (the BFU forcing function).** Since iOS 18.1, a **locked** device that sees no unlock for **~72 hours** automatically **reboots itself**, dropping from AFU back to **Before First Unlock**. In BFU the file-protection class keys are evicted from memory and held in the SEP — `NSFileProtectionComplete` data is cryptographically sealed, the keychain is largely inaccessible, and on a modern A14+ device with a strong passcode there is **no public extraction** of meaningful user data. This is the feature that produced the famous "iPhones in the evidence locker mysteriously rebooted" reports. As a defender, it means a seized-and-stashed device **heals itself toward BFU** if the lab can't act within three days.
 
@@ -146,7 +146,7 @@ The robust defender conclusion follows cleanly: **the only state these tools can
 
 For a managed fleet, the highest-impact "hardening" is the least glamorous: **keeping the OS current.** The mercenary-spyware chains that Lockdown Mode defends individuals against are, for a fleet, mostly a *patch-window* problem — a known CVE on an un-updated handset is the realistic exposure, not a bespoke zero-click. So the operations question is "how fast and how reliably can I force the fleet onto the patched build?" — and in 2026 that machinery changed underneath everyone.
 
-The legacy model was imperative: the MDM server sent `ScheduleOSUpdate`/`AvailableOSUpdates` commands and `OSUpdateStatus` queries, plus a `com.apple.SoftwareUpdate` payload to set deferral and the recommended-cadence. That whole surface is **being removed** — deprecated through the 26.x cycle and **non-functional on the 27.0 releases**. The replacement is **declarative** ([[declarative-device-management]]):
+The legacy model was imperative: the MDM server sent `ScheduleOSUpdate`/`AvailableOSUpdates` commands and `OSUpdateStatus` queries, plus a `com.apple.SoftwareUpdate` payload to set deferral and the recommended-cadence. That whole surface is **being removed** — deprecated through the 26.x cycle and **non-functional on the 27.0 releases**. The replacement is **declarative** ([[03-declarative-device-management]]):
 
 - A **software-update configuration** declaration names a *target OS version* and an **enforced installation deadline** (a wall-clock time after which the device installs and reboots itself, user-deferral exhausted).
 - The device **autonomously** downloads, stages, and installs against that declaration — no server polling, no command round-trips.
@@ -198,21 +198,21 @@ Here is the module's payoff: the whole Part-06 toolbox composed into one layered
 
 **For a managed fleet** (the org's authority, applied at L1–L2 + parts of L4):
 
-1. **Supervise via ABM/ASM + ADE.** Supervision is the keystone — it unlocks the restrictions that actually matter (see [[mdm-supervision-and-abm]]). A BYOD/user-enrolled device cannot be hardened to the same degree.
-2. **Run it through DDM.** [[declarative-device-management]] is the 2026 standard: declarative configuration + the **status channel** (now including Lockdown-Mode and hardware-health items). It is also **mandatory** for software updates going forward — the legacy MDM software-update commands/queries are being removed (deprecated through 26.x, gone on the 27.0 releases), so **patch latency control = DDM or nothing.** Since unpatched zero-days are the #1 fleet exposure, this is not optional hardening, it's table stakes.
-3. **Push the restriction profile** (`com.apple.applicationaccess`, see [[configuration-profiles-and-mobileconfig]]). The high-value supervised keys for a *forensic-resistance* posture:
+1. **Supervise via ABM/ASM + ADE.** Supervision is the keystone — it unlocks the restrictions that actually matter (see [[02-mdm-supervision-and-abm]]). A BYOD/user-enrolled device cannot be hardened to the same degree.
+2. **Run it through DDM.** [[03-declarative-device-management]] is the 2026 standard: declarative configuration + the **status channel** (now including Lockdown-Mode and hardware-health items). It is also **mandatory** for software updates going forward — the legacy MDM software-update commands/queries are being removed (deprecated through 26.x, gone on the 27.0 releases), so **patch latency control = DDM or nothing.** Since unpatched zero-days are the #1 fleet exposure, this is not optional hardening, it's table stakes.
+3. **Push the restriction profile** (`com.apple.applicationaccess`, see [[04-configuration-profiles-and-mobileconfig]]). The high-value supervised keys for a *forensic-resistance* posture:
    - `allowHostPairing = false` — the device pairs **only** with the supervision host. This **kills the forensic-pairing avenue and juice-jacking** in one stroke; arguably the single most consequential anti-acquisition restriction an org can set.
    - Keep `allowUSBRestrictedMode = true` (don't be the admin who *disables* USB Restricted Mode for accessory convenience).
    - `allowEraseContentAndSettings = false` (and `allowDeviceNameModification`, `allowAccountModification`, `allowFindMyDeviceModification = false`) to prevent a thief or coerced user from severing recovery.
    - A strong **passcode policy** via `com.apple.mobiledevice.passwordpolicy` (`minLength`, `requireAlphanumeric`, `maxFailedAttempts`, `maxInactivity`) — *the* lever that makes BFU genuinely safe.
    - `allowESIMOutgoingTransfers = false` to stop identity/number theft via eSIM migration (*verify exact key spelling per OS*).
 4. **Enforce Activation Lock org-side** (via ABM-owned Find My) so a lost device is a brick to a thief and re-provisionable to you.
-5. **Layer Screen Time / content & privacy** ([[screen-time-and-content-privacy-restrictions]]) where you need user-facing content controls below the MDM line.
+5. **Layer Screen Time / content & privacy** ([[01-screen-time-and-content-privacy-restrictions]]) where you need user-facing content controls below the MDM line.
 
 **For a high-risk individual** (self-applied, L3–L5 heavy):
 
 1. **Lockdown Mode — ON, across every Apple device.** The highest-leverage single toggle against mercenary spyware; teach surgical per-site/app exclusions so it sticks.
-2. **Advanced Data Protection — ON** to close the cloud route ([[icloud-acquisition-and-advanced-data-protection]]) — but **check jurisdiction first** (the UK ADP saga means it may be unavailable there; see [[advanced-protections-lockdown-sdp-adp]]). Set up the Recovery Key and *keep it offline*.
+2. **Advanced Data Protection — ON** to close the cloud route ([[06-icloud-acquisition-and-advanced-data-protection]]) — but **check jurisdiction first** (the UK ADP saga means it may be unavailable there; see [[09-advanced-protections-lockdown-sdp-adp]]). Set up the Recovery Key and *keep it offline*.
 3. **Stolen Device Protection — set to "Always"** (not just "Away from Familiar Locations"), removing the home/work relaxation.
 4. **Strong alphanumeric passcode** — the precondition that makes BFU mathematically safe. A 6-digit PIN is brute-forceable in principle against some attacks; a long passphrase is not.
 5. **Wired Accessories → "Ask for New Accessories"** (or "Always Ask"); leave USB Restricted Mode engaged.
@@ -220,7 +220,7 @@ Here is the module's payoff: the whole Part-06 toolbox composed into one layered
 7. **Border/seizure discipline:** **power the device OFF → BFU** before any high-risk checkpoint; Faraday-bag when in doubt.
 8. **Periodic self-triage with `mvt`** against a backup/sysdiagnose to catch known spyware IOCs early.
 
-**Ownership model sets the ceiling.** How a device entered management caps how hard you can harden it ([[mdm-supervision-and-abm]]): a **BYOD device under User Enrollment** keeps a cryptographic wall between personal and managed data — the org cannot set the supervised-only restrictions (`allowHostPairing`, `allowEraseContentAndSettings`, etc.) that carry the real anti-acquisition weight. **Device Enrollment** (a personally-owned device manually enrolled) is more managed but still not supervised. Only a **corporate-owned device acquired through ABM/ASM and Automated Device Enrollment** is **supervised** from first boot — and supervision is the gate to the restrictions that matter. So "can I deploy the hardened profile?" is really "is this device supervised?", which is really "did it come through ABM?" The hardening ceiling is set at *procurement*, not at config time.
+**Ownership model sets the ceiling.** How a device entered management caps how hard you can harden it ([[02-mdm-supervision-and-abm]]): a **BYOD device under User Enrollment** keeps a cryptographic wall between personal and managed data — the org cannot set the supervised-only restrictions (`allowHostPairing`, `allowEraseContentAndSettings`, etc.) that carry the real anti-acquisition weight. **Device Enrollment** (a personally-owned device manually enrolled) is more managed but still not supervised. Only a **corporate-owned device acquired through ABM/ASM and Automated Device Enrollment** is **supervised** from first boot — and supervision is the gate to the restrictions that matter. So "can I deploy the hardened profile?" is really "is this device supervised?", which is really "did it come through ABM?" The hardening ceiling is set at *procurement*, not at config time.
 
 The two columns **converge** for the high-risk person on a managed fleet — apply both, mind the order-of-operations trap (enroll/supervise → *then* the user enables Lockdown Mode), and accept that some org-side restrictions (host pairing, software-update enforcement) and some user-side controls (ADP, SDP) cover *different* threats and are not redundant.
 
@@ -348,7 +348,7 @@ grep -nE 'SIGTERM|holding on|signalled' \
 # A process that should not exist, repeatedly stalling shutdown, is a classic Pegasus tell.
 ```
 
-Absence proves nothing (IOC-bound); a hit, or an unexplained process here, is where you pivot to a full timeline (see [[unified-logs-sysdiagnose-crash-network]]).
+Absence proves nothing (IOC-bound); a hit, or an unexplained process here, is where you pivot to a full timeline (see [[12-unified-logs-sysdiagnose-crash-network]]).
 
 ## 🧪 Labs
 
@@ -358,7 +358,7 @@ Absence proves nothing (IOC-bound); a hit, or an unexplained process here, is wh
 
 **Goal:** produce a valid, signable `.mobileconfig` that encodes the L2 policy layer.
 
-1. Write a profile with two payloads: `com.apple.applicationaccess` (set `allowHostPairing = false`, `allowEraseContentAndSettings = false`, `allowUSBRestrictedMode = true`) and `com.apple.mobiledevice.passwordpolicy` (`requireAlphanumeric = true`, `minLength = 8`, `maxFailedAttempts = 10`, `maxInactivity = 5`). Use `plutil`/`PlistBuddy` (full payload structure is in [[configuration-profiles-and-mobileconfig]]).
+1. Write a profile with two payloads: `com.apple.applicationaccess` (set `allowHostPairing = false`, `allowEraseContentAndSettings = false`, `allowUSBRestrictedMode = true`) and `com.apple.mobiledevice.passwordpolicy` (`requireAlphanumeric = true`, `minLength = 8`, `maxFailedAttempts = 10`, `maxInactivity = 5`). Use `plutil`/`PlistBuddy` (full payload structure is in [[04-configuration-profiles-and-mobileconfig]]).
 2. `plutil -lint hardened.mobileconfig` until it's clean.
 3. **Reason about it:** which keys are *supervised-only*? (Host pairing, erase, USB-RM are.) Why does that make supervision the keystone of the fleet posture? Write one sentence connecting `allowHostPairing = false` to the forensic-pairing avenue you'd lose at intake.
 
@@ -412,7 +412,7 @@ Pick one subject — *(a)* an investigative journalist on a personally-owned iPh
 
 ## Key takeaways
 
-- The operations capstone is **composition**: individual opt-ins ([[advanced-protections-lockdown-sdp-adp]]) + fleet machinery ([[mdm-supervision-and-abm]], [[declarative-device-management]], [[configuration-profiles-and-mobileconfig]]) assemble into **two distinct postures** (high-risk person | managed fleet) that converge for the high-risk person *on* a fleet.
+- The operations capstone is **composition**: individual opt-ins ([[09-advanced-protections-lockdown-sdp-adp]]) + fleet machinery ([[02-mdm-supervision-and-abm]], [[03-declarative-device-management]], [[04-configuration-profiles-and-mobileconfig]]) assemble into **two distinct postures** (high-risk person | managed fleet) that converge for the high-risk person *on* a fleet.
 - **Lockdown Mode is for the targeted few, costs real usability, and cannot be managed by MDM** — there is no `allowLockdownMode` key; enroll **before** enabling it; observe it via the new **DDM status item** and the `LDMGlobalEnabled` flag + negative-space signature.
 - The **seizure-time timers are deployable defenses**: inactivity reboot (~72 h → BFU) and USB Restricted Mode (~1 h, immediate after 3 d) — and iOS 26's **Wired Accessories** setting lets a user tighten the wired gate further.
 - **Vendor counter-moves (Cellebrite Safeguard Mode, Magnet GrayKey Preserve) freeze AFU before the timer fires** — so the only robust owner-side countermeasure is to **create BFU yourself by powering off**; a BFU A14+ device with a strong alphanumeric passcode has no public extraction.
@@ -455,4 +455,4 @@ Pick one subject — *(a)* an investigative journalist on a personally-owned iPh
 - `man plutil`, Apple Configurator `cfgutil(1)`, libimobiledevice `idevicepair`/`ideviceinfo`.
 
 ---
-*Related lessons: [[advanced-protections-lockdown-sdp-adp]] | [[mdm-supervision-and-abm]] | [[declarative-device-management]] | [[configuration-profiles-and-mobileconfig]] | [[passcode-bfu-afu-and-inactivity]] | [[icloud-acquisition-and-advanced-data-protection]] | [[acquisition-sop-and-chain-of-custody]]*
+*Related lessons: [[09-advanced-protections-lockdown-sdp-adp]] | [[02-mdm-supervision-and-abm]] | [[03-declarative-device-management]] | [[04-configuration-profiles-and-mobileconfig]] | [[03-passcode-bfu-afu-and-inactivity]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[08-acquisition-sop-and-chain-of-custody]]*

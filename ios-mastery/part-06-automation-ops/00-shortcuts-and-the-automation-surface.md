@@ -57,7 +57,7 @@ The runtime pieces you care about:
    (built-in, in-proc)     (runs IN the app's sandbox)  (Maps, Files, …)
 ```
 
-> 🔬 **Forensics note:** `siriactionsd` is the process that *executes* automations, so it is your best execution-evidence source. Its activity surfaces in the **unified log** (subsystem `com.apple.siri` / process `siriactionsd`) and shortcut runs are reflected in the **Biome/SEGB** and (pre-iOS-17) **knowledgeC** behavioural streams — i.e. a shortcut that fired leaves traces *outside* the Shortcuts store itself, which lets you corroborate (or contradict) the run-count metadata inside `Shortcuts.sqlite`. See [[biome-and-segb-streams]] and [[unified-logs-sysdiagnose-crash-network]].
+> 🔬 **Forensics note:** `siriactionsd` is the process that *executes* automations, so it is your best execution-evidence source. Its activity surfaces in the **unified log** (subsystem `com.apple.siri` / process `siriactionsd`) and shortcut runs are reflected in the **Biome/SEGB** and (pre-iOS-17) **knowledgeC** behavioural streams — i.e. a shortcut that fired leaves traces *outside* the Shortcuts store itself, which lets you corroborate (or contradict) the run-count metadata inside `Shortcuts.sqlite`. See [[02-biome-and-segb-streams]] and [[12-unified-logs-sysdiagnose-crash-network]].
 
 ### The action model: `is.workflow.actions.*` and the App Intents shift
 
@@ -114,7 +114,7 @@ The defining property is **write-once, surface-everywhere** — one `AppIntent` 
                       └──────────── Focus filters
 ```
 
-The core types (you'll meet these again in [[swift-swiftui-uikit-and-app-architecture]] and [[app-lifecycle-scenes-and-background-execution]]):
+The core types (you'll meet these again in [[02-swift-swiftui-uikit-and-app-architecture]] and [[03-app-lifecycle-scenes-and-background-execution]]):
 
 | Type | What it is |
 |---|---|
@@ -123,7 +123,7 @@ The core types (you'll meet these again in [[swift-swiftui-uikit-and-app-archite
 | `AppShortcut` | Binds an `AppIntent` to natural-language trigger phrases and surfaces it system-wide **with zero user setup**. |
 | `AppShortcutsProvider` | The app's manifest of `AppShortcut`s; the system harvests it at install time. |
 
-The mechanism that matters forensically and for RE: when you build an app that adopts App Intents, the compiler emits a **`Metadata.appintents/`** bundle *inside the `.app`* (alongside the binary). It contains a machine-readable description of every intent, entity, parameter, and app-shortcut the app exposes — extractable from a distributed `.ipa` *without running anything*. (The internal filenames — e.g. an `extract.actionsdata` JSON blob plus a version/manifest — are tooling-version-dependent; **verify the exact layout against the bundle you're examining.**) This is the static-analysis hook: you can enumerate an app's *entire scriptable attack/automation surface* from its bundle. See [[the-app-bundle-and-ipa-structure]] and [[static-analysis-class-dump-and-disassemblers]].
+The mechanism that matters forensically and for RE: when you build an app that adopts App Intents, the compiler emits a **`Metadata.appintents/`** bundle *inside the `.app`* (alongside the binary). It contains a machine-readable description of every intent, entity, parameter, and app-shortcut the app exposes — extractable from a distributed `.ipa` *without running anything*. (The internal filenames — e.g. an `extract.actionsdata` JSON blob plus a version/manifest — are tooling-version-dependent; **verify the exact layout against the bundle you're examining.**) This is the static-analysis hook: you can enumerate an app's *entire scriptable attack/automation surface* from its bundle. See [[04-the-app-bundle-and-ipa-structure]] and [[04-static-analysis-class-dump-and-disassemblers]].
 
 > 🖥️ **macOS contrast:** On macOS you reverse-engineered an app's scriptability by reading its **`.sdef`** (scripting definition) and its Cocoa Scripting `NSScriptCommand` classes. `Metadata.appintents` is the iOS-era equivalent: a declarative, machine-readable manifest of everything the app lets the outside world invoke — but cross-platform (the same bundle drives macOS Shortcuts too) and tied to in-process `perform()` execution rather than the Apple Events dispatch you knew.
 
@@ -166,7 +166,7 @@ Each automation also carries a **run mode**: *Run Immediately* (with *Ask Before
 
 **Home automations** are the second family. Bound to HomeKit events rather than device sensors, they fire on: *people arrive / leave* (the Home's geofence, evaluated per household member), *a time of day* (sunrise/sunset/clock), *an accessory is controlled* (a switch flipped, a lock operated), or *a sensor detects something* (motion, contact, a door opens, occupancy). These run through the Home stack (`homed`/HomeKit) and persist in the Home configuration as well as the Shortcuts store. Forensically they bind behavior to a **physical place and its occupants** — "when everyone leaves, run X" or "when the front-door lock is opened after 1am, notify Y" — and the accessory/sensor identifiers in the trigger localize the event to a specific room/device.
 
-> 🔬 **Forensics note:** The list of configured automations, their triggers (the *specific* SSID, geofence coordinates, NFC tag UID, or app bundle ID), and the run-mode flag are persisted alongside the workflows. Enumerate every automation early in an exam: a "When app **Settings** opens → Run Immediately, Ask-Before-Running OFF → [Delete Files / Clear Clipboard / Get Contents of URL → attacker webhook]" automation is a **dead-man's switch**, and you may trip it by *touching the device at all*. This is a primary reason to acquire before you explore (see [[acquisition-sop-and-chain-of-custody]]).
+> 🔬 **Forensics note:** The list of configured automations, their triggers (the *specific* SSID, geofence coordinates, NFC tag UID, or app bundle ID), and the run-mode flag are persisted alongside the workflows. Enumerate every automation early in an exam: a "When app **Settings** opens → Run Immediately, Ask-Before-Running OFF → [Delete Files / Clear Clipboard / Get Contents of URL → attacker webhook]" automation is a **dead-man's switch**, and you may trip it by *touching the device at all*. This is a primary reason to acquire before you explore (see [[08-acquisition-sop-and-chain-of-custody]]).
 
 ### Where shortcuts run, and the consent model
 
@@ -174,7 +174,7 @@ A workflow declares *where it's allowed to appear and run* via `WFWorkflowTypes`
 
 Crucially, the broker still enforces **per-resource consent**. The first time a shortcut runs an action that touches a protected resource — Location, Photos, Contacts, Health, Files outside its own scope, a third-party app's `AppIntent`, or a *cross-app data hand-off* — the system prompts the user (a TCC-style grant), and for some sensitive cross-app flows iOS prompts **every time** unless the user opts to "Always Allow". This is why a malicious imported shortcut cannot silently vacuum your Photos on first run: it must clear the consent gate.
 
-> 🔬 **Forensics note:** Those consent decisions are persisted (TCC and the per-app grant stores; see [[the-sandbox-and-tcc]]). A shortcut that *would* read Location or Photos but whose grant was never given may have been authored-but-never-effective — an important distinction between "capability present" and "capability exercised." Conversely, a granted prompt for an unusual action ("Allow this shortcut to access Health?") is itself a dated artifact of when the workflow first ran against that resource.
+> 🔬 **Forensics note:** Those consent decisions are persisted (TCC and the per-app grant stores; see [[05-the-sandbox-and-tcc]]). A shortcut that *would* read Location or Photos but whose grant was never given may have been authored-but-never-effective — an important distinction between "capability present" and "capability exercised." Conversely, a granted prompt for an unusual action ("Allow this shortcut to access Health?") is itself a dated artifact of when the workflow first ran against that resource.
 
 ### Where Shortcuts live on disk
 
@@ -196,11 +196,11 @@ On iOS/iPadOS the same store lives inside the **WorkflowKit shared app-group con
 
 (Column names above are macOS-26-verified; the iOS Core Data model is the same family but **confirm every column via `.schema` against your image** — Core Data renames across model versions.)
 
-> 🔬 **Forensics note:** Because `ZSHORTCUTACTIONS` is a binary-plist blob of the *action array*, you recover the full workflow logic — every `is.workflow.actions.*` identifier and its parameters — straight from the device store, **no `.shortcut` export needed and no signature to defeat.** Dump the blob, `plutil -convert xml1`, and read it like any other plist. Core Data `Z…DATE` columns are **Apple Cocoa / Mac Absolute Time** (seconds since 2001-01-01 UTC) — add **978307200** to convert to Unix epoch. Don't assume column names; run `.schema ZSHORTCUT` against your copy and map them, because Core Data renames columns across model versions. See [[the-ios-timestamp-zoo]].
+> 🔬 **Forensics note:** Because `ZSHORTCUTACTIONS` is a binary-plist blob of the *action array*, you recover the full workflow logic — every `is.workflow.actions.*` identifier and its parameters — straight from the device store, **no `.shortcut` export needed and no signature to defeat.** Dump the blob, `plutil -convert xml1`, and read it like any other plist. Core Data `Z…DATE` columns are **Apple Cocoa / Mac Absolute Time** (seconds since 2001-01-01 UTC) — add **978307200** to convert to Unix epoch. Don't assume column names; run `.schema ZSHORTCUT` against your copy and map them, because Core Data renames columns across model versions. See [[00-the-ios-timestamp-zoo]].
 
 **iCloud / CloudKit sync.** Shortcuts sync via **CloudKit** (the private database of the user's iCloud account), which is why a single Shortcuts library appears on all the user's devices and why a *cloud* acquisition can recover shortcuts even from a device you don't have. There is also a legacy iCloud-Drive footprint under the `iCloud~is~workflow` ubiquity container. This matters for scope:
 
-> ⚖️ **Authorization:** Shortcuts are part of the iCloud-synced data set. Pulling them from CloudKit is a **cloud acquisition** governed by separate legal authority from a device seizure, and if the account has **Advanced Data Protection** enabled the relevant CloudKit data is end-to-end encrypted and not server-recoverable. Scope your warrant/consent to the cloud account explicitly, and don't assume "I have the phone" extends to "I have the cloud copy." See [[icloud-acquisition-and-advanced-data-protection]].
+> ⚖️ **Authorization:** Shortcuts are part of the iCloud-synced data set. Pulling them from CloudKit is a **cloud acquisition** governed by separate legal authority from a device seizure, and if the account has **Advanced Data Protection** enabled the relevant CloudKit data is end-to-end encrypted and not server-recoverable. Scope your warrant/consent to the cloud account explicitly, and don't assume "I have the phone" extends to "I have the cloud copy." See [[06-icloud-acquisition-and-advanced-data-protection]].
 
 ### The `.shortcut` export: AEA signing + the WFWorkflow plist
 
@@ -253,8 +253,8 @@ Two investigative framings, both important:
 Whether a workflow *ran* (and when, and how often) is corroborated outside the Shortcuts store — useful both to prove use and to detect an automation that fired during your exam:
 
 - **`Shortcuts.sqlite`** — the **`ZSHORTCUTRUNEVENT`** table is the per-execution record (`ZDATE`, `ZOUTCOME`, `ZSOURCE`, a `ZTRIGGER` FK to the trigger that fired it), and `ZSHORTCUT`'s `ZLASTRUNEVENTDATE` / `ZRUNEVENTSCOUNT` are denormalized rollups of it (column names version-dependent; confirm via `.schema`). This is the *claimed* history, editable by anyone who can write the store.
-- **Unified log** — `siriactionsd` (and the Shortcuts/Apple-Intelligence subsystems) log run lifecycle and action hand-offs. On a reproducible macOS host, `log stream --predicate 'process == "siriactionsd"' --info`; on an iOS `sysdiagnose`/log capture, filter the same process. This is harder to forge than the store metadata. See [[unified-logs-sysdiagnose-crash-network]].
-- **Biome / SEGB streams** (iOS 17+) and legacy **knowledgeC** — the pattern-of-life stack records app/intent activity that shortcut runs touch; cross-reference against the store's last-run claims. See [[biome-and-segb-streams]] and [[knowledgec-db-deep-dive]].
+- **Unified log** — `siriactionsd` (and the Shortcuts/Apple-Intelligence subsystems) log run lifecycle and action hand-offs. On a reproducible macOS host, `log stream --predicate 'process == "siriactionsd"' --info`; on an iOS `sysdiagnose`/log capture, filter the same process. This is harder to forge than the store metadata. See [[12-unified-logs-sysdiagnose-crash-network]].
+- **Biome / SEGB streams** (iOS 17+) and legacy **knowledgeC** — the pattern-of-life stack records app/intent activity that shortcut runs touch; cross-reference against the store's last-run claims. See [[02-biome-and-segb-streams]] and [[01-knowledgec-db-deep-dive]].
 - **Downstream side effects** — a `downloadurl` step shows in the app's network artifacts; a `deletephotos` step shows as deletions in the Photos store and its trash; a `sendmessage` step shows in `sms.db`. Triangulate the workflow's *declared* actions against the stores they would have touched.
 
 > 🔬 **Forensics note:** Discrepancies are the tell. If `ZSHORTCUT` says a destructive automation "never ran" but `siriactionsd` log entries or Biome streams show execution at the moment a charger was connected, you have both **evidence the tripwire fired** and **evidence the store metadata was tampered with**. Conversely, an automation with a real trigger and a high run count but no corroborating side effects may be inert or staged. Never trust the Shortcuts store's own run history in isolation.
@@ -372,7 +372,7 @@ python3 ileapp.py -t fs -i /path/to/extraction/ -o /tmp/ileapp_out/
 
 1. Pick a Mac `.app` that adopts App Intents (many Apple and third-party apps do) and `ls` its `Contents/Resources/Metadata.appintents/` directory (on an iOS flat bundle it sits at the `.app` root instead). You'll find `extract.actionsdata` (JSON) + `version.json`.
 2. `plutil -p` the actions-data blob and enumerate the declared `AppIntent`s, `AppEntity`s, and `AppShortcut` phrases.
-3. Write one sentence per intent describing *what an automation built on this app could do* — i.e. the app's automation attack surface — and note which would require which entitlements/data grants (tie back to [[the-app-bundle-and-ipa-structure]]).
+3. Write one sentence per intent describing *what an automation built on this app could do* — i.e. the app's automation attack surface — and note which would require which entitlements/data grants (tie back to [[04-the-app-bundle-and-ipa-structure]]).
 
 ### Lab 4 — Model an anti-forensic automation (substrate: read-only walkthrough + macOS analysis; fidelity: trigger semantics are iOS-only)
 
@@ -380,7 +380,7 @@ python3 ileapp.py -t fs -i /path/to/extraction/ -o /tmp/ileapp_out/
 
 1. On paper, design a dead-man's switch: trigger = "App **Settings** opens" (or "Wi-Fi joins <lab SSID>"), run-mode = *Run Immediately, Ask-Before-Running OFF*, actions = `Delete Photos` → `Clear Clipboard` → `Get Contents of URL` (webhook alert).
 2. Write the `WFWorkflowActions` array for it by hand (you know the identifiers and the control-flow encoding from Lab 1): `is.workflow.actions.deletephotos`, `is.workflow.actions.setclipboard`, `is.workflow.actions.downloadurl`.
-3. Now flip to examiner mode: list every *defensive* step that neutralizes each trigger before hands-on (Faraday/Airplane mode, charger-handling, acquire-then-disable), and explain why **acquisition must precede exploration** here. Cross-check against [[acquisition-sop-and-chain-of-custody]].
+3. Now flip to examiner mode: list every *defensive* step that neutralizes each trigger before hands-on (Faraday/Airplane mode, charger-handling, acquire-then-disable), and explain why **acquisition must precede exploration** here. Cross-check against [[08-acquisition-sop-and-chain-of-custody]].
 
 ### Lab 5 — Resolve magic variables and an LLM-egress step (substrate: macOS Shortcuts live store; fidelity: schema/format identical; `Use Model` requires Apple Intelligence enabled)
 
@@ -394,7 +394,7 @@ python3 ileapp.py -t fs -i /path/to/extraction/ -o /tmp/ileapp_out/
 - **Don't expect a shell.** Reflexively reaching for `Run Shell Script`/`osascript` on iOS is the #1 macOS-carryover error — those actions don't exist. Every capability is an exposed action; if no app exposed it, an iOS shortcut cannot do it.
 - **The Simulator has no Shortcuts.app.** It is not a substrate for this subsystem. Use macOS Shortcuts (same engine) for schema/format and a sample iOS image for triggers/run-history.
 - **macOS has no personal-automation triggers.** The macOS store will teach you the workflow format perfectly but will be *empty* of NFC/arrival/Focus/App-opened automations — don't conclude "the user had no automations" from a clean macOS-style store; on iOS, look for the trigger linkage in `ZSHORTCUT` and the automation entries specifically.
-- **Wrong epoch = 31-year error.** Core Data `Z…DATE` columns are Mac Absolute Time (2001 epoch, add 978307200), *not* Unix and *not* the nanosecond variant some other Apple stores use. Convert deliberately. See [[the-ios-timestamp-zoo]].
+- **Wrong epoch = 31-year error.** Core Data `Z…DATE` columns are Mac Absolute Time (2001 epoch, add 978307200), *not* Unix and *not* the nanosecond variant some other Apple stores use. Convert deliberately. See [[00-the-ios-timestamp-zoo]].
 - **Don't hard-code the iOS path or column names.** The on-device container subpath, the store filename, and the Core Data column names all drift across iOS versions. Anchor on the *macOS* path for the schema and **verify the iOS specifics against your acquired image** every time.
 - **"Signed" ≠ "encrypted".** A signed `.shortcut` (AEA profile 0) is fully readable once unwrapped — the signature is integrity, not confidentiality. Don't report a shared shortcut as "encrypted/unrecoverable"; extract it.
 - **You don't need the export to read the logic.** `ZSHORTCUTACTIONS` already holds the action array as a plist blob; the signature on `.shortcut` files is irrelevant to on-device recovery.
@@ -456,4 +456,4 @@ python3 ileapp.py -t fs -i /path/to/extraction/ -o /tmp/ileapp_out/
 - `man siriactionsd`, `man plutil`, `man sqlite3`, `man aea` / `man aa` — exact flag semantics on your target macOS version.
 
 ---
-*Related lessons: [[app-sandbox-and-filesystem-layout]] | [[biome-and-segb-streams]] | [[the-ios-timestamp-zoo]] | [[icloud-acquisition-and-advanced-data-protection]] | [[the-app-bundle-and-ipa-structure]] | [[static-analysis-class-dump-and-disassemblers]] | [[acquisition-sop-and-chain-of-custody]]*
+*Related lessons: [[00-app-sandbox-and-filesystem-layout]] | [[02-biome-and-segb-streams]] | [[00-the-ios-timestamp-zoo]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[04-the-app-bundle-and-ipa-structure]] | [[04-static-analysis-class-dump-and-disassemblers]] | [[08-acquisition-sop-and-chain-of-custody]]*

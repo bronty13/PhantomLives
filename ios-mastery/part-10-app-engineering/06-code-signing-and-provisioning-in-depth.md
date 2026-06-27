@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-You already studied code signing from the security side in [[code-signing-amfi-entitlements]] — the CDHash, the trust cache, AMFI as the gatekeeper. This lesson is the same machinery from the **developer's chair**: the actual files Xcode generates, the keychain identity you can't see, the profile you can decode byte-for-byte, and the four failure messages that eat a third of every new iOS developer's first week. Master this and you can re-sign any recovered binary for dynamic analysis, read a seized `.mobileprovision` to attribute who built an app and which devices it was authorized for, and diagnose a "won't install" without flailing in Xcode's Signing & Capabilities pane. The macOS instinct — "just notarize it and it runs anywhere" — is *wrong* on iOS, and unlearning it is the whole game.
+You already studied code signing from the security side in [[04-code-signing-amfi-entitlements]] — the CDHash, the trust cache, AMFI as the gatekeeper. This lesson is the same machinery from the **developer's chair**: the actual files Xcode generates, the keychain identity you can't see, the profile you can decode byte-for-byte, and the four failure messages that eat a third of every new iOS developer's first week. Master this and you can re-sign any recovered binary for dynamic analysis, read a seized `.mobileprovision` to attribute who built an app and which devices it was authorized for, and diagnose a "won't install" without flailing in Xcode's Signing & Capabilities pane. The macOS instinct — "just notarize it and it runs anywhere" — is *wrong* on iOS, and unlearning it is the whole game.
 
 > 🖥️ **macOS contrast:** macOS answers "may this run?" with **Gatekeeper + notarization**: a Developer-ID-signed, Apple-notarized binary runs on *any* Mac, no device list, no per-machine authorization. iOS deletes that model. There is no notarization-for-execution and no "any device" — every non-App-Store build is bound to an explicit set of UDIDs (or, for in-house Enterprise, to "all devices owned by this org"). The provisioning profile *is* the iOS analogue of notarization, but it authorizes **(this code) × (these entitlements) × (these devices)** instead of "(this developer) anywhere." App Store apps are the exception that proves the rule: Apple re-signs them server-side and **strips the `embedded.mobileprovision` entirely** — a downloaded Store app carries no profile on disk and runs under the App Store's own trust path.
 
@@ -104,9 +104,9 @@ You don't need the $99/yr Apple Developer Program to build for a device — a fr
 | **Capabilities** | crippled — **no** Push, Associated Domains, App Groups, iCloud, etc. | full entitlement catalog |
 | **Devices** | small per-account cap | 100 per device class per membership year |
 
-The 7-day expiry is the defining free-tier pain: a sideloaded app **stops launching after a week** when its profile expires, and you must rebuild/re-deploy. This is exactly the constraint that AltStore/SideStore automate around (periodic background re-sign) and that EU alternative marketplaces ([[eu-dma-sideloading-and-alternative-marketplaces]]) eliminate.
+The 7-day expiry is the defining free-tier pain: a sideloaded app **stops launching after a week** when its profile expires, and you must rebuild/re-deploy. This is exactly the constraint that AltStore/SideStore automate around (periodic background re-sign) and that EU alternative marketplaces ([[10-eu-dma-sideloading-and-alternative-marketplaces]]) eliminate.
 
-> 🔬 **Forensics note:** A 7-day-lifetime development profile in a recovered app is a strong signal of **free-tier sideloading** (AltStore, SideStore, raw Xcode deploy) rather than App Store provenance — the app was put there by someone with physical/USB access and an Apple Account, not via the Store. Combine with the absence of a FairPlay-encrypted `SC_Info/` directory ([[fairplay-encryption-and-decrypting-app-store-apps]]) to confirm non-Store origin.
+> 🔬 **Forensics note:** A 7-day-lifetime development profile in a recovered app is a strong signal of **free-tier sideloading** (AltStore, SideStore, raw Xcode deploy) rather than App Store provenance — the app was put there by someone with physical/USB access and an Apple Account, not via the Store. Combine with the absence of a FairPlay-encrypted `SC_Info/` directory ([[03-fairplay-encryption-and-decrypting-app-store-apps]]) to confirm non-Store origin.
 
 ### The certificate + key + profile + keychain dance
 
@@ -173,7 +173,7 @@ Walk the kill chain from `exec()` to running code on-device:
 
 On iOS the profile checks live in **amfid/AMFI** with **installd** (MobileInstallation) refusing the install on failure — there is no separate profile daemon (macOS factors this into its own `provisioningprofiled`; iOS does not). The profile must be *present* on-device too: dev installs drop it at `/var/MobileDevice/ProvisioningProfiles/<UUID>.mobileprovision` (alongside the copy embedded in the `.app`). App Store apps skip the profile dance entirely because Apple's re-signing put them under a platform/Store trust path with no profile on disk.
 
-> 🔬 **Forensics note:** In a full-file-system acquisition ([[decrypting-backups-and-images]]), `/var/MobileDevice/ProvisioningProfiles/` is a manifest of **every non-App-Store app ever provisioned on the device** — enterprise apps, developer builds, sideloaded tools, MDM-pushed apps — even after the app itself is deleted, the profile often lingers. Each profile decodes to its triad: who signed, what entitlements, which devices. It's one of the highest-signal directories for "what unusual software touched this phone."
+> 🔬 **Forensics note:** In a full-file-system acquisition ([[07-decrypting-backups-and-images]]), `/var/MobileDevice/ProvisioningProfiles/` is a manifest of **every non-App-Store app ever provisioned on the device** — enterprise apps, developer builds, sideloaded tools, MDM-pushed apps — even after the app itself is deleted, the profile often lingers. Each profile decodes to its triad: who signed, what entitlements, which devices. It's one of the highest-signal directories for "what unusual software touched this phone."
 
 ## Hands-on
 
@@ -315,7 +315,7 @@ vtool -show "$BIN" | grep -A3 -E 'LC_CODE_SIGNATURE|LC_BUILD_VERSION'
             --deep MyApp.app
    ```
 2. Re-verify: `codesign -dvvv MyApp.app` should show your `Authority=` chain and a fresh CandidateCDHash; the entitlements dump should show your new keys in slot −7.
-3. (Narrated device step) Re-zip to `.ipa`, install via your dev profile, and the app now runs **with `get-task-allow = 1`** — i.e. attachable by `lldb`/`frida`. This is the standard prep for [[dynamic-analysis-with-frida]]: a Store binary ships `get-task-allow` *off*; re-signing flips it on so a debugger can attach. Tools that automate the whole flow: `fastlane sigh resign`, `frida-ios-dump`/`bagbak` (which also defeat FairPlay), and `objection patchipa`.
+3. (Narrated device step) Re-zip to `.ipa`, install via your dev profile, and the app now runs **with `get-task-allow = 1`** — i.e. attachable by `lldb`/`frida`. This is the standard prep for [[05-dynamic-analysis-with-frida]]: a Store binary ships `get-task-allow` *off*; re-signing flips it on so a debugger can attach. Tools that automate the whole flow: `fastlane sigh resign`, `frida-ios-dump`/`bagbak` (which also defeat FairPlay), and `objection patchipa`.
 
 ### Lab 5 — Map a recovered profile to its authorization (substrate: sample image / loose `.mobileprovision`, read-only)
 
@@ -384,4 +384,4 @@ vtool -show "$BIN" | grep -A3 -E 'LC_CODE_SIGNATURE|LC_BUILD_VERSION'
 - saurik's **`ldid`** and **`fastlane match`** repos — the two canonical ways to (re)sign and to share identities
 
 ---
-*Related lessons: [[code-signing-amfi-entitlements]] | [[the-app-bundle-and-ipa-structure]] | [[the-code-signature-blob-and-entitlements-on-ios]] | [[distribution-testflight-appstore-enterprise]] | [[eu-dma-sideloading-and-alternative-marketplaces]] | [[dynamic-analysis-with-frida]] | [[fairplay-encryption-and-decrypting-app-store-apps]]*
+*Related lessons: [[04-code-signing-amfi-entitlements]] | [[04-the-app-bundle-and-ipa-structure]] | [[01-the-code-signature-blob-and-entitlements-on-ios]] | [[09-distribution-testflight-appstore-enterprise]] | [[10-eu-dma-sideloading-and-alternative-marketplaces]] | [[05-dynamic-analysis-with-frida]] | [[03-fairplay-encryption-and-decrypting-app-store-apps]]*

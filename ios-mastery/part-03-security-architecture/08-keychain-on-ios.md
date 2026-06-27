@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-The Keychain is the highest-value target on the whole device and the one most resistant to acquisition. It is not "where settings are saved" — it is where authentication material is saved: the OAuth bearer token that re-logs an app into a cloud account without a password prompt, the saved website logins and passkeys, the Wi-Fi PSKs and 802.1X certificates, the VPN shared secrets, the app-specific encryption keys. Get the Keychain and you frequently get *lateral* access to accounts and services the device itself never stored. That is exactly why Apple wraps each item to the Secure Enclave through the Data Protection keybag, and why the same full-file-system extraction that hands you `chat.db` in the clear may hand you a Keychain blob you cannot decrypt. This lesson is the bridge between the [[data-protection-and-keybags]] theory you already have and the concrete on-disk reality: the table, the columns, the class codes, and the precise recoverability matrix that tells you, for any item, whether your acquisition will ever yield its plaintext.
+The Keychain is the highest-value target on the whole device and the one most resistant to acquisition. It is not "where settings are saved" — it is where authentication material is saved: the OAuth bearer token that re-logs an app into a cloud account without a password prompt, the saved website logins and passkeys, the Wi-Fi PSKs and 802.1X certificates, the VPN shared secrets, the app-specific encryption keys. Get the Keychain and you frequently get *lateral* access to accounts and services the device itself never stored. That is exactly why Apple wraps each item to the Secure Enclave through the Data Protection keybag, and why the same full-file-system extraction that hands you `chat.db` in the clear may hand you a Keychain blob you cannot decrypt. This lesson is the bridge between the [[02-data-protection-and-keybags]] theory you already have and the concrete on-disk reality: the table, the columns, the class codes, and the precise recoverability matrix that tells you, for any item, whether your acquisition will ever yield its plaintext.
 
 For the builder, the same facts are the API contract: choosing `kSecAttrAccessible` is choosing your data's blast radius — `AfterFirstUnlock` keeps a background sync token working but makes it AFU-recoverable; `WhenPasscodeSetThisDeviceOnly` plus a `biometryCurrentSet` ACL plus a Secure-Enclave key is the strongest posture you can request, at the cost of no backup, no sync, and a live-auth prompt on every read. The forensic recoverability matrix and the developer's threat-model decision are *the same table read from opposite ends*, which is why this one lesson serves both halves of the curriculum.
 
@@ -48,7 +48,7 @@ Unlike macOS, there is **no per-user `login.keychain-db`** and no folder of name
 
 The app never sees the file, the SQL, or the keys; it sees only the rows `securityd` is willing to return after the entitlement check and a successful keybag unwrap.
 
-> 🖥️ **macOS contrast:** You studied two macOS keychains. The legacy, file-based **`login.keychain-db`** (`~/Library/Keychains/`) — its records encrypted with **3DES-CBC** under a master key derived from the login password by PBKDF2, browsable with `security dump-keychain` — has **no iOS counterpart**. What iOS uses is the second one: the **Data Protection keychain**, which on macOS also materializes as `keychain-2.db` inside a UUID-named folder under `~/Library/Keychains/`. Same `keychain-2.db` lineage, same `genp`/`inet`/`cert`/`keys` tables, same `kSecAttrAccessible` vocabulary — but on iOS the wrapping keys are bound to the SEP and the Data Protection keybag (see [[sep-sepos-deep-dive]]), so the macOS trick of decrypting with the login password does not exist here.
+> 🖥️ **macOS contrast:** You studied two macOS keychains. The legacy, file-based **`login.keychain-db`** (`~/Library/Keychains/`) — its records encrypted with **3DES-CBC** under a master key derived from the login password by PBKDF2, browsable with `security dump-keychain` — has **no iOS counterpart**. What iOS uses is the second one: the **Data Protection keychain**, which on macOS also materializes as `keychain-2.db` inside a UUID-named folder under `~/Library/Keychains/`. Same `keychain-2.db` lineage, same `genp`/`inet`/`cert`/`keys` tables, same `kSecAttrAccessible` vocabulary — but on iOS the wrapping keys are bound to the SEP and the Data Protection keybag (see [[01-sep-sepos-deep-dive]]), so the macOS trick of decrypting with the login password does not exist here.
 
 ### Five item classes → four (really five) tables
 
@@ -89,7 +89,7 @@ The two password tables carry the bulk of forensic value. `genp` is keyed for se
 | `data` | **The encrypted item** | version prefix + AES-GCM-wrapped metadata + secret (below) |
 | `UUID` / `sha1` / `pcss`/`pcsk`/`pcsi` | Item UUID / SHA-1 of the cert/key / persistent-ref & PCS sync fields | |
 
-> 🔬 **Forensics note:** `cdat`/`mdat` are **CFAbsoluteTime** (the Cocoa/Mac-Absolute 2001 epoch), not the nanosecond variant some newer Apple stores use — convert with `datetime(cdat + 978307200, 'unixepoch', 'localtime')`. The creation date of a credential is evidence in its own right: a saved-password row whose `cdat` predates the account's claimed creation, or a token row created at 03:00 when the subject claims the phone was off, both impeach a timeline. See [[the-ios-timestamp-zoo]] for the full epoch catalogue.
+> 🔬 **Forensics note:** `cdat`/`mdat` are **CFAbsoluteTime** (the Cocoa/Mac-Absolute 2001 epoch), not the nanosecond variant some newer Apple stores use — convert with `datetime(cdat + 978307200, 'unixepoch', 'localtime')`. The creation date of a credential is evidence in its own right: a saved-password row whose `cdat` predates the account's claimed creation, or a token row created at 03:00 when the subject claims the phone was off, both impeach a timeline. See [[00-the-ios-timestamp-zoo]] for the full epoch catalogue.
 
 The database also carries a **`tversion`** table holding the Keychain's *schema* version, which `securityd` bumps and migrates across OS releases. It is a small but useful provenance signal: a `tversion` higher than the OS you believe produced the image is a contradiction worth chasing, and the schema version gates which columns and which encryption layout (e.g. how much metadata is cleartext) you should expect. Treat the exact version→OS mapping as something to look up for your target build rather than memorize.
 
@@ -115,9 +115,9 @@ Every row carries a `pdmn` (protection domain) — a short string that names the
 | `dku` | `kSecAttrAccessibleAlwaysThisDeviceOnly` *(deprecated)* | D + UID | always, never leaves this device |
 | `akpu` | `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` | A + passcode + UID | unlocked, only if a passcode is set, never leaves device, **purged if passcode removed** |
 
-The letter (A/C/D) ties each class to the matching keybag class key you met in [[data-protection-and-keybags]]: the class-A key is evicted from memory on lock; the class-C key is derived at first unlock and survives until shutdown; the legacy class-D key has no passcode dependency at all. The `u` suffix swaps in a UID-entangled variant of that class key (so the wrapped blob is meaningless on any other device), and `akpu` adds the rule that the item is *destroyed* the instant the user turns off their passcode.
+The letter (A/C/D) ties each class to the matching keybag class key you met in [[02-data-protection-and-keybags]]: the class-A key is evicted from memory on lock; the class-C key is derived at first unlock and survives until shutdown; the legacy class-D key has no passcode dependency at all. The `u` suffix swaps in a UID-entangled variant of that class key (so the wrapped blob is meaningless on any other device), and `akpu` adds the rule that the item is *destroyed* the instant the user turns off their passcode.
 
-> 🔬 **Forensics note:** **`kSecAttrAccessibleAfterFirstUnlock` (`ck`/`cku`) is the de-facto default for any credential an app needs in the background.** Push-notification apps, mail clients, anything that refreshes a token while the screen is off — all default to `ck` so they keep working after the user's first morning unlock. This is why an **AFU** acquisition (device seized powered-on and already unlocked once, kept alive) is worth so much more than a **BFU** one: at AFU the class-C key is resident in the SEP/kernel, so every `ck`/`cku` item is decryptable. At BFU only the deprecated `dk`/`dku` items are. The BFU→AFU→unlocked ladder *is* the Keychain recoverability ladder. See [[passcode-bfu-afu-and-inactivity]].
+> 🔬 **Forensics note:** **`kSecAttrAccessibleAfterFirstUnlock` (`ck`/`cku`) is the de-facto default for any credential an app needs in the background.** Push-notification apps, mail clients, anything that refreshes a token while the screen is off — all default to `ck` so they keep working after the user's first morning unlock. This is why an **AFU** acquisition (device seized powered-on and already unlocked once, kept alive) is worth so much more than a **BFU** one: at AFU the class-C key is resident in the SEP/kernel, so every `ck`/`cku` item is decryptable. At BFU only the deprecated `dk`/`dku` items are. The BFU→AFU→unlocked ladder *is* the Keychain recoverability ladder. See [[03-passcode-bfu-afu-and-inactivity]].
 
 ### `ThisDeviceOnly` vs syncable — the `sync` bit and iCloud Keychain
 
@@ -128,7 +128,7 @@ Orthogonal to the availability tier is **portability**, expressed by the `u` suf
 
 The crucial property for forensics: **iCloud Keychain is end-to-end encrypted by design.** The sync payload is wrapped to the user's trusted device circle; Apple's servers hold ciphertext only and Apple cannot produce the plaintext under legal process. This is true *independently of Advanced Data Protection* — unlike iCloud Backup or iCloud Photos (which ADP flips from Apple-recoverable to E2E), the Keychain (and Health, and a few others) were **already E2E** before ADP existed.
 
-> ⚖️ **Authorization:** Practically, this means a cloud-side legal request to Apple for "the iCloud Keychain" returns nothing usable — there is no Apple-held key. Recovering syncable Keychain items requires either an authenticated client-side join to the user's device circle (you need a trusted device + that device's passcode, or the iCloud Security Code / a recovery contact) or on-device acquisition. Don't promise an investigator that a subpoena to Apple will yield saved passwords; it will not. See [[icloud-acquisition-and-advanced-data-protection]] and [[apple-account-icloud-and-apns]].
+> ⚖️ **Authorization:** Practically, this means a cloud-side legal request to Apple for "the iCloud Keychain" returns nothing usable — there is no Apple-held key. Recovering syncable Keychain items requires either an authenticated client-side join to the user's device circle (you need a trusted device + that device's passcode, or the iCloud Security Code / a recovery contact) or on-device acquisition. Don't promise an investigator that a subpoena to Apple will yield saved passwords; it will not. See [[06-icloud-acquisition-and-advanced-data-protection]] and [[07-apple-account-icloud-and-apns]].
 
 ### iCloud Keychain escrow — the one cloud-side path, and why it's gated
 
@@ -176,7 +176,7 @@ A `kSecClassIdentity` is not a stored row — it is a join: `securityd` matches 
 
 When an item in the `keys` table carries `tkid = com.apple.setoken` (the value of `kSecAttrTokenIDSecureEnclave`), it is a **Secure Enclave-resident key**. The private key was generated *inside* the SEP and the key material never exists outside it; what lives in `keychain-2.db` is only a wrapped **reference/handle**, not the key. App crypto (sign/decrypt) is performed by sending the operation *to* the SEP, which uses the key internally and returns the result.
 
-For acquisition this is a hard wall. A full file-system extraction **plus** the keybag still does not yield a SEP-bound private key, because the key was never on the file system to begin with. The most you recover is the public key and the fact that the private key exists and is SEP-protected. Apps use this exactly because it is non-exfiltratable: device-binding keys, app-attestation keys, and the keys behind "this only works on this physical phone" flows. See [[secure-enclave-hardware]].
+For acquisition this is a hard wall. A full file-system extraction **plus** the keybag still does not yield a SEP-bound private key, because the key was never on the file system to begin with. The most you recover is the public key and the fact that the private key exists and is SEP-protected. Apps use this exactly because it is non-exfiltratable: device-binding keys, app-attestation keys, and the keys behind "this only works on this physical phone" flows. See [[02-secure-enclave-hardware]].
 
 ### Biometric ACLs: the `accc` column
 
@@ -196,15 +196,15 @@ An item can be gated not just by lock state but by **user presence** via an acce
 
 ### Access groups and entitlements (`agrp`)
 
-`agrp` is the sandbox boundary inside the Keychain. An app may only read/write rows whose access group appears in its `keychain-access-groups` entitlement (its `application-identifier` is an implicit group; an App Group is another). System secrets sit in groups like `apple` and `com.apple.token`. Two apps from the same developer that share a `keychain-access-groups` value can share credentials; otherwise they are blind to each other's rows. For the reverse-engineer this maps an item back to its owning app; for the developer it is how a single sign-on token is shared across an app suite. (Entitlements and how `securityd` checks them are covered in [[code-signing-amfi-entitlements]] and [[the-sandbox-and-tcc]].)
+`agrp` is the sandbox boundary inside the Keychain. An app may only read/write rows whose access group appears in its `keychain-access-groups` entitlement (its `application-identifier` is an implicit group; an App Group is another). System secrets sit in groups like `apple` and `com.apple.token`. Two apps from the same developer that share a `keychain-access-groups` value can share credentials; otherwise they are blind to each other's rows. For the reverse-engineer this maps an item back to its owning app; for the developer it is how a single sign-on token is shared across an app suite. (Entitlements and how `securityd` checks them are covered in [[04-code-signing-amfi-entitlements]] and [[05-the-sandbox-and-tcc]].)
 
 ### Where the Keychain is *not* — adjacent secret stores
 
 A methodology trap: not every secret on the device is in `keychain-2.db`, and the Keychain holds things that aren't "passwords." Keep a mental map of the neighbors:
 
-- **The keybag itself is not in the Keychain.** The Data Protection *class keys* that wrap Keychain items live in the **keybag** (`/private/var/keybags/`, SEP-entangled), not in `keychain-2.db`. The Keychain is the *vault*; the keybag is the *ring of keys*. ([[data-protection-and-keybags]])
+- **The keybag itself is not in the Keychain.** The Data Protection *class keys* that wrap Keychain items live in the **keybag** (`/private/var/keybags/`, SEP-entangled), not in `keychain-2.db`. The Keychain is the *vault*; the keybag is the *ring of keys*. ([[02-data-protection-and-keybags]])
 - **Apple-account / iCloud tokens** land in the Keychain under system groups like `com.apple.account` and the **`com.apple.token`** access group (AuthKit/`accountsd`), alongside `apsd`'s APNs push credentials — high-value for account context, and easy to overlook if you only grep for `genp` user passwords.
-- **App secrets stored *outside* the Keychain.** Plenty of apps stash tokens or keys in their *container* — a plist in `Library/Preferences/`, a file in `Documents/`, a Core Data/SQLite row — sometimes in cleartext, sometimes under `NSFileProtection` rather than the Keychain. These follow **file** Data Protection classes, not `pdmn`, so their recoverability is governed by the same BFU/AFU logic but their *location* is the app sandbox, not `keychain-2.db`. Triage both. ([[app-sandbox-and-filesystem-layout]])
+- **App secrets stored *outside* the Keychain.** Plenty of apps stash tokens or keys in their *container* — a plist in `Library/Preferences/`, a file in `Documents/`, a Core Data/SQLite row — sometimes in cleartext, sometimes under `NSFileProtection` rather than the Keychain. These follow **file** Data Protection classes, not `pdmn`, so their recoverability is governed by the same BFU/AFU logic but their *location* is the app sandbox, not `keychain-2.db`. Triage both. ([[00-app-sandbox-and-filesystem-layout]])
 
 > 🔬 **Forensics note:** When an app token is conspicuously *absent* from the Keychain, look in the app's container before concluding it isn't stored — insecure-storage findings (a bearer token in a plaintext `NSUserDefaults` plist) are a staple of mobile app-security testing precisely because so many apps bypass the Keychain. The Keychain is where secrets *should* live; the container is where they too often *also* live.
 
@@ -218,7 +218,7 @@ This is the rule examiners memorize:
 
 So the bumper-sticker: **only an *encrypted* backup yields Keychain secrets, and even then only the non-`ThisDeviceOnly` ones.** The backup keychain is delivered inside the backup as a property-list/manifest structure (`keychain-backup.plist`-style data referenced from `Manifest.db`), which backup-decryption tooling parses once you supply the backup password.
 
-> ⚖️ **Authorization:** The "set a backup password to get the Keychain" technique is a double-edged, evidence-altering act — if no backup password was previously set, *setting one to force the Keychain into the backup changes device state* and must be documented in your chain of custody, performed only under authority, and ideally on a forensic acquisition that records the modification. See [[the-itunes-finder-backup-format]] and [[decrypting-backups-and-images]].
+> ⚖️ **Authorization:** The "set a backup password to get the Keychain" technique is a double-edged, evidence-altering act — if no backup password was previously set, *setting one to force the Keychain into the backup changes device state* and must be documented in your chain of custody, performed only under authority, and ideally on a forensic acquisition that records the modification. See [[03-the-itunes-finder-backup-format]] and [[07-decrypting-backups-and-images]].
 
 ### Deleted items, tombstones, and the WAL
 
@@ -228,7 +228,7 @@ A "deleted" Keychain item is not always gone:
 - A **sync** delete leaves a deliberate **`tomb = 1`** tombstone (a real, queryable row, secret stripped) so the deletion propagates to the rest of the device circle. Tombstones are themselves evidence: they prove an item *existed and was removed*, with the `mdat` marking when.
 - The **WAL** (`-wal`) is the highest-yield recovery target. Because it holds not-yet-checkpointed transactions, it can contain pre-update versions of rows — including a credential's prior value before a password change. **Image the `-wal` and `-shm` alongside the main DB**, always; a `sqlite3` open will checkpoint and collapse them.
 
-> 🔬 **Forensics note:** Don't treat the absence of a current row as proof a credential was never present. Cross-check the WAL, freed pages, tombstones (`tomb=1`), *and* any encrypted backup's older keychain snapshot — and remember that a SEP/keybag-wrapped carved secret is still bound by its original `pdmn`. Deleted-data carving on the Keychain recovers *structure and existence* far more reliably than it recovers *plaintext*. See [[deleted-data-recovery]].
+> 🔬 **Forensics note:** Don't treat the absence of a current row as proof a credential was never present. Cross-check the WAL, freed pages, tombstones (`tomb=1`), *and* any encrypted backup's older keychain snapshot — and remember that a SEP/keybag-wrapped carved secret is still bound by its original `pdmn`. Deleted-data carving on the Keychain recovers *structure and existence* far more reliably than it recovers *plaintext*. See [[14-deleted-data-recovery]].
 
 ### The recoverability matrix
 
@@ -248,7 +248,7 @@ Put it together. For any item, recoverability = (its `pdmn`) × (acquisition met
 
 `*` AFU but currently **locked**: the class-A key is evicted on lock even after first unlock, so `ak`/`aku`/`akpu` are sealed until the next unlock. "Unlocked full-FS" means the device was acquired *while* unlocked (or you can re-unlock it), the only state in which class-A items are readable.
 
-The full-file-system column assumes you have an extraction that includes a live `AppleKeyStore` unwrap (a checkm8/usbliter8-class BootROM foothold on A8–A13, or a commercial tool's exploit chain on supported A14+), because — as established above — the `keychain-2.db` file alone decrypts nothing. The acquisition mechanics live in [[full-file-system-acquisition]] and [[bfu-vs-afu-and-data-protection-classes]]; here the point is that **the item's class, not the tool, sets the ceiling.**
+The full-file-system column assumes you have an extraction that includes a live `AppleKeyStore` unwrap (a checkm8/usbliter8-class BootROM foothold on A8–A13, or a commercial tool's exploit chain on supported A14+), because — as established above — the `keychain-2.db` file alone decrypts nothing. The acquisition mechanics live in [[05-full-file-system-acquisition]] and [[02-bfu-vs-afu-and-data-protection-classes]]; here the point is that **the item's class, not the tool, sets the ceiling.**
 
 ### Worked example: three credentials, three fates
 
@@ -258,7 +258,7 @@ Trace three real items through the matrix to make it concrete.
 2. **A third-party app's OAuth refresh token.** A `genp` row, `svce` = the app's namespace, `agrp` = the app's team-prefixed access group, **`pdmn = ck`** (so it refreshes in the background) and **`sync = 0`**. *Fate:* recoverable AFU; included in an **encrypted** backup (it's not `…u`); not synced. Pull this and you can frequently replay the app's cloud session off-device.
 3. **A banking app's device-binding key.** A `keys` row, **`tkid = com.apple.setoken`** (SEP-bound), `accc` requiring **`biometryCurrentSet`**, `pdmn = akpu`. *Fate:* **never** extractable — the private key is in the SEP, and even retrieval of its handle is biometric-gated. The most a full-FS + keybag yields is its public key and the fact that it exists.
 
-The discipline: for *every* item you care about, read `agrp` (whose is it?), `pdmn` (when is its key live?), `sync`/`tomb` (does it leave the device?), `tkid`/`accc` (is it SEP-bound or live-auth-gated?) — *before* you reason about whether your acquisition can produce the plaintext. Third-party-app triage methodology builds directly on this (see [[third-party-app-methodology]]).
+The discipline: for *every* item you care about, read `agrp` (whose is it?), `pdmn` (when is its key live?), `sync`/`tomb` (does it leave the device?), `tkid`/`accc` (is it SEP-bound or live-auth-gated?) — *before* you reason about whether your acquisition can produce the plaintext. Third-party-app triage methodology builds directly on this (see [[11-third-party-app-methodology]]).
 
 ## Hands-on
 
@@ -371,7 +371,7 @@ frida-trace -U -n TargetApp \
 # and the access group — i.e. the item's class and silo, live, without touching the DB.
 ```
 
-`frida-trace` here is the dynamic-analysis counterpart to the static schema dump: instead of reading `pdmn` off disk you watch the app *declare* its accessibility class at the API boundary. Pair this with [[dynamic-analysis-with-frida]].
+`frida-trace` here is the dynamic-analysis counterpart to the static schema dump: instead of reading `pdmn` off disk you watch the app *declare* its accessibility class at the API boundary. Pair this with [[05-dynamic-analysis-with-frida]].
 
 ## 🧪 Labs
 
@@ -446,7 +446,7 @@ Certificates are public, so this works on a **locked** image with **no decryptio
 
 - **The file alone is worthless.** The single most common rookie error is treating a copied `keychain-2.db` like `chat.db` — running `sqlite3` and expecting passwords. The `data` column is AES-GCM-wrapped to the keybag via `AppleKeyStore`; without the device's live unwrap you get class codes and (maybe) metadata, never secrets.
 - **`pdmn`, not the tool, sets the ceiling.** No acquisition technique recovers an `akpu` item from a locked device or a SEP-bound private key from anywhere. Read the class first; it tells you what's even possible.
-- **BFU vs AFU is decisive and perishable.** A device seized **unlocked-once and still powered** exposes every `ck`/`cku` item; let it hit the 72-hour inactivity reboot (or any reboot) and it drops to **BFU**, sealing class-A and class-C keys until the passcode is re-entered. Keep seized devices powered and isolated. ([[passcode-bfu-afu-and-inactivity]])
+- **BFU vs AFU is decisive and perishable.** A device seized **unlocked-once and still powered** exposes every `ck`/`cku` item; let it hit the 72-hour inactivity reboot (or any reboot) and it drops to **BFU**, sealing class-A and class-C keys until the passcode is re-entered. Keep seized devices powered and isolated. ([[03-passcode-bfu-afu-and-inactivity]])
 - **Don't expect cloud/legal-process to yield the Keychain.** iCloud Keychain is E2E by design, *independent of ADP*. A subpoena to Apple for saved passwords returns nothing decryptable. (iCloud *Backup* is different — and ADP changes *that* — but the Keychain itself was always E2E.)
 - **Setting a backup password to extract the Keychain alters the device.** It's a legitimate technique, but it's an evidentiary modification — authority and documentation required.
 - **`ThisDeviceOnly` items vanish in migration.** Don't conclude an app "had no token" because a restored/migrated device or a backup lacks it — `…u`-class items never migrate; they were simply never in the backup to begin with.
@@ -507,4 +507,4 @@ Certificates are public, so this works on a **locked** image with **no decryptio
 - `man security` (the macOS contrast tool); `PRAGMA table_info` (`sqlite3` docs) for live schema dumps.
 
 ---
-*Related lessons: [[data-protection-and-keybags]] | [[sep-sepos-deep-dive]] | [[passcode-bfu-afu-and-inactivity]] | [[biometrics-security-architecture]] | [[the-itunes-finder-backup-format]] | [[decrypting-backups-and-images]] | [[icloud-acquisition-and-advanced-data-protection]]*
+*Related lessons: [[02-data-protection-and-keybags]] | [[01-sep-sepos-deep-dive]] | [[03-passcode-bfu-afu-and-inactivity]] | [[07-biometrics-security-architecture]] | [[03-the-itunes-finder-backup-format]] | [[07-decrypting-backups-and-images]] | [[06-icloud-acquisition-and-advanced-data-protection]]*

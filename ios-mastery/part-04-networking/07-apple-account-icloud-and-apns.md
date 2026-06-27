@@ -61,7 +61,7 @@ One Apple Account is serviced by a small constellation of cooperating daemons. K
 | `identityservicesd` | IDS | iMessage/FaceTime key directory + push routing ("Madrid") |
 | `cloudd` | CloudKit | Record-based cloud sync (Photos, Notes, Health, third-party) |
 | `bird` | CloudDocs | iCloud Drive / document sync |
-| `searchpartyd` | — | Find My (offline-finding BLE mesh; see [[find-my-and-the-ble-mesh]]) |
+| `searchpartyd` | — | Find My (offline-finding BLE mesh; see [[05-find-my-and-the-ble-mesh]]) |
 | `secd` / `securityd` | Security | iCloud Keychain (CKKS) syncing + escrow client |
 | `gamed`, `nsurlsessiond` | GameKit / Foundation | Game Center identity; background CloudKit/asset transfers |
 
@@ -91,7 +91,7 @@ But a token alone is not enough to look like a trusted device. Apple binds each 
 
 The **ADI** provisioning (Apple doesn't publicly expand the acronym) is a one-time session that seeds an on-device generator; the cross-platform anisette tooling (Provision / pypush / AltServer) exposes the resulting blob at `~/.adi/adi.pb` on a Mac, while genuine macOS keeps the equivalent under `akd`/AOSKit management and iOS holds it inside the protected data partition / keychain-adjacent storage. The OTP is regenerated locally every ~30 s from that seed, exactly like a TOTP authenticator — which is *why* a trusted device never re-prompts for a code.
 
-> 🔬 **Forensics note:** This is the mechanism behind **tokenized cloud acquisition** (Elcomsoft Phone Breaker, others). A tool that lifts the GrandSlam tokens *and* can reproduce valid anisette (because it ran on, or extracted the ADI/machine binding from, the suspect's trusted computer or device) authenticates to iCloud **as that trusted device, with no password and no 2FA prompt.** Extract the tokens + anisette from a seized, signed-in Mac or an unlocked iPhone image, and the cloud opens. This is why the account artifacts below are the bridge to [[icloud-acquisition-and-advanced-data-protection]]: the on-disk tokens are the cloud key.
+> 🔬 **Forensics note:** This is the mechanism behind **tokenized cloud acquisition** (Elcomsoft Phone Breaker, others). A tool that lifts the GrandSlam tokens *and* can reproduce valid anisette (because it ran on, or extracted the ADI/machine binding from, the suspect's trusted computer or device) authenticates to iCloud **as that trusted device, with no password and no 2FA prompt.** Extract the tokens + anisette from a seized, signed-in Mac or an unlocked iPhone image, and the cloud opens. This is why the account artifacts below are the bridge to [[06-icloud-acquisition-and-advanced-data-protection]]: the on-disk tokens are the cloud key.
 
 > ⚠️ **ADVANCED:** Replaying another person's GrandSlam tokens authenticates *as them* to live Apple servers and can trigger account-security signals, new-device emails to the subject, or token revocation. It is a live network action against a third party's account — never a sandbox. Do it only inside explicit legal authority, on a forensic copy of the token material, with the network consequences understood.
 
@@ -102,7 +102,7 @@ A device's account history is rarely a single clean line. Each transition leaves
 - **Sign-in** adds an `iCloud`-type row to the account store (with its `date_added`), provisions GrandSlam tokens into the keychain, enables the chosen data classes, and registers IDS handles. The first sign-in also runs the one-time **ADI provisioning** that seeds anisette.
 - **Sign-out** tears down the active account and its data classes and revokes tokens server-side — but on-device **remnants persist**: stale account-store rows, orphaned keychain items, cached IDS state, and CloudKit caches can survive until overwritten. A "clean" `MobileMeAccounts.plist` does not mean the device was never signed into a different account.
 - **Account switching** (sign out of A, into B) layers B's current state over A's residue. Correlating `Accounts4.sqlite` `date_added`/removal timing with keychain item creation dates and unified-log auth events can reconstruct the switch.
-- **Activation Lock** is the sticky one: signing out of iCloud does *not* by itself clear Find My / Activation Lock binding, which ties the *hardware* to the account at the SEP/`mobileactivationd` level — a critical fact when a seized device is account-locked. See [[find-my-and-the-ble-mesh]].
+- **Activation Lock** is the sticky one: signing out of iCloud does *not* by itself clear Find My / Activation Lock binding, which ties the *hardware* to the account at the SEP/`mobileactivationd` level — a critical fact when a seized device is account-locked. See [[05-find-my-and-the-ble-mesh]].
 
 > 🔬 **Forensics note:** The gap between an account-store row's `date_added` and the *device's* setup/first-boot time is a strong "was this device re-signed-in or restored?" signal. A late `date_added` on the iCloud account, against an old device, suggests a sign-out/sign-in or a restore-from-backup event worth explaining on the timeline.
 
@@ -126,7 +126,7 @@ A device's account history is rarely a single clean line. Each transition leaves
 - **`cloudd`** — the **CloudKit** daemon. App data modeled as CloudKit records (Photos, Notes, Reminders, Health, many third-party apps) syncs through here.
 - **`bird`** — **CloudDocs / iCloud Drive**: file-backed documents and the `~/Library/Mobile Documents` namespace.
 - **iCloud Keychain** syncs through a *separate* path — **CKKS** (CloudKit Keychain) for the device-to-device sync, plus **iCloud Keychain escrow** for recovery. It is not "just another CloudKit container."
-- **`identityservicesd`** (IDS) and **`searchpartyd`** (Find My) are covered below / in [[find-my-and-the-ble-mesh]].
+- **`identityservicesd`** (IDS) and **`searchpartyd`** (Find My) are covered below / in [[05-find-my-and-the-ble-mesh]].
 
 #### CloudKit: the sync data model
 
@@ -158,7 +158,7 @@ Apple's published counts: **14 categories E2EE by default; 23 with ADP** (Apple'
 
 ### Advanced Data Protection re-draws the map
 
-[[advanced-protections-lockdown-sdp-adp]] covers ADP in depth; here is the networking/account-layer consequence. **ADP moves the "server-key-held" tier into E2EE** — iCloud Backup, Drive, Photos, Notes, Reminders, and the rest lose their Apple-held keys, and the key escrow shifts entirely to the user's trusted devices (with a user-set Recovery Key / Recovery Contact as the only fallback). After that:
+[[09-advanced-protections-lockdown-sdp-adp]] covers ADP in depth; here is the networking/account-layer consequence. **ADP moves the "server-key-held" tier into E2EE** — iCloud Backup, Drive, Photos, Notes, Reminders, and the rest lose their Apple-held keys, and the key escrow shifts entirely to the user's trusted devices (with a user-set Recovery Key / Recovery Contact as the only fallback). After that:
 
 - A backup-content or Photos warrant served on Apple returns **encrypted blobs Apple cannot decrypt**.
 - Tokenized acquisition still *authenticates*, but downloads ciphertext — useless without device-side keys.
@@ -199,7 +199,7 @@ So the *type* of push an app can receive is an entitlement fingerprint: an app s
 
 > 🖥️ **macOS contrast:** Byte-for-byte the same `apsd`, same courier, same 5223. On macOS `apsd` keeps its push certificates in a private keychain at **`/Library/Keychains/apsd.keychain`** — a detail you can inspect right now on your Mac. iOS keeps the equivalent material in the protected keystore. The mechanism the learner saw driving macOS Continuity/iMessage/MDM is *the same daemon* doing the same job on the phone; iOS just leans on it harder (it is the wake source for nearly everything).
 
-> 🔬 **Forensics note:** `apsd`'s persistent connection and topic subscriptions are a *device-activity* signal. In the unified log (`process == "apsd"`) you can see courier (re)connections — which double as **network-availability / wake markers** — and the set of subscribed topics, i.e., **which apps and services were push-active**. Cross-reference these against [[knowledgec-db-deep-dive]] and [[powerlog-and-aggregate-dictionary]] to corroborate a pattern-of-life timeline. (Token *values* in the log are typically redacted.)
+> 🔬 **Forensics note:** `apsd`'s persistent connection and topic subscriptions are a *device-activity* signal. In the unified log (`process == "apsd"`) you can see courier (re)connections — which double as **network-availability / wake markers** — and the set of subscribed topics, i.e., **which apps and services were push-active**. Cross-reference these against [[01-knowledgec-db-deep-dive]] and [[03-powerlog-and-aggregate-dictionary]] to corroborate a pattern-of-life timeline. (Token *values* in the log are typically redacted.)
 
 ### IDS — the key directory behind iMessage and FaceTime
 
@@ -220,7 +220,7 @@ iMessage encryption is therefore *per-recipient-device*: add a new iPad, and sen
 
 The **internal service name for iMessage is "Madrid"** (`com.apple.madrid`) — you will see it in IDS logs and registration dumps. FaceTime and the IDS handle-registration flows are siblings on the same daemon.
 
-> 🔬 **Forensics note:** IDS state answers *which handles and which devices belong to this account*. The registration data and `IDStatusCache`-style plists record handle→device mappings and the last-known capabilities/keys of correspondents — useful for proving an account controlled a given phone number/email, and for enumerating the suspect's other devices. iMessage *content* lives in `sms.db` (see [[communications-imessage-and-sms]]); IDS gives you the *identity and routing* metadata around it.
+> 🔬 **Forensics note:** IDS state answers *which handles and which devices belong to this account*. The registration data and `IDStatusCache`-style plists record handle→device mappings and the last-known capabilities/keys of correspondents — useful for proving an account controlled a given phone number/email, and for enumerating the suspect's other devices. iMessage *content* lives in `sms.db` (see [[04-communications-imessage-and-sms]]); IDS gives you the *identity and routing* metadata around it.
 
 ### The account/identity artifact map
 
@@ -370,7 +370,7 @@ mvt-ios check-fs /path/to/extracted_fs -o /tmp/mvt_out
 
 1. `log show --last 1d --predicate 'process == "identityservicesd"' --info | grep -iE 'lookup|register|madrid'`.
 2. Find a `lookup` for a handle and reason about the flow: handle → IDS query → recipient device keys + push tokens → per-device encryption → `apsd`. Note that the *content* never appears here — IDS is identity/routing only.
-3. Relate to [[communications-imessage-and-sms]]: IDS tells you *who/which devices*, `sms.db` holds *what was said*. Confirm (Settings → [Your Name] → Messages, or the PQ3 logs) that the conversation negotiated PQ3 — proof the transport is post-quantum and that recovery must come from an endpoint or non-ADP backup, never the wire.
+3. Relate to [[04-communications-imessage-and-sms]]: IDS tells you *who/which devices*, `sms.db` holds *what was said*. Confirm (Settings → [Your Name] → Messages, or the PQ3 logs) that the conversation negotiated PQ3 — proof the transport is post-quantum and that recovery must come from an endpoint or non-ADP backup, never the wire.
 
 ### Lab 6 — Build the ADP coverage decision tree (analysis drill)
 
@@ -387,12 +387,12 @@ A device-free reasoning exercise that turns the coverage map into an SOP step. T
 - **Check ADP *first*.** Every cloud-acquisition plan hinges on it. ADP on collapses a rich pull to Mail/Contacts/Calendars + account metadata. The status is account-level, not visible from most on-device artifacts alone — confirm via the account or an Apple Legal Process return.
 - **Token replay is a live action against a third party's account.** It is not "reading a file." It can email the subject, trip security heuristics, and revoke the very tokens you're using. Treat it as a network operation requiring its own authorization.
 - **Anisette is machine-bound and time-bound.** Tokens lifted *without* a reproducible anisette/ADI binding will be rejected as coming from an untrusted machine; the `X-Apple-I-MD` OTP also expires in ~30 s. Lifting the token bundle is necessary but not sufficient — the device binding matters.
-- **Apple Mac Absolute Time, again.** Account-store timestamps (`ZDATE`) are 2001-epoch — add `978307200`. Mixing this with Unix or WebKit/Cocoa epochs throws timelines off by decades (see [[the-ios-timestamp-zoo]]).
-- **Port 443 fallback hides APNs.** On a restrictive network `apsd` silently moves to 443; an analyst grepping pcap for "5223 = push" will miss it. Identify APNs by SNI/host (`*-courier.push.apple.com`), not by port alone — relevant in [[traffic-interception-and-tls]].
+- **Apple Mac Absolute Time, again.** Account-store timestamps (`ZDATE`) are 2001-epoch — add `978307200`. Mixing this with Unix or WebKit/Cocoa epochs throws timelines off by decades (see [[00-the-ios-timestamp-zoo]]).
+- **Port 443 fallback hides APNs.** On a restrictive network `apsd` silently moves to 443; an analyst grepping pcap for "5223 = push" will miss it. Identify APNs by SNI/host (`*-courier.push.apple.com`), not by port alone — relevant in [[02-traffic-interception-and-tls]].
 - **Schema and path drift.** `Accounts3 → Accounts4`, `Apple ID → Apple Account`, and exact `apsd`/IDS store filenames have all changed across releases. Confirm `.schema` and actual paths on the target OS version; never write a column name from memory into a report.
-- **BFU kills the keychain-bound tokens.** After the 72-hour inactivity reboot drops the device to **BFU** (see [[passcode-bfu-afu-and-inactivity]]), keychain-protected GrandSlam material is locked. Token extraction needs an **AFU** (after-first-unlock) or otherwise decrypted state.
+- **BFU kills the keychain-bound tokens.** After the 72-hour inactivity reboot drops the device to **BFU** (see [[03-passcode-bfu-afu-and-inactivity]]), keychain-protected GrandSlam material is locked. Token extraction needs an **AFU** (after-first-unlock) or otherwise decrypted state.
 - **The DSID, not the email, is the identity.** Email handles and primary addresses can change; the numeric **DSID** is the stable account key. Attribute and join on the DSID, and treat a matching email as corroboration, not proof.
-- **A subscribed push topic ≠ active use.** A topic in `apsd`'s subscription set proves an app is *installed and push-registered*, not that the user opened or used it. Treat it as a capability/installation signal and corroborate use from [[knowledgec-db-deep-dive]].
+- **A subscribed push topic ≠ active use.** A topic in `apsd`'s subscription set proves an app is *installed and push-registered*, not that the user opened or used it. Treat it as a capability/installation signal and corroborate use from [[01-knowledgec-db-deep-dive]].
 - **Shared-database content is not the owner's.** CloudKit's *shared* database holds records others shared *in*. Do not attribute shared-zone content to the device owner without checking provenance.
 - **Sign-out leaves residue.** A current, single-account `MobileMeAccounts.plist` does not mean the device was never signed into another account; check account-store remnants, keychain item dates, and Activation Lock state.
 
@@ -404,7 +404,7 @@ A device-free reasoning exercise that turns the coverage map into an SOP step. T
 - The **E2EE coverage map** is the examiner's compass: **14 categories E2EE by default, 23 with ADP** (Apple's published figures); **Mail/Contacts/Calendars are never E2EE**; and the **Messages-in-iCloud key rides inside a standard backup**, so default-config iMessage is usually cloud-producible.
 - **`apsd` maintains one persistent TLS connection** (`*-courier.push.apple.com`, **TCP 5223 → 443 fallback**) that multiplexes push for every app and service; silent pushes wake backgrounded apps and drive MDM/Find My.
 - **IDS** (`identityservicesd`, internal name **"Madrid"** for iMessage) is the **public-key directory** that makes iMessage per-device end-to-end encrypted; **Contact Key Verification** adds transparency against ghost-device injection.
-- The high-value account artifacts — **`Accounts4.sqlite`**, **`MobileMeAccounts.plist`**, the **GrandSlam keychain tokens**, and IDS handle/device maps — are the on-disk bridge into [[icloud-acquisition-and-advanced-data-protection]].
+- The high-value account artifacts — **`Accounts4.sqlite`**, **`MobileMeAccounts.plist`**, the **GrandSlam keychain tokens**, and IDS handle/device maps — are the on-disk bridge into [[06-icloud-acquisition-and-advanced-data-protection]].
 
 ## Terms introduced
 
@@ -447,7 +447,7 @@ A device-free reasoning exercise that turns the coverage map into an SOP step. T
 - **GSA / anisette internals** — The Apple Wiki, *Grand Slam Authentication* and *Identity Services*; JJTech's `gsa.py` / **pypush** and Dadoum's **Provision**/libprovision (ADI, anisette, machine provisioning); MathewYaldo's *Apple-GSA-Protocol*; vtky's *AppleID Auth* write-up.
 - **Forensics** — Elcomsoft blog, "Apple vs Law Enforcement: Cloudy Times" (tokenized acquisition + anisette) and Phone Breaker docs; Alexis Brignoni **iLEAPP** (account-store + iCloud parsers); **mvt** (mvt-ios); RealityNet **iOS-Forensics-References**; Josh Hickman / Digital Corpora sample images; Sarah Edwards (mac4n6.com) on account/identity artifacts; SANS FOR585.
 - **Push/RE** — `mfrister/pushproxy` (apsd MITM, certificate pinning, courier protocol); `man 8 apsd`.
-- **Cross-references** — [[icloud-acquisition-and-advanced-data-protection]], [[advanced-protections-lockdown-sdp-adp]], [[communications-imessage-and-sms]], [[traffic-interception-and-tls]].
+- **Cross-references** — [[06-icloud-acquisition-and-advanced-data-protection]], [[09-advanced-protections-lockdown-sdp-adp]], [[04-communications-imessage-and-sms]], [[02-traffic-interception-and-tls]].
 
 ---
-*Related lessons: [[icloud-acquisition-and-advanced-data-protection]] | [[advanced-protections-lockdown-sdp-adp]] | [[the-ios-networking-stack]] | [[communications-imessage-and-sms]] | [[find-my-and-the-ble-mesh]] | [[passcode-bfu-afu-and-inactivity]]*
+*Related lessons: [[06-icloud-acquisition-and-advanced-data-protection]] | [[09-advanced-protections-lockdown-sdp-adp]] | [[00-the-ios-networking-stack]] | [[04-communications-imessage-and-sms]] | [[05-find-my-and-the-ble-mesh]] | [[03-passcode-bfu-afu-and-inactivity]]*

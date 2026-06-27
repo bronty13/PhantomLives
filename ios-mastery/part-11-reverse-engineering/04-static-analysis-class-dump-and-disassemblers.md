@@ -18,7 +18,7 @@ Static analysis is the **first pass**. You do it before Frida, before LLDB, befo
 
 The macOS course taught you `class-dump`, `otool`, and Hopper against fat Mach-O binaries on disk. iOS reuses **every one of those tools** and adds two wrinkles: **Swift metadata recovery** (ObjC-only `class-dump` sees nothing in a pure-Swift binary) and the **dyld shared cache** (the system frameworks are not standalone files — you extract them first). This lesson is the bridge.
 
-> ⚖️ **Authorization:** Reverse-engineering an app you do not own or are not contracted/authorized to test can breach the developer's license terms, the App Store EULA, and — where FairPlay/DRM circumvention is involved — DMCA §1201 (the security-research exemption is narrow and conditional). Everything here targets binaries you are entitled to analyze: your own builds, the OWASP MAS crackmes, in-scope bug-bounty apps, or evidence handled under proper legal authority and chain of custody. Static analysis of a FairPlay-encrypted App Store binary additionally requires decryption first — that is the next lesson, [[fairplay-encryption-and-decrypting-app-store-apps]].
+> ⚖️ **Authorization:** Reverse-engineering an app you do not own or are not contracted/authorized to test can breach the developer's license terms, the App Store EULA, and — where FairPlay/DRM circumvention is involved — DMCA §1201 (the security-research exemption is narrow and conditional). Everything here targets binaries you are entitled to analyze: your own builds, the OWASP MAS crackmes, in-scope bug-bounty apps, or evidence handled under proper legal authority and chain of custody. Static analysis of a FairPlay-encrypted App Store binary additionally requires decryption first — that is the next lesson, [[03-fairplay-encryption-and-decrypting-app-store-apps]].
 
 ## Concepts
 
@@ -42,7 +42,7 @@ The macOS course taught you `class-dump`, `otool`, and Hopper against fat Mach-O
    (crypto · auth · URL/host strings · pinning · keychain · jailbreak checks)
         │
         ▼
-  DYNAMIC analysis ─► Frida / LLDB / objection   ── [[dynamic-analysis-with-frida]]
+  DYNAMIC analysis ─► Frida / LLDB / objection   ── [[05-dynamic-analysis-with-frida]]
 ```
 
 Everything above the dashed line into dynamic analysis is done **entirely on your Mac, against a file** — no device, no jailbreak. That is why this is the most device-independent skill in the whole RE module, and the one you can practice at full fidelity with no iPhone.
@@ -297,7 +297,7 @@ You rarely read a whole binary. You **hunt for the handful of functions that mat
 - **Strings first.** `strings -a -t x binary` (the `-t x` gives file offsets, so you can seek to a hit and pull its xrefs in the disassembler). Hunt for: `https://`/hostnames and API paths, `Authorization`/`Bearer`, `BEGIN … PRIVATE KEY`, S3/bucket URLs, base64 blobs, format strings like `%@/v2/token`, and error strings (`"pin validation failed"`) that bracket the exact logic you want.
 - **Crypto.** Cross-reference imports of `CCCrypt`/`CommonCrypto`, `SecKeyCreateWithData`, `CryptoKit` symbols (`$s9CryptoKit…`), and constant tables (AES S-boxes, SHA-256 init constants `0x6a09e667`) — Ghidra/BN constant search finds hand-rolled crypto that imports won't reveal.
 - **Auth / keychain.** Xref `SecItemCopyMatching`, `SecItemAdd`, `LAContext`/`evaluatePolicy:` (Face ID/Touch ID gates), and any selector containing `password`, `token`, `pin`, `biometric`.
-- **TLS pinning.** Xref `SecTrustEvaluateWithError`, `URLSession:didReceiveChallenge:`, `serverTrust`, and pinned-cert/public-key data blobs in `__TEXT`/`__DATA`. Locating the pinning routine *statically* is the prerequisite for the *dynamic* bypass in [[certificate-pinning-and-bypass]].
+- **TLS pinning.** Xref `SecTrustEvaluateWithError`, `URLSession:didReceiveChallenge:`, `serverTrust`, and pinned-cert/public-key data blobs in `__TEXT`/`__DATA`. Locating the pinning routine *statically* is the prerequisite for the *dynamic* bypass in [[03-certificate-pinning-and-bypass]].
 - **Jailbreak / anti-tamper checks.** Strings like `/Applications/Cydia.app`, `/private/var/jailbreak`, `cydia://`, `frida`, `ptrace`, and calls to `getppid`/`sysctl`/`PT_DENY_ATTACH`. Mapping these statically tells dynamic analysis exactly what to neutralize.
 
 The string→xref→function pivot is the whole game in three steps:
@@ -315,7 +315,7 @@ strings -a -t x MyApp | grep -i 'pin validation failed'
 
 That pattern — *anchor on a human-readable string, follow its single xref, read the dominating compare* — locates auth checks, license gates, pinning decisions, and jailbreak verdicts faster than reading any class graph top-down. The class graph tells you *what exists*; the string xref tells you *where the decision is*.
 
-> 🔬 **Forensics note:** A hardcoded C2 hostname, an embedded API key, or a base64 exfil endpoint recovered purely statically is often the strongest single artifact in a malicious-app investigation — it ties the sample to infrastructure, survives in the binary regardless of device lock state, and needs no live device. Record the **string, its file offset, the section, and every xref** in your notes; that provenance is what makes the finding defensible. (See [[third-party-app-methodology]] for fitting this into a full app exam.)
+> 🔬 **Forensics note:** A hardcoded C2 hostname, an embedded API key, or a base64 exfil endpoint recovered purely statically is often the strongest single artifact in a malicious-app investigation — it ties the sample to infrastructure, survives in the binary regardless of device lock state, and needs no live device. Record the **string, its file offset, the section, and every xref** in your notes; that provenance is what makes the finding defensible. (See [[11-third-party-app-methodology]] for fitting this into a full app exam.)
 
 ## Hands-on
 
@@ -345,7 +345,7 @@ otool -l MyApp | grep -A4 LC_ENCRYPTION_INFO_64    # FairPlay? cryptid 1 = encry
 
 Described output: a SwiftUI app typically shows `arm64`, many `__swift5_*` sections, a sparse `__objc_classlist`, and `LC_DYLD_CHAINED_FIXUPS` present — that combination tells you "use `dsdump --swift`, and pick a chained-fixups-aware ObjC dumper."
 
-The single most important triage check on an **App Store** binary is the last one: `LC_ENCRYPTION_INFO_64` with **`cryptid 1`** means the `__TEXT` is FairPlay-encrypted on disk — `class-dump`/`strings` over it return ciphertext, and *no static tool will work until you decrypt it* (a dump from device memory; see [[fairplay-encryption-and-decrypting-app-store-apps]]). `cryptid 0`, no `LC_ENCRYPTION_INFO_64`, a Simulator build, or a self-signed crackme like the OWASP samples → static analysis works directly. Confirming `cryptid` first saves you from a confusing hour spent dumping garbage.
+The single most important triage check on an **App Store** binary is the last one: `LC_ENCRYPTION_INFO_64` with **`cryptid 1`** means the `__TEXT` is FairPlay-encrypted on disk — `class-dump`/`strings` over it return ciphertext, and *no static tool will work until you decrypt it* (a dump from device memory; see [[03-fairplay-encryption-and-decrypting-app-store-apps]]). `cryptid 0`, no `LC_ENCRYPTION_INFO_64`, a Simulator build, or a self-signed crackme like the OWASP samples → static analysis works directly. Confirming `cryptid` first saves you from a confusing hour spent dumping garbage.
 
 ### Dump Objective-C headers
 
@@ -424,7 +424,7 @@ ipsw dyld swift dyld_shared_cache_arm64e --types --demangle      | head
 2. An `.ipa` is a zip: `unzip -o UnCrackable-Level1.ipa -d /tmp/ucl1` → the Mach-O is `/tmp/ucl1/Payload/<App>.app/<App>`.
 3. Triage + dump: `file`, `class-dump -H` (it's an ObjC app), and `strings -a -t x <App> | grep -iE 'secret|verify|congrat|root|jailbr'`.
 4. From the class-dump, identify the view-controller method that validates user input (look for a selector like `verify:`/`buttonClick:`). Load the binary into Ghidra or Hopper, jump to that IMP, and read the comparison — recover how the expected/secret string is produced or stored. (The point is the *method*: locate the check, follow the data, recover the value — without ever running the app.)
-5. Note the jailbreak/anti-debug check you'll also see (the alert routine). You are *not* bypassing it here — that's the dynamic lab — but you are mapping it statically so the dynamic pass is surgical. Continue in [[dynamic-analysis-with-frida]].
+5. Note the jailbreak/anti-debug check you'll also see (the alert routine). You are *not* bypassing it here — that's the dynamic lab — but you are mapping it statically so the dynamic pass is surgical. Continue in [[05-dynamic-analysis-with-frida]].
 
 ### Lab 4 — Extract one framework from a dyld shared cache (read-only walkthrough)
 
@@ -495,4 +495,4 @@ ipsw dyld swift dyld_shared_cache_arm64e --types --demangle      | head
 - Jonathan Levin, *MacOS and iOS Internals* (newosxbook.com) + `jtool2` — the Mach-O/dyld-cache reference; *iOS Application Security* (Thiel)
 
 ---
-*Related lessons: [[mach-o-arm64-deep-dive]] | [[the-dyld-shared-cache]] | [[the-code-signature-blob-and-entitlements-on-ios]] | [[fairplay-encryption-and-decrypting-app-store-apps]] | [[dynamic-analysis-with-frida]] | [[certificate-pinning-and-bypass]] | [[third-party-app-methodology]]*
+*Related lessons: [[00-mach-o-arm64-deep-dive]] | [[02-the-dyld-shared-cache]] | [[01-the-code-signature-blob-and-entitlements-on-ios]] | [[03-fairplay-encryption-and-decrypting-app-store-apps]] | [[05-dynamic-analysis-with-frida]] | [[03-certificate-pinning-and-bypass]] | [[11-third-party-app-methodology]]*

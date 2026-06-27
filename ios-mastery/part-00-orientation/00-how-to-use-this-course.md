@@ -54,7 +54,7 @@ The two reference tiers in [`reference/`](../reference/) are **not lessons** —
 - **7 hand-authored spines:** `glossary.md`, `acronyms.md`, `mac-side-toolkit-cheatsheet.md`, `forensics-and-dev-toolkit.md`, `macos-to-ios.md` (the "the X of iOS" translation table), `ipados-keyboard-shortcuts.md`, `further-reading.md`.
 - **7 derived indexes** (rebuilt by combing the lesson corpus, not hand-written): `study-guide.md`, `tooling-index.md`, `forensic-artifacts-index.md`, `acquisition-methods-matrix.md`, `sql-queries-index.md`, `timestamps-and-epochs.md`, `entitlements-index.md`.
 
-Parts build on each other: **P00 → P01 → P02 → P03** give every later module its vocabulary. After that the forensics track (07 → 08 → 09) and the dev/RE track (10 → 11) are largely independent, and the platform-usage modules (04 → 05 → 06) can be read à la carte. A forensics engineer who already groks APFS can jump straight to [[app-sandbox-and-filesystem-layout]] — but read [[macos-to-ios-mental-model-reset]] first; iOS has sharp edges (the SEP boundary, Data Protection classes, the inactivity reboot) that will trip even a seasoned macOS examiner.
+Parts build on each other: **P00 → P01 → P02 → P03** give every later module its vocabulary. After that the forensics track (07 → 08 → 09) and the dev/RE track (10 → 11) are largely independent, and the platform-usage modules (04 → 05 → 06) can be read à la carte. A forensics engineer who already groks APFS can jump straight to [[00-app-sandbox-and-filesystem-layout]] — but read [[02-macos-to-ios-mental-model-reset]] first; iOS has sharp edges (the SEP boundary, Data Protection classes, the inactivity reboot) that will trip even a seasoned macOS examiner.
 
 ### Lesson anatomy: the 10-section skeleton
 
@@ -121,7 +121,7 @@ Even though you start without a device, you rehearse evidence discipline from le
 - **Image, then examine; work on copies; log every command.** This is identical to the macOS discipline. On iOS it has extra teeth because acquisition is *lossy and lock-state-dependent* — a botched first attempt can push a device from AFU to BFU and lock data away.
 - **Copy-before-query.** The macOS reflex carries over verbatim. Never open an artifact database in place.
 
-> ⚖️ **Authorization:** The discipline applies even to **sample images and the Simulator**, where there is no live subject. Treat the rehearsal as the real thing: hash your working copy, note provenance, and keep a command log. The point is that the workflow is already muscle memory the first time you sit in front of a device under a warrant or an engagement letter. Landmark lessons — [[ios-forensics-landscape-and-authorization]], [[the-acquisition-taxonomy]], and the rest of Part 07 — open with a bold `⚖️ AUTHORIZED USE ONLY` banner; treat it as a gate, not decoration.
+> ⚖️ **Authorization:** The discipline applies even to **sample images and the Simulator**, where there is no live subject. Treat the rehearsal as the real thing: hash your working copy, note provenance, and keep a command log. The point is that the workflow is already muscle memory the first time you sit in front of a device under a warrant or an engagement letter. Landmark lessons — [[00-ios-forensics-landscape-and-authorization]], [[01-the-acquisition-taxonomy]], and the rest of Part 07 — open with a bold `⚖️ AUTHORIZED USE ONLY` banner; treat it as a gate, not decoration.
 
 > ⚠️ **ADVANCED / DESTRUCTIVE:** Later lessons narrate device-bound, irreversible operations — entering DFU, running `checkm8`/`palera1n`, jailbreaking, side-loading via TrollStore — as read-only walkthroughs. **Never** run them against evidence, against a device you don't own, or without a tested rollback. checkm8 is A8–A11 silicon only; there is no public jailbreak for A12+ on iOS 18/26; TrollStore is frozen at iOS ≤ 17.0 (CoreTrust patched in 17.0.1). Those facts gate what is even *possible* before authorization gates what is *permitted*.
 
@@ -155,7 +155,7 @@ Internalize this now: unlike `macos-mastery`, where `$` meant a shell on the mac
 
 ## Hands-on
 
-These confirm your Mac is a provisioned iOS forensics + dev workstation. The full build-out is [[forensics-and-dev-workstation-setup]]; this is the smoke test.
+These confirm your Mac is a provisioned iOS forensics + dev workstation. The full build-out is [[03-forensics-and-dev-workstation-setup]]; this is the smoke test.
 
 ```bash
 # 1) Xcode + the Simulator control plane
@@ -215,7 +215,7 @@ Everything under that `data/` tree is plaintext on your Mac's APFS — no Data P
 
 1. Run the four Hands-on blocks above. For each tool, record present/absent and version.
 2. Note which tools returned **empty/error output because you have no device** (`idevice_id`, `ideviceinfo`). That inert set is the cost of being device-free — Part 07 shows what subset still works against the Simulator and sample images.
-3. Anything missing → it's installed in [[forensics-and-dev-workstation-setup]]. Don't proceed to Part 01 labs until Xcode + `simctl` work.
+3. Anything missing → it's installed in [[03-forensics-and-dev-workstation-setup]]. Don't proceed to Part 01 labs until Xcode + `simctl` work.
 
 ### Lab 2 — Boot a Simulator and map its on-disk container tree (substrate: Xcode Simulator; fidelity caveat: no SEP, no Data-Protection-at-rest, no baseband, no AMFI; device-only daemons `knowledged`/`biomed`/`powerlogHelperd`/`routined` do **not** populate it)
 
@@ -256,11 +256,11 @@ $ xcrun simctl launch booted com.apple.mobilesafari        # populate something
 
 **Trusting a stale version fact.** A `last_reviewed: 2026-06-26` stamp does not certify a fact in 2028. iOS catalog facts (OS version, device lineup, exploit/tool coverage, DMA fee rates) rot fast. Lead with the mechanism; re-verify the perishable layer at the moment you rely on it.
 
-**Skipping straight to Part 08 because "I know SQLite forensics."** You do — but iOS adds the Data Protection class on top of the schema, the BFU/AFU gate on top of the file, and an epoch zoo on top of the timestamps. Read [[macos-to-ios-mental-model-reset]] and Part 03 before you trust an artifact reading.
+**Skipping straight to Part 08 because "I know SQLite forensics."** You do — but iOS adds the Data Protection class on top of the schema, the BFU/AFU gate on top of the file, and an epoch zoo on top of the timestamps. Read [[02-macos-to-ios-mental-model-reset]] and Part 03 before you trust an artifact reading.
 
 **Reading a database in place.** Same reflex as macOS: a `SELECT` write-locks SQLite and creates `-wal`/`-shm` sidecars, mutating your evidence. Always `cp` first, then query the copy — on the Simulator, on a mounted image, everywhere.
 
-**Mismatched timestamp epochs.** iOS mixes Mac Absolute Time (2001), Unix (1970), Cocoa/Core Data, WebKit (1601), and nanosecond variants across stores. Mixing them yields timestamps decades off. The [[the-ios-timestamp-zoo]] lesson and `reference/timestamps-and-epochs.md` exist precisely for this.
+**Mismatched timestamp epochs.** iOS mixes Mac Absolute Time (2001), Unix (1970), Cocoa/Core Data, WebKit (1601), and nanosecond variants across stores. Mixing them yields timestamps decades off. The [[00-the-ios-timestamp-zoo]] lesson and `reference/timestamps-and-epochs.md` exist precisely for this.
 
 ---
 
@@ -304,4 +304,4 @@ $ xcrun simctl launch booted com.apple.mobilesafari        # populate something
 - **Named researchers / canon:** Jonathan Levin (*MacOS and iOS Internals*, newosxbook.com); Sarah Edwards (mac4n6.com, APOLLO); Ian Whiffin / cclgroupltd (`ccl-segb`, Biome/SEGB); SANS FOR585; theapplewiki.com (checkm8, SHSH, TrollStore version state).
 
 ---
-*Related lessons: [[macos-to-ios-mental-model-reset]] | [[ios-platform-landscape-and-history]] | [[forensics-and-dev-workstation-setup]] | [[simulator-internals-and-on-disk-filesystem]] | [[ios-forensics-landscape-and-authorization]]*
+*Related lessons: [[02-macos-to-ios-mental-model-reset]] | [[01-ios-platform-landscape-and-history]] | [[03-forensics-and-dev-workstation-setup]] | [[01-simulator-internals-and-on-disk-filesystem]] | [[00-ios-forensics-landscape-and-authorization]]*

@@ -14,13 +14,13 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-You already met the headline in [[macos-to-ios-mental-model-reset]] (Reset 2: "signed-code-only") and saw AMFI named in [[dyld-shared-cache-and-amfi]]. This lesson is the mechanism in full, because three of the most consequential things you will ever reason about on iOS all reduce to it:
+You already met the headline in [[02-macos-to-ios-mental-model-reset]] (Reset 2: "signed-code-only") and saw AMFI named in [[07-dyld-shared-cache-and-amfi]]. This lesson is the mechanism in full, because three of the most consequential things you will ever reason about on iOS all reduce to it:
 
 - **As a forensic examiner**, code signing is the **tamper-detection substrate**. "Is this device jailbroken?" and "did an implant run here?" largely become "is there a code-signing state that should be impossible on a stock device?" — a non-Apple loadable trust cache, AMFI enforcement flags cleared, an executable page that validates against no Apple-issued signature.
 - **As a developer**, the entire confusing ritual of certificates, provisioning profiles, App IDs, and the seven-day free-provisioning clock is just the front-end of this one enforcement system. Once you see *why* the kernel refuses your build, the error messages stop being mysterious.
 - **As a reverse-engineer (Part 11)**, the code signature is the first thing you parse on any Mach-O — it tells you the binary's identity (`cdhash`), what it was allowed to do (entitlements), and whether it is FairPlay-encrypted.
 
-Get this layer right and the sandbox ([[the-sandbox-and-tcc]]), the jailbreak landscape ([[the-jailbreak-landscape-2026]]), and app distribution ([[distribution-testflight-appstore-enterprise]]) all click into place, because they all sit on top of it.
+Get this layer right and the sandbox ([[05-the-sandbox-and-tcc]]), the jailbreak landscape ([[07-the-jailbreak-landscape-2026]]), and app distribution ([[09-distribution-testflight-appstore-enterprise]]) all click into place, because they all sit on top of it.
 
 ## Concepts
 
@@ -28,7 +28,7 @@ Get this layer right and the sandbox ([[the-sandbox-and-tcc]]), the jailbreak la
 
 On a stock iOS device, **the kernel will never grant execute permission to a memory page whose contents are not covered by a valid Apple-rooted code signature.** This is enforced at the moment a page is faulted in for execution (when the VM subsystem would set `VM_PROT_EXECUTE`), not at install time and not at first launch — page by page, lazily, for the life of the process. There is no `chmod +x`, no "run anyway" dialog, no quarantine xattr to strip. A process that somehow gets unsigned bytes into an executable mapping is killed with a code-signing fault (`CS_KILL`).
 
-That single invariant is the foundation the rest of iOS security assumes. Data Protection, the sandbox, and the entitlement model are only meaningful if the kernel enforcing them is itself the kernel Apple signed (the boot chain, [[boot-chain-securerom-iboot]]) and if the userspace code making security decisions can't be swapped for an attacker's unsigned code. Mandatory code signing is what makes "trusted code" a coherent idea above the boot chain.
+That single invariant is the foundation the rest of iOS security assumes. Data Protection, the sandbox, and the entitlement model are only meaningful if the kernel enforcing them is itself the kernel Apple signed (the boot chain, [[01-boot-chain-securerom-iboot]]) and if the userspace code making security decisions can't be swapped for an attacker's unsigned code. Mandatory code signing is what makes "trusted code" a coherent idea above the boot chain.
 
 > 🖥️ **macOS contrast:** macOS has the *same machinery* — AMFI, the same `LC_CODE_SIGNATURE`/Code Directory format, the hardened runtime, `amfid`, even `CoreTrust` on Apple Silicon — but it is wired as **policy, not physics**. Gatekeeper/`spctl` only gate *quarantined, GUI-launched* apps; you can compile a binary, ad-hoc-sign it (or not sign it at all), and run it straight from Terminal. Notarization gates *distribution*, not *execution*. On iOS the kernel gates **execution itself**, and there is no shell, no `--no-sandbox`, and no supported way to lower the policy. The Mac's signing is a doorman; iOS's is a law of physics.
 
@@ -82,13 +82,13 @@ The hash of the Code Directory itself is the **`cdhash`** — a ~20-byte fingerp
                                                     grant + entitlements   CS_KILL
 ```
 
-> 🔬 **Forensics note:** This architecture is *why* certain device states are tamper indicators. A `palera1n`/usbliter8-class jailbreak (BootROM-exploit devices — checkm8 A8–A11, usbliter8 A12–A13; see [[boot-chain-securerom-iboot]]) defeats this by **patching `AMFI.kext`'s decision in kernel memory** (so the checks always pass) or by **injecting a loadable trust cache** of the attacker's own `cdhash`es so their unsigned tools run as "platform binaries." Both leave detectable traces: a non-Apple loadable trust cache resident in kernel memory, cleared AMFI enforcement flags, or a running process whose `cdhash` appears in no Apple-shipped trust cache and no developer signature. On a modern A14+ device with no public BootROM exploit, *any* of these is a strong tamper signal, not a normal condition.
+> 🔬 **Forensics note:** This architecture is *why* certain device states are tamper indicators. A `palera1n`/usbliter8-class jailbreak (BootROM-exploit devices — checkm8 A8–A11, usbliter8 A12–A13; see [[01-boot-chain-securerom-iboot]]) defeats this by **patching `AMFI.kext`'s decision in kernel memory** (so the checks always pass) or by **injecting a loadable trust cache** of the attacker's own `cdhash`es so their unsigned tools run as "platform binaries." Both leave detectable traces: a non-Apple loadable trust cache resident in kernel memory, cleared AMFI enforcement flags, or a running process whose `cdhash` appears in no Apple-shipped trust cache and no developer signature. On a modern A14+ device with no public BootROM exploit, *any* of these is a strong tamper signal, not a normal condition.
 
 ### CoreTrust: moving the cert check below amfid
 
 There is a subtlety that matters historically and forensically. `amfid` runs in **userspace**, which means that on a jailbroken device (kernel compromised) an attacker could simply patch `amfid` to approve anything — and early jailbreaks did exactly that. Apple's answer (around iOS 12) was **CoreTrust**, a small **in-kernel** module that independently validates that a binary's CMS signature **chains to a real Apple-issued certificate**. Even if `amfid` is subverted, CoreTrust in the kernel still demands an Apple-rooted leaf — so you cannot get arbitrary code signed by a non-Apple CA to run, no matter what userspace says.
 
-CoreTrust is also the component at the center of **TrollStore**: a **signature-validation flaw in CoreTrust** (the way it handled certain multiply-signed binaries) let an **ad-hoc-signed binary carry arbitrary entitlements** and still pass kernel validation — a *permanent*, install-once sideload with full entitlements, no jailbreak required. Apple patched that CoreTrust bug class, and **TrollStore's supported window is frozen at iOS ≤ 17.0** (closed in 17.0.1). The lesson for you: CoreTrust is the kernel's "the signer is really Apple/a real developer" gate, and its history is a reminder that the *cert-chain* check and the *entitlement* check are distinct steps that have been attacked independently. (Full RE treatment in [[trollstore-and-the-coretrust-bug]].)
+CoreTrust is also the component at the center of **TrollStore**: a **signature-validation flaw in CoreTrust** (the way it handled certain multiply-signed binaries) let an **ad-hoc-signed binary carry arbitrary entitlements** and still pass kernel validation — a *permanent*, install-once sideload with full entitlements, no jailbreak required. Apple patched that CoreTrust bug class, and **TrollStore's supported window is frozen at iOS ≤ 17.0** (closed in 17.0.1). The lesson for you: CoreTrust is the kernel's "the signer is really Apple/a real developer" gate, and its history is a reminder that the *cert-chain* check and the *entitlement* check are distinct steps that have been attacked independently. (Full RE treatment in [[08-trollstore-and-the-coretrust-bug]].)
 
 ### The trust cache: how platform binaries skip the round-trip
 
@@ -104,13 +104,13 @@ When AMFI sees a `cdhash` in a trust cache, the binary is a **platform binary**:
 
 ### Entitlements: privilege as a property of the signature
 
-This is the deepest conceptual shift from the Mac, and it ties back to Reset 0 of [[macos-to-ios-mental-model-reset]]: **on iOS there is no uid you escalate to; a program's privileges are the entitlements embedded in its code signature.** "Can this process do X?" is answered at sign-and-verify time by its entitlement set, not at runtime by `sudo`.
+This is the deepest conceptual shift from the Mac, and it ties back to Reset 0 of [[02-macos-to-ios-mental-model-reset]]: **on iOS there is no uid you escalate to; a program's privileges are the entitlements embedded in its code signature.** "Can this process do X?" is answered at sign-and-verify time by its entitlement set, not at runtime by `sudo`.
 
 Entitlements are a property-list of keys the binary claims, pinned by the Code Directory (so they can't be edited post-signing) and *authorized* by the provisioning profile (so a developer can't claim whatever they like). Categories worth knowing:
 
 - **Capability entitlements** a normal developer can request via a profile: `application-identifier` (the App ID), `keychain-access-groups`, `com.apple.security.application-groups` (App Groups), `com.apple.developer.*` (push, HealthKit, Network Extension, associated domains, …). These map to the "Capabilities" you toggle in Xcode.
 - **Restricted entitlements** only **Apple** can grant (held by platform binaries, never issuable to third parties): `platform-application`, `com.apple.private.*` (thousands of private SPI gates), `task_for_pid-allow` (debug arbitrary processes), and the like. A third-party app claiming one of these is refused.
-- **Special developer entitlements** with security weight: **`get-task-allow`** (lets a debugger attach to this process — present in development builds, *absent* in App Store builds, which is why you can't `lldb`-attach to a shipping app); **`dynamic-codesigning`** (the `MAP_JIT` W^X exception for JIT, held by WebKit's JIT processes and essentially no third-party app — the reason on-device interpreters historically ran interpreter-only and why Frida injection is hard, [[dynamic-analysis-with-frida]]).
+- **Special developer entitlements** with security weight: **`get-task-allow`** (lets a debugger attach to this process — present in development builds, *absent* in App Store builds, which is why you can't `lldb`-attach to a shipping app); **`dynamic-codesigning`** (the `MAP_JIT` W^X exception for JIT, held by WebKit's JIT processes and essentially no third-party app — the reason on-device interpreters historically ran interpreter-only and why Frida injection is hard, [[05-dynamic-analysis-with-frida]]).
 
 > 🖥️ **macOS contrast:** macOS entitlements exist and matter (the hardened runtime, `com.apple.security.cs.allow-jit`, the App Sandbox entitlement), but a Mac developer can **self-sign** most of them and run; the system trusts the developer at the keyboard. On iOS the same entitlement is inert unless a **provisioning profile signed by Apple** authorizes it — privilege is delegated from Apple, not asserted by the owner.
 
@@ -260,4 +260,4 @@ ipsw kernel ctr/trustcache <kernelcache>               # list trust-cache cdhash
 - **OWASP MASTG** (mas.owasp.org) — "iOS Code Signing" and "Testing Code Quality" sections for the app-security-testing view.
 
 ---
-*Related lessons: [[the-ios-security-model]] | [[dyld-shared-cache-and-amfi]] | [[macos-to-ios-mental-model-reset]] | [[the-sandbox-and-tcc]] | [[boot-chain-securerom-iboot]] | [[code-signing-and-provisioning-in-depth]] | [[trollstore-and-the-coretrust-bug]] | [[the-jailbreak-landscape-2026]] | [[the-app-bundle-and-ipa-structure]]*
+*Related lessons: [[00-the-ios-security-model]] | [[07-dyld-shared-cache-and-amfi]] | [[02-macos-to-ios-mental-model-reset]] | [[05-the-sandbox-and-tcc]] | [[01-boot-chain-securerom-iboot]] | [[06-code-signing-and-provisioning-in-depth]] | [[08-trollstore-and-the-coretrust-bug]] | [[07-the-jailbreak-landscape-2026]] | [[04-the-app-bundle-and-ipa-structure]]*

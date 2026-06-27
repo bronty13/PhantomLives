@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-In [[traffic-interception-and-tls]] you became a man-in-the-middle the app *willingly trusts*: plant your proxy's CA root, enable full trust, and default `URLSession` validation accepts your forged leaf because it chains to a now-trusted root. That works against the **majority** of iOS apps — most ship no pinning at all. The ones that *do* pin are exactly the ones whose traffic you most want to read: banking, healthcare, "secure" messengers, DRM-bearing media, and anything with a server-side abuse-prevention story. For those, a trusted CA is not enough — the app does a *second* check that your proxy leaf fails.
+In [[02-traffic-interception-and-tls]] you became a man-in-the-middle the app *willingly trusts*: plant your proxy's CA root, enable full trust, and default `URLSession` validation accepts your forged leaf because it chains to a now-trusted root. That works against the **majority** of iOS apps — most ship no pinning at all. The ones that *do* pin are exactly the ones whose traffic you most want to read: banking, healthcare, "secure" messengers, DRM-bearing media, and anything with a server-side abuse-prevention story. For those, a trusted CA is not enough — the app does a *second* check that your proxy leaf fails.
 
 Pinning is therefore the single recurring obstacle between an assessor (or a forensics examiner reconstructing a suspect app's server behavior in a lab) and the wire. Recognizing it, locating *which* mechanism the app uses, and removing it under authorization is a standard, expected step in every mobile assessment — codified in OWASP MASVS-NETWORK. This lesson is the mechanism map: the four ways apps pin, why 2026's prevailing engineering opinion treats pinning as *operationally net-negative*, and the bypass ladder from one-liner to binary surgery.
 
@@ -192,7 +192,7 @@ Two facts shape every real engagement:
 
 1. **The majority of iOS apps ship no pinning.** A correctly installed and fully-trusted proxy CA reads them transparently — no Frida, no jailbreak. Before you reach for the bypass ladder, *confirm the app actually pins* (handshake completes then drops; only one host fails while others decrypt fine). Don't fight a pin that isn't there.
 
-2. **Among engineers, pinning is now widely viewed as operationally net-negative**, for the same reason the web abandoned HTTP Public Key Pinning (HPKP, removed from Chrome in 2018): **pinning is a foot-gun that can brick your app for every user at once.** If a pinned key is lost, rotated without a pre-published backup pin, or the issuing CA changes, *every installed copy fails to connect* until users update — an outage you cannot hotfix server-side. The modern posture for many teams is short-lived certificates + Certificate Transparency monitoring + ATS's strong defaults, *not* pinning; and where pinning is used, the guidance is **CA/intermediate pinning with backup pins**, never bare leaf pinning. For the assessor this means: pinning, when present, is often *one* layer that may be paired with jailbreak/Frida detection, so plan for a bypass that survives anti-instrumentation (covered in [[anti-tamper-pinning-and-detection-both-sides]]).
+2. **Among engineers, pinning is now widely viewed as operationally net-negative**, for the same reason the web abandoned HTTP Public Key Pinning (HPKP, removed from Chrome in 2018): **pinning is a foot-gun that can brick your app for every user at once.** If a pinned key is lost, rotated without a pre-published backup pin, or the issuing CA changes, *every installed copy fails to connect* until users update — an outage you cannot hotfix server-side. The modern posture for many teams is short-lived certificates + Certificate Transparency monitoring + ATS's strong defaults, *not* pinning; and where pinning is used, the guidance is **CA/intermediate pinning with backup pins**, never bare leaf pinning. For the assessor this means: pinning, when present, is often *one* layer that may be paired with jailbreak/Frida detection, so plan for a bypass that survives anti-instrumentation (covered in [[11-anti-tamper-pinning-and-detection-both-sides]]).
 
 ### The bypass ladder (authorized testing)
 
@@ -239,11 +239,11 @@ Interceptor.replace(eval, new NativeCallback((trust, errOut) => {
 }, "bool", ["pointer","pointer"]));
 ```
 
-For TrustKit specifically, hook `-[TSKPinningValidator evaluateTrust:forHostname:]` and return the "trusted" result enum. For an Objective-C hand-rolled delegate, hook `-URLSession:didReceiveChallenge:completionHandler:` and invoke the completion handler with `NSURLSessionAuthChallengeUseCredential` + a credential built from the (now unvalidated) trust. This is the runtime-exploration skill from [[dynamic-analysis-with-frida]] and [[objection-swizzling-and-runtime-exploration]] applied to one well-known target.
+For TrustKit specifically, hook `-[TSKPinningValidator evaluateTrust:forHostname:]` and return the "trusted" result enum. For an Objective-C hand-rolled delegate, hook `-URLSession:didReceiveChallenge:completionHandler:` and invoke the completion handler with `NSURLSessionAuthChallengeUseCredential` + a credential built from the (now unvalidated) trust. This is the runtime-exploration skill from [[05-dynamic-analysis-with-frida]] and [[06-objection-swizzling-and-runtime-exploration]] applied to one well-known target.
 
-**Rung 3 — SSL Kill Switch (device, jailbroken).** [SSL Kill Switch 2](https://github.com/nabla-c0d3/ssl-kill-switch2) (nabla-c0d3) and the maintained fork **SSL Kill Switch 3** are MobileSubstrate/ElleKit tweaks that patch BoringSSL system-wide on a jailbroken device — SSL Kill Switch 2 hooks `SSL_CTX_set_custom_verify`, SSL Kill Switch 3 moved to `SSL_set_custom_verify` (iOS 13+) and adds rootless/fishhook support and `SecTrustEvaluate`-family disabling for iOS 15+. Same idea as objection's BoringSSL hook, but persistent and process-wide via the tweak loader instead of injected per-launch. **Device-only** — it needs a jailbreak, which on 2026 hardware means the BootROM-exploit ceiling (checkm8 A8–A11; usbliter8 A12–A13) plus a userland jailbreak; there is no public kernel jailbreak for A12+ on iOS 18/26 (see [[the-jailbreak-landscape-2026]]). objection/Frida against a developer-signed app is the device-free equivalent of this rung.
+**Rung 3 — SSL Kill Switch (device, jailbroken).** [SSL Kill Switch 2](https://github.com/nabla-c0d3/ssl-kill-switch2) (nabla-c0d3) and the maintained fork **SSL Kill Switch 3** are MobileSubstrate/ElleKit tweaks that patch BoringSSL system-wide on a jailbroken device — SSL Kill Switch 2 hooks `SSL_CTX_set_custom_verify`, SSL Kill Switch 3 moved to `SSL_set_custom_verify` (iOS 13+) and adds rootless/fishhook support and `SecTrustEvaluate`-family disabling for iOS 15+. Same idea as objection's BoringSSL hook, but persistent and process-wide via the tweak loader instead of injected per-launch. **Device-only** — it needs a jailbreak, which on 2026 hardware means the BootROM-exploit ceiling (checkm8 A8–A11; usbliter8 A12–A13) plus a userland jailbreak; there is no public kernel jailbreak for A12+ on iOS 18/26 (see [[07-the-jailbreak-landscape-2026]]). objection/Frida against a developer-signed app is the device-free equivalent of this rung.
 
-**Rung 4 — static binary patch.** The most robust against runtime anti-instrumentation: decrypt the app binary (FairPlay strip — see [[fairplay-encryption-and-decrypting-app-store-apps]]), locate the verification routine in the Mach-O (the delegate method, the SPKI compare, or the call into `SecTrustEvaluateWithError`), and patch the branch so it always takes the "trusted" path (e.g. `MOV W0, #1; RET`, or invert/NOP the conditional branch after the compare). Then re-sign and re-install (see [[code-signing-and-provisioning-in-depth]]). No injected agent means nothing for an anti-Frida/anti-debug guard to detect — the trade-off is per-binary reverse-engineering effort and a re-sign step.
+**Rung 4 — static binary patch.** The most robust against runtime anti-instrumentation: decrypt the app binary (FairPlay strip — see [[03-fairplay-encryption-and-decrypting-app-store-apps]]), locate the verification routine in the Mach-O (the delegate method, the SPKI compare, or the call into `SecTrustEvaluateWithError`), and patch the branch so it always takes the "trusted" path (e.g. `MOV W0, #1; RET`, or invert/NOP the conditional branch after the compare). Then re-sign and re-install (see [[06-code-signing-and-provisioning-in-depth]]). No injected agent means nothing for an anti-Frida/anti-debug guard to detect — the trade-off is per-binary reverse-engineering effort and a re-sign step.
 
 > 🔬 **Forensics note:** Each rung leaves different artifacts and has different evidentiary weight. objection/Frida modify nothing on disk (instrumentation is in-memory) — clean for the original-evidence copy, but your *script* is the documented method. SSL Kill Switch requires a jailbroken device, which is itself a major chain-of-custody event (you have altered the device). A static patch produces a *modified, re-signed binary* — never confuse that with the original evidence; it is a derived working copy, hashed and logged separately. Whichever rung you use, the bypass is part of your method, not part of the evidence: record it in the engagement log alongside the captured flows it enabled.
 
@@ -342,7 +342,7 @@ frida -n Target -l disable_pinning.js
 
 Described objection output on success: `(agent) Custom TLS validator not found`/`Found NSURLSession … hooking` lines, then `(agent) Job: <uuid> - Started` — after which the previously-dead host begins decrypting in mitmproxy.
 
-**Confirm the effect on the wire:** with mitmproxy running and the Simulator trusting your CA (from [[traffic-interception-and-tls]]), a pinned demo app shows *handshake-complete-then-drop* before the bypass, and *full decrypted flows* after `ios sslpinning disable` — that before/after is the deliverable.
+**Confirm the effect on the wire:** with mitmproxy running and the Simulator trusting your CA (from [[02-traffic-interception-and-tls]]), a pinned demo app shows *handshake-complete-then-drop* before the bypass, and *full decrypted flows* after `ios sslpinning disable` — that before/after is the deliverable.
 
 **Locate the patch site for Rung 4 (disassembly, on a decrypted binary):** the verification routine ends in a boolean returned in `w0`. In a disassembler you're looking for a call to `SecTrustEvaluateWithError` (or the SPKI `memcmp`/`==`) followed by a conditional branch on the result; the patch is to force the trusted path — e.g. overwrite the comparison-and-branch so the function returns `1`:
 
@@ -356,7 +356,7 @@ Described objection output on success: `(agent) Custom TLS validator not found`/
   ret                      ; or NOP the cbz so the reject path is never taken
 ```
 
-Then re-sign (`codesign -f -s -`) and reinstall. Nothing is injected at runtime, so an in-memory anti-Frida/anti-debug guard sees a clean process — the trade-off is the per-binary RE effort, covered in [[static-analysis-class-dump-and-disassemblers]] and [[mach-o-arm64-deep-dive]].
+Then re-sign (`codesign -f -s -`) and reinstall. Nothing is injected at runtime, so an in-memory anti-Frida/anti-debug guard sees a clean process — the trade-off is the per-binary RE effort, covered in [[04-static-analysis-class-dump-and-disassemblers]] and [[00-mach-o-arm64-deep-dive]].
 
 ## 🧪 Labs
 
@@ -371,7 +371,7 @@ Then re-sign (`codesign -f -s -`) and reinstall. Nothing is injected at runtime,
 ### Lab 2 — Build a pinning demo app and watch it block your proxy (Simulator)
 
 1. In Xcode, build a trivial app that does one `URLSession` GET to a host you control, with a delegate that implements `urlSession(_:didReceive:completionHandler:)` and rejects unless the leaf's SPKI matches a hard-coded pin (use the value from Lab 1). Run it in the Simulator.
-2. Start mitmproxy and make the Simulator trust your CA (the Lab from [[traffic-interception-and-tls]]).
+2. Start mitmproxy and make the Simulator trust your CA (the Lab from [[02-traffic-interception-and-tls]]).
 3. Observe the failure signature in mitmproxy: **handshake completes, then the client drops** — contrast that with what an *un-pinned* build does (clean decrypted flow). **Deliverable:** the two mitmproxy event traces side by side, annotated with where gate 1 vs. gate 2 fired.
 
 ### Lab 3 — Static pinning triage of a sample bundle (read-only)
@@ -387,13 +387,13 @@ Then re-sign (`codesign -f -s -`) and reinstall. Nothing is injected at runtime,
 
 ### Lab 5 — SSL Kill Switch & static-patch rungs (read-only walkthrough)
 
-> ⚠️ **ADVANCED (device-only — you have no device).** Narrate, don't execute: on a jailbroken phone you'd install **SSL Kill Switch 3** via the package manager, which loads as an ElleKit tweak hooking `SSL_set_custom_verify` in `libboringssl.dylib` process-wide, then launch the target and capture with a trusted proxy CA — no per-launch injection. For the **static-patch** rung: FairPlay-decrypt the Store binary ([[fairplay-encryption-and-decrypting-app-store-apps]]), open it in a disassembler, find the call to `SecTrustEvaluateWithError` (or the SPKI compare), patch the result to always-trusted (`MOV W0, #1; RET` or NOP the failing branch), re-sign ([[code-signing-and-provisioning-in-depth]]), reinstall.
+> ⚠️ **ADVANCED (device-only — you have no device).** Narrate, don't execute: on a jailbroken phone you'd install **SSL Kill Switch 3** via the package manager, which loads as an ElleKit tweak hooking `SSL_set_custom_verify` in `libboringssl.dylib` process-wide, then launch the target and capture with a trusted proxy CA — no per-launch injection. For the **static-patch** rung: FairPlay-decrypt the Store binary ([[03-fairplay-encryption-and-decrypting-app-store-apps]]), open it in a disassembler, find the call to `SecTrustEvaluateWithError` (or the SPKI compare), patch the result to always-trusted (`MOV W0, #1; RET` or NOP the failing branch), re-sign ([[06-code-signing-and-provisioning-in-depth]]), reinstall.
 
 1. Map each step to its device-free analogue from Labs 1–4 (objection's BoringSSL hook ≈ SSL Kill Switch's `SSL_set_custom_verify` hook; the Frida `SecTrustEvaluateWithError` hook ≈ the static patch of the same call). **Deliverable:** a short table aligning each device-only step to the Simulator/Frida skill that stands in for it, plus the distinct chain-of-custody note for each rung.
 
 ## Pitfalls & gotchas
 
-- **Don't fight a pin that isn't there.** Most apps don't pin. If interception fails, first re-confirm CA trust and proxy-awareness (an explicit proxy misses non-`URLSession` sockets and QUIC/HTTP-3 — see [[traffic-interception-and-tls]]) *before* assuming pinning. The pinning signature is specific: handshake completes, then the client drops or sends an alert, and **only the pinned host fails while others decrypt fine**.
+- **Don't fight a pin that isn't there.** Most apps don't pin. If interception fails, first re-confirm CA trust and proxy-awareness (an explicit proxy misses non-`URLSession` sockets and QUIC/HTTP-3 — see [[02-traffic-interception-and-tls]]) *before* assuming pinning. The pinning signature is specific: handshake completes, then the client drops or sends an alert, and **only the pinned host fails while others decrypt fine**.
 
 - **`SecKeyCopyExternalRepresentation` ≠ SPKI.** Both as builder and breaker: the raw key bytes are not the DER `SubjectPublicKeyInfo`. A pin computed over the raw representation won't match the standard SPKI-SHA256-BASE64 from openssl/NSPinnedDomains/TrustKit. If a recovered hand-rolled hash refuses to reproduce with the openssl pipeline, suspect this — the app pins to a non-standard digest.
 
@@ -403,7 +403,7 @@ Then re-sign (`codesign -f -s -`) and reinstall. Nothing is injected at runtime,
 
 - **A BoringSSL hook defeats the standard stack but not custom TLS.** Apps that bundle their own TLS (a statically-linked OpenSSL/BoringSSL/mbedTLS in a C core, or do raw socket TLS) won't route through `/usr/lib/libboringssl.dylib`; you must find and hook *their* verify path. This is why objection sometimes "doesn't work" on otherwise-standard-looking apps.
 
-- **Anti-instrumentation pairs with pinning on hardened apps.** A jailbreak/Frida/debugger detector can crash or fake-succeed your bypass, making it look like the pin held. If objection disconnects or the app dies on attach, you're fighting anti-tamper, not pinning — see [[anti-tamper-pinning-and-detection-both-sides]]. A static patch (Rung 4) sidesteps in-memory detectors entirely.
+- **Anti-instrumentation pairs with pinning on hardened apps.** A jailbreak/Frida/debugger detector can crash or fake-succeed your bypass, making it look like the pin held. If objection disconnects or the app dies on attach, you're fighting anti-tamper, not pinning — see [[11-anti-tamper-pinning-and-detection-both-sides]]. A static patch (Rung 4) sidesteps in-memory detectors entirely.
 
 - **Certificate Transparency (`NSRequiresCertificateTransparency`) is not pinning** but produces a similar late failure: a proxy leaf with no SCTs is rejected. Rarer, but don't misdiagnose it as a pin you can't find.
 
@@ -450,4 +450,4 @@ Then re-sign (`codesign -f -s -`) and reinstall. Nothing is injected at runtime,
 - `man openssl-x509`, `man openssl-pkey`, `man openssl-dgst` — the exact flags for the SPKI pipeline on your OS version.
 
 ---
-*Related lessons: [[traffic-interception-and-tls]] | [[dynamic-analysis-with-frida]] | [[objection-swizzling-and-runtime-exploration]] | [[anti-tamper-pinning-and-detection-both-sides]] | [[owasp-mastg-and-app-security-testing]] | [[static-analysis-class-dump-and-disassemblers]]*
+*Related lessons: [[02-traffic-interception-and-tls]] | [[05-dynamic-analysis-with-frida]] | [[06-objection-swizzling-and-runtime-exploration]] | [[11-anti-tamper-pinning-and-detection-both-sides]] | [[10-owasp-mastg-and-app-security-testing]] | [[04-static-analysis-class-dump-and-disassemblers]]*

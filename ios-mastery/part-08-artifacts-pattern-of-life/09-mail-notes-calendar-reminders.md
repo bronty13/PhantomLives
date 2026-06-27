@@ -20,7 +20,7 @@ Messages, call logs, and location get the attention, but in real casework the de
 
 ### The four stores at a glance
 
-All four are SQLite (Reminders and Notes via Core Data; Calendar a hand-rolled relational schema; Mail a hybrid of two SQLite indexes plus a tree of MIME files). On a real device every one of them is **Data-Protection-class encrypted at rest** — typically `NSFileProtectionCompleteUntilFirstUserAuthentication` (Class C), so they are readable in an **AFU** acquisition but opaque in **BFU**. (See [[bfu-vs-afu-and-data-protection-classes]].)
+All four are SQLite (Reminders and Notes via Core Data; Calendar a hand-rolled relational schema; Mail a hybrid of two SQLite indexes plus a tree of MIME files). On a real device every one of them is **Data-Protection-class encrypted at rest** — typically `NSFileProtectionCompleteUntilFirstUserAuthentication` (Class C), so they are readable in an **AFU** acquisition but opaque in **BFU**. (See [[02-bfu-vs-afu-and-data-protection-classes]].)
 
 | App | Primary store | On-device path (`/private/var/mobile/...`) | Format | Owning framework |
 |---|---|---|---|---|
@@ -29,7 +29,7 @@ All four are SQLite (Reminders and Notes via Core Data; Calendar a hand-rolled r
 | Calendar | `Calendar.sqlitedb` | `Library/Calendar/Calendar.sqlitedb` | Relational SQLite (EventKit backing store) | `EventKit` / `calaccessd` |
 | Reminders | `Data-<UUID>.sqlite` | `Library/Reminders/Container_v1/Stores/` *(also a `group.com.apple.reminders` group container)* | Core Data SQLite | `EventKit` (`remindd`) |
 
-Each of these is a WAL-mode database. As with `sms.db` in [[communications-imessage-and-sms]], the `-wal` and `-shm` sidecars are part of the evidence — copy the triplet, never let a client checkpoint the original, and carve the WAL for deleted rows before any tool folds it back.
+Each of these is a WAL-mode database. As with `sms.db` in [[04-communications-imessage-and-sms]], the `-wal` and `-shm` sidecars are part of the evidence — copy the triplet, never let a client checkpoint the original, and carve the WAL for deleted rows before any tool folds it back.
 
 > 🖥️ **macOS contrast:** You already dissected the **exact same formats** in macOS Mastery. `NoteStore.sqlite` (gzip-protobuf `ZICNOTEDATA.ZDATA`), the Mail `Envelope Index` + `.emlx` tree, and `Calendar.sqlitedb` are **byte-for-byte the same schemas** on the Mac — only the path roots differ (`~/Library/Group Containers/group.com.apple.notes/` and `~/Library/Mail/` and `~/Library/Calendar/`). The frameworks (`EventKit`, the Notes protobuf, MailKit's index split) are shared code. If a suspect runs Continuity + iCloud, the Mac is a **second copy of all four stores**, frequently AFU/FileVault-unlocked when the phone is locked — often your fastest path to the same content.
 
@@ -37,7 +37,7 @@ Each of these is a WAL-mode database. As with `sms.db` in [[communications-imess
 
 ### The iCloud-vs-local provenance axis
 
-Every row in all four stores carries an **account** association, and getting it right is load-bearing. A note "On My iPhone" (local account) behaves completely differently from an iCloud note: the local one never left the device and has no CloudKit server-side copy to subpoena; the iCloud one is replicated, may have **server-side deleted-record tombstones** recoverable via [[icloud-acquisition-and-advanced-data-protection]], and is subject to **ADP** (Advanced Data Protection) — which, if enabled, makes the iCloud copy end-to-end encrypted and **breaks cloud acquisition** entirely, leaving the on-device copy as your only avenue.
+Every row in all four stores carries an **account** association, and getting it right is load-bearing. A note "On My iPhone" (local account) behaves completely differently from an iCloud note: the local one never left the device and has no CloudKit server-side copy to subpoena; the iCloud one is replicated, may have **server-side deleted-record tombstones** recoverable via [[06-icloud-acquisition-and-advanced-data-protection]], and is subject to **ADP** (Advanced Data Protection) — which, if enabled, makes the iCloud copy end-to-end encrypted and **breaks cloud acquisition** entirely, leaving the on-device copy as your only avenue.
 
 - **Notes** — accounts live in `ZICCLOUDSYNCINGOBJECT` rows of entity type *ICAccount* (`ZACCOUNTTYPE`, `ZNAME`); a note's account is reached via the note → folder → account chain. A "Local"/"On My iPhone" account is distinguishable from an iCloud (CloudKit) account.
 - **Mail** — each configured account (iCloud, Gmail/IMAP, Exchange) is its own mailbox subtree under `Library/Mail/`, and the `Envelope Index` `mailboxes` table maps numeric mailbox IDs to URLs that name the account and folder.
@@ -181,7 +181,7 @@ So a "who emailed whom about what" answer is a **join across two databases**: th
 
 `CalendarItem.start_date` / `end_date` are **Mac-Absolute Time** (seconds since 2001), stored **in UTC** with a separate timezone reference — which is the standard Calendar trap: a tool that ignores the event's stored timezone (or treats a *floating* all-day event as UTC) shifts wall-clock times by hours. All-day and "floating" events deliberately carry no fixed UTC instant; render them by date, not by converting an instant.
 
-> 🔬 **Forensics note:** Calendar is the only one of the four that records **deliberate future intent with place + people**. An event is not passive telemetry like a location fix — the user *typed it in*. Join `CalendarItem → Location` (where they planned to be), `CalendarItem → Participant → Identity` (who they planned to be with), and `last_modified` (when they last touched the plan), and you have a defensible statement that the subject intended to be at a named place, with named people, at a specific time. The `description`/notes field on an event frequently carries dial-in numbers, addresses, or free-text plans. Compare planned events against [[location-history]] fixes to confirm or refute that the plan was executed.
+> 🔬 **Forensics note:** Calendar is the only one of the four that records **deliberate future intent with place + people**. An event is not passive telemetry like a location fix — the user *typed it in*. Join `CalendarItem → Location` (where they planned to be), `CalendarItem → Participant → Identity` (who they planned to be with), and `last_modified` (when they last touched the plan), and you have a defensible statement that the subject intended to be at a named place, with named people, at a specific time. The `description`/notes field on an event frequently carries dial-in numbers, addresses, or free-text plans. Compare planned events against [[07-location-history]] fixes to confirm or refute that the plan was executed.
 
 > 🔬 **Forensics note:** Deleted events are not always gone. Recurring-event *exceptions* (a single deleted occurrence of a repeating event) leave detached/cancelled rows; declined invitations persist as `Participant` rows with a declined `status`; and the WAL holds recently deleted `CalendarItem` rows. The `last_modified` column lets you spot events that were edited after the fact.
 
@@ -229,7 +229,7 @@ SELECT Z_ENT, Z_NAME FROM Z_PRIMARYKEY ORDER BY Z_ENT;
 | Reminders | `ZCREATIONDATE`, `ZDUEDATE`, `ZCOMPLETIONDATE` | Mac-Absolute (2001), **seconds** | `+978307200`, then `unixepoch` |
 | **Mail (Envelope Index)** | `date_received`, `date_sent`, `date_created` | **Unix (1970), seconds** | `unixepoch` directly — **no** `+978307200` |
 
-Mail is the odd one out. Mixing Mail's Unix-epoch dates with the Mac-Absolute math you use everywhere else lands you ~31 years off — the same "30-year trap" from [[communications-imessage-and-sms]], in reverse. See [[the-ios-timestamp-zoo]].
+Mail is the odd one out. Mixing Mail's Unix-epoch dates with the Mac-Absolute math you use everywhere else lands you ~31 years off — the same "30-year trap" from [[04-communications-imessage-and-sms]], in reverse. See [[00-the-ios-timestamp-zoo]].
 
 ## Hands-on
 
@@ -457,4 +457,4 @@ ORDER BY ZCREATIONDATE DESC;"
 - `man sqlite3` (`.schema`, `.recover`, `writefile`), `man protoc` / `protoc --decode_raw`, `man gunzip`.
 
 ---
-*Related lessons: [[app-sandbox-and-filesystem-layout]] | [[communications-imessage-and-sms]] | [[location-history]] | [[the-ios-timestamp-zoo]] | [[bfu-vs-afu-and-data-protection-classes]] | [[icloud-acquisition-and-advanced-data-protection]] | [[deleted-data-recovery]]*
+*Related lessons: [[00-app-sandbox-and-filesystem-layout]] | [[04-communications-imessage-and-sms]] | [[07-location-history]] | [[00-the-ios-timestamp-zoo]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[14-deleted-data-recovery]]*

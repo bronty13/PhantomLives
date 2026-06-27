@@ -134,7 +134,7 @@ Unlike the other three stores this is a **plain hand-rolled SQLite** table (no C
 | `trashed_date` | When moved to "Deleted" — **Mac Absolute (2001)!** |
 | `flags` | Bitmask: read/unread, deleted, etc. |
 
-> 🔬 **Forensics note — the two-epoch trap in ONE table:** `voicemail.date` is **Unix (1970)** but `voicemail.trashed_date` is **Mac Absolute (2001)** in the *same row*. Apply `+978307200` to `trashed_date` and you get a date ~31 years in the future; apply it to `date` and you get a date ~31 years in the past. This is the canonical worked example of "the iOS timestamp zoo" — convert each column by its own epoch, never globally. (See [[the-ios-timestamp-zoo]].)
+> 🔬 **Forensics note — the two-epoch trap in ONE table:** `voicemail.date` is **Unix (1970)** but `voicemail.trashed_date` is **Mac Absolute (2001)** in the *same row*. Apply `+978307200` to `trashed_date` and you get a date ~31 years in the future; apply it to `date` and you get a date ~31 years in the past. This is the canonical worked example of "the iOS timestamp zoo" — convert each column by its own epoch, never globally. (See [[00-the-ios-timestamp-zoo]].)
 
 > 🔬 **Forensics note — carving deleted voicemail:** A deleted voicemail is *soft-deleted* — its row gets a `trashed_date` and a deleted `flags` bit but the **`<ROWID>.amr` file often remains on disk** until a later purge. So even when the row is gone you may still have the audio, and even when the audio is gone the row's metadata (caller, date, duration) may survive in the DB or its `-wal`. Recover both halves independently.
 
@@ -191,7 +191,7 @@ Attachments hang off interactions through the auto-generated CoreData join table
 
 > 🔬 **Forensics note — it catches what the others miss:** A subject who does all their sensitive comms in Signal or WhatsApp leaves *nothing* in `CallHistory`/`sms.db` for that traffic — but every donated interaction still lands in `interactionC.db` with `ZBUNDLEID='org.whispersystems.signal'` and a contact, direction, and timestamp. The **content** is encrypted and out of reach; the **metadata of contact** is right here. CoreDuet is frequently the *only* on-device evidence that a third-party-app conversation happened at all.
 
-> 🔬 **Forensics note — corroborate with Biome/knowledgeC:** CoreDuet is the same intelligence family that feeds `knowledgeC` and the newer **Biome/SEGB** streams, and from iOS 17 onward Apple has been shifting pattern-of-life telemetry toward Biome (see [[biome-and-segb-streams]]). Practically, an `interactionC` interaction with `com.apple.MobileSMS` should line up with a `/app/inFocus` or `/app/usage` window for Messages in `knowledgeC`/Biome at the same minute. When they *don't* align — an interaction with no corresponding app-usage, or vice versa — you have either a donation from a background/extension context or a tampering indicator worth chasing. Treat the three stores as mutually corroborating, not redundant.
+> 🔬 **Forensics note — corroborate with Biome/knowledgeC:** CoreDuet is the same intelligence family that feeds `knowledgeC` and the newer **Biome/SEGB** streams, and from iOS 17 onward Apple has been shifting pattern-of-life telemetry toward Biome (see [[02-biome-and-segb-streams]]). Practically, an `interactionC` interaction with `com.apple.MobileSMS` should line up with a `/app/inFocus` or `/app/usage` window for Messages in `knowledgeC`/Biome at the same minute. When they *don't* align — an interaction with no corresponding app-usage, or vice versa — you have either a donation from a background/extension context or a tampering indicator worth chasing. Treat the three stores as mutually corroborating, not redundant.
 
 > 🖥️ **macOS contrast:** This is the exact same `interactionC.db` you parsed on macOS at `~/Library/CoreDuet/People/`. On the Mac it tracks Mail/Messages/Calls interactions for Siri Suggestions; on iOS the same daemon (`coreduetd`) and schema track the full mobile app surface. If you ran APOLLO's CoreDuet modules in macOS-mastery, the modules apply unchanged here — only the device of origin differs.
 
@@ -213,7 +213,7 @@ interactionC.db         aggregate counters in ZCONTACTS persist even after indiv
                          detail; deleted detail rows carve from freelist/-wal
 ```
 
-The general DFIR discipline (covered in [[deleted-data-recovery]]) applies: **acquire the `-wal`/`-shm`, then carve freelist and unallocated pages** before you trust a "0 results" query. The standout here is voicemail — the database row and the `.amr` audio are *two separate deletable objects*, and losing one does not mean losing the other.
+The general DFIR discipline (covered in [[14-deleted-data-recovery]]) applies: **acquire the `-wal`/`-shm`, then carve freelist and unallocated pages** before you trust a "0 results" query. The standout here is voicemail — the database row and the `.amr` audio are *two separate deletable objects*, and losing one does not mean losing the other.
 
 ### The epoch zoo for this lesson
 
@@ -332,7 +332,7 @@ FROM ZINTERACTIONS GROUP BY ZBUNDLEID ORDER BY n DESC;"
 
 **Getting the files off (Mac-side acquisition).** From a backup or a logical/full-FS image:
 
-> ⚠️ **ADVANCED:** Pulling these stores from a *live* device (`pymobiledevice3 backup2`, `idevicebackup2`) requires the device unlocked and paired, and writes a fresh pairing record + a backup that can perturb on-device state; an **encrypted** backup is mandatory to capture `CallHistory`/voicemail/contacts at full fidelity (an unencrypted backup omits some of them). Never run acquisition against the only copy of evidence — image first, hash, then operate on the copy. A full-file-system extraction (checkm8/usbliter8 on ≤A13, or an agent on a supported build) gives you the live DBs *plus* their `-wal`/`-shm` and the `.amr` set that a backup may not fully include. See [[full-file-system-acquisition]] and [[logical-acquisition-with-libimobiledevice]].
+> ⚠️ **ADVANCED:** Pulling these stores from a *live* device (`pymobiledevice3 backup2`, `idevicebackup2`) requires the device unlocked and paired, and writes a fresh pairing record + a backup that can perturb on-device state; an **encrypted** backup is mandatory to capture `CallHistory`/voicemail/contacts at full fidelity (an unencrypted backup omits some of them). Never run acquisition against the only copy of evidence — image first, hash, then operate on the copy. A full-file-system extraction (checkm8/usbliter8 on ≤A13, or an agent on a supported build) gives you the live DBs *plus* their `-wal`/`-shm` and the `.amr` set that a backup may not fully include. See [[05-full-file-system-acquisition]] and [[04-logical-acquisition-with-libimobiledevice]].
 
 ```bash
 # pymobiledevice3 — pull a (decrypted) backup, then map the WirelessDomain hash
@@ -386,7 +386,7 @@ python3 apollo.py -o csv -p ios /path/to/CoreDuet/People/   # APOLLO CoreDuet ti
 
 1. Run iLEAPP across the image; open the Call History, Contacts, Voicemail, and InteractionC reports.
 2. Run APOLLO's CoreDuet modules for the interaction timeline.
-3. Merge into one CSV keyed on number (last-4 normalized) and sorted by time. For one target contact, assemble: contact creation date → first interaction → call legs → voicemails → last interaction. You have just built a single correspondent's relationship history from four stores — the deliverable a report actually needs. (Carry this into [[building-a-unified-timeline]].)
+3. Merge into one CSV keyed on number (last-4 normalized) and sorted by time. For one target contact, assemble: contact creation date → first interaction → call legs → voicemails → last interaction. You have just built a single correspondent's relationship history from four stores — the deliverable a report actually needs. (Carry this into [[01-building-a-unified-timeline]].)
 4. **Validation pass:** pick one `interactionC` row with `ZBUNDLEID='com.apple.mobilephone'` and confirm a matching `ZCALLRECORD` exists at the same time. Then find an `interactionC` row whose `ZBUNDLEID` is a third-party app and confirm it has **no** counterpart in `CallHistory`/`sms.db`. Documenting both the corroboration and the gap is what separates a defensible report from an assertion.
 
 ## Pitfalls & gotchas
@@ -397,7 +397,7 @@ python3 apollo.py -o csv -p ios /path/to/CoreDuet/People/   # APOLLO CoreDuet ti
 - **Numbers aren't normalized consistently.** `CallHistory.ZADDRESS` stores the number as dialed; `AddressBook` stores it as typed; `interactionC.ZIDENTIFIER` varies. Join on **last-N digits** (`ABPhoneLastFour` is your friend), never string equality, or you'll under-count a contact.
 - **Cached names lie.** A name shown beside a call may be a stale denormalized cache from before a rename/delete. Treat raw number and resolved name as separate, separately-sourced facts.
 - **The Simulator won't help for three of the four stores.** `coreduetd`/`callservicesd` don't run there; only `AddressBook` is meaningfully reproducible on the Simulator. Don't conclude "no calls/interactions" from a Simulator container.
-- **iCloud sync = cross-device contamination.** "Calls in iCloud," iCloud Contacts, and CoreDuet's iCloud syncing mean a row can originate on *another* of the subject's devices. Presence ≠ origination. Note sync state from the account configuration before attributing an event to this handset. And with **Advanced Data Protection** enabled, the iCloud-side copies of these stores are end-to-end encrypted — cloud acquisition won't hand them to you (see [[icloud-acquisition-and-advanced-data-protection]]).
+- **iCloud sync = cross-device contamination.** "Calls in iCloud," iCloud Contacts, and CoreDuet's iCloud syncing mean a row can originate on *another* of the subject's devices. Presence ≠ origination. Note sync state from the account configuration before attributing an event to this handset. And with **Advanced Data Protection** enabled, the iCloud-side copies of these stores are end-to-end encrypted — cloud acquisition won't hand them to you (see [[06-icloud-acquisition-and-advanced-data-protection]]).
 - **`.storedata` is just SQLite.** Don't be thrown by the extension — open `CallHistory.storedata` directly with `sqlite3`. Conversely, don't assume a `.db` is hand-rolled: `interactionC.db` is CoreData (`Z`-prefixed) while `voicemail.db` is not.
 - **Deletion is soft, then lazy.** Cleared call rows persist in freelist/WAL; trashed voicemails keep their `.amr`; `ABPersonChanges` journals contact edits. Carve before you conclude "deleted."
 - **An unencrypted backup is a lossy backup.** iTunes/Finder backups omit several of these stores (and Keychain) unless the backup is **encrypted**. If you acquired an unencrypted backup and the call log/voicemail/contacts look thin or empty, that's the acquisition method, not the device — re-acquire encrypted or go full-FS before concluding the data isn't there.
@@ -450,4 +450,4 @@ python3 apollo.py -o csv -p ios /path/to/CoreDuet/People/   # APOLLO CoreDuet ti
 - `man sqlite3`, `man afconvert` — read-only DB opens and AMR→WAV transcoding.
 
 ---
-*Related lessons: [[communications-imessage-and-sms]] | [[knowledgec-db-deep-dive]] | [[biome-and-segb-streams]] | [[the-ios-timestamp-zoo]] | [[building-a-unified-timeline]] | [[correlation-and-anti-forensics]] | [[deleted-data-recovery]] | [[icloud-acquisition-and-advanced-data-protection]] | [[third-party-app-methodology]]*
+*Related lessons: [[04-communications-imessage-and-sms]] | [[01-knowledgec-db-deep-dive]] | [[02-biome-and-segb-streams]] | [[00-the-ios-timestamp-zoo]] | [[01-building-a-unified-timeline]] | [[02-correlation-and-anti-forensics]] | [[14-deleted-data-recovery]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[11-third-party-app-methodology]]*

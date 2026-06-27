@@ -46,7 +46,7 @@ The forensic punchline: **supervision + Automated Device Enrollment is the maxim
 
 ### The MDM payload: how the relationship is established
 
-Everything begins with one configuration profile containing a payload of type **`com.apple.mdm`**. (Configuration profiles in general — their CMS signing, payload structure, and on-disk form — are [[configuration-profiles-and-mobileconfig]]; this is the one payload that turns a profile into a *management channel*.) The key fields:
+Everything begins with one configuration profile containing a payload of type **`com.apple.mdm`**. (Configuration profiles in general — their CMS signing, payload structure, and on-disk form — are [[04-configuration-profiles-and-mobileconfig]]; this is the one payload that turns a profile into a *management channel*.) The key fields:
 
 | Key | Meaning |
 |---|---|
@@ -58,7 +58,7 @@ Everything begins with one configuration profile containing a payload of type **
 | `CheckOutWhenRemoved` | If true, the device sends a `CheckOut` when the profile is removed. |
 | `ServerCapabilities` / `SignMessage` | Negotiated features and whether the device CMS-signs its messages with the identity cert. |
 
-The identity certificate is the crux of authentication. There are no shared secrets on the wire after enrollment: **every** check-in and command exchange is a mutual-TLS handshake using the device's enrollment identity, so a stolen `ServerURL` alone buys an attacker nothing. (If your PKI instincts are rusty, this is the SCEP/ACME enrollment dance riding on top of the code-signing/identity machinery from [[code-signing-amfi-entitlements]].)
+The identity certificate is the crux of authentication. There are no shared secrets on the wire after enrollment: **every** check-in and command exchange is a mutual-TLS handshake using the device's enrollment identity, so a stolen `ServerURL` alone buys an attacker nothing. (If your PKI instincts are rusty, this is the SCEP/ACME enrollment dance riding on top of the code-signing/identity machinery from [[04-code-signing-amfi-entitlements]].)
 
 ### The check-in protocol — enroll, token, unenroll
 
@@ -71,7 +71,7 @@ MDM is split into two sub-protocols. The **check-in** protocol manages the *exis
   - `UnlockToken` — an **escrowed blob the device generates that lets the server clear the passcode** (the `ClearPasscode` command) without knowing it. (Forensically loud — see below.)
 - **`CheckOut`** — sent when the MDM profile is removed (only if `CheckOutWhenRemoved` is set), telling the server to forget the device.
 
-> 🔬 **Forensics note:** The `UnlockToken` is the quiet bombshell of this protocol. If the MDM server escrowed it at enrollment, the controlling organization can issue a `ClearPasscode` and **remove the device passcode** — which, on an **AFU** (After-First-Unlock) device, is a real path to the data without brute force. That makes the org a lawful-access lead: a warrant to the MDM operator may yield the unlock token (and the Activation Lock bypass code below). Tie this to [[passcode-bfu-afu-and-inactivity]] — the escrow only helps while keys are available (AFU); a **BFU** device that has hit the inactivity reboot is still cold.
+> 🔬 **Forensics note:** The `UnlockToken` is the quiet bombshell of this protocol. If the MDM server escrowed it at enrollment, the controlling organization can issue a `ClearPasscode` and **remove the device passcode** — which, on an **AFU** (After-First-Unlock) device, is a real path to the data without brute force. That makes the org a lawful-access lead: a warrant to the MDM operator may yield the unlock token (and the Activation Lock bypass code below). Tie this to [[03-passcode-bfu-afu-and-inactivity]] — the escrow only helps while keys are available (AFU); a **BFU** device that has hit the inactivity reboot is still cold.
 
 ### The command/poll model — APNs is only a doorbell
 
@@ -101,7 +101,7 @@ Consequences you should internalize:
 
 - **All command data flows device→server over the direct HTTPS channel**, never through APNs. APNs is fire-and-forget and may be coalesced/dropped; the device also polls on its own cadence and after reboots, so commands eventually land even if a push is missed.
 - **`NotNow`** is the device saying "I can't do this in my current state" (classically: it's locked and the command needs the passcode-derived keys). The server re-pushes later.
-- **The device dials out.** For interception/analysis you watch the device's outbound TLS to `ServerURL`, not inbound (cf. [[traffic-interception-and-tls]]).
+- **The device dials out.** For interception/analysis you watch the device's outbound TLS to `ServerURL`, not inbound (cf. [[02-traffic-interception-and-tls]]).
 
 > 🖥️ **macOS contrast:** Identical model on the Mac — `mdmclient` polls the same way after an APNs wake, which is why an offline Mac "ignores" MDM until it reconnects. The protocol is shared; only the daemon name and the on-disk profile store differ (`/var/db/ConfigurationProfiles/` on macOS vs. the systemgroup container on iOS, below).
 
@@ -187,7 +187,7 @@ Two unlocks deserve their own paragraphs because they bite forensics directly:
 
 **Activation Lock bypass.** On a supervised device, Activation Lock is *off by default*, but the MDM can permit it and **escrow a bypass code**. The MDM generates a random **31-byte** code, registers it with Apple's servers, and on the Activation Lock screen the code is entered **in the password field with the username left blank** to clear the lock. Timing matters and is examinable: the bypass code is retrievable for up to **~15 days after the device is first supervised**, or until the MDM fetches and clears it — miss that window and the code is gone. So a managed device that's been supervised more than ~15 days may have an *unretrievable* code unless the MDM grabbed it in time. (Verify the 31-byte / 15-day specifics against Apple's current Deployment guide — Apple has tuned these.)
 
-**Prohibit host pairing.** This is the supervised restriction that breaks your USB workflow. When set, the device refuses to establish a pairing record with any host lacking a matching supervision identity — so `idevicepair pair` (and therefore lockdown-mediated logical acquisition, see [[logical-acquisition-with-libimobiledevice]]) returns *"pairing prohibited by supervisor."* Without the org's `.p12`, the USB door is shut.
+**Prohibit host pairing.** This is the supervised restriction that breaks your USB workflow. When set, the device refuses to establish a pairing record with any host lacking a matching supervision identity — so `idevicepair pair` (and therefore lockdown-mediated logical acquisition, see [[04-logical-acquisition-with-libimobiledevice]]) returns *"pairing prohibited by supervisor."* Without the org's `.p12`, the USB door is shut.
 
 > 🔬 **Forensics note:** **Host-pairing prohibition is the supervised-device acquisition wall.** A logical/backup acquisition over USB depends on a pairing record (the `escrow bag` exchanged during pair). If the supervisor prohibited pairing, you cannot pair, cannot extract a backup, cannot run `pymobiledevice3` lockdown services — unless you obtain the **supervision identity** from the controlling org. This is frequently *the* reason a "simple logical extraction" fails on an enterprise iPhone, and it routes you to either the org (for the `.p12`) or to a method that doesn't need pairing.
 
@@ -199,7 +199,7 @@ The imperative queue-and-poll model above is being *displaced*, not retired, by 
 - The **legacy software-update** commands, queries, deferrals, and restrictions are being **removed entirely** on the 27.0 platforms (announced WWDC 2025/2026) — software update is becoming **DDM-only**. Fleets still pushing updates the old way break.
 - WWDC26 added DDM **network** configurations (VPN/IKEv2/IPsec/DNS proxy/relay), delivery of **legacy profiles as declarative assets**, **Lockdown Mode status reporting on supervised devices**, and **remote log collection** commands.
 
-DDM is its own lesson — [[declarative-device-management]]. Know here only that the imperative protocol is the substrate DDM rides on, and that 2026-era artifacts increasingly reflect *declarations*, not commands.
+DDM is its own lesson — [[03-declarative-device-management]]. Know here only that the imperative protocol is the substrate DDM rides on, and that 2026-era artifacts increasingly reflect *declarations*, not commands.
 
 > ⚖️ **Authorization:** A managed device is owned by an organization, and that org's policies, its right to wipe, and its escrowed credentials are legal facts about the device. Acquisition that leans on management — obtaining a supervision identity, an `UnlockToken`, or an Activation-Lock bypass code from the MDM operator — requires the appropriate legal process directed at *that organization*, separate from your authority over the device itself. Document the management state as part of chain of custody: it changes who else has had (and retains) control.
 
@@ -222,7 +222,7 @@ For triage, you must determine — fast — whether a device is managed, supervi
 
 (Exact filenames drift across iOS versions — confirm the set on your target image; the *names* above are the ones to grep for. `CloudConfigurationDetails.plist` is the highest-value single file: it's the ADE activation record and names the controlling organization and MDM server.)
 
-**2. The management daemons and their logs.** Profile installation is handled by **`profiled`**; the MDM client side by the MDM daemon (**`mdmd`** on iOS / **`mdmclient`** on macOS — verify the exact iOS binary name on your build); cloud configuration / ADE by **`cloudconfigurationd`**. Their activity surfaces in the unified log and in a **sysdiagnose** under subsystems like `com.apple.ManagedClient` (predicate on `process == "mdmd"` / `"profiled"` / `"cloudconfigurationd"`). A sysdiagnose also bundles a **profiles/configuration report** — often the fastest read on a *cooperating* device. (Unified-log and sysdiagnose mechanics: [[unified-logs-sysdiagnose-crash-network]].)
+**2. The management daemons and their logs.** Profile installation is handled by **`profiled`**; the MDM client side by the MDM daemon (**`mdmd`** on iOS / **`mdmclient`** on macOS — verify the exact iOS binary name on your build); cloud configuration / ADE by **`cloudconfigurationd`**. Their activity surfaces in the unified log and in a **sysdiagnose** under subsystems like `com.apple.ManagedClient` (predicate on `process == "mdmd"` / `"profiled"` / `"cloudconfigurationd"`). A sysdiagnose also bundles a **profiles/configuration report** — often the fastest read on a *cooperating* device. (Unified-log and sysdiagnose mechanics: [[12-unified-logs-sysdiagnose-crash-network]].)
 
 **3. The UI / management-state surfaces.** **Settings → General → VPN & Device Management** lists installed profiles and, on a supervised device, shows the banner *"This iPhone is supervised and managed by \<Organization\>."* The presence and removability of the management profile (greyed-out "Remove Management" = supervised/non-removable) is a one-glance read. On a backup or full-file-system image you reconstruct the same facts from the plists above.
 
@@ -413,7 +413,7 @@ pymobiledevice3 syslog live | grep -Ei "mdmd|profiled|cloudconfigurationd"
 - **ABM/ASM + ADE (formerly DEP)** bind a device's serial to an organization at purchase; the binding is **sticky across wipes**, so a supervised ADE device re-enrolls after an erase — its institutional provenance can't be laundered.
 - **Management rewrites the forensic picture.** A managed device has a remote actor that can **wipe/lock/locate/clear-passcode** — RF-isolate first. Supervision can **prohibit host pairing**, blocking USB logical acquisition unless you hold the org's supervision identity. The `ServerURL` names a subpoena target; the escrowed `UnlockToken`/bypass code are lawful-access leads.
 - **Detect management from three layers:** the on-disk `systemgroup.com.apple.configurationprofiles` store (`MDM.plist`, `CloudConfigurationDetails.plist`, `MDMEvents.plist`), the `mdmd`/`profiled`/`cloudconfigurationd` unified-log/sysdiagnose trail, and the Settings/VPN & Device Management banner.
-- **Declarative Device Management is the 2026 standard** layered on the same enrollment; legacy software-update and Intelligence/Siri/keyboard restrictions are deprecated/removed (26.4 → 27.0), so modern artifacts increasingly reflect declarations, not commands — see [[declarative-device-management]].
+- **Declarative Device Management is the 2026 standard** layered on the same enrollment; legacy software-update and Intelligence/Siri/keyboard restrictions are deprecated/removed (26.4 → 27.0), so modern artifacts increasingly reflect declarations, not commands — see [[03-declarative-device-management]].
 
 ## Terms introduced
 
@@ -450,4 +450,4 @@ pymobiledevice3 syslog live | grep -Ei "mdmd|profiled|cloudconfigurationd"
 - `man security` (the `cms` subcommand), `man plutil`, `man defaults` — Mac-side profile dissection.
 
 ---
-*Related lessons: [[configuration-profiles-and-mobileconfig]] | [[declarative-device-management]] | [[logical-acquisition-with-libimobiledevice]] | [[passcode-bfu-afu-and-inactivity]] | [[ios-forensics-landscape-and-authorization]] | [[lockdown-mode-and-enterprise-posture]]*
+*Related lessons: [[04-configuration-profiles-and-mobileconfig]] | [[03-declarative-device-management]] | [[04-logical-acquisition-with-libimobiledevice]] | [[03-passcode-bfu-afu-and-inactivity]] | [[00-ios-forensics-landscape-and-authorization]] | [[06-lockdown-mode-and-enterprise-posture]]*

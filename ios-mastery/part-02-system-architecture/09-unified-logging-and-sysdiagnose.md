@@ -40,7 +40,7 @@ iOS uses the **same daemon, same format, same store layout.** On a device the Un
                                      dyld shared cache (UUID-named files, no .dsc extension)
 ```
 
-If you ever pulled a macOS `.logarchive` apart, that tree is instantly familiar — because **a `.logarchive` is literally a copy of this directory** plus an `Info.plist`. The `uuidtext/dsc/` store (shared-cache strings) is the iOS-relevant wrinkle: most system format strings on iOS are not in a standalone Mach-O but inside the **dyld shared cache** (see [[dyld-shared-cache-and-amfi]]), so their templates are resolved from the `uuidtext/dsc/` blobs rather than the per-binary `uuidtext/<XX>/` folders. A parser that handles macOS but not the `dsc` path will silently drop the majority of system messages.
+If you ever pulled a macOS `.logarchive` apart, that tree is instantly familiar — because **a `.logarchive` is literally a copy of this directory** plus an `Info.plist`. The `uuidtext/dsc/` store (shared-cache strings) is the iOS-relevant wrinkle: most system format strings on iOS are not in a standalone Mach-O but inside the **dyld shared cache** (see [[07-dyld-shared-cache-and-amfi]]), so their templates are resolved from the `uuidtext/dsc/` blobs rather than the per-binary `uuidtext/<XX>/` folders. A parser that handles macOS but not the `dsc` path will silently drop the majority of system messages.
 
 > 🖥️ **macOS contrast:** This is the rare iOS subsystem where the macOS skill transfers with **zero translation** — `.tracev3`, `uuidtext`, `logd`, `log show`, `.logarchive`, the predicate language, the Apple-epoch-free Mach-continuous-time-plus-timesync timestamping. The *only* differences are (1) you cannot run `log` on the device, so you capture via sysdiagnose instead of `log collect`; (2) the rolling window is far shorter than the Mac's ~28–30 days because the storage budget is smaller and the event rate is high; and (3) more strings resolve through the shared-cache `dsc` store than on a Mac.
 
@@ -75,7 +75,7 @@ You decoded this on macOS, and iOS files are bit-identical in layout, so this is
 
 Two iOS gotchas fall out of this. First, every firehose entry stores a **Mach-continuous-time delta**, not a wall-clock time; you must resolve it against the `timesync` anchor and the boot record, which is why a parser handed the diagnostics directory *without* the `timesync/` folder prints times that are wrong by the boot offset. Second, the entry's format-string reference is a UUID+offset that resolves to **either** `uuidtext/` **or** the shared-cache `dsc` — and on iOS it is usually the latter, because most system code lives in the dyld shared cache.
 
-> 🔬 **Forensics note:** Each chunk header carries the **boot UUID**, so every entry is attributable to a specific boot session — the iOS version of the macOS boot-session correlation trick. If a subject claims the phone was off at time *T*, a `Persist` entry stamped inside a boot session that brackets *T* contradicts it, and the `powerd`/`SpringBoard` boot transitions (plus the 72 h inactivity reboot, [[passcode-bfu-afu-and-inactivity]]) give you the session boundaries to anchor against.
+> 🔬 **Forensics note:** Each chunk header carries the **boot UUID**, so every entry is attributable to a specific boot session — the iOS version of the macOS boot-session correlation trick. If a subject claims the phone was off at time *T*, a `Persist` entry stamped inside a boot session that brackets *T* contradicts it, and the `powerd`/`SpringBoard` boot transitions (plus the 72 h inactivity reboot, [[03-passcode-bfu-afu-and-inactivity]]) give you the session boundaries to anchor against.
 
 ### Activity tracing and signposts
 
@@ -98,7 +98,7 @@ Because a logging profile changes what a sysdiagnose contains — and is itself 
 
 If you see unexpectedly rich (`info`/`debug`) entries for a subsystem, **that is a signal, not a gift** — note that capture was non-default from the relevant time, because it bears on completeness and on whether the device was modified.
 
-> 🔬 **Forensics note:** The inverse also matters. A device the user (or an adversary) configured for *minimal* logging — or one where Analytics sharing is off and no profile widened capture — yields a thin sysdiagnose with only `default`-level entries and a short window. Don't read that thinness as "nothing happened"; read it as "default policy + short ring," and corroborate from stores with longer memory (`knowledgeC`/Biome in [[knowledgec-db-deep-dive]] and [[biome-and-segb-streams]], PowerLog in [[powerlog-and-aggregate-dictionary]]).
+> 🔬 **Forensics note:** The inverse also matters. A device the user (or an adversary) configured for *minimal* logging — or one where Analytics sharing is off and no profile widened capture — yields a thin sysdiagnose with only `default`-level entries and a short window. Don't read that thinness as "nothing happened"; read it as "default policy + short ring," and corroborate from stores with longer memory (`knowledgeC`/Biome in [[01-knowledgec-db-deep-dive]] and [[02-biome-and-segb-streams]], PowerLog in [[03-powerlog-and-aggregate-dictionary]]).
 
 ### sysdiagnose — the bulk-capture mechanism
 
@@ -148,9 +148,9 @@ sysdiagnose_2026.06.26_…_iPhone_23F79/
 | `system_logs.logarchive/` | **The crown jewel** — a real `.logarchive` of the Unified Log. Open with `log show --archive`. This is your process-exec/USB/unlock/biometric timeline. |
 | `crashes_and_spins/` (`*.ips`) | Per-process **crash & hang reports** in Apple's IPS format (a JSON header line + JSON body). Names binaries that ran and crashed; useful for exploitation/spyware triage and for "this app was running." |
 | `logs/` | The grab-bag of collector outputs (below). |
-| `logs/powerlogs/*.PLSQL` | **PowerLog** SQLite — per-app energy/usage, screen-on, and (iOS 18+) `GenerativeFunctionMetrics_*` Apple-Intelligence usage. Deep-dived in [[powerlog-and-aggregate-dictionary]]. |
+| `logs/powerlogs/*.PLSQL` | **PowerLog** SQLite — per-app energy/usage, screen-on, and (iOS 18+) `GenerativeFunctionMetrics_*` Apple-Intelligence usage. Deep-dived in [[03-powerlog-and-aggregate-dictionary]]. |
 | `logs/MobileActivation/` | Activation + pairing history (`mobileactivationd`). |
-| `logs/Accessibility/TCC.db` | The **TCC permission database** — which apps were granted Camera/Mic/Location/etc. (See [[the-sandbox-and-tcc]].) |
+| `logs/Accessibility/TCC.db` | The **TCC permission database** — which apps were granted Camera/Mic/Location/etc. (See [[05-the-sandbox-and-tcc]].) |
 | `WiFi/` (`Entity_*_Join.csv`, plists) | **Wi-Fi join history** — SSIDs/BSSIDs and join times, a location-adjacent timeline. |
 | `logs/Trial/` | On-device feature-flag / experiment config (`Trial` framework). |
 | `logs/GenerativeExperiences/` | iOS 18+ Apple-Intelligence artifacts (paths still settling — verify per build). |
@@ -158,25 +158,25 @@ sysdiagnose_2026.06.26_…_iPhone_23F79/
 | `netstat.txt`, `network/`, `tasks.txt` | Network connection/socket state, routing, per-task accounting. |
 | `IOReg/` or `ioreg` dumps, `mobilegestalt.txt` | Hardware/IORegistry + **MobileGestalt** identifiers (model, ECID-adjacent IDs, capabilities). |
 | `summaries/sysdiagnose.log`, `Preferences/` | Manifest of what was collected; assorted preference plists. |
-| `Container inventory` (`logs/AppInstall*`, installed-app lists) | Which apps + extensions are installed (bundle IDs ↔ data-container UUIDs); pairs with [[filesystem-layout-and-containers]]. |
+| `Container inventory` (`logs/AppInstall*`, installed-app lists) | Which apps + extensions are installed (bundle IDs ↔ data-container UUIDs); pairs with [[08-filesystem-layout-and-containers]]. |
 
 The point: a sysdiagnose is a **mini forensic image of the volatile + recent state**, not the user-data corpus. It will not give you the iMessage database or the Photos library — for that you need logical/full-file-system acquisition (Part 07). But for *what happened recently and what is running now*, it is unmatched and obtainable from a merely-cooperative device.
 
-> 🔬 **Forensics note:** The `crashes_and_spins/*.ips` reports are a quiet spyware-triage signal. Mercenary-spyware chains frequently crash a target daemon (`assetsd`, `WebKit`, `imagent`, `mobileactivationd`) on a failed exploit attempt; the **`JetsamEvent-*.ips` and process-crash `.ips`** entries with anomalous faulting binaries are exactly the leads Amnesty/Citizen Lab and `mvt` (Mobile Verification Toolkit) chase. A sysdiagnose's crash bucket is a cheaper first pass than a full-file-system pull. See [[third-party-app-methodology]] and the spyware angle in [[deleted-data-recovery]].
+> 🔬 **Forensics note:** The `crashes_and_spins/*.ips` reports are a quiet spyware-triage signal. Mercenary-spyware chains frequently crash a target daemon (`assetsd`, `WebKit`, `imagent`, `mobileactivationd`) on a failed exploit attempt; the **`JetsamEvent-*.ips` and process-crash `.ips`** entries with anomalous faulting binaries are exactly the leads Amnesty/Citizen Lab and `mvt` (Mobile Verification Toolkit) chase. A sysdiagnose's crash bucket is a cheaper first pass than a full-file-system pull. See [[11-third-party-app-methodology]] and the spyware angle in [[14-deleted-data-recovery]].
 
 ### Crash reports, jetsam, and `shutdown.log` — the cheap tripwires
 
 Two pieces of the tarball repay attention even before you open the `.logarchive`:
 
-**The `.ips` crash format.** Since iOS 15 / macOS 12, crash, hang ("spin"), and jetsam reports are **IPS** files: a single-line JSON *header* (incident UUID, timestamp, `bug_type`, OS/build, hardware) followed by a JSON *body* (faulting thread, backtrace, the **binary-images list with each image's `uuidtext` UUID**, termination reason). Because those image UUIDs are the *same* UUIDs the log store references, you can **correlate a crash to the surrounding log entries by UUID**, not merely by timestamp. The `bug_type` distinguishes crash vs. spin vs. jetsam; `JetsamEvent-*.ips` are memory-pressure kills — the userspace face of the jetsam mechanism in [[memory-jetsam-app-lifecycle]] — and a spike of them around an install is a flag.
+**The `.ips` crash format.** Since iOS 15 / macOS 12, crash, hang ("spin"), and jetsam reports are **IPS** files: a single-line JSON *header* (incident UUID, timestamp, `bug_type`, OS/build, hardware) followed by a JSON *body* (faulting thread, backtrace, the **binary-images list with each image's `uuidtext` UUID**, termination reason). Because those image UUIDs are the *same* UUIDs the log store references, you can **correlate a crash to the surrounding log entries by UUID**, not merely by timestamp. The `bug_type` distinguishes crash vs. spin vs. jetsam; `JetsamEvent-*.ips` are memory-pressure kills — the userspace face of the jetsam mechanism in [[06-memory-jetsam-app-lifecycle]] — and a spike of them around an install is a flag.
 
 **`shutdown.log`.** The diagnostics area carries a plain-text `shutdown.log` recording, on each reboot, the processes still holding the system up while it tried to shut down (the SIGTERM/SIGKILL "these clients are still here" roll-call). Kaspersky's GReAT turned this into a **lightweight mercenary-spyware tripwire**: persistent implants (Pegasus, Reign, Predator) repeatedly appear **delaying shutdown from an anomalous filesystem path** across multiple reboots. It is captured in the sysdiagnose and parsed by `mvt`. It is not proof — but for the cost of reading one text file it is among the highest-yield first looks in mobile spyware triage.
 
-> 🔬 **Forensics note:** `shutdown.log` and the `JetsamEvent-*.ips` / crash bucket are the two artifacts you read **first** on a "is this phone compromised?" triage, precisely because they survive in a sysdiagnose from a merely-cooperative device and need no full-file-system pull. Pair them with the networking signals (`DataUsage.sqlite`, `netusage`) covered in [[unified-logs-sysdiagnose-crash-network]] for a stronger picture.
+> 🔬 **Forensics note:** `shutdown.log` and the `JetsamEvent-*.ips` / crash bucket are the two artifacts you read **first** on a "is this phone compromised?" triage, precisely because they survive in a sysdiagnose from a merely-cooperative device and need no full-file-system pull. Pair them with the networking signals (`DataUsage.sqlite`, `netusage`) covered in [[12-unified-logs-sysdiagnose-crash-network]] for a stronger picture.
 
 ### Getting it off the device — lockdown services over usbmux
 
-The sysdiagnose tarball sits in the CrashReporter diagnostics directory, which is exposed to a **paired** host through `lockdownd` services tunneled over **usbmux** (the `usbmuxd` socket your `libimobiledevice` stack already speaks — see [[forensics-and-dev-workstation-setup]] and [[device-services-and-backups]]). Three services matter here:
+The sysdiagnose tarball sits in the CrashReporter diagnostics directory, which is exposed to a **paired** host through `lockdownd` services tunneled over **usbmux** (the `usbmuxd` socket your `libimobiledevice` stack already speaks — see [[03-forensics-and-dev-workstation-setup]] and [[10-device-services-and-backups]]). Three services matter here:
 
 ```
 host (Mac)                         iPhone (lockdownd dispatches)
@@ -194,7 +194,7 @@ host (Mac)                         iPhone (lockdownd dispatches)
 - **`crashreportcopymobile`** is an **AFC** (Apple File Conduit) endpoint over the crash-report area. `idevicecrashreport` / `pymobiledevice3 crash pull` walk it and copy out everything — **including the sysdiagnose tarball**, since it lives under that same DiagnosticLogs tree.
 - **`diagnostics_relay`** answers structured state queries (battery, MobileGestalt keys, IORegistry) — overlapping with what the sysdiagnose snapshots, but on demand.
 
-All of this requires a **valid pairing record** (the lockdown `.plist` with the host's escrow keys) and, on a locked or BFU device, you are limited by Data Protection: `crashreportcopymobile` reads files that are class-`C`/`D` available in the current lock state, so a **BFU device yields far less** than an AFU one (the BFU/AFU distinction is the whole of [[passcode-bfu-afu-and-inactivity]] and [[bfu-vs-afu-and-data-protection-classes]]).
+All of this requires a **valid pairing record** (the lockdown `.plist` with the host's escrow keys) and, on a locked or BFU device, you are limited by Data Protection: `crashreportcopymobile` reads files that are class-`C`/`D` available in the current lock state, so a **BFU device yields far less** than an AFU one (the BFU/AFU distinction is the whole of [[03-passcode-bfu-afu-and-inactivity]] and [[02-bfu-vs-afu-and-data-protection-classes]]).
 
 One 2026-relevant wrinkle: since **iOS 17** the developer/diagnostic services moved behind a **RemoteServiceDiscovery (RSD) / RemoteXPC tunnel** — the old "just connect to lockdownd on usbmux" path no longer reaches `os_trace_relay` and friends directly. Modern `pymobiledevice3` first establishes the tunnel (`pymobiledevice3 remote tunneld` / `lockdown start-tunnel`, often requiring elevated privileges and a Wi-Fi/USB RSD handshake) and then dials the service through it. The *crash-copy* path (`crashreportcopymobile`) still works the classic way for pulling the tarball, but live streaming and several diagnostics now route over RSD. Expect the tunnel step; if `syslog live` "hangs," it's almost always a missing tunnel, not a dead device.
 
@@ -227,13 +227,13 @@ That is genuinely useful for learning the **predicate language, subsystem/catego
 - There is **no SEP, no Data Protection, no baseband, no AMFI/sandbox enforcement**, so the security-decision log entries you'd hunt on a device (AMFI denials, Face ID matches, USB Restricted Mode) are **absent or fake**.
 - **sysdiagnose itself is not a meaningful device artifact in the Simulator** — there's no button chord, and the collectors target macOS state. To learn the *tarball* structure you use a **public sample sysdiagnose**, not the Simulator.
 
-Physically, a booted simulator's `os_log` output is funneled into the **host Mac's own Unified Log** (the simulator shares the host `logd`), so `simctl spawn booted log show` is really querying the host store filtered to the sim's processes. Per-simulator diagnostic reports and crash `.ips` files land under `~/Library/Logs/CoreSimulator/<UDID>/`, and the simulator's *app containers* sit unencrypted under `~/Library/Developer/CoreSimulator/Devices/<UDID>/data/` — the same tree you dissect for app-store schemas in [[simulator-internals-and-on-disk-filesystem]]. None of it is Data-Protection-encrypted, which is the whole point and the whole caveat.
+Physically, a booted simulator's `os_log` output is funneled into the **host Mac's own Unified Log** (the simulator shares the host `logd`), so `simctl spawn booted log show` is really querying the host store filtered to the sim's processes. Per-simulator diagnostic reports and crash `.ips` files land under `~/Library/Logs/CoreSimulator/<UDID>/`, and the simulator's *app containers* sit unencrypted under `~/Library/Developer/CoreSimulator/Devices/<UDID>/data/` — the same tree you dissect for app-store schemas in [[01-simulator-internals-and-on-disk-filesystem]]. None of it is Data-Protection-encrypted, which is the whole point and the whole caveat.
 
 So the Simulator teaches the **query and format** half; **public sample images / sysdiagnoses** teach the **device-store content** half. Both labs below reflect that split.
 
 ## Hands-on
 
-All commands run **on the Mac** — there is no on-device shell. Tools assumed: Xcode CLT (`log`, `simctl`), `libimobiledevice` + `pymobiledevice3`, and a tracev3 parser (`mandiant/macos-UnifiedLogs` or `ydkhatri/UnifiedLogReader`). Install per [[forensics-and-dev-workstation-setup]].
+All commands run **on the Mac** — there is no on-device shell. Tools assumed: Xcode CLT (`log`, `simctl`), `libimobiledevice` + `pymobiledevice3`, and a tracev3 parser (`mandiant/macos-UnifiedLogs` or `ydkhatri/UnifiedLogReader`). Install per [[03-forensics-and-dev-workstation-setup]].
 
 ### Open the `.logarchive` inside a sysdiagnose
 
@@ -362,7 +362,7 @@ log show --archive /tmp/sim.logarchive --predicate 'process == "SpringBoard"' --
 3. Measure the **real log window**: first vs last `log show --archive` entry. State it in your notes ("this archive covers ~37 hours").
 4. Build a **USB-attach timeline** and a **lock/unlock timeline** with the predicates from Hands-on. Sketch the device's recent presence/connection pattern.
 5. Open one `.ips` crash report in a text editor — note the JSON header line + JSON body, the faulting binary, and the timestamp. Cross-reference that binary against the `log show` output for the same minute.
-6. `sqlite3` a `logs/powerlogs/*.PLSQL` copy (copy first — SQLite write-locks on `SELECT`) and list its tables. Note which overlap with the PowerLog lesson [[powerlog-and-aggregate-dictionary]].
+6. `sqlite3` a `logs/powerlogs/*.PLSQL` copy (copy first — SQLite write-locks on `SELECT`) and list its tables. Note which overlap with the PowerLog lesson [[03-powerlog-and-aggregate-dictionary]].
 
 ### Lab 3 — Parse raw `.tracev3` cross-platform *(substrate: the `system_logs.logarchive` from Lab 2, or raw `var/db/diagnostics` from a public full-file-system sample; fidelity caveat: parser must resolve the `uuidtext/dsc/` shared-cache strings, not just the per-binary `uuidtext/` folders, or most system messages render as `<compose failure>`)*
 
@@ -389,7 +389,7 @@ Narrate the SOP you *would* run, so you can supervise an examiner who has the de
 2. From `crashes_and_spins/`, list every `.ips` in that window; for one, pull the faulting binary's UUID from its binary-images list.
 3. Grep the `ndjson` for that UUID and for the same process name; confirm the crash sits inside a coherent run of log entries (exec → activity → crash).
 4. Read `shutdown.log`: note any process that delayed shutdown from a non-system path across reboots, and whether it appears in the log slice.
-5. Merge into a single CSV (time, source-artifact, process, event) sorted by time. This is the **building-a-unified-timeline** workflow in miniature — the same correlation you'll scale up across stores in [[building-a-unified-timeline]].
+5. Merge into a single CSV (time, source-artifact, process, event) sorted by time. This is the **building-a-unified-timeline** workflow in miniature — the same correlation you'll scale up across stores in [[01-building-a-unified-timeline]].
 
 ## Pitfalls & gotchas
 
@@ -397,9 +397,9 @@ Narrate the SOP you *would* run, so you can supervise an examiner who has the de
 - **`<private>` is a wall, not a parsing bug.** Interpolated values are redacted at emission time. No Mac-side flag un-redacts a sysdiagnose you already have; the only lever is installing a logging profile *before* the events — an evidentiary modification to authorize and document.
 - **Don't assume the macOS ~30-day window.** iOS retention is hours-to-days and varies with device load. *Measure* the archive's first/last entry every time; a "nothing before 9am" finding may be eviction, not absence of activity.
 - **Parsers that ignore the `uuidtext/dsc/` shared-cache strings lose most system messages.** On iOS the majority of system format strings live in the shared cache. A tool that only reads the per-binary `uuidtext/` folders will render system events as `<compose failure>`/blank. Confirm your parser handles `dsc` (mandiant UnifiedLogs and Khatri's reader do).
-- **Timestamps are Mach-continuous-time resolved via the `timesync` records, shown in the capture's timezone.** This is *not* the Apple-2001 epoch you add `978307200` to for `knowledgeC`/`chat.db`. Don't cross-wire the epochs — see [[the-ios-timestamp-zoo]].
+- **Timestamps are Mach-continuous-time resolved via the `timesync` records, shown in the capture's timezone.** This is *not* the Apple-2001 epoch you add `978307200` to for `knowledgeC`/`chat.db`. Don't cross-wire the epochs — see [[00-the-ios-timestamp-zoo]].
 - **The Simulator is a query trainer, not a device twin.** AMFI/biometric/USB-Restricted-Mode entries are absent or synthetic. Never present a Simulator log as device evidence.
-- **BFU starves the pull.** `crashreportcopymobile` only returns files available in the current Data-Protection state; a Before-First-Unlock device yields a thin sysdiagnose. The 72 h inactivity reboot silently drops AFU→BFU mid-case ([[passcode-bfu-afu-and-inactivity]]).
+- **BFU starves the pull.** `crashreportcopymobile` only returns files available in the current Data-Protection state; a Before-First-Unlock device yields a thin sysdiagnose. The 72 h inactivity reboot silently drops AFU→BFU mid-case ([[03-passcode-bfu-afu-and-inactivity]]).
 - **Copy SQLite before querying.** The `PLSQL`/`TCC.db` files inside the tarball are real SQLite — a bare `SELECT` write-locks them and spawns `-wal`/`-shm`. `cp` first, exactly as in the macOS artifacts discipline.
 - **`syslog live` that "hangs" is usually a missing RSD tunnel, not a dead device.** On iOS 17+ the live relay routes over the RemoteServiceDiscovery tunnel; bring it up first (`pymobiledevice3 remote tunneld` / `start-tunnel`) before blaming the cable.
 - **An `.ips` is not one JSON object.** It's a JSON *header line* + a JSON *body* — naïvely `json.load()`-ing the whole file fails. Split on the first newline (or use a parser that knows the format) before treating it as JSON.
@@ -452,4 +452,4 @@ Narrate the SOP you *would* run, so you can supervise an examiner who has the de
 - **Man pages / first-party** — `man sysdiagnose`, `man log`, `man os_log` on the Mac (current flag semantics for the OS you're analyzing on); Mandiant, "Reviewing macOS Unified Logs," and CrowdStrike, "How to Leverage Apple Unified Log for IR" — both transfer directly to the iOS `.logarchive`.
 
 ---
-*Related lessons: [[xnu-on-mobile]] | [[launchd-and-system-daemons]] | [[filesystem-layout-and-containers]] | [[device-services-and-backups]] | [[unified-logs-sysdiagnose-crash-network]] | [[powerlog-and-aggregate-dictionary]] | [[the-ios-timestamp-zoo]] | [[passcode-bfu-afu-and-inactivity]] | [[simulator-internals-and-on-disk-filesystem]]*
+*Related lessons: [[00-xnu-on-mobile]] | [[04-launchd-and-system-daemons]] | [[08-filesystem-layout-and-containers]] | [[10-device-services-and-backups]] | [[12-unified-logs-sysdiagnose-crash-network]] | [[03-powerlog-and-aggregate-dictionary]] | [[00-the-ios-timestamp-zoo]] | [[03-passcode-bfu-afu-and-inactivity]] | [[01-simulator-internals-and-on-disk-filesystem]]*

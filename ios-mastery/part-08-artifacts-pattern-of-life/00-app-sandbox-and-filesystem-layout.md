@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-You finished [[filesystem-layout-and-containers]] knowing the *mechanism*: why iOS swaps macOS's browsable, bundle-ID-named home for opaque UUID directories, and how `containermanagerd` writes the metadata plist that resolves them. This lesson re-walks that same terrain from the **examiner's chair** — not "how does the container model work" but "I have a filesystem dump in front of me; where do I point `sqlite3`, in what order, and what proves an app was here when its directory is gone?" Every later Part-08 lesson — Messages, Photos, Safari, location, knowledgeC/Biome, Health — opens with a path, and every one of those paths hangs off the skeleton in this lesson. Get the skeleton wrong and you attribute WhatsApp's database to Signal, miss the App Group where the real evidence lives, or declare an app "never installed" because its container was torn down. Get it right and a 200-GB filesystem dump collapses into a legible inventory you can triage in minutes. This is also the map every automated tool — iLEAPP, mvt, Cellebrite Physical Analyzer, Magnet AXIOM — walks on ingest; knowing it by hand is what lets you check the tool, parse the app the tool *doesn't* support, and testify to what the tool did.
+You finished [[08-filesystem-layout-and-containers]] knowing the *mechanism*: why iOS swaps macOS's browsable, bundle-ID-named home for opaque UUID directories, and how `containermanagerd` writes the metadata plist that resolves them. This lesson re-walks that same terrain from the **examiner's chair** — not "how does the container model work" but "I have a filesystem dump in front of me; where do I point `sqlite3`, in what order, and what proves an app was here when its directory is gone?" Every later Part-08 lesson — Messages, Photos, Safari, location, knowledgeC/Biome, Health — opens with a path, and every one of those paths hangs off the skeleton in this lesson. Get the skeleton wrong and you attribute WhatsApp's database to Signal, miss the App Group where the real evidence lives, or declare an app "never installed" because its container was torn down. Get it right and a 200-GB filesystem dump collapses into a legible inventory you can triage in minutes. This is also the map every automated tool — iLEAPP, mvt, Cellebrite Physical Analyzer, Magnet AXIOM — walks on ingest; knowing it by hand is what lets you check the tool, parse the app the tool *doesn't* support, and testify to what the tool did.
 
 ## Concepts
 
@@ -23,25 +23,25 @@ You finished [[filesystem-layout-and-containers]] knowing the *mechanism*: why i
 Internalize this before anything else. It is the entire Part-08 substrate, with the lesson that drills each branch:
 
 ```
-/ (Data volume — /System/Volumes/Data, firmlinked to / ; see [[apfs-on-ios-volumes]])
+/ (Data volume — /System/Volumes/Data, firmlinked to / ; see [[03-apfs-on-ios-volumes]])
 │
 ├── private/var/mobile/                         ← THE USER HOME (uid 501 "mobile") — most evidence
 │   │
 │   ├── Library/                                ← named, macOS-style ~/Library for FIRST-PARTY stores
-│   │   ├── SMS/sms.db                          → [[communications-imessage-and-sms]]
-│   │   ├── CallHistoryDB/CallHistory.storedata → [[call-history-voicemail-contacts-interactions]]
+│   │   ├── SMS/sms.db                          → [[04-communications-imessage-and-sms]]
+│   │   ├── CallHistoryDB/CallHistory.storedata → [[05-call-history-voicemail-contacts-interactions]]
 │   │   ├── AddressBook/AddressBook.sqlitedb    → contacts
-│   │   ├── Mail/                               → [[mail-notes-calendar-reminders]]
-│   │   ├── CoreDuet/Knowledge/knowledgeC.db    → [[knowledgec-db-deep-dive]]   (legacy)
-│   │   ├── Biome/streams/{public,restricted}/  → [[biome-and-segb-streams]]    (the successor)
-│   │   ├── Caches/com.apple.routined/Cache.sqlite → [[location-history]]
+│   │   ├── Mail/                               → [[09-mail-notes-calendar-reminders]]
+│   │   ├── CoreDuet/Knowledge/knowledgeC.db    → [[01-knowledgec-db-deep-dive]]   (legacy)
+│   │   ├── Biome/streams/{public,restricted}/  → [[02-biome-and-segb-streams]]    (the successor)
+│   │   ├── Caches/com.apple.routined/Cache.sqlite → [[07-location-history]]
 │   │   ├── FrontBoard/applicationState.db      → install map + uninstall dates (THIS lesson)
-│   │   ├── Health/healthdb*.sqlite             → [[health-and-fitness]]
+│   │   ├── Health/healthdb*.sqlite             → [[10-health-and-fitness]]
 │   │   ├── Preferences/  Keyboard/  Logs/CrashReporter/  Recents/  …
 │   │
 │   ├── Media/                                  ← the AFC area (USB-reachable, no jailbreak)
 │   │   ├── DCIM/                               camera-roll originals
-│   │   └── PhotoData/Photos.sqlite             → [[photos-and-the-camera-roll]]
+│   │   └── PhotoData/Photos.sqlite             → [[06-photos-and-the-camera-roll]]
 │   │
 │   └── Containers/
 │       ├── Data/Application/<UUID>/            ← per-app READ-WRITE data — THIRD-PARTY evidence
@@ -53,8 +53,8 @@ Internalize this before anything else. It is the entire Part-08 substrate, with 
 │   └── Shared/SystemGroup/<GUID>/             ← first-party daemon shared state (Wi-Fi, profiles, Find My)
 │
 ├── private/var/installd/Library/Logs/MobileInstallation/   ← install/uninstall/update LOG timeline
-├── private/var/Keychains/keychain-2.db        ← device keychain (outside every container) → [[keychain-on-ios]]
-└── private/var/keybags/                       ← Data-Protection keybags (NOT /Keychains) → [[data-protection-and-keybags]]
+├── private/var/Keychains/keychain-2.db        ← device keychain (outside every container) → [[08-keychain-on-ios]]
+└── private/var/keybags/                       ← Data-Protection keybags (NOT /Keychains) → [[02-data-protection-and-keybags]]
 ```
 
 Two asymmetries trip up everyone and both are load-bearing for an examiner:
@@ -66,7 +66,7 @@ Two asymmetries trip up everyone and both are load-bearing for an examiner:
 
 ### Step one of every app exam: resolve UUID → bundle ID
 
-The mechanism is in [[filesystem-layout-and-containers]] — here is the *operational* version. Four container roots, each carrying a hidden `.com.apple.mobile_container_manager.metadata.plist` at its root whose `MCMMetadataIdentifier` key is the authoritative, offline, local bundle/group ID for that directory:
+The mechanism is in [[08-filesystem-layout-and-containers]] — here is the *operational* version. Four container roots, each carrying a hidden `.com.apple.mobile_container_manager.metadata.plist` at its root whose `MCMMetadataIdentifier` key is the authoritative, offline, local bundle/group ID for that directory:
 
 ```
 ROOT                                                    MCMMetadataIdentifier resolves to
@@ -94,7 +94,7 @@ Sweep all four, read each metadata plist, build one join table — `UUID ↔ ide
 | `itemName`, `genre`, `bundleShortVersionString`, `softwareVersionBundleId` | the app's identity and version at install |
 | `purchaseDate` / download-date fields | when this copy landed on this device |
 
-This ties an installed app to a specific account even when the app's own data container is empty — answering "whose device is this?" and flagging apps **sideloaded under a different Apple ID** than the rest. (It exists only for App Store apps; sideloaded/enterprise/dev builds carry an `embedded.mobileprovision` instead — the inverse tell, covered in [[filesystem-layout-and-containers]].)
+This ties an installed app to a specific account even when the app's own data container is empty — answering "whose device is this?" and flagging apps **sideloaded under a different Apple ID** than the rest. (It exists only for App Store apps; sideloaded/enterprise/dev builds carry an `embedded.mobileprovision` instead — the inverse tell, covered in [[08-filesystem-layout-and-containers]].)
 
 **2. `applicationState.db` — the consolidated install map + uninstall dates.** This is the single most useful "what apps, where, and were any removed" file on the device. It is a SQLite database; **its location moved in iOS 18** (verify against your image's OS version):
 
@@ -127,7 +127,7 @@ iOS 10+:  /private/var/installd/Library/Logs/MobileInstallation/mobile_installat
 
 Each line carries a timestamp and the bundle ID, and update lines show the **previous and new version numbers** — so these logs reconstruct "app X installed at T1, updated to v2 at T2, uninstalled at T3, reinstalled at T4," including reboot events for anchoring. The limitation is retention: the logs rotate and may not reach back far, so they corroborate rather than guarantee. When they *do* cover the window, they are the cleanest install/uninstall chronology iOS keeps in plaintext.
 
-> 🔬 **Forensics note:** Triangulate the three. `iTunesMetadata.plist` says *who* and roughly *when first acquired*; `applicationState.db._UninstallDate` says *when removed*; the MobileInstallation logs give the *full install/update/reinstall sequence with timestamps*. Add the pattern-of-life stores ([[biome-and-segb-streams]], [[knowledgec-db-deep-dive]]) and the SpringBoard icon layout (`com.apple.springboard` / `IconState`) and you can place a since-deleted app on the device, name it, and time its lifecycle — none of which the absent container alone could do. "Container gone" ≠ "app never there."
+> 🔬 **Forensics note:** Triangulate the three. `iTunesMetadata.plist` says *who* and roughly *when first acquired*; `applicationState.db._UninstallDate` says *when removed*; the MobileInstallation logs give the *full install/update/reinstall sequence with timestamps*. Add the pattern-of-life stores ([[02-biome-and-segb-streams]], [[01-knowledgec-db-deep-dive]]) and the SpringBoard icon layout (`com.apple.springboard` / `IconState`) and you can place a since-deleted app on the device, name it, and time its lifecycle — none of which the absent container alone could do. "Container gone" ≠ "app never there."
 
 ### Where the artifacts actually live: the Data container, ranked by yield
 
@@ -147,7 +147,7 @@ Once you've resolved a third-party app to its Data container, the evidence sits 
 
 The single most consequential row is `Library/Caches/`: **it is not in the backup, so it never appears in a logical/backup acquisition — only in a full-filesystem extraction.** A huge fraction of "the suspect deleted it but we recovered it" wins come from `Caches/`, because apps stage and cache content there that the UI and the backed-up databases no longer reference.
 
-> 🔬 **Forensics note:** The backup-inclusion column is an acquisition-method decision, not trivia. If your only lawful acquisition is an encrypted iTunes/Finder backup (see [[the-itunes-finder-backup-format]]), you will **never** see `Caches/`, `tmp/`, or `SplashBoard/` — the backup daemon honors each file's "do not back up" exclusion. Knowing a target artifact lives in `Caches/` tells you up front that a backup won't reach it and you need a full-filesystem extraction ([[full-file-system-acquisition]]) — or it's simply unrecoverable by the means you have. Decide the acquisition method *from* where the artifact lives.
+> 🔬 **Forensics note:** The backup-inclusion column is an acquisition-method decision, not trivia. If your only lawful acquisition is an encrypted iTunes/Finder backup (see [[03-the-itunes-finder-backup-format]]), you will **never** see `Caches/`, `tmp/`, or `SplashBoard/` — the backup daemon honors each file's "do not back up" exclusion. Knowing a target artifact lives in `Caches/` tells you up front that a backup won't reach it and you need a full-filesystem extraction ([[05-full-file-system-acquisition]]) — or it's simply unrecoverable by the means you have. Decide the acquisition method *from* where the artifact lives.
 
 ### The trap: the real evidence is often in the App Group, not the app's container
 
@@ -165,7 +165,7 @@ The App Group's metadata plist resolves its UUID to a **group identifier** (`gro
 
 ### The same artifact, two address spaces: FFS path vs backup domain
 
-Everything above is the **full-filesystem (FFS)** address space — real `/private/var/...` paths. But a large fraction of lawful iOS acquisition is an **iTunes/Finder backup**, and a backup does *not* preserve those paths. It re-addresses every file through `Manifest.db` (see [[the-itunes-finder-backup-format]]): a `Files` table whose columns are `fileID` (the SHA‑1 of `"<domain>-<relativePath>"`), `domain`, `relativePath`, and a `file` BLOB plist of metadata. The bytes are stored as a flat blob at `<backup>/<first-2-hex-of-fileID>/<fileID>` — **no directory structure on disk at all.** So the same database has two completely different addresses depending on how you acquired it, and translating between them is a routine examiner skill:
+Everything above is the **full-filesystem (FFS)** address space — real `/private/var/...` paths. But a large fraction of lawful iOS acquisition is an **iTunes/Finder backup**, and a backup does *not* preserve those paths. It re-addresses every file through `Manifest.db` (see [[03-the-itunes-finder-backup-format]]): a `Files` table whose columns are `fileID` (the SHA‑1 of `"<domain>-<relativePath>"`), `domain`, `relativePath`, and a `file` BLOB plist of metadata. The bytes are stored as a flat blob at `<backup>/<first-2-hex-of-fileID>/<fileID>` — **no directory structure on disk at all.** So the same database has two completely different addresses depending on how you acquired it, and translating between them is a routine examiner skill:
 
 | Artifact | FFS path | Backup domain + relativePath |
 |---|---|---|
@@ -186,7 +186,7 @@ The crucial inversion: in the backup, **the opaque UUID disappears** — the dom
 Two areas don't follow the UUID-container model and you target them by fixed path:
 
 - **`/private/var/mobile/Library/`** — the named, `~/Library`-style tree where first-party stores live: `SMS/sms.db`, `CallHistoryDB/`, `AddressBook/`, `Mail/`, `CoreDuet/Knowledge/knowledgeC.db`, `Biome/streams/`, `Caches/com.apple.routined/`, `FrontBoard/applicationState.db`, `Health/`, `Preferences/`, `Keyboard/`, `Logs/CrashReporter/`, `Recents/`. This is the index every Part-08 first-party lesson hits directly — no UUID resolution needed.
-- **`/private/var/mobile/Media/`** — the **AFC-exposed** partition: `DCIM/` (camera-roll originals) and `PhotoData/Photos.sqlite` (the Photos catalog — [[photos-and-the-camera-roll]]). This is the one app-data-rich area reachable over USB on an *unlocked* device with **no jailbreak**, via Apple File Conduit (`afcclient`/`ifuse`/`pymobiledevice3 afc`), which makes DCIM + `Photos.sqlite` one of the cheapest high-value pulls in [[logical-acquisition-with-libimobiledevice]]. App containers under `Containers/` are **not** in AFC's view.
+- **`/private/var/mobile/Media/`** — the **AFC-exposed** partition: `DCIM/` (camera-roll originals) and `PhotoData/Photos.sqlite` (the Photos catalog — [[06-photos-and-the-camera-roll]]). This is the one app-data-rich area reachable over USB on an *unlocked* device with **no jailbreak**, via Apple File Conduit (`afcclient`/`ifuse`/`pymobiledevice3 afc`), which makes DCIM + `Photos.sqlite` one of the cheapest high-value pulls in [[04-logical-acquisition-with-libimobiledevice]]. App containers under `Containers/` are **not** in AFC's view.
 
 ### How the tools walk this map (so you can check them)
 
@@ -235,11 +235,11 @@ Steps 1–2 are attribution and presence and they gate everything; steps 3–4 a
 
 ### The lock-state caveat on the entire map
 
-Everything above is *structure*. Whether you can read a given file's *contents* depends on its Data-Protection class and the device's lock state (BFU vs AFU — [[passcode-bfu-afu-and-inactivity]], [[bfu-vs-afu-and-data-protection-classes]]). The container **layout** — directory names, metadata plists, `applicationState.db` — is mostly low-protection metadata you can enumerate even on a locked device whose evidence files stay encrypted. So you can often rebuild the full app inventory and container map of a **BFU** device while its actual databases remain unreadable. Mapping the containers is not reading the data; keep the two claims separate in your report.
+Everything above is *structure*. Whether you can read a given file's *contents* depends on its Data-Protection class and the device's lock state (BFU vs AFU — [[03-passcode-bfu-afu-and-inactivity]], [[02-bfu-vs-afu-and-data-protection-classes]]). The container **layout** — directory names, metadata plists, `applicationState.db` — is mostly low-protection metadata you can enumerate even on a locked device whose evidence files stay encrypted. So you can often rebuild the full app inventory and container map of a **BFU** device while its actual databases remain unreadable. Mapping the containers is not reading the data; keep the two claims separate in your report.
 
 ## Hands-on
 
-There is no on-device shell. The Simulator stores the *same* container layout **unencrypted on the Mac** (no `/private` prefix, no encryption, no SEP), which is the right place to drill the resolution-and-triage workflow; device-only stores come from sample images. See [[simulator-internals-and-on-disk-filesystem]] for the Simulator's on-disk shape.
+There is no on-device shell. The Simulator stores the *same* container layout **unencrypted on the Mac** (no `/private` prefix, no encryption, no SEP), which is the right place to drill the resolution-and-triage workflow; device-only stores come from sample images. See [[01-simulator-internals-and-on-disk-filesystem]] for the Simulator's on-disk shape.
 
 ### Build the container map and resolve one app (Simulator)
 
@@ -452,4 +452,4 @@ mvt-ios decrypt-backup -p '<password>' -d /tmp/dec <backup_dir>   # then check-b
 - `man plutil`, `xcrun simctl help`, `sqlite3 .help`, `ileapp.py -h`, `mvt-ios --help`.
 
 ---
-*Related lessons: [[filesystem-layout-and-containers]] | [[the-itunes-finder-backup-format]] | [[knowledgec-db-deep-dive]] | [[biome-and-segb-streams]] | [[communications-imessage-and-sms]] | [[photos-and-the-camera-roll]] | [[full-file-system-acquisition]] | [[deleted-data-recovery]] | [[the-ios-timestamp-zoo]]*
+*Related lessons: [[08-filesystem-layout-and-containers]] | [[03-the-itunes-finder-backup-format]] | [[01-knowledgec-db-deep-dive]] | [[02-biome-and-segb-streams]] | [[04-communications-imessage-and-sms]] | [[06-photos-and-the-camera-roll]] | [[05-full-file-system-acquisition]] | [[14-deleted-data-recovery]] | [[00-the-ios-timestamp-zoo]]*

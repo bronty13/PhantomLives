@@ -3,6 +3,34 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-27 — Reference layer generated + cross-links healed — COURSE COMPLETE
+
+The derived reference layer, built by the reference-builder workflow (12 extraction agents — one
+per part, reading every lesson — then synthesis agents, one per doc):
+
+- **forensic-artifacts-index.md** — 282 artifacts, categorized, with format / what-it-reveals /
+  acquisition-tier / [[lesson]] links (the flagship index).
+- **acquisition-methods-matrix.md** — the five-tier ladder × SoC × iOS × BFU/AFU × tooling
+  (checkm8/usbliter8 FFS rows, the SEP wall, the decision tree).
+- **tooling-index.md** — 248 tools/commands, categorized, OSS/commercial/apple-builtin tagged.
+- **sql-queries-index.md** — 125 copy-paste queries grouped by source DB (right epoch baked in).
+- **timestamps-and-epochs.md** — the full epoch zoo + conversions + the mixing-error signatures.
+- **entitlements-index.md** — 179 entitlement/Info.plist/.mobileconfig keys + significance.
+- **study-guide.md** — all 12 parts: "what to remember" + self-test Q&A.
+- **glossary.md** — 1,084 terms. **acronyms.md** — 508 acronyms.
+
+Also fixed a systematic cross-link defect: the lesson↔lesson `[[wikilinks]]` were authored as
+*bare* slugs (`[[secure-enclave-hardware]]`) but the files are `NN-slug.md`, so they didn't
+resolve in Obsidian. Mechanically remapped **2,429** links to the `NN-`prefixed form
+(`[[02-secure-enclave-hardware]]`), anchored on the delimiter so prefix-collisions can't occur,
+and fixed two stray cross-references to macOS-course slugs. Resolution is now 119/125 distinct
+targets (the rest are POSIX `[[:space:]]`/syntax-example false positives).
+
+**The course is complete: 105 lessons + 14 reference docs (~53k lines).** The 5 hand-authored
+spines (macos-to-ios, mac-side-toolkit-cheatsheet, ipados-keyboard-shortcuts, forensics-and-dev-
+toolkit, further-reading) carry solid seed content and accrue further detail on future passes
+per HANDOFF.
+
 ## 2026-06-27 — Part 06 (Automation & Operations) built — 105/105 lessons ✅ — ALL LESSONS COMPLETE
 
 The final module (7 lessons): Shortcuts + the automation surface (WorkflowKit, App Intents, the

@@ -61,7 +61,7 @@ Plaintext exists only in the AP and in DRAM. The moment a write crosses the AES 
 
 It's tempting to picture the storage controller as a dumb bridge. It isn't. **ANS is a full co-processor** with its own CPU core, its own firmware, and its own private memory, sitting between XNU and the NAND much as the SEP sits beside the application processor. XNU drives it through an **NVMe-family IOKit driver** (the `IONVMe*`/`AppleANS*` controller stack), submitting commands to NVMe-style submission/completion queues in shared memory — the same queue-pair model you know from PC NVMe, but the "device" is silicon inside the SoC.
 
-The ANS **firmware is a personalized Image4 payload**, signed and version-locked exactly like iBoot and the kernelcache: it is delivered in the IPSW, gets a tag/component slot in the boot manifest, and is loaded and verified as part of the secure boot chain (see [[boot-chain-securerom-iboot]] and [[image4-personalization-shsh]]). Two consequences fall out of this:
+The ANS **firmware is a personalized Image4 payload**, signed and version-locked exactly like iBoot and the kernelcache: it is delivered in the IPSW, gets a tag/component slot in the boot manifest, and is loaded and verified as part of the secure boot chain (see [[01-boot-chain-securerom-iboot]] and [[02-image4-personalization-shsh]]). Two consequences fall out of this:
 
 - The flash-translation layer, wear-leveling, GC, and bad-block logic all run **inside that signed firmware**, not in XNU — which is why the host genuinely cannot see or address physical NAND geometry. The mapping table never leaves the controller.
 - Because the firmware is personalized to the device's ECID, you can't lift a NAND-plus-controller pair onto a bench and expect a different host to drive it. The Elcomsoft 2026 teardown of Apple's raw-NAND modules makes the practical point: the module is *just NAND* — pop it into a third-party NVMe reader and nothing answers, because the controller that gives it an NVMe personality lives in the phone you no longer have.
@@ -90,7 +90,7 @@ The exact cipher width tracks the SoC generation:
 
 **Per-extent keys and the APFS clone subtlety.** APFS stores file data in **extents**, and Data Protection can key **per-extent**, not merely per-file — Apple's own wording is "per-file (or per-extent) keys." This matters for copy-on-write: when APFS **clones** a file (a `clonefile(2)`-style instant copy, ubiquitous on iOS for Photos edits, Messages attachments, and app caches), the clone *shares the original's extents and therefore their keys* until a write forces a divergent extent. Forensically, two logically distinct files can be backed by the *same* ciphertext on NAND, and an edited photo's "original" may be nothing more than a shared extent the editor never rewrote.
 
-> 🔬 **Forensics note:** "Per-file key wrapped by a class key" is the entire reason **BFU vs. AFU** matters. The ciphertext on the NAND never changes with lock state — what changes is whether the **class key needed to unwrap a given file's key is resident in the SEP**. At Before-First-Unlock the class keys for Complete/Complete-Unless-Open/Complete-Until-First-Auth (classes A/B/C) are not derivable without the passcode, so even with full possession of the device the corresponding files are AES-XTS noise. This is why a BFU full-file-system extraction returns mostly garbage and an AFU one is rich. We trace the class machinery in [[data-protection-and-keybags]] and the lock-state timeline in [[passcode-bfu-afu-and-inactivity]].
+> 🔬 **Forensics note:** "Per-file key wrapped by a class key" is the entire reason **BFU vs. AFU** matters. The ciphertext on the NAND never changes with lock state — what changes is whether the **class key needed to unwrap a given file's key is resident in the SEP**. At Before-First-Unlock the class keys for Complete/Complete-Unless-Open/Complete-Until-First-Auth (classes A/B/C) are not derivable without the passcode, so even with full possession of the device the corresponding files are AES-XTS noise. This is why a BFU full-file-system extraction returns mostly garbage and an AFU one is rich. We trace the class machinery in [[02-data-protection-and-keybags]] and the lock-state timeline in [[03-passcode-bfu-afu-and-inactivity]].
 
 ### Two crypto engines, not one
 
@@ -120,7 +120,7 @@ Class **D** is the special case that connects directly to the next section: its 
 
 **The Dkey is what lets a locked phone function at all.** At **BFU** — fresh boot, never unlocked since — the class A/B/C keys cannot be derived (no passcode entanglement yet), so the only readable data is class D, unwrapped with the `Dkey` straight from effaceable storage. That tiny window of always-available storage is exactly enough for the device to boot, show the lock screen, run the baseband, ring on an incoming call, and honor a `Find My`/remote-wipe command — all without exposing user data. Everything class-C-and-up sits as ciphertext until the first unlock pulls the passcode-derived keys into the SEP and the device transitions to **AFU**, where it stays until shutdown or the **72-hour inactivity reboot** drops it back to BFU.
 
-> 🔬 **Forensics note:** This is the storage-layer reason a BFU acquisition is so thin. With full physical possession of a powered-but-never-unlocked iPhone, only class-D data is decryptable — which by design is almost nothing the user cares about (the defaults push app data to class C). It's also why examiners race the **inactivity-reboot clock**: a seized AFU device left too long quietly re-locks itself into BFU and the high-value classes go dark. The timer and lock-state mechanics are [[passcode-bfu-afu-and-inactivity]].
+> 🔬 **Forensics note:** This is the storage-layer reason a BFU acquisition is so thin. With full physical possession of a powered-but-never-unlocked iPhone, only class-D data is decryptable — which by design is almost nothing the user cares about (the defaults push app data to class C). It's also why examiners race the **inactivity-reboot clock**: a seized AFU device left too long quietly re-locks itself into BFU and the high-value classes go dark. The timer and lock-state mechanics are [[03-passcode-bfu-afu-and-inactivity]].
 
 ### Effaceable Storage: the hardware kill switch
 
@@ -134,7 +134,7 @@ That region is **Effaceable Storage**: a small, dedicated area of NAND that is a
 | **`Dkey`** | the **class D** (`NSFileProtectionNone`) master key — *not* entangled with the passcode |
 | **`EMF!`** | the **file-system / EMF master key** that protects the volume's metadata |
 
-Notice what `BAG1` actually protects: not files, but the **system keybag** — the on-device structure (a binary-plist/protobuf blob) that holds the class keys A/B/C themselves. The class keys are wrapped inside the keybag; the keybag is encrypted under the `BAG1` payload key; and `BAG1` lives in effaceable storage. So a single effaceable locker stands above the entire class-key set, which is exactly why destroying it destroys access to every passcode-protected file at once. (iOS maintains several keybags — system, backup, escrow, OTA-update, iCloud — but only the **system keybag** is the live, on-device one gating Data Protection; the others exist to move keys across trust boundaries and are dissected in [[data-protection-and-keybags]].)
+Notice what `BAG1` actually protects: not files, but the **system keybag** — the on-device structure (a binary-plist/protobuf blob) that holds the class keys A/B/C themselves. The class keys are wrapped inside the keybag; the keybag is encrypted under the `BAG1` payload key; and `BAG1` lives in effaceable storage. So a single effaceable locker stands above the entire class-key set, which is exactly why destroying it destroys access to every passcode-protected file at once. (iOS maintains several keybags — system, backup, escrow, OTA-update, iCloud — but only the **system keybag** is the live, on-device one gating Data Protection; the others exist to move keys across trust boundaries and are dissected in [[02-data-protection-and-keybags]].)
 
 The key hierarchy, top to bottom, is what makes the wipe instantaneous:
 
@@ -173,7 +173,7 @@ When the user taps **Erase All Content and Settings** (EACS), or an MDM / Exchan
 
 > ⚖️ **Authorization:** The crypto-shred model is the operational reason **seized iOS devices go into a Faraday bag immediately and a remote-wipe is assumed to be inbound at all times.** A wipe you can't see coming will not grind for an hour leaving a recoverable window — it lands in milliseconds and is irreversible. There is no "we pulled the plug mid-erase and carved the remainder." Document radio-isolation (airplane mode is insufficient — Find My can ride any path) as a chain-of-custody step, because the same hardware feature that protects the owner also lets a remote party destroy your evidence between seizure and acquisition.
 
-> 🔬 **Forensics note:** Crypto-shred also reframes "deleted data recovery." The classic carve-unallocated-NAND-for-deleted-files technique is **triply defeated** on iOS: (1) the physical pages are AES-XTS ciphertext you have no key for; (2) the ANS FTL hides the logical→physical mapping, so you can't even address "the slack" coherently; (3) APFS issues **TRIM** on delete and the controller's garbage collection may have already erased the freed pages. Recovery therefore moves **up the stack** to the application/database layer — SQLite freelist pages, un-`VACUUM`ed records, `-wal` journals, and APFS snapshots — covered in [[deleted-data-recovery]]. Physical NAND carving is not where iOS evidence lives.
+> 🔬 **Forensics note:** Crypto-shred also reframes "deleted data recovery." The classic carve-unallocated-NAND-for-deleted-files technique is **triply defeated** on iOS: (1) the physical pages are AES-XTS ciphertext you have no key for; (2) the ANS FTL hides the logical→physical mapping, so you can't even address "the slack" coherently; (3) APFS issues **TRIM** on delete and the controller's garbage collection may have already erased the freed pages. Recovery therefore moves **up the stack** to the application/database layer — SQLite freelist pages, un-`VACUUM`ed records, `-wal` journals, and APFS snapshots — covered in [[14-deleted-data-recovery]]. Physical NAND carving is not where iOS evidence lives.
 
 **Erase vs. restore vs. wipe — three different key events.** Investigators conflate these constantly; they touch different keys and leave different traces:
 
@@ -182,7 +182,7 @@ When the user taps **Erase All Content and Settings** (EACS), or an MDM / Exchan
 | **Erase All Content and Settings (EACS)** | effaceable/media key destroyed; new file-system key generated; SEP attempt-counter reset | seconds | nothing decryptable; device boots to setup |
 | **Remote wipe** (Find My / MDM / ActiveSync) | same as EACS, triggered over the network | seconds, once it reaches the device | same — hence Faraday-bag-on-seizure |
 | **DFU restore** | reflashes firmware + re-creates volumes; effectively re-keys via the same effaceable destruction | minutes (re-image) | nothing decryptable; also rewrites the OS |
-| **"Delete" of a file/app** | per-file/class keys untouched; APFS marks blocks free → TRIM | instant | the *ciphertext* may linger in unmapped pages, but unreadable; SQLite/journal traces may persist (see [[deleted-data-recovery]]) |
+| **"Delete" of a file/app** | per-file/class keys untouched; APFS marks blocks free → TRIM | instant | the *ciphertext* may linger in unmapped pages, but unreadable; SQLite/journal traces may persist (see [[14-deleted-data-recovery]]) |
 
 The first three are crypto-shred at the volume level; the fourth is an ordinary unlink that leaves the cryptosystem intact and merely orphans ciphertext. Only the fourth is something a forensic examiner can sometimes claw back, and only at the database/journal layer — never the NAND.
 
@@ -196,7 +196,7 @@ Sergei Skorobogatov's **iPhone 5C NAND mirroring** work (2016) is the historical
 
 The practical consequences for Part 07:
 
-- **Bit-for-bit physical imaging is obsolete** as an evidence source on SEP devices. Acquisition is now *logical* (backup-style), *file-system* (an agent decrypts in place using SEP-released keys at AFU), or *cloud*. See [[the-acquisition-taxonomy]] and [[full-file-system-acquisition]].
+- **Bit-for-bit physical imaging is obsolete** as an evidence source on SEP devices. Acquisition is now *logical* (backup-style), *file-system* (an agent decrypts in place using SEP-released keys at AFU), or *cloud*. See [[01-the-acquisition-taxonomy]] and [[05-full-file-system-acquisition]].
 - The exploit chain (checkm8 on A8–A11, or a software chain on newer SoCs) buys you **code execution that can ask the SEP to unwrap keys while the device is unlocked** — it does *not* let you read plaintext off the NAND. The value is "decrypt in place," not "image the chip."
 - A8–A11 (checkm8-vulnerable) devices still allow a bootrom-level attack, but even there the SEP holds the keys; checkm8 enables *brute-forcing the passcode* and then SEP-assisted decryption, not raw plaintext recovery.
 
@@ -218,26 +218,26 @@ If you can't image the chip, what *does* a modern "full file system" extraction 
    PLAINTEXT in the agent's address space ──► streamed over USB/Wi-Fi to the Mac
 ```
 
-The agent never touches NAND ciphertext or keys directly; it asks the OS to open files, and the **hardware decrypts them in place** exactly as it would for any app — the agent's privilege just lets it open *everything*. This is why the result is a tree of decrypted files, why it only works at AFU (class A files locked since the last lock won't open), and why the deliverable is "what the live device could read," not "what's on the chip." The taxonomy of agents/exploits that get you there is [[full-file-system-acquisition]] and [[decrypting-backups-and-images]].
+The agent never touches NAND ciphertext or keys directly; it asks the OS to open files, and the **hardware decrypts them in place** exactly as it would for any app — the agent's privilege just lets it open *everything*. This is why the result is a tree of decrypted files, why it only works at AFU (class A files locked since the last lock won't open), and why the deliverable is "what the live device could read," not "what's on the chip." The taxonomy of agents/exploits that get you there is [[05-full-file-system-acquisition]] and [[07-decrypting-backups-and-images]].
 
 > 🔬 **Forensics note:** This reframes evidentiary integrity. A file-system extraction is **not** a bit-for-bit forensic image of the storage medium — it is a *logical, point-in-time decryption* performed by the subject device. Your hash covers the extracted file set, not the NAND. Document it as such: the medium was never imaged; the device decrypted its own data under your authority at a recorded lock state. Defense experts know the difference, and so should your report.
 
 ### The partition / volume picture (briefly)
 
-The NAND, above the firmware and effaceable regions, holds a single **APFS container** with multiple volumes (a sealed read-only **System** volume — the SSV — plus the **Data** volume that holds everything user-generated, plus Preboot/VM/etc.). The split that matters for storage encryption: the **System volume is signed and sealed** (its integrity comes from the SSV hash tree, not from secrecy), while the **Data volume is the one under Data Protection** with the per-file keys above. Older iOS (pre-10.3) used HFS+ with two GPT partitions (a read-only OS partition and a read-write data partition); the migration to APFS in iOS 10.3 brought native per-file encryption integration. The full volume/snapshot/firmlink mechanics are their own lesson — see [[apfs-on-ios-volumes]].
+The NAND, above the firmware and effaceable regions, holds a single **APFS container** with multiple volumes (a sealed read-only **System** volume — the SSV — plus the **Data** volume that holds everything user-generated, plus Preboot/VM/etc.). The split that matters for storage encryption: the **System volume is signed and sealed** (its integrity comes from the SSV hash tree, not from secrecy), while the **Data volume is the one under Data Protection** with the per-file keys above. Older iOS (pre-10.3) used HFS+ with two GPT partitions (a read-only OS partition and a read-write data partition); the migration to APFS in iOS 10.3 brought native per-file encryption integration. The full volume/snapshot/firmlink mechanics are their own lesson — see [[03-apfs-on-ios-volumes]].
 
 > 🔬 **Forensics note:** Over-provisioning and the FTL matter for one more reason: the NAND has **7–28% spare area** the host can never address (reserved for wear-leveling, GC, and bad-block management). Even if encryption *weren't* in the way, a logical image can never reach that spare area — only a controller-level or chip-off read could, and on iOS that read is ciphertext. There is no host-side tool that "sees the whole chip."
 
 ### TRIM and GC timing: the window that doesn't help you
 
-When APFS unlinks a file it eventually issues a **TRIM** (NVMe deallocate) telling the controller those logical blocks are free; the controller's **garbage collector** later erases the underlying physical pages so they can be re-programmed (NAND must erase a whole block before rewriting any page in it). Both steps are **asynchronous** — there is a real window after a delete in which the freed ciphertext still physically exists, sometimes in the high-speed **SLC write cache** before it's folded into denser TLC/QLC storage. In ordinary disk forensics that window is your friend; here it is useless three ways: you can't address the freed physical pages (FTL), the bytes are ciphertext (AES), and the moment TRIM/GC completes even the ciphertext is gone. The only thing the timing changes is how long the *database/journal* layer above it keeps recoverable structure — which is where you actually work (see [[deleted-data-recovery]]).
+When APFS unlinks a file it eventually issues a **TRIM** (NVMe deallocate) telling the controller those logical blocks are free; the controller's **garbage collector** later erases the underlying physical pages so they can be re-programmed (NAND must erase a whole block before rewriting any page in it). Both steps are **asynchronous** — there is a real window after a delete in which the freed ciphertext still physically exists, sometimes in the high-speed **SLC write cache** before it's folded into denser TLC/QLC storage. In ordinary disk forensics that window is your friend; here it is useless three ways: you can't address the freed physical pages (FTL), the bytes are ciphertext (AES), and the moment TRIM/GC completes even the ciphertext is gone. The only thing the timing changes is how long the *database/journal* layer above it keeps recoverable structure — which is where you actually work (see [[14-deleted-data-recovery]]).
 
 ### The low NAND: SysCfg, NVRAM, and what survives a wipe
 
 Not all of the NAND is the encrypted APFS container. Lower regions, managed below the filesystem, hold device-provisioning data that is **not** part of the data volume and therefore **survives EACS**:
 
 - **SysCfg** — a factory-written region holding immutable identity: serial number, model/region code, and the **Wi-Fi/Bluetooth MAC addresses**, among other provisioning fields.
-- **NVRAM** — the boot environment: `boot-args`, `auto-boot`, the **boot nonce** used in Image4 personalization (see [[image4-personalization-shsh]]), and recovery/DFU state.
+- **NVRAM** — the boot environment: `boot-args`, `auto-boot`, the **boot nonce** used in Image4 personalization (see [[02-image4-personalization-shsh]]), and recovery/DFU state.
 - The **firmware/boot regions** — LLB/iBoot and the personalized component slots (including the **ANS firmware**), verified by the secure boot chain.
 
 > 🔬 **Forensics note:** A crypto-shred is a *data-volume* event, not a NAND erase. A factory-reset, "empty" iPhone still surfaces its **serial, model, region, and MAC addresses** the instant it boots — readable over USB with `ideviceinfo` the moment it trusts a host, and recoverable from SysCfg even before that. So "the device was wiped" never means "the device is anonymous": identity, IMEI/eSIM provisioning, and activation lineage persist below the encryption boundary. That distinction has closed cases where a wiped device was still tied to an account via its serial.
@@ -256,7 +256,7 @@ The architecture wasn't always this airtight, and a forensicator dealing with le
 | A14 / iOS 14+ era | Storage cipher moves to **AES-256-XTS**; the **media key / SEP anti-replay (xART)** supplements the block-0 effaceable locker. |
 | A19 / iOS 26 (2026) | Same crypto model; broader memory-integrity hardening (MIE/EMTE) around it. Physical acquisition remains dead; AFU file-system extraction is the high-yield path. |
 
-> 🔬 **Forensics note:** "Which iOS introduced X" is not trivia — it's triage. Faced with a seized device you immediately ask: SoC generation (checkm8-eligible A8–A11 vs. not), iOS version (default-protection era), and lock state (BFU/AFU). Those three answer "what can I even get?" before you touch a tool. The hardware in this lesson sets the ceiling; [[the-acquisition-taxonomy]] picks the method under it.
+> 🔬 **Forensics note:** "Which iOS introduced X" is not trivia — it's triage. Faced with a seized device you immediately ask: SoC generation (checkm8-eligible A8–A11 vs. not), iOS version (default-protection era), and lock state (BFU/AFU). Those three answer "what can I even get?" before you touch a tool. The hardware in this lesson sets the ceiling; [[01-the-acquisition-taxonomy]] picks the method under it.
 
 ### The barrier stack, in order
 
@@ -363,7 +363,7 @@ You won't decrypt anything here — the point is to *see* that storage firmware 
 
 1. From a public iOS full-file-system reference image, pick any user file (e.g. a Photos asset, an SMS row's attachment).
 2. On paper, trace it **bottom-up** through the hierarchy diagram: file contents → per-file key → class key (which class? what lock state would make it available?) → keybag (`BAG1`) → file-system key (`EMF!`) → effaceable/media key.
-3. For the same file, answer: would a **BFU** image have yielded it? An **AFU** file-system extraction? A **logical/backup** acquisition? Justify each from the class you assigned in step 2. (Cross-check your reasoning against [[bfu-vs-afu-and-data-protection-classes]] and [[full-file-system-acquisition]].)
+3. For the same file, answer: would a **BFU** image have yielded it? An **AFU** file-system extraction? A **logical/backup** acquisition? Justify each from the class you assigned in step 2. (Cross-check your reasoning against [[02-bfu-vs-afu-and-data-protection-classes]] and [[05-full-file-system-acquisition]].)
 4. State precisely why no chip-off of this device's NAND would have helped, in terms of which key the chip-off does and does not contain.
 
 ### Lab 4 — Find the storage firmware in the boot chain (substrate: an IPSW; no device)
@@ -371,7 +371,7 @@ You won't decrypt anything here — the point is to *see* that storage firmware 
 1. Acquire an IPSW for any modern device (`ipsw download ipsw --device iPhone18,1 --latest` — iPhone 17 Pro; or use one on disk) and run `ipsw info` on it.
 2. Enumerate the firmware components and locate the storage-controller (ANS / NVMe) firmware and its entry in `BuildManifest.plist`.
 3. Note that it carries a **signed digest** and a component slot just like iBoot and the kernelcache — write one sentence on why that signing is what prevents a host from loading hostile controller firmware to exfiltrate keys.
-4. Bonus: confirm the manifest is **board/ECID-personalizable** (the manifest references the components by digest; personalization binds them per device at install). Tie this back to why a NAND-plus-controller pair can't be driven on a bench. (Full personalization mechanics: [[image4-personalization-shsh]].)
+4. Bonus: confirm the manifest is **board/ECID-personalizable** (the manifest references the components by digest; personalization binds them per device at install). Tie this back to why a NAND-plus-controller pair can't be driven on a bench. (Full personalization mechanics: [[02-image4-personalization-shsh]].)
 
 ### Lab 5 — Model "keys that never leave hardware" (substrate: Mac Secure Enclave via `security`)
 
@@ -449,4 +449,4 @@ The Mac's own SEP gives you a faithful, device-free analogue of the "the key exi
 - `man hdiutil`, `man diskutil`, `xcrun simctl help` — the Mac-side commands used in the labs.
 
 ---
-*Related lessons: [[secure-enclave-hardware]] | [[sep-sepos-deep-dive]] | [[data-protection-and-keybags]] | [[bfu-vs-afu-and-data-protection-classes]] | [[full-file-system-acquisition]] | [[deleted-data-recovery]]*
+*Related lessons: [[02-secure-enclave-hardware]] | [[01-sep-sepos-deep-dive]] | [[02-data-protection-and-keybags]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[05-full-file-system-acquisition]] | [[14-deleted-data-recovery]]*

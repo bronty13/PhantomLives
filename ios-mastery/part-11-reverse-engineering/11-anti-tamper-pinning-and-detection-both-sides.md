@@ -447,4 +447,4 @@ App Attest cannot run on the Simulator. Walk the flow on paper against the canon
 - LaurieWired — *iOS Reverse Engineering Reference: Anti-Tampering Techniques*; `rustymagnet3000/ios_debugger_challenge` (a hands-on anti-debug playground) and `ios_devicecheck_app_attest`.
 
 ---
-*Related lessons: [[owasp-mastg-and-app-security-testing]] | [[dynamic-analysis-with-frida]] | [[objection-swizzling-and-runtime-exploration]] | [[the-jailbreak-landscape-2026]] | [[certificate-pinning-and-bypass]] | [[traffic-interception-and-tls]] | [[code-signing-amfi-entitlements]] | [[keychain-on-ios]]*
+*Related lessons: [[10-owasp-mastg-and-app-security-testing]] | [[05-dynamic-analysis-with-frida]] | [[06-objection-swizzling-and-runtime-exploration]] | [[07-the-jailbreak-landscape-2026]] | [[03-certificate-pinning-and-bypass]] | [[02-traffic-interception-and-tls]] | [[04-code-signing-amfi-entitlements]] | [[08-keychain-on-ios]]*

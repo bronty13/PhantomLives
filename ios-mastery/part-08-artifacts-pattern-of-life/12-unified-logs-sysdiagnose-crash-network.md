@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-You already learned the *mechanism* of Unified Logging in [[unified-logging-and-sysdiagnose]] — `os_log()` → `logd` → `.tracev3`, captured on iOS via sysdiagnose because there is no on-device shell. That lesson taught you the plumbing. **This lesson tells you what to grep it for.** When the messaging DBs are SQLCipher-locked, the backup is ADP-encrypted, and the user "doesn't remember" installing an app, the diagnostic layer is where you find the corroborating timestamps: a crash report that proves a binary *executed* at a precise wall-clock instant, a JetsamEvent that snapshots *which processes were resident in memory* at a moment of pressure, a `DataUsage` row that records the **first time an app ever touched the cellular network** (a de-facto first-launch timestamp), and a Wi-Fi `lastJoined` date plus a BSSID that pins the phone to a physical location you can resolve against a wardriving database. These are independent, hard-to-fake, often-overlooked corroborators — exactly the evidence that survives when the obvious stores are encrypted or wiped.
+You already learned the *mechanism* of Unified Logging in [[09-unified-logging-and-sysdiagnose]] — `os_log()` → `logd` → `.tracev3`, captured on iOS via sysdiagnose because there is no on-device shell. That lesson taught you the plumbing. **This lesson tells you what to grep it for.** When the messaging DBs are SQLCipher-locked, the backup is ADP-encrypted, and the user "doesn't remember" installing an app, the diagnostic layer is where you find the corroborating timestamps: a crash report that proves a binary *executed* at a precise wall-clock instant, a JetsamEvent that snapshots *which processes were resident in memory* at a moment of pressure, a `DataUsage` row that records the **first time an app ever touched the cellular network** (a de-facto first-launch timestamp), and a Wi-Fi `lastJoined` date plus a BSSID that pins the phone to a physical location you can resolve against a wardriving database. These are independent, hard-to-fake, often-overlooked corroborators — exactly the evidence that survives when the obvious stores are encrypted or wiped.
 
 ## Concepts
 
@@ -31,7 +31,7 @@ Everything in this lesson lives in one of three places, and *where* it lives dic
 | `netusage.sqlite` | `/private/var/networkd/` | ❌ | ❌ | **FFS only** |
 | Wi-Fi known-networks plist | `/private/var/preferences/` | ❌ | ✅ (a copy in the `WiFi/` collector) | sysdiagnose, or FFS |
 
-The single most important takeaway from this table is a *split*, and the common-knowledge version of it is wrong: people say "the network DBs aren't in a backup," but **only `netusage.sqlite` is genuinely FFS-only.** `DataUsage.sqlite` is the exception — it lives in the **`WirelessDomain`** of an ordinary iTunes/Finder backup (`WirelessDomain/Library/Databases/DataUsage.sqlite`), so its per-process `ZFIRSTTIMESTAMP`/`ZTIMESTAMP` and WWAN byte counts are reachable from a humble logical backup, no jailbreak required — and backups go back further than a freshly-acquired FFS image. `netusage.sqlite` and the *live* Wi-Fi known-networks plist, by contrast, live on system paths (`/var/networkd`, `/var/preferences`) the backup domain map excludes, so they need a **full-file-system acquisition** (see [[full-file-system-acquisition]]) — a BootROM-exploit FFS on A8–A13 (checkm8/usbliter8), a jailbreak agent, or a commercial extraction. The crash reports and a *copy* of the Wi-Fi plist you can pull from an AFU, trusted device over USB without a jailbreak, because Apple deliberately exposes them through lockdown services and the sysdiagnose collector. Know which tier each artifact sits in before you promise it in a report.
+The single most important takeaway from this table is a *split*, and the common-knowledge version of it is wrong: people say "the network DBs aren't in a backup," but **only `netusage.sqlite` is genuinely FFS-only.** `DataUsage.sqlite` is the exception — it lives in the **`WirelessDomain`** of an ordinary iTunes/Finder backup (`WirelessDomain/Library/Databases/DataUsage.sqlite`), so its per-process `ZFIRSTTIMESTAMP`/`ZTIMESTAMP` and WWAN byte counts are reachable from a humble logical backup, no jailbreak required — and backups go back further than a freshly-acquired FFS image. `netusage.sqlite` and the *live* Wi-Fi known-networks plist, by contrast, live on system paths (`/var/networkd`, `/var/preferences`) the backup domain map excludes, so they need a **full-file-system acquisition** (see [[05-full-file-system-acquisition]]) — a BootROM-exploit FFS on A8–A13 (checkm8/usbliter8), a jailbreak agent, or a commercial extraction. The crash reports and a *copy* of the Wi-Fi plist you can pull from an AFU, trusted device over USB without a jailbreak, because Apple deliberately exposes them through lockdown services and the sysdiagnose collector. Know which tier each artifact sits in before you promise it in a report.
 
 ```
   LOGICAL / backup + lockdown (AFU + trusted, no jailbreak)   ← lowest bar
@@ -61,7 +61,7 @@ You know the `.tracev3` chunk structure and the `log show` predicate language. H
 | **USB / cable attach + "Trust"** | `com.apple.iokit.IOUSBHostFamily`, `AppleUSBHostController` | the iOS analogue of macOS `IOUSBHostFamily` |
 | Pairing / lockdown connections | `process == "lockdownd"`, `usbmux`, `mobileactivationd` | **your own acquisition tooling appears here** |
 | App install / delete / update | `process == "installd"`, `mobile_installation` | install events with timestamps |
-| Power / inactivity reboot (AFU→BFU) | `process == "powerd"` | the 72 h inactivity reboot crossing ([[passcode-bfu-afu-and-inactivity]]) |
+| Power / inactivity reboot (AFU→BFU) | `process == "powerd"` | the 72 h inactivity reboot crossing ([[03-passcode-bfu-afu-and-inactivity]]) |
 | Wi-Fi join / disconnect | `process == "wifid"` / `com.apple.wifi` | network association events |
 
 > 🔬 **Forensics note:** The Unified Log is one of the few iOS stores that timestamps **USB attachment and host-pairing to sub-second precision**. When you connect your own workstation to acquire, `lockdownd`/`usbmux`/`mobileactivationd` log the connection — so capture the baseline sysdiagnose **before** you plug in for anything else, and reconcile your own connection times against these entries in your notes. The log will faithfully record the examiner; account for it rather than be surprised by it.
@@ -84,7 +84,7 @@ sysdiagnose_2026.06.26_14-22-07+0000_iPhone-OS_iPhone_23F79/
 │   ├── WiFi/                      ← wifi scan + join logs
 │   ├── lockdownd/  powerd/  appstored/  tailspin/ …
 ├── WiFi/                          ← COPY of com.apple.wifi*.plist (known networks)
-├── powerlogs/                     ← CurrentPowerlog.PLSQL archive ([[powerlog-and-aggregate-dictionary]])
+├── powerlogs/                     ← CurrentPowerlog.PLSQL archive ([[03-powerlog-and-aggregate-dictionary]])
 ├── Preferences/                   ← assorted system prefs
 ├── ps.txt  ps_thread.txt          ← process snapshot AT CAPTURE TIME (what was running)
 ├── netstat*.txt  ifconfig*.txt    ← live network state at capture
@@ -102,7 +102,7 @@ Three of these deserve a second look the GUI tools ignore:
 - **`logs/MobileInstallation/mobile_installation.log.*`** is a plaintext, append-only ledger of every app install, uninstall, and upgrade `installd` performed, with timestamps. It is the cleanest install-history artifact iOS exposes short of `applicationState.db`, and it survives the app's deletion.
 - **`swcutil_show.txt`** dumps each installed app's **associated domains** (universal-links / shared-web-credentials). It is an oblique but reliable *installed-app inventory*: an app's presence here proves it was installed and lists the web domains it claimed.
 
-> 🔬 **Forensics note:** The authoritative *container* inventory — the bundle-ID↔UUID map, last-launch times — comes from `applicationState.db` and `MobileInstallation/*.plist` on a **full-file-system image** (see [[app-sandbox-and-filesystem-layout]]), which a sysdiagnose does **not** include. Use the sysdiagnose's `mobile_installation.log` and `swcutil_show.txt` as the *triage* footprint, and the FFS stores as the authoritative one. Note the gap in your method so nobody mistakes "not in the sysdiagnose" for "not installed."
+> 🔬 **Forensics note:** The authoritative *container* inventory — the bundle-ID↔UUID map, last-launch times — comes from `applicationState.db` and `MobileInstallation/*.plist` on a **full-file-system image** (see [[00-app-sandbox-and-filesystem-layout]]), which a sysdiagnose does **not** include. Use the sysdiagnose's `mobile_installation.log` and `swcutil_show.txt` as the *triage* footprint, and the FFS stores as the authoritative one. Note the gap in your method so nobody mistakes "not in the sysdiagnose" for "not installed."
 
 > ⚖️ **Authorization:** Triggering a sysdiagnose (button chord, Settings → Analytics, or an MDM command) *creates new data on the device* and writes a screenshot. That is a modification of the evidence source, however minor. Do it only under explicit authority, document who triggered it and when, and capture the device's existing Analytics-Data list *before* you generate a fresh one so you can distinguish pre-existing reports from yours. Prefer pulling existing reports via lockdown services over generating new ones when the goal is preservation.
 
@@ -121,7 +121,7 @@ On-device they land in `/private/var/mobile/Library/Logs/CrashReporter/` (user-s
 | `bug_type` | report-category code | discriminates crash vs hang vs jetsam |
 | `incident_id` | UUID for this report | dedup / cross-ref |
 
-The payload adds: `procName`/`pid`, `parentProc`/`responsibleProc` (who launched it), `exception`/`termination` (signal, reason, e.g. `EXC_BAD_ACCESS`), per-thread backtraces, and a **`usedImages`/binary-images** list — every loaded Mach-O with its load address and **UUID**. Those UUIDs tie the crash to a specific dyld shared cache build ([[dyld-shared-cache-and-amfi]]), which independently corroborates the OS version.
+The payload adds: `procName`/`pid`, `parentProc`/`responsibleProc` (who launched it), `exception`/`termination` (signal, reason, e.g. `EXC_BAD_ACCESS`), per-thread backtraces, and a **`usedImages`/binary-images** list — every loaded Mach-O with its load address and **UUID**. Those UUIDs tie the crash to a specific dyld shared cache build ([[07-dyld-shared-cache-and-amfi]]), which independently corroborates the OS version.
 
 The `exception.type` + `termination` fields are worth reading rather than skimming — they often say *why* the OS killed the process, which can distinguish a benign bug from a security-relevant event:
 
@@ -132,24 +132,24 @@ The `exception.type` + `termination` fields are worth reading rather than skimmi
 | `EXC_BAD_INSTRUCTION` | illegal instruction (often a Swift trap / `fatalError`) |
 | `EXC_GUARD` | violated a guarded resource (fd/file guard) |
 | `0x8badf00d` | **watchdog** killed an unresponsive app (a hang, not a crash) |
-| `Namespace SIGNAL` / code-signing kill | **AMFI/codesigning** termination — invalid signature, a tell for tampered/sideloaded code ([[code-signing-amfi-entitlements]]) |
+| `Namespace SIGNAL` / code-signing kill | **AMFI/codesigning** termination — invalid signature, a tell for tampered/sideloaded code ([[04-code-signing-amfi-entitlements]]) |
 | `VM - …` / `Per-process-limit` | resource/memory-policy kill (relates to jetsam) |
 
 A report gains a **`.synced`** suffix once `OTACrashCopier`/`symptomsd` has uploaded it to Apple Analytics, and rotated-out reports move to `Retired/`. Both states are themselves evidence: a `.synced` report means **Analytics sharing was ON** at upload time (the user opted into "Share iPhone Analytics," a privacy-posture fact), and the count/age of `Retired/` reports tells you how aggressively the device was rotating diagnostics. Absence of *any* synced reports on a heavily-used phone hints Analytics was off — corroborate against the Settings posture.
 
 > 🖥️ **macOS contrast:** On a Mac you simply `cat`/`open` crash reports from `~/Library/Logs/DiagnosticReports/` (and `/Library/Logs/DiagnosticReports/` for system ones) — same `.ips` JSON, no gate. On iOS the identical files sit at `/private/var/mobile/Library/Logs/CrashReporter/` behind Data Protection, so you reach them through the **`com.apple.crashreportcopymobile`** lockdown service (or the sysdiagnose collector) rather than the filesystem. The *parsing* is identical; the *doorway* is a lockdown service instead of `cat`.
 
-> 🔬 **Forensics note:** A crash report is hard, dated *proof a specific binary executed on this device*. It survives the app's later deletion (the `.ips` stays in `CrashReporter/`), it carries the **device-local timezone** in its `timestamp` (an anti-forensics tell if the TZ doesn't match other artifacts — see [[the-ios-timestamp-zoo]]), and `responsibleProc` can attribute the launch to a parent (a tap from SpringBoard, a push from a daemon, a background-fetch). When the question is "was app X ever run on this phone, and when," a crash report answers it without touching the app's own — possibly encrypted — stores.
+> 🔬 **Forensics note:** A crash report is hard, dated *proof a specific binary executed on this device*. It survives the app's later deletion (the `.ips` stays in `CrashReporter/`), it carries the **device-local timezone** in its `timestamp` (an anti-forensics tell if the TZ doesn't match other artifacts — see [[00-the-ios-timestamp-zoo]]), and `responsibleProc` can attribute the launch to a parent (a tap from SpringBoard, a push from a daemon, a background-fetch). When the question is "was app X ever run on this phone, and when," a crash report answers it without touching the app's own — possibly encrypted — stores.
 
 > 🔬 **Forensics note:** `bug_type` is a small string code. Full crash reports are commonly `"309"` (older logs use `"109"`); hangs/spins and `JetsamEvent` reports carry different codes. The exact code set has drifted across releases — **verify against your actual file** (read line 1, don't assume) rather than filtering on a memorized constant. The filename prefix (`JetsamEvent-…`, `<App>-…`) is the more durable discriminator.
 
 ### JetsamEvent reports — a memory-resident process snapshot
 
-`JetsamEvent-YYYY-MM-DD-HHMMSS.ips` reports are generated by the kernel's **jetsam** memory-pressure mechanism ([[memory-jetsam-app-lifecycle]]) when it kills a process to reclaim RAM. Forensically they are uniquely valuable because the payload is a **snapshot of every process resident in memory at that instant** — not just the one that got killed.
+`JetsamEvent-YYYY-MM-DD-HHMMSS.ips` reports are generated by the kernel's **jetsam** memory-pressure mechanism ([[06-memory-jetsam-app-lifecycle]]) when it kills a process to reclaim RAM. Forensically they are uniquely valuable because the payload is a **snapshot of every process resident in memory at that instant** — not just the one that got killed.
 
 The payload (exact keys vary by version — verify) contains a `memoryStatus`/`pageSize` block and a **list of processes**, each with `name`, `pid`, `uuid`, `physicalFootprint`/`rpages` (resident pages → bytes), CPU time, and a `reason` for the kill candidate (`per-process-limit`, `vm-pageshortage`, `vnode-limit`, etc.). The killed process is flagged; the rest are simply *what else was in memory*.
 
-> 🔬 **Forensics note:** A JetsamEvent proves an app was **running and resident at a precise time** even if it left no other artifact — no crash, no DB write, no foreground entry in `knowledgeC` ([[knowledgec-db-deep-dive]]). If a subject's app appears in the process list of a JetsamEvent timestamped 03:14, that app was alive in RAM at 03:14. Cross-reference the resident-process list against the `knowledgeC`/Biome foreground timeline ([[biome-and-segb-streams]]): an app resident in jetsam but *never* foregrounded points to background execution (push, background fetch, location, or a daemon-spawned helper).
+> 🔬 **Forensics note:** A JetsamEvent proves an app was **running and resident at a precise time** even if it left no other artifact — no crash, no DB write, no foreground entry in `knowledgeC` ([[01-knowledgec-db-deep-dive]]). If a subject's app appears in the process list of a JetsamEvent timestamped 03:14, that app was alive in RAM at 03:14. Cross-reference the resident-process list against the `knowledgeC`/Biome foreground timeline ([[02-biome-and-segb-streams]]): an app resident in jetsam but *never* foregrounded points to background execution (push, background fetch, location, or a daemon-spawned helper).
 
 ### The rest of the diagnostic-report zoo
 
@@ -198,7 +198,7 @@ Why two databases? They serve different system consumers and overlap only partia
 
 > 🔬 **Forensics note:** `ZPROCESS.ZFIRSTTIMESTAMP` is, in practice, a **first-launch / first-network-activity timestamp** for an app — frequently the earliest dated trace of an app that has since been deleted or whose own container is gone. "When did this phone first talk to the network as `com.evil.app`?" is answered here. Pair it with the `mobile_installation.log` install entry and the app's first `knowledgeC` foreground row to triangulate a true first-use time.
 
-> 🔬 **Forensics note:** Byte counts are an *intensity* signal. An app with megabytes of `ZWWANOUT` but almost no inbound is exfiltrating; a "calculator" with steady background WWAN has no business doing so. Combined with the crash/jetsam evidence of background execution, the network DBs are how you build a quantitative case that an app was phoning home — independent of any packet capture you may or may not have ([[traffic-interception-and-tls]]).
+> 🔬 **Forensics note:** Byte counts are an *intensity* signal. An app with megabytes of `ZWWANOUT` but almost no inbound is exfiltrating; a "calculator" with steady background WWAN has no business doing so. Combined with the crash/jetsam evidence of background execution, the network DBs are how you build a quantitative case that an app was phoning home — independent of any packet capture you may or may not have ([[02-traffic-interception-and-tls]]).
 
 ### Volumes vs destinations — where the log fills the gap
 
@@ -211,7 +211,7 @@ The two network DBs answer *how much* each process sent and *when it first/last 
 | `symptomsd` / `com.apple.symptomsd` | per-process network *symptoms* (stalls, usage), sometimes per-flow byte accounting |
 | `CommCenter` | cellular registration, carrier, data-context bring-up |
 
-So the method is layered: **DataUsage/netusage give you the *volume + timing* per process; the Unified Log's `mDNSResponder`/`networkd` entries give you *candidate destinations* for the same window.** Neither is a packet capture, but together they bound the question hard — "this process moved 8 MB out over cellular at 09:05, and the only hostnames it resolved in that window were `c2.evil.example`." Where you also have a network tap or a proxy log ([[traffic-interception-and-tls]]), use these to corroborate and to attribute flows to a *process* (which a tap alone cannot do).
+So the method is layered: **DataUsage/netusage give you the *volume + timing* per process; the Unified Log's `mDNSResponder`/`networkd` entries give you *candidate destinations* for the same window.** Neither is a packet capture, but together they bound the question hard — "this process moved 8 MB out over cellular at 09:05, and the only hostnames it resolved in that window were `c2.evil.example`." Where you also have a network tap or a proxy log ([[02-traffic-interception-and-tls]]), use these to corroborate and to attribute flows to a *process* (which a tap alone cannot do).
 
 ### Wi-Fi known-networks plists — geolocation without GPS
 
@@ -222,9 +222,9 @@ The list of networks the device remembers is the cheapest geolocation iOS gives 
 
 The forensic payload is the **`BSSID`** — the access point's MAC address — paired with a join timestamp. Unlike GPS, this is recorded simply by the phone *seeing/joining* a network, and a BSSID is geolocatable: wardriving databases (WiGLE) map BSSID → physical coordinates. So a `BSSList` entry with `LastAssociatedAt` places the device near a known AP at a known time, even with Location Services off the whole time.
 
-> 🔬 **Forensics note:** Do **not** confuse the device's *own* MAC (which iOS randomizes per-SSID — "private Wi-Fi address," a different randomized MAC per network) with the **BSSID** (the *router's* real MAC, recorded faithfully). MAC randomization defeats *tracking of the phone by APs*; it does nothing to hide *which APs the phone joined*. The BSSID you want is the AP's, and it is real. (See [[wifi-bluetooth-and-proximity]] for the radio-layer detail.)
+> 🔬 **Forensics note:** Do **not** confuse the device's *own* MAC (which iOS randomizes per-SSID — "private Wi-Fi address," a different randomized MAC per network) with the **BSSID** (the *router's* real MAC, recorded faithfully). MAC randomization defeats *tracking of the phone by APs*; it does nothing to hide *which APs the phone joined*. The BSSID you want is the AP's, and it is real. (See [[04-wifi-bluetooth-and-proximity]] for the radio-layer detail.)
 
-> ⚖️ **Authorization:** BSSID → location via a third-party wardriving database (WiGLE) is an *inference*, not a measurement, and it queries an external service. Confirm your authority covers external lookups, treat the coordinates as corroborative not conclusive (APs move; databases lag), corroborate with on-device location stores ([[location-history]]), and document the query (BSSID, database, date, result) for the record.
+> ⚖️ **Authorization:** BSSID → location via a third-party wardriving database (WiGLE) is an *inference*, not a measurement, and it queries an external service. Confirm your authority covers external lookups, treat the coordinates as corroborative not conclusive (APs move; databases lag), corroborate with on-device location stores ([[07-location-history]]), and document the query (BSSID, database, date, result) for the record.
 
 ### Putting it together — the diagnostic-layer corroboration mesh
 
@@ -242,7 +242,7 @@ None of these artifacts is decisive alone; their power is that they are *indepen
                   (mind 4 different epochs/representations)
 ```
 
-When the four *don't* line up — network activity stamped *before* the install, a crash TZ that disagrees with the Wi-Fi timestamps, an app resident in a JetsamEvent but absent from every install ledger — that incoherence is itself the finding: a reinstall, a clock rollback, sideloaded-then-deleted code, or active anti-forensics ([[correlation-and-anti-forensics]]). Build the unified timeline in [[building-a-unified-timeline]]; this lesson supplies four of its highest-trust input streams.
+When the four *don't* line up — network activity stamped *before* the install, a crash TZ that disagrees with the Wi-Fi timestamps, an app resident in a JetsamEvent but absent from every install ledger — that incoherence is itself the finding: a reinstall, a clock rollback, sideloaded-then-deleted code, or active anti-forensics ([[02-correlation-and-anti-forensics]]). Build the unified timeline in [[01-building-a-unified-timeline]]; this lesson supplies four of its highest-trust input streams.
 
 ## Hands-on
 
@@ -343,7 +343,7 @@ python3 apollo.py -o sql -p ios -m /tmp/du.db modules/
 sysdiagnose parse all /path/to/sysdiagnose.tar.gz
 ```
 
-> ⚠️ **ADVANCED (device-bound — narrate only):** Pulling crash reports off a real, authorized phone uses the `com.apple.crashreportcopymobile` lockdown service — `idevicecrashreport -e /out` (libimobiledevice) or `pymobiledevice3 crash pull /out`. This works on an **AFU, already-trusted** device without a jailbreak ([[logical-acquisition-with-libimobiledevice]]). The `netusage.sqlite` DB and the *live* Wi-Fi plists, however, are **FFS-only** — they require a BootROM-exploit (checkm8 A8–A11 / usbliter8 A12–A13), an agent, or a commercial tool, and a non-BFU lock state with the keys available ([[bfu-vs-afu-and-data-protection-classes]]). `DataUsage.sqlite` is the exception — it comes down in an ordinary backup's `WirelessDomain`, so don't conflate it with `netusage` when you scope what a logical/backup acquisition will yield.
+> ⚠️ **ADVANCED (device-bound — narrate only):** Pulling crash reports off a real, authorized phone uses the `com.apple.crashreportcopymobile` lockdown service — `idevicecrashreport -e /out` (libimobiledevice) or `pymobiledevice3 crash pull /out`. This works on an **AFU, already-trusted** device without a jailbreak ([[04-logical-acquisition-with-libimobiledevice]]). The `netusage.sqlite` DB and the *live* Wi-Fi plists, however, are **FFS-only** — they require a BootROM-exploit (checkm8 A8–A11 / usbliter8 A12–A13), an agent, or a commercial tool, and a non-BFU lock state with the keys available ([[02-bfu-vs-afu-and-data-protection-classes]]). `DataUsage.sqlite` is the exception — it comes down in an ordinary backup's `WirelessDomain`, so don't conflate it with `netusage` when you scope what a logical/backup acquisition will yield.
 
 ## 🧪 Labs
 
@@ -383,20 +383,20 @@ sysdiagnose parse all /path/to/sysdiagnose.tar.gz
 
 1. Take two or three `BSSID` values from the known-networks plist.
 2. Look each up on WiGLE (web or API). Record the returned coordinates and the database's last-observed date.
-3. Cross-check the inferred location against any on-device location store in the image ([[location-history]]). Do they agree? Write a one-paragraph note in the language you'd put in a report: what the BSSID + `LastAssociatedAt` establishes, and the inference's limits.
+3. Cross-check the inferred location against any on-device location store in the image ([[07-location-history]]). Do they agree? Write a one-paragraph note in the language you'd put in a report: what the BSSID + `LastAssociatedAt` establishes, and the inference's limits.
 
 ### Lab 5 — Correlate execution + network into a mini timeline
 
-**Substrate:** the sample image from Lab 3 (or a sysdiagnose if you have one). **Fidelity caveat:** demonstrates the *correlation method* ([[building-a-unified-timeline]]); the data is only as complete as the capture's window.
+**Substrate:** the sample image from Lab 3 (or a sysdiagnose if you have one). **Fidelity caveat:** demonstrates the *correlation method* ([[01-building-a-unified-timeline]]); the data is only as complete as the capture's window.
 
 1. Pick one app/process present in both a crash `.ips` (or the unified log) **and** `DataUsage.sqlite`.
-2. Build a three-row mini-timeline for it: **first network activity** (`ZFIRSTTIMESTAMP`), **execution proof** (crash `timestamp` or a `process ==` log entry), **install** (`mobile_installation.log` if available). Normalize all three to UTC (mind the epochs — [[the-ios-timestamp-zoo]]).
+2. Build a three-row mini-timeline for it: **first network activity** (`ZFIRSTTIMESTAMP`), **execution proof** (crash `timestamp` or a `process ==` log entry), **install** (`mobile_installation.log` if available). Normalize all three to UTC (mind the epochs — [[00-the-ios-timestamp-zoo]]).
 3. Do they tell a consistent story, or is there a contradiction (e.g., network activity *before* the recorded install — a reinstall, a clock change, or anti-forensics)? Write the one-line conclusion.
 
 ## Pitfalls & gotchas
 
 - **Only `netusage` is FFS-only — `DataUsage` is in the backup.** The common claim that "the network DBs aren't in a backup" is half wrong: `DataUsage.sqlite` sits in the backup's **`WirelessDomain`**, so a plain logical backup yields it. `netusage.sqlite` (`/var/networkd`) and the *live* Wi-Fi known-networks plist (`/var/preferences`) genuinely are FFS-only — don't list *those* as "available" until you have an FFS image. (A *copy* of the Wi-Fi plist rides along in a sysdiagnose.)
-- **Epoch soup.** `DataUsage`/`netusage` timestamps are CFAbsoluteTime (add `978307200`). Crash `.ips` `timestamp` is an *already-formatted local-TZ string*. The Wi-Fi plist dates render human-readable through `plutil`. The Unified Log uses Mach-continuous-time + `timesync`, not a simple epoch. Mixing these silently produces times decades off — see [[the-ios-timestamp-zoo]].
+- **Epoch soup.** `DataUsage`/`netusage` timestamps are CFAbsoluteTime (add `978307200`). Crash `.ips` `timestamp` is an *already-formatted local-TZ string*. The Wi-Fi plist dates render human-readable through `plutil`. The Unified Log uses Mach-continuous-time + `timesync`, not a simple epoch. Mixing these silently produces times decades off — see [[00-the-ios-timestamp-zoo]].
 - **Copy before you query.** A bare `SELECT` write-locks SQLite and spawns `-wal`/`-shm` sidecars, altering the evidence. `cp` the DB (and any existing `-wal`/`-shm`) first, every time.
 - **`bug_type` is not a stable constant.** Don't filter crash reports on a memorized `bug_type` value; the code set drifts across releases. Read line 1 and key off the filename prefix (`JetsamEvent-…`) for category.
 - **A short/thin log is policy, not proof of absence.** A sysdiagnose with only `default`-level entries and a few hours of history means *default capture + small ring*, not "nothing happened." Corroborate from longer-memory stores (`knowledgeC`/Biome, PowerLog) before concluding.
@@ -449,4 +449,4 @@ sysdiagnose parse all /path/to/sysdiagnose.tar.gz
 - Josh Hickman — iOS reference images (thebinaryhick.blog / Digital Corpora); WiGLE (`wigle.net`) — BSSID geolocation database
 
 ---
-*Related lessons: [[unified-logging-and-sysdiagnose]] | [[app-sandbox-and-filesystem-layout]] | [[knowledgec-db-deep-dive]] | [[biome-and-segb-streams]] | [[powerlog-and-aggregate-dictionary]] | [[location-history]] | [[full-file-system-acquisition]] | [[building-a-unified-timeline]] | [[the-ios-timestamp-zoo]]*
+*Related lessons: [[09-unified-logging-and-sysdiagnose]] | [[00-app-sandbox-and-filesystem-layout]] | [[01-knowledgec-db-deep-dive]] | [[02-biome-and-segb-streams]] | [[03-powerlog-and-aggregate-dictionary]] | [[07-location-history]] | [[05-full-file-system-acquisition]] | [[01-building-a-unified-timeline]] | [[00-the-ios-timestamp-zoo]]*

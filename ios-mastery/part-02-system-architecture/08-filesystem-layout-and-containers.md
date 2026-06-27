@@ -28,7 +28,7 @@ On macOS you navigated a *home* — `~/Library/Application Support/com.foo.Bar/`
 
 `/var` is a symlink to `/private/var` (a BSD inheritance, same as macOS). The single interactive user on iOS is `mobile` (uid 501); the user "home directory" is **`/private/var/mobile`**. There is no `/Users`. Everything user-attributable lives under `/private/var/mobile`; system-wide state lives in sibling `/private/var` subtrees (`/private/var/db`, `/private/var/preferences`, `/private/var/Keychains`, `/private/var/wireless`, `/private/var/installd`, `/private/var/containers`, `/private/var/root` for uid 0's home).
 
-A forensically-minded skeleton of the Data volume (mounted at `/` via APFS firmlinks — see [[apfs-on-ios-volumes]]):
+A forensically-minded skeleton of the Data volume (mounted at `/` via APFS firmlinks — see [[03-apfs-on-ios-volumes]]):
 
 ```
 / (Data volume, /System/Volumes/Data on the SSV split)
@@ -66,7 +66,7 @@ iOS splits every installed app into two physically separate, differently-protect
 | UUID stability | regenerated on **reinstall** (and on app *update* the new `.app` may land in a new bundle UUID) | regenerated on **reinstall**; survives in-place app updates |
 | Forensic payload | `iTunesMetadata.plist` (purchaser Apple ID!), `Info.plist`, FairPlay `SC_Info/` | the actual evidence — databases, plists, caches, media |
 
-The two UUIDs are **unrelated random values** — the bundle container UUID is not the data container UUID for the same app. This separation is *the* architectural reason iOS code-signing holds at runtime: code lives on an immutable, verified mount and can never be modified in place, while mutable data is quarantined to a sandbox the kernel's sandbox profile pins to that one app (see [[the-sandbox-and-tcc]], [[code-signing-amfi-entitlements]]).
+The two UUIDs are **unrelated random values** — the bundle container UUID is not the data container UUID for the same app. This separation is *the* architectural reason iOS code-signing holds at runtime: code lives on an immutable, verified mount and can never be modified in place, while mutable data is quarantined to a sandbox the kernel's sandbox profile pins to that one app (see [[05-the-sandbox-and-tcc]], [[04-code-signing-amfi-entitlements]]).
 
 ```
    App "WhatsApp" (com.whatsapp.WhatsApp) — TWO containers, TWO UUIDs:
@@ -120,11 +120,11 @@ The Data container mirrors the macOS app-sandbox `Data/` skeleton, which is why 
 
 ### Inside the Bundle container
 
-The Bundle container is the unpacked, *installed* form of the IPA payload (see [[the-app-bundle-and-ipa-structure]]). The `.app` itself is what was code-signed; the kernel's AMFI refuses to execute anything inside it that isn't covered by `_CodeSignature/CodeResources` and the embedded signature. Alongside the `.app`:
+The Bundle container is the unpacked, *installed* form of the IPA payload (see [[04-the-app-bundle-and-ipa-structure]]). The `.app` itself is what was code-signed; the kernel's AMFI refuses to execute anything inside it that isn't covered by `_CodeSignature/CodeResources` and the embedded signature. Alongside the `.app`:
 
 - **`iTunesMetadata.plist`** — store/purchase metadata (above).
 - **`BundleMetadata.plist`** — install bookkeeping (`MCMMetadata`-adjacent install info).
-- **`SC_Info/`** — present for App Store (FairPlay-encrypted) apps: `<App>.sinf` / `.supf` hold the per-device FairPlay key material that decrypts the main Mach-O's encrypted `__TEXT` at load. Decrypting an App Store binary statically is the whole point of [[fairplay-encryption-and-decrypting-app-store-apps]]; sideloaded / enterprise / `frida`-injected apps are not FairPlay-wrapped and have no `SC_Info/`.
+- **`SC_Info/`** — present for App Store (FairPlay-encrypted) apps: `<App>.sinf` / `.supf` hold the per-device FairPlay key material that decrypts the main Mach-O's encrypted `__TEXT` at load. Decrypting an App Store binary statically is the whole point of [[03-fairplay-encryption-and-decrypting-app-store-apps]]; sideloaded / enterprise / `frida`-injected apps are not FairPlay-wrapped and have no `SC_Info/`.
 - **`embedded.mobileprovision`** — the embedded provisioning profile, present **only on non-App-Store builds** (development, ad-hoc, enterprise/in-house, sideloaded). Apple **strips it during App Store ingestion**, so a store-installed app has none. Its presence-or-absence is therefore a distribution-channel tell, paired *inversely* with `SC_Info/`: **App Store ⇒ no profile + `SC_Info/` present; dev / ad-hoc / enterprise / sideloaded ⇒ profile present + no `SC_Info/`.** When present it's a CMS-signed (PKCS#7) plist worth parsing — it carries the signing **Team ID**, the requested **entitlements**, the provisioned device **UDIDs** (ad-hoc/development), and the profile's creation/expiry dates: strong attribution and "how did this app get here" evidence on a sideloaded or enterprise-signed app.
 - **`.com.apple.mobile_container_manager.metadata.plist`** — the keystone, below.
 
@@ -147,7 +147,7 @@ The group's metadata plist resolves its UUID to a **group identifier** (e.g. `gr
 
 `/private/var/containers/Shared/SystemGroup/<GUID>/` is the **system daemon** analogue of App Groups — shared containers for Apple's own first-party subsystems (not third-party apps). These hold a surprising amount of high-value system evidence behind opaque UUIDs:
 
-- `systemgroup.com.apple.configurationprofiles` — installed configuration profiles / MDM state (see [[configuration-profiles-and-mobileconfig]]).
+- `systemgroup.com.apple.configurationprofiles` — installed configuration profiles / MDM state (see [[04-configuration-profiles-and-mobileconfig]]).
 - `systemgroup.com.apple.mobilewifi` — Wi-Fi known-networks / `com.apple.wifi.known-networks.plist`.
 - `systemgroup.com.apple.icloud.findmydeviced.managed` — Find My state.
 - `systemgroup.com.apple.nsurlsessiond` — background-download bookkeeping.
@@ -220,18 +220,18 @@ System apps and frameworks predate the container model and store data in a flat,
 
 | Path (under `/private/var/mobile/Library/`) | Store | Lesson |
 |---|---|---|
-| `SMS/sms.db` | iMessage/SMS messages + `Attachments/` | [[communications-imessage-and-sms]] |
-| `CallHistoryDB/CallHistory.storedata` | call log (Core Data) | [[call-history-voicemail-contacts-interactions]] |
-| `AddressBook/AddressBook.sqlitedb` | contacts | [[call-history-voicemail-contacts-interactions]] |
-| `Mail/` | mail accounts, `Envelope Index`, `.emlx` | [[mail-notes-calendar-reminders]] |
-| `CoreDuet/Knowledge/knowledgeC.db` | legacy pattern-of-life (pre-displacement by Biome) | [[knowledgec-db-deep-dive]] |
-| `Biome/streams/{public,restricted}/` | SEGB pattern-of-life streams (knowledgeC's successor) | [[biome-and-segb-streams]] |
-| `Caches/com.apple.routined/` (`Cache.sqlite`) | significant-location / location history | [[location-history]] |
-| `Preferences/` | global `com.apple.*` preference plists | [[notifications-keyboard-and-misc-stores]] |
-| `Keyboard/` | learned-word / dynamic-text dictionaries, `lexicon` | [[notifications-keyboard-and-misc-stores]] |
-| `Recents/com.apple.corerecents.recentsd` | recent-contact interactions, Apple apps (Phone/Messages/Mail) | [[call-history-voicemail-contacts-interactions]] |
-| `Logs/CrashReporter/` | crash logs (also feeds sysdiagnose) | [[unified-logs-sysdiagnose-crash-network]] |
-| `Health/healthdb*.sqlite` | HealthKit (often the most sensitive store on the device) | [[health-and-fitness]] |
+| `SMS/sms.db` | iMessage/SMS messages + `Attachments/` | [[04-communications-imessage-and-sms]] |
+| `CallHistoryDB/CallHistory.storedata` | call log (Core Data) | [[05-call-history-voicemail-contacts-interactions]] |
+| `AddressBook/AddressBook.sqlitedb` | contacts | [[05-call-history-voicemail-contacts-interactions]] |
+| `Mail/` | mail accounts, `Envelope Index`, `.emlx` | [[09-mail-notes-calendar-reminders]] |
+| `CoreDuet/Knowledge/knowledgeC.db` | legacy pattern-of-life (pre-displacement by Biome) | [[01-knowledgec-db-deep-dive]] |
+| `Biome/streams/{public,restricted}/` | SEGB pattern-of-life streams (knowledgeC's successor) | [[02-biome-and-segb-streams]] |
+| `Caches/com.apple.routined/` (`Cache.sqlite`) | significant-location / location history | [[07-location-history]] |
+| `Preferences/` | global `com.apple.*` preference plists | [[13-notifications-keyboard-and-misc-stores]] |
+| `Keyboard/` | learned-word / dynamic-text dictionaries, `lexicon` | [[13-notifications-keyboard-and-misc-stores]] |
+| `Recents/com.apple.corerecents.recentsd` | recent-contact interactions, Apple apps (Phone/Messages/Mail) | [[05-call-history-voicemail-contacts-interactions]] |
+| `Logs/CrashReporter/` | crash logs (also feeds sysdiagnose) | [[12-unified-logs-sysdiagnose-crash-network]] |
+| `Health/healthdb*.sqlite` | HealthKit (often the most sensitive store on the device) | [[10-health-and-fitness]] |
 
 > 🖥️ **macOS contrast:** This `/private/var/mobile/Library/{SMS,Mail,Preferences,Caches,Keyboard,Logs}` tree is the direct descendant of macOS's `~/Library/{Messages,Mail,Preferences,Caches,…}`. The first-party apps kept the old layout; only *third-party* and modern sandboxed first-party apps moved into UUID containers. So an iOS image is a hybrid: a familiar named `~/Library` for the OS, and opaque UUID containers for apps.
 
@@ -240,16 +240,16 @@ System apps and frameworks predate the container model and store data in a flat,
 `/private/var/mobile/Media` is the **AFC-exposed** partition — the only area a non-jailbroken device shares over USB (Apple File Conduit / `house_arrest`) without a backup. It holds:
 
 - `DCIM/` — camera-roll originals (`IMG_xxxx.HEIC/JPG/MOV`), organized in `1xxAPPLE/` buckets.
-- `PhotoData/` — the Photos library *database* and derivatives: `PhotoData/Photos.sqlite` (the catalog — see [[photos-and-the-camera-roll]]), `PhotoData/Thumbnails/`, `PhotoData/Mutations/`.
+- `PhotoData/` — the Photos library *database* and derivatives: `PhotoData/Photos.sqlite` (the catalog — see [[06-photos-and-the-camera-roll]]), `PhotoData/Thumbnails/`, `PhotoData/Mutations/`.
 - `iTunes_Control/` — media sync bookkeeping.
 - `Recordings/` — the **legacy** Voice Memos location; on iOS 12+ Voice Memos records into its own app-group container (`group.com.apple.VoiceMemos`, `Recordings/CloudRecordings.db`), so this folder is often empty/stale on a current image — resolve the group, don't assume Media.
 - `Downloads/`, `Books/`, `PublicStaging/`, `MediaAnalysis/`.
 
-> 🔬 **Forensics note:** Because `/private/var/mobile/Media` is the AFC area, it's reachable over USB on an *unlocked* (AFU) device with no jailbreak — `afcclient`/`ifuse`/`pymobiledevice3 afc` pull `DCIM/` and `PhotoData/Photos.sqlite` directly. That makes camera-roll + Photos.sqlite one of the cheapest high-value pulls in [[logical-acquisition-with-libimobiledevice]]. App containers under `/private/var/mobile/Containers/` are *not* in AFC's view — they require a backup, a `house_arrest` per-app pull (Documents-sharing apps only), or a full-filesystem extraction.
+> 🔬 **Forensics note:** Because `/private/var/mobile/Media` is the AFC area, it's reachable over USB on an *unlocked* (AFU) device with no jailbreak — `afcclient`/`ifuse`/`pymobiledevice3 afc` pull `DCIM/` and `PhotoData/Photos.sqlite` directly. That makes camera-roll + Photos.sqlite one of the cheapest high-value pulls in [[04-logical-acquisition-with-libimobiledevice]]. App containers under `/private/var/mobile/Containers/` are *not* in AFC's view — they require a backup, a `house_arrest` per-app pull (Documents-sharing apps only), or a full-filesystem extraction.
 
 ### Where the keychain lives — and where it doesn't
 
-`/private/var/Keychains/keychain-2.db` (SQLite) is the **device keychain**, and note the path: it is under `/private/var/Keychains`, *not* `/private/var/mobile` and *not* inside any app container. Companions *in that directory* are the certificate/trust caches (`TrustStore.sqlite3`, `ocspcache.sqlite3`, `caissuercache.sqlite3`) — **not** the keybags. The Data-Protection **keybags** (`*.kb`, e.g. `systembag.kb`) that hold the wrapped class keys live in a *sibling* tree at **`/private/var/keybags/`** — a path forensic newcomers routinely conflate with `/private/var/Keychains/` (see [[data-protection-and-keybags]], [[keychain-on-ios]]). Each keychain item is encrypted under a Data-Protection class key, so the rows enumerate without the device key but the secrets do **not** decrypt without on-device key material — which is exactly why keychain decryption is a separate, agent-/exploit-dependent step rather than a file copy.
+`/private/var/Keychains/keychain-2.db` (SQLite) is the **device keychain**, and note the path: it is under `/private/var/Keychains`, *not* `/private/var/mobile` and *not* inside any app container. Companions *in that directory* are the certificate/trust caches (`TrustStore.sqlite3`, `ocspcache.sqlite3`, `caissuercache.sqlite3`) — **not** the keybags. The Data-Protection **keybags** (`*.kb`, e.g. `systembag.kb`) that hold the wrapped class keys live in a *sibling* tree at **`/private/var/keybags/`** — a path forensic newcomers routinely conflate with `/private/var/Keychains/` (see [[02-data-protection-and-keybags]], [[08-keychain-on-ios]]). Each keychain item is encrypted under a Data-Protection class key, so the rows enumerate without the device key but the secrets do **not** decrypt without on-device key material — which is exactly why keychain decryption is a separate, agent-/exploit-dependent step rather than a file copy.
 
 > 🖥️ **macOS contrast:** macOS carries both the legacy per-user `~/Library/Keychains/login.keychain-db` and the iOS-style per-user data-protection keychain at `~/Library/Keychains/<UUID>/keychain-2.db` (same `keychain-2.db` filename as iOS), plus the system `/Library/Keychains/System.keychain`. iOS consolidates to one system-level `/private/var/Keychains/keychain-2.db`, with per-item Data-Protection classes standing in for macOS's per-keychain unlock model.
 
@@ -257,11 +257,11 @@ System apps and frameworks predate the container model and store data in a flat,
 
 Deleting an app tears down its Bundle, Data, and (if no other app uses them) Group containers — the UUID directories vanish and their contents are gone from the live filesystem. But the *fact of installation* persists elsewhere: `installd`'s MobileInstallation logs record installs and removals; the system Biome/knowledgeC `/app/install` and app-usage streams retain the bundle ID and timestamps; `applicationState.db` and SpringBoard icon-layout state (`com.apple.springboard` / `IconState.plist`) can still name a since-removed app; and Apple-account purchase history (the App Store) and any prior backup retain it. So "the container is gone" is *not* "the app was never there."
 
-> 🔬 **Forensics note:** When the question is "did app X ever run on this device," the absence of a container is weak evidence on its own. Pivot to the pattern-of-life stores ([[biome-and-segb-streams]], [[knowledgec-db-deep-dive]]), the install logs, the icon-state plists, the notification stores, and the device's backups — all of which can name an app whose container has been deleted. A container present *plus* corroborating usage in Biome is the strong case; a missing container is merely "not currently installed."
+> 🔬 **Forensics note:** When the question is "did app X ever run on this device," the absence of a container is weak evidence on its own. Pivot to the pattern-of-life stores ([[02-biome-and-segb-streams]], [[01-knowledgec-db-deep-dive]]), the install logs, the icon-state plists, the notification stores, and the device's backups — all of which can name an app whose container has been deleted. A container present *plus* corroborating usage in Biome is the strong case; a missing container is merely "not currently installed."
 
 ### The Data-Protection / lock-state caveat on the whole map
 
-Everything above describes *structure*. Whether you can read a given file's *contents* depends on its Data-Protection class and the device's lock state (BFU vs AFU — see [[passcode-bfu-afu-and-inactivity]], [[bfu-vs-afu-and-data-protection-classes]]). The container *layout* — directory names, the metadata plists, `applicationState.db` — is mostly low-protection metadata you can enumerate even when most file *contents* are still encrypted.
+Everything above describes *structure*. Whether you can read a given file's *contents* depends on its Data-Protection class and the device's lock state (BFU vs AFU — see [[03-passcode-bfu-afu-and-inactivity]], [[02-bfu-vs-afu-and-data-protection-classes]]). The container *layout* — directory names, the metadata plists, `applicationState.db` — is mostly low-protection metadata you can enumerate even when most file *contents* are still encrypted.
 
 | What you're touching | Typical protection | Available in BFU? |
 |---|---|---|
@@ -356,7 +356,7 @@ pymobiledevice3 afc pull /DCIM ./dcim_out
 pymobiledevice3 afc pull /PhotoData/Photos.sqlite ./Photos.sqlite
 ```
 
-> ⚠️ **ADVANCED:** Seeing the *full* `/private/var/mobile/Containers/Data/Application/<UUID>/` tree on a real device requires a **full-filesystem extraction** — a jailbreak (`palera1n` on A8–A11 / checkm8), a known-vulnerability agent (GrayKey/Cellebrite/Elcomsoft), or a `developer-mode` agent — none of which apply to a device you do not lawfully control. Logical/AFC and `house_arrest` only reach the Media area and Documents-sharing apps' `Documents/`. Do not attempt jailbreak steps outside an authorized lab on a device you own. See [[full-file-system-acquisition]].
+> ⚠️ **ADVANCED:** Seeing the *full* `/private/var/mobile/Containers/Data/Application/<UUID>/` tree on a real device requires a **full-filesystem extraction** — a jailbreak (`palera1n` on A8–A11 / checkm8), a known-vulnerability agent (GrayKey/Cellebrite/Elcomsoft), or a `developer-mode` agent — none of which apply to a device you do not lawfully control. Logical/AFC and `house_arrest` only reach the Media area and Documents-sharing apps' `Documents/`. Do not attempt jailbreak steps outside an authorized lab on a device you own. See [[05-full-file-system-acquisition]].
 
 ## 🧪 Labs
 
@@ -451,4 +451,4 @@ pymobiledevice3 afc pull /PhotoData/Photos.sqlite ./Photos.sqlite
 - `man plutil`, `xcrun simctl help`, `pymobiledevice3 --help`, `ideviceinstaller --help`.
 
 ---
-*Related lessons: [[apfs-on-ios-volumes]] | [[app-sandbox-and-filesystem-layout]] | [[the-sandbox-and-tcc]] | [[the-app-bundle-and-ipa-structure]] | [[logical-acquisition-with-libimobiledevice]] | [[full-file-system-acquisition]] | [[keychain-on-ios]]*
+*Related lessons: [[03-apfs-on-ios-volumes]] | [[00-app-sandbox-and-filesystem-layout]] | [[05-the-sandbox-and-tcc]] | [[04-the-app-bundle-and-ipa-structure]] | [[04-logical-acquisition-with-libimobiledevice]] | [[05-full-file-system-acquisition]] | [[08-keychain-on-ios]]*

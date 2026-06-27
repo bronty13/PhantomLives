@@ -17,9 +17,9 @@ last_reviewed: 2026-06-26
 You are not here to "jailbreak your phone for fun." For this course, the jailbreak landscape is load-bearing knowledge for **two professional reasons**, and you need the map to do either job:
 
 - **As a reverse-engineer / app-security tester**, a jailbreak is the thing that *enables your on-device tooling*. `frida-server`, an on-device SSH, a full-file-system dump for analysis, a Theos tweak that hooks a target — none of that runs on a stock device (Reset 2: signed-code-only). Whether you *can* assess an app dynamically on real hardware is, first, a question of "can this device be jailbroken on this iOS version?"
-- **As a forensic examiner**, a jailbreak is both an *acquisition enabler* (a checkm8/usbliter8 device can be imaged at the file-system level; see [[full-file-system-acquisition]]) and, when you *didn't* put it there, **a tamper indicator** — the artifacts a jailbreak leaves (a non-Apple loadable trust cache, a `/var/jb` directory, cleared AMFI enforcement, an unsigned process running as root) are exactly what [[code-signing-amfi-entitlements]] told you should be impossible on a stock device.
+- **As a forensic examiner**, a jailbreak is both an *acquisition enabler* (a checkm8/usbliter8 device can be imaged at the file-system level; see [[05-full-file-system-acquisition]]) and, when you *didn't* put it there, **a tamper indicator** — the artifacts a jailbreak leaves (a non-Apple loadable trust cache, a `/var/jb` directory, cleared AMFI enforcement, an unsigned process running as root) are exactly what [[04-code-signing-amfi-entitlements]] told you should be impossible on a stock device.
 
-So this lesson is a **capability-and-boundary map**, not a how-to. The deep mechanics of the underlying bugs live in [[boot-chain-securerom-iboot]] (BootROM) and [[kernel-hardening-pac-sptm-txm-mie]] (the kernel mitigations that close them); here you learn *which devices and OS versions are reachable by which class of jailbreak, what each leaves behind, and why modern hardware is a wall.*
+So this lesson is a **capability-and-boundary map**, not a how-to. The deep mechanics of the underlying bugs live in [[01-boot-chain-securerom-iboot]] (BootROM) and [[06-kernel-hardening-pac-sptm-txm-mie]] (the kernel mitigations that close them); here you learn *which devices and OS versions are reachable by which class of jailbreak, what each leaves behind, and why modern hardware is a wall.*
 
 > ⚖️ **Authorization:** Jailbreaking a device alters it irreversibly and is a state-mutating, often-destructive operation. Do it only to **a device you own** set aside for research, or to an **authorized, documented lab device** — never to evidence (it destroys forensic state and provenance) and never to a device you are not authorized to modify.
 
@@ -49,11 +49,11 @@ The practical consequences flow from "in silicon vs in software":
 - A **BootROM** jailbreak works on its SoC **forever, on any iOS version**, because Apple cannot patch ROM — but it exists for only a fixed, old set of chips.
 - A **kernel** jailbreak can target *newer* chips, but only a **specific range of iOS builds**, because Apple patches the bug; the moment you update past the fix, the jailbreak dies.
 
-> 🖥️ **macOS contrast:** On the Apple-Silicon Mac, the equivalent of "run unsigned kernel code" is a **supported, documented downgrade** — boot to 1TR, set the LocalPolicy to Reduced/Permissive, accept the warnings, run Asahi or an unsigned kext. iOS exposes **no such policy and no such mode** (Reset 6 of [[macos-to-ios-mental-model-reset]]). The *only* path past secure boot on iOS is a vulnerability. Where the Mac says "lower the drawbridge," iOS says "find a crack."
+> 🖥️ **macOS contrast:** On the Apple-Silicon Mac, the equivalent of "run unsigned kernel code" is a **supported, documented downgrade** — boot to 1TR, set the LocalPolicy to Reduced/Permissive, accept the warnings, run Asahi or an unsigned kext. iOS exposes **no such policy and no such mode** (Reset 6 of [[02-macos-to-ios-mental-model-reset]]). The *only* path past secure boot on iOS is a vulnerability. Where the Mac says "lower the drawbridge," iOS says "find a crack."
 
 ### Rootful vs rootless (and why `/var/jb` exists)
 
-Modern jailbreaks are **rootless**, and it's a direct consequence of the **Signed System Volume** ([[apfs-on-ios-volumes]]). Older "rootful" jailbreaks remounted the system partition read-write and scattered files across `/` (`/Applications`, `/usr`, `/Library`). On a sealed SSV that is no longer feasible without breaking the cryptographic seal, so since ~iOS 15 jailbreaks install everything into a **single self-contained directory, `/var/jb`** (on the Data volume), and bind/symlink-redirect tools there.
+Modern jailbreaks are **rootless**, and it's a direct consequence of the **Signed System Volume** ([[03-apfs-on-ios-volumes]]). Older "rootful" jailbreaks remounted the system partition read-write and scattered files across `/` (`/Applications`, `/usr`, `/Library`). On a sealed SSV that is no longer feasible without breaking the cryptographic seal, so since ~iOS 15 jailbreaks install everything into a **single self-contained directory, `/var/jb`** (on the Data volume), and bind/symlink-redirect tools there.
 
 | | Rootful | Rootless |
 |---|---|---|
@@ -64,16 +64,16 @@ Modern jailbreaks are **rootless**, and it's a direct consequence of the **Signe
 
 This matters forensically: on a modern jailbroken device you look for **`/var/jb`** and its package manager (Sileo/Zebra), not for modified `/usr`.
 
-> 🔬 **Forensics note:** `/var/jb` is a high-signal artifact. Its presence on a Data-volume image is near-proof of a (rootless) jailbreak. Even after a jailbreak is "removed," residue (the `/var/jb` directory, a `Sileo` app, `*.deb` receipts under `/var/jb/Library/dpkg/`, an `ElleKit`/`libhooker` dylib) frequently survives. Pair this with the code-signing tamper indicators from [[code-signing-amfi-entitlements]] (a non-Apple loadable trust cache, cleared AMFI flags) for a high-confidence "this device was jailbroken" finding.
+> 🔬 **Forensics note:** `/var/jb` is a high-signal artifact. Its presence on a Data-volume image is near-proof of a (rootless) jailbreak. Even after a jailbreak is "removed," residue (the `/var/jb` directory, a `Sileo` app, `*.deb` receipts under `/var/jb/Library/dpkg/`, an `ElleKit`/`libhooker` dylib) frequently survives. Pair this with the code-signing tamper indicators from [[04-code-signing-amfi-entitlements]] (a non-Apple loadable trust cache, cleared AMFI flags) for a high-confidence "this device was jailbroken" finding.
 
 ### The BootROM tier: checkm8 (A8–A11) + usbliter8 (A12–A13)
 
 These are the unpatchable, silicon-bound holes — the examiner's and researcher's most reliable footing because no OS update closes them.
 
-- **checkm8** — a BootROM USB bug, **A8–A11** (forensically: iPhone 6 through iPhone X). Delivered by **checkra1n** (legacy) and today by **`palera1n`**, which supports **A8–A11 + the Mac T2** on **iOS/iPadOS 15.0–18.7.x**, semi-tethered, in **rootful or rootless** mode. Caveat carried from [[boot-chain-securerom-iboot]]: on **A11**, palera1n requires the **passcode be disabled** (a SEP/keybag interaction unique to A11) — a real limitation, not a win, for a locked evidence device.
-- **usbliter8** — the **2026** SecureROM/USB-DMA exploit for **A12–A13** (iPhone XS/XR through iPhone 11), verified and covered in [[boot-chain-securerom-iboot]]. It reopened the BootROM door one generation up, so the **BootROM-exploit boundary is now A8–A13**. Brand-new and still maturing — treat its exact device/OS coverage and downstream tooling as **volatile; verify at author time**.
+- **checkm8** — a BootROM USB bug, **A8–A11** (forensically: iPhone 6 through iPhone X). Delivered by **checkra1n** (legacy) and today by **`palera1n`**, which supports **A8–A11 + the Mac T2** on **iOS/iPadOS 15.0–18.7.x**, semi-tethered, in **rootful or rootless** mode. Caveat carried from [[01-boot-chain-securerom-iboot]]: on **A11**, palera1n requires the **passcode be disabled** (a SEP/keybag interaction unique to A11) — a real limitation, not a win, for a locked evidence device.
+- **usbliter8** — the **2026** SecureROM/USB-DMA exploit for **A12–A13** (iPhone XS/XR through iPhone 11), verified and covered in [[01-boot-chain-securerom-iboot]]. It reopened the BootROM door one generation up, so the **BootROM-exploit boundary is now A8–A13**. Brand-new and still maturing — treat its exact device/OS coverage and downstream tooling as **volatile; verify at author time**.
 
-A BootROM exploit gives **code execution before any signature check**, which is why it's the basis of full-file-system *acquisition* (boot a custom ramdisk, image the Data volume) — but note it is **not, by itself, a full persistent jailbreak**, and it does **not** defeat the SEP, Data Protection, or the passcode (the keys still live in the SEP; see [[sep-sepos-deep-dive]]).
+A BootROM exploit gives **code execution before any signature check**, which is why it's the basis of full-file-system *acquisition* (boot a custom ramdisk, image the Data volume) — but note it is **not, by itself, a full persistent jailbreak**, and it does **not** defeat the SEP, Data Protection, or the passcode (the keys still live in the SEP; see [[01-sep-sepos-deep-dive]]).
 
 ### The kernel tier: unc0ver/Taurine → Dopamine (A12–A16, iOS ≤ 16.x)
 
@@ -83,7 +83,7 @@ For chips above the BootROM line (A12+), a jailbreak needs a **kernel** exploit 
 - **Dopamine** (opa334/Lars Fröder) — the modern **rootless** jailbreak for **arm64e** devices, roughly **A12–A15 (later builds extended toward A16)** on **iOS 15.0–16.6.x**, shipping **Sileo** + **ElleKit** for tweak injection into `/var/jb`. It is powered by the **KFD** primitive class.
 - **KFD ("kernel file descriptor")** — a family of **physical-use-after-free (PUAF)** primitives (PhysPuppet, Smith, landa) that yield kernel read/write from an unprivileged app, after which the jailbreak must still **bypass PPL** (and, on A15+, contend with **SPTM/TXM**) to make the win stick. KFD is why iOS 16.x was jailbreakable on chips that have no BootROM hole.
 
-The critical trend: each rung up the [[kernel-hardening-pac-sptm-txm-mie]] mitigation ladder made these harder, and **they stop at iOS 16.6.x**. There is no equivalent public, general kernel jailbreak for **iOS 17/18/26**.
+The critical trend: each rung up the [[06-kernel-hardening-pac-sptm-txm-mie]] mitigation ladder made these harder, and **they stop at iOS 16.6.x**. There is no equivalent public, general kernel jailbreak for **iOS 17/18/26**.
 
 ### Why A14+ on iOS 18/26 is a wall
 
@@ -104,9 +104,9 @@ A **modern handset (A14+) on iOS 18 or 26** has:
 1. **No BootROM hole** — usbliter8 tops out at A13; A14+ SecureROM is clean.
 2. **No public kernel jailbreak** — the iOS-16-era KFD chain is patched, and **SPTM/TXM** (A15+/M2+) mean a kernel read/write primitive is *no longer game over* (the monitors re-validate page tables and code), while **PAC** (A12+), **Exclaves**, and **MIE/EMTE** (A19) kill or contain the memory-corruption techniques exploit chains depend on.
 
-So as of 2026 there is **no public jailbreak for A14+ on iOS 18/26**. (Nation-state/mercenary zero-click *exploit chains* — the Pegasus/FORCEDENTRY class — are a separate, non-public matter; they are not jailbreaks you can use as tooling, and they are exactly what Lockdown Mode and MIE target. See [[advanced-protections-lockdown-sdp-adp]].)
+So as of 2026 there is **no public jailbreak for A14+ on iOS 18/26**. (Nation-state/mercenary zero-click *exploit chains* — the Pegasus/FORCEDENTRY class — are a separate, non-public matter; they are not jailbreaks you can use as tooling, and they are exactly what Lockdown Mode and MIE target. See [[09-advanced-protections-lockdown-sdp-adp]].)
 
-> 🔬 **Forensics note:** This boundary tells you, at triage, whether an *attacker* could even have implanted persistent code on a seized device. On an A14+/iOS-26 phone, a *persistent* unsigned-code implant is implausible without a non-public chain, so memory-only (non-persistent) implants are the realistic threat — which is what `mvt`'s sysdiagnose/backup analysis hunts for (see [[logical-acquisition-with-libimobiledevice]]). On an A11/iOS-16 phone, by contrast, a hobbyist jailbreak is trivially available, so a `/var/jb` is far more likely benign-but-present.
+> 🔬 **Forensics note:** This boundary tells you, at triage, whether an *attacker* could even have implanted persistent code on a seized device. On an A14+/iOS-26 phone, a *persistent* unsigned-code implant is implausible without a non-public chain, so memory-only (non-persistent) implants are the realistic threat — which is what `mvt`'s sysdiagnose/backup analysis hunts for (see [[04-logical-acquisition-with-libimobiledevice]]). On an A11/iOS-16 phone, by contrast, a hobbyist jailbreak is trivially available, so a `/var/jb` is far more likely benign-but-present.
 
 ### Tethering: tethered / semi-tethered / untethered
 
@@ -167,15 +167,15 @@ find . -iname 'Sileo*.app' -o -iname 'Cydia*.app' -o -iname 'Zebra*.app'
 
 **Substrate:** a public sample FFS image (or the conceptual artifact list).
 
-1. List the on-disk indicators that, together, constitute a high-confidence "this device was jailbroken" finding: `/var/jb` + Sileo/Zebra + `dpkg` receipts + an ElleKit/libhooker dylib + (from [[code-signing-amfi-entitlements]]) a non-Apple loadable trust cache and cleared AMFI enforcement.
-2. State why **no single** indicator is conclusive (a stray directory, a benign app) but the **convergence** is — the same multiple-witnesses logic as [[correlation-and-anti-forensics]].
+1. List the on-disk indicators that, together, constitute a high-confidence "this device was jailbroken" finding: `/var/jb` + Sileo/Zebra + `dpkg` receipts + an ElleKit/libhooker dylib + (from [[04-code-signing-amfi-entitlements]]) a non-Apple loadable trust cache and cleared AMFI enforcement.
+2. State why **no single** indicator is conclusive (a stray directory, a benign app) but the **convergence** is — the same multiple-witnesses logic as [[02-correlation-and-anti-forensics]].
 3. Distinguish "currently jailbroken" from "was jailbroken and reverted" by which artifacts persist.
 
 ### Lab 3 — Reason about an RE engagement's device choice (no device)
 
 **Substrate:** reasoning.
 
-You need to dynamically instrument (Frida) a target app for an authorized assessment. Given a choice of lab devices — an **iPhone X on iOS 16.6**, an **iPhone 11 on iOS 18**, and an **iPhone 15 on iOS 26** — pick which you can put `frida-server` on and why, mapping each to its jailbreak option (checkm8 vs usbliter8-but-iOS-18 vs none). State the no-device fallback for the un-jailbreakable ones (Simulator attach + `frida-gadget` re-sign, from [[dynamic-analysis-with-frida]]).
+You need to dynamically instrument (Frida) a target app for an authorized assessment. Given a choice of lab devices — an **iPhone X on iOS 16.6**, an **iPhone 11 on iOS 18**, and an **iPhone 15 on iOS 26** — pick which you can put `frida-server` on and why, mapping each to its jailbreak option (checkm8 vs usbliter8-but-iOS-18 vs none). State the no-device fallback for the un-jailbreakable ones (Simulator attach + `frida-gadget` re-sign, from [[05-dynamic-analysis-with-frida]]).
 
 ## Pitfalls & gotchas
 
@@ -225,4 +225,4 @@ You need to dynamically instrument (Frida) a target app for an authorized assess
 - **Apple Platform Security guide** — "Operating system integrity" (SPTM/TXM/Exclaves) and the MIE material, for *why* modern devices resist jailbreaking.
 
 ---
-*Related lessons: [[boot-chain-securerom-iboot]] | [[kernel-hardening-pac-sptm-txm-mie]] | [[code-signing-amfi-entitlements]] | [[trollstore-and-the-coretrust-bug]] | [[full-file-system-acquisition]] | [[dynamic-analysis-with-frida]] | [[tweak-development-with-theos]] | [[advanced-protections-lockdown-sdp-adp]]*
+*Related lessons: [[01-boot-chain-securerom-iboot]] | [[06-kernel-hardening-pac-sptm-txm-mie]] | [[04-code-signing-amfi-entitlements]] | [[08-trollstore-and-the-coretrust-bug]] | [[05-full-file-system-acquisition]] | [[05-dynamic-analysis-with-frida]] | [[09-tweak-development-with-theos]] | [[09-advanced-protections-lockdown-sdp-adp]]*

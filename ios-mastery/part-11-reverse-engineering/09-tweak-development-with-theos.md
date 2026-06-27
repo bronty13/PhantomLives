@@ -477,4 +477,4 @@ idevicesyslog | grep mytweak           # libimobiledevice — streams device sys
 - `man ldid`, `man dpkg-deb`, `man ar`, `man otool`, `man nm`, `man codesign`, `man plutil`.
 
 ---
-*Related lessons: [[dynamic-analysis-with-frida]] | [[objection-swizzling-and-runtime-exploration]] | [[the-jailbreak-landscape-2026]] | [[trollstore-and-the-coretrust-bug]] | [[code-signing-amfi-entitlements]] | [[static-analysis-class-dump-and-disassemblers]] | [[anti-tamper-pinning-and-detection-both-sides]]*
+*Related lessons: [[05-dynamic-analysis-with-frida]] | [[06-objection-swizzling-and-runtime-exploration]] | [[07-the-jailbreak-landscape-2026]] | [[08-trollstore-and-the-coretrust-bug]] | [[04-code-signing-amfi-entitlements]] | [[04-static-analysis-class-dump-and-disassemblers]] | [[11-anti-tamper-pinning-and-detection-both-sides]]*

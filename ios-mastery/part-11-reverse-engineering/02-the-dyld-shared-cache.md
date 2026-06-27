@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-In [[dyld-shared-cache-and-amfi]] you met the shared cache as a **runtime** mechanism — the reason `dyld` starts an app in milliseconds and the reason AMFI trusts the system libraries. This lesson is the **reverse-engineering counterpart**: the cache is the wall between you and every system framework. Open Ghidra, drag in `/System/Library/Frameworks/UIKit.framework/UIKit` from a device image, and you will find… nothing useful, because that path is a stub or doesn't exist on disk at all. The real code is inside `dyld_shared_cache_arm64e`. You literally cannot disassemble `-[UITextField setSecureTextEntry:]`, trace a CoreFoundation deserialization bug, or diff two iOS builds' `Security.framework` until you have **extracted** the dylib out of the cache with its segments, symbols, and ObjC metadata reconstructed. Extraction is not an optional convenience — it is the **prerequisite step** for framework RE, for symbolicating a crash log against the right OS build, and for any static-analysis workflow that touches Apple code. Get the mechanics wrong (wrong arch, wrong build, missing sub-cache, un-applied slide info) and your disassembly is full of `sub_` blobs and dangling pointers.
+In [[07-dyld-shared-cache-and-amfi]] you met the shared cache as a **runtime** mechanism — the reason `dyld` starts an app in milliseconds and the reason AMFI trusts the system libraries. This lesson is the **reverse-engineering counterpart**: the cache is the wall between you and every system framework. Open Ghidra, drag in `/System/Library/Frameworks/UIKit.framework/UIKit` from a device image, and you will find… nothing useful, because that path is a stub or doesn't exist on disk at all. The real code is inside `dyld_shared_cache_arm64e`. You literally cannot disassemble `-[UITextField setSecureTextEntry:]`, trace a CoreFoundation deserialization bug, or diff two iOS builds' `Security.framework` until you have **extracted** the dylib out of the cache with its segments, symbols, and ObjC metadata reconstructed. Extraction is not an optional convenience — it is the **prerequisite step** for framework RE, for symbolicating a crash log against the right OS build, and for any static-analysis workflow that touches Apple code. Get the mechanics wrong (wrong arch, wrong build, missing sub-cache, un-applied slide info) and your disassembly is full of `sub_` blobs and dangling pointers.
 
 For the forensics side of your work it is just as load-bearing. Every iOS crash log, panic, and Frida backtrace is stored *unsymbolicated* — slid addresses plus a shared-cache UUID — and the only way to turn those numbers into function names is to obtain the cache whose UUID matches and resolve against it. The same extraction pipeline that lets you reverse a framework is what lets you read a device's crash history, attribute a fault to a specific system service, and even bound a device's exposure to a known exploit by reading the cache's build (the patch-diffing angle, below). Master extraction once and three different jobs — framework RE, vulnerability research, and crash/forensic triage — all unlock.
 
@@ -54,7 +54,7 @@ A practical sense of scale: a modern iOS arm64e cache plus its sub-caches is on 
 | iOS Simulator runtime | inside the runtime bundle under `…/RuntimeRoot/System/Library/dyld/` (host arch — see the lab caveat) |
 | DriverKit | `…/System/DriverKit/System/Library/dyld/` |
 
-On a device that iOS path is real, but you can only *reach* it via a **full-filesystem acquisition** (checkm8/`usbliter8`-class extraction, an agent-based commercial tool, or a jailbroken `frida`/SSH session — all device-bound and covered in [[full-file-system-acquisition]] and this lesson's runtime sibling [[dyld-shared-cache-and-amfi]]). For pure RE you almost always take the easier road: **download the signed IPSW from Apple** (every public build is freely downloadable) and extract the cache from the firmware DMG. The cache you pull from the IPSW is byte-identical to the one on a device of that build — its UUID proves it (below).
+On a device that iOS path is real, but you can only *reach* it via a **full-filesystem acquisition** (checkm8/`usbliter8`-class extraction, an agent-based commercial tool, or a jailbroken `frida`/SSH session — all device-bound and covered in [[05-full-file-system-acquisition]] and this lesson's runtime sibling [[07-dyld-shared-cache-and-amfi]]). For pure RE you almost always take the easier road: **download the signed IPSW from Apple** (every public build is freely downloadable) and extract the cache from the firmware DMG. The cache you pull from the IPSW is byte-identical to the one on a device of that build — its UUID proves it (below).
 
 ### The `dyld_cache_header`
 
@@ -106,7 +106,7 @@ struct dyld_cache_mapping_info {
 };
 ```
 
-Classically there were three: `__TEXT` (r-x), `__DATA` (rw-), `__LINKEDIT` (r--). Modern caches add more (`__DATA_CONST`, `__AUTH`, `__AUTH_CONST` for PAC-signed data) and split them across sub-caches. The point is that the cache is laid out so the loader can `mmap` each mapping **once** at a fixed slide and have every process share those physical pages — that is the whole runtime win from [[dyld-shared-cache-and-amfi]]. For RE this matters in two ways: (1) the `address`↔`fileOffset` mapping is what `ipsw dyld a2o`/`o2a` convert between, so when a disassembler shows you a file offset you translate to the VM address the device actually uses; and (2) an *extracted* dylib must **collapse** its slices out of these shared regions into its own contiguous `__TEXT`/`__DATA`, which is precisely the rewrite the extractor performs.
+Classically there were three: `__TEXT` (r-x), `__DATA` (rw-), `__LINKEDIT` (r--). Modern caches add more (`__DATA_CONST`, `__AUTH`, `__AUTH_CONST` for PAC-signed data) and split them across sub-caches. The point is that the cache is laid out so the loader can `mmap` each mapping **once** at a fixed slide and have every process share those physical pages — that is the whole runtime win from [[07-dyld-shared-cache-and-amfi]]. For RE this matters in two ways: (1) the `address`↔`fileOffset` mapping is what `ipsw dyld a2o`/`o2a` convert between, so when a disassembler shows you a file offset you translate to the VM address the device actually uses; and (2) an *extracted* dylib must **collapse** its slices out of these shared regions into its own contiguous `__TEXT`/`__DATA`, which is precisely the rewrite the extractor performs.
 
 ### Local symbols: the `.symbols` sidecar format
 
@@ -123,7 +123,7 @@ struct dyld_cache_local_symbols_info {
 };
 ```
 
-Each `dyld_cache_local_symbols_entry` maps an image to its slice of the `nlist_64` array, so the extractor can re-attach exactly that dylib's locals. **This is why a missing `.symbols` sub-cache costs you local symbols** — they were never in the primary file. (See [[mach-o-arm64-deep-dive]] for the `nlist_64` / string-table mechanics.)
+Each `dyld_cache_local_symbols_entry` maps an image to its slice of the `nlist_64` array, so the extractor can re-attach exactly that dylib's locals. **This is why a missing `.symbols` sub-cache costs you local symbols** — they were never in the primary file. (See [[00-mach-o-arm64-deep-dive]] for the `nlist_64` / string-table mechanics.)
 
 ### ObjC and Swift optimization tables (what `--objc` reconstructs)
 
@@ -169,9 +169,9 @@ AEA is HPKE-based: each archive is encrypted to a per-build key, and the unwrapp
 - `blacktop/ipsw` carries an `aea` package that performs the HPKE key-unwrap + chunked decrypt, fetching the FCS key for the build (or reading one from a `--pem-db` JSON). `ipsw extract --dyld <ipsw>` handles AEA transparently.
 - On macOS, Apple ships an `aea` CLI (`/usr/bin/aea`) that can decrypt a `.aea` given the profile/key.
 
-So the AEA layer adds one decrypt step to the front of the pipeline, automated by `ipsw`. It is an **acquisition/provenance** wrinkle, not a cryptographic wall like FairPlay app encryption ([[fairplay-encryption-and-decrypting-app-store-apps]]).
+So the AEA layer adds one decrypt step to the front of the pipeline, automated by `ipsw`. It is an **acquisition/provenance** wrinkle, not a cryptographic wall like FairPlay app encryption ([[03-fairplay-encryption-and-decrypting-app-store-apps]]).
 
-> ⚖️ **Authorization:** The dylibs you extract are Apple's copyrighted code. Reverse-engineering them for interoperability, security research, vulnerability analysis, and forensic interpretation is the legitimate use this course assumes; **redistributing** extracted Apple binaries or the decrypted cache is a separate question. Treat an extracted `UIKitCore` like any other piece of someone else's IP: analyze it, don't republish it. When the cache comes from a **case** full-filesystem image, the cache file is *evidence* — hash it, work on a copy, and log the extraction commands in your notes (it is no different from copy-before-query on a SQLite store, [[acquisition-sop-and-chain-of-custody]]).
+> ⚖️ **Authorization:** The dylibs you extract are Apple's copyrighted code. Reverse-engineering them for interoperability, security research, vulnerability analysis, and forensic interpretation is the legitimate use this course assumes; **redistributing** extracted Apple binaries or the decrypted cache is a separate question. Treat an extracted `UIKitCore` like any other piece of someone else's IP: analyze it, don't republish it. When the cache comes from a **case** full-filesystem image, the cache file is *evidence* — hash it, work on a copy, and log the extraction commands in your notes (it is no different from copy-before-query on a SQLite store, [[08-acquisition-sop-and-chain-of-custody]]).
 
 ### Extraction: turning a cache slice back into a loadable Mach-O
 
@@ -441,4 +441,4 @@ ipsw dyld extract /tmp/after/dyld_shared_cache_arm64e  ImageIO --objc --slide -o
 - `man dyld`, `aea(1)`, and `ipsw dyld --help` — exact flag semantics for the OS/tool versions you have.
 
 ---
-*Related lessons: [[dyld-shared-cache-and-amfi]] | [[mach-o-arm64-deep-dive]] | [[the-code-signature-blob-and-entitlements-on-ios]] | [[fairplay-encryption-and-decrypting-app-store-apps]] | [[static-analysis-class-dump-and-disassemblers]] | [[full-file-system-acquisition]]*
+*Related lessons: [[07-dyld-shared-cache-and-amfi]] | [[00-mach-o-arm64-deep-dive]] | [[01-the-code-signature-blob-and-entitlements-on-ios]] | [[03-fairplay-encryption-and-decrypting-app-store-apps]] | [[04-static-analysis-class-dump-and-disassemblers]] | [[05-full-file-system-acquisition]]*

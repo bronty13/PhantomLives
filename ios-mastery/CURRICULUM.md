@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **all 105 lessons written ✅** across all 12 parts. Final step remaining: generate the 7 derived reference indexes (forensic-artifacts, acquisition-matrix, tooling, sql-queries, timestamps, entitlements, study-guide) and populate the glossary/acronyms spines from the finished corpus. The reference layer is
+> **Corpus status:** ✅ **COMPLETE** — all **105 lessons** across 12 parts + the **derived reference layer** (forensic-artifacts-index · acquisition-methods-matrix · tooling-index · sql-queries-index · timestamps-and-epochs · entitlements-index · study-guide, plus the populated glossary [1,084 terms] & acronyms [508]). All lesson↔lesson `[[wikilinks]]` are `NN-`prefixed and resolve in Obsidian. Re-verify version-sensitive claims at the `last_reviewed` dates. The reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.

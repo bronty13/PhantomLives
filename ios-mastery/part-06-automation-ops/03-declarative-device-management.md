@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-You already know the imperative MDM world from [[mdm-supervision-and-abm]]: an APNs poke wakes the device, it polls the server's check-in URL, the server hands back one command (`InstallProfile`, `RemoveProfile`, `DeviceInformation`…), the device runs it and returns an `Acknowledged`/`Error`, repeat. That model is now legacy. As of the iOS/iPadOS/macOS **26** cycle, Apple's framing is blunt — *"the standard for device management is declarative management"* (Cyrus Daboo, WWDC26) — and the **27** releases begin *removing* imperative pathways (the software-update MDM commands are gone in 27.0).
+You already know the imperative MDM world from [[02-mdm-supervision-and-abm]]: an APNs poke wakes the device, it polls the server's check-in URL, the server hands back one command (`InstallProfile`, `RemoveProfile`, `DeviceInformation`…), the device runs it and returns an `Acknowledged`/`Error`, repeat. That model is now legacy. As of the iOS/iPadOS/macOS **26** cycle, Apple's framing is blunt — *"the standard for device management is declarative management"* (Cyrus Daboo, WWDC26) — and the **27** releases begin *removing* imperative pathways (the software-update MDM commands are gone in 27.0).
 
 For a forensic examiner this is not an IT-ops footnote; it changes what is on the disk. Under DDM the *desired state* is resident on the device as parseable JSON, the device runs a daemon (`remotemanagementd`) that continuously enforces it, and the device keeps a SQLite store of declarations plus a **status** ledger of what it has reported back. Recover that and you can read the device's exact management posture — which MDM owns it, what restrictions and passcode policy are enforced, supervision and enrollment state — *and* the device's own self-assessment as it was transmitted to the server. This lesson is the mechanism: the four declaration types, the inverted sync flow, how legacy `.mobileconfig` profiles get wrapped in, the WWDC26 backup/restore change, and where every bit of it lands on disk.
 
@@ -193,7 +193,7 @@ This is why the 2026 migration is incremental rather than a flag-day cutover: In
 
 ### The synchronization flow
 
-DDM does not get its own transport; it **rides on top of the existing MDM enrollment** (same identity, same APNs, same check-in plumbing from [[mdm-supervision-and-abm]]). The handoff is one bootstrap command:
+DDM does not get its own transport; it **rides on top of the existing MDM enrollment** (same identity, same APNs, same check-in plumbing from [[02-mdm-supervision-and-abm]]). The handoff is one bootstrap command:
 
 1. **Bootstrap.** The server sends a single imperative `DeclarativeManagement` MDM command over the legacy check-in channel. This is the *only* imperative step — it tells the device "from here, you're declarative" and points at the DDM endpoint.
 2. **Token sync.** The device requests the **tokens** endpoint: the server returns the *manifest* — every declaration `Identifier` it should have, each tagged with its current `ServerToken`. The device diffs this against what it holds.
@@ -234,7 +234,7 @@ Historically the legacy declaration referenced the profile by an inline/`Profile
 
 > ⚠️ The exact `Payload`/`Reference` key names for `com.apple.asset.data` (e.g. the hash key) shift between releases — confirm against the live `developer.apple.com/documentation/devicemanagement` declaration schema at author time before relying on a specific field name. The *mechanism* (legacy config → asset → downloaded-and-hash-verified `.mobileconfig`) is the durable part.
 
-So even in a "fully declarative" 2026 fleet, you will still find ordinary `.mobileconfig` profiles on disk — now arriving via a `com.apple.configuration.legacy` declaration rather than a bare `InstallProfile` command. The on-disk profile store ([[configuration-profiles-and-mobileconfig]]) is still where they land.
+So even in a "fully declarative" 2026 fleet, you will still find ordinary `.mobileconfig` profiles on disk — now arriving via a `com.apple.configuration.legacy` declaration rather than a bare `InstallProfile` command. The on-disk profile store ([[04-configuration-profiles-and-mobileconfig]]) is still where they land.
 
 ### Migrating an imperative fleet into DDM
 
@@ -250,7 +250,7 @@ A change announced at WWDC26 and taking effect on **iOS 27 / iPadOS 27 / visionO
 
 The rationale is operational hygiene: restored devices used to come back carrying *stale* management state; re-running ADE guarantees the device lands on whatever policy is current.
 
-> 🔬 **Forensics note:** This breaks an inference examiners have leaned on. On OS 27+, a device's *current* management configuration reflects its **most recent ADE enrollment after the last restore**, not its management history — you cannot read pre-restore management posture off a restored device, and a backup will not carry that posture forward either. If you need the historical management state, you need an acquisition *predating* the restore (or the backup file itself, where any pre-27 management remnants would live). Pair this with [[backup-restore-migration-and-transfer]]: the backup format and the restore behavior are now decoupled for management state specifically.
+> 🔬 **Forensics note:** This breaks an inference examiners have leaned on. On OS 27+, a device's *current* management configuration reflects its **most recent ADE enrollment after the last restore**, not its management history — you cannot read pre-restore management posture off a restored device, and a backup will not carry that posture forward either. If you need the historical management state, you need an acquisition *predating* the restore (or the backup file itself, where any pre-27 management remnants would live). Pair this with [[05-backup-restore-migration-and-transfer]]: the backup format and the restore behavior are now decoupled for management state specifically.
 
 ### Where DDM lives on disk
 
@@ -261,7 +261,7 @@ This is the forensic payoff. DDM is implemented by **`remotemanagementd`** (logg
 ~/Library/Application Support/com.apple.RemoteManagementAgent/Database/RemoteManagement.sqlite   # user-level
 ```
 
-On **iOS/iPadOS** the same `remotemanagementd` runs and the analogous store lives under `/private/var/db/` — but treat the **exact iOS path as a verify-on-acquisition item**: the macOS path above is confirmed from a managed Mac; the iOS location should be confirmed against a full-file-system image rather than assumed identical. ([[full-file-system-acquisition]] is the only acquisition class that reaches it — none of this is in an iTunes/Finder backup.)
+On **iOS/iPadOS** the same `remotemanagementd` runs and the analogous store lives under `/private/var/db/` — but treat the **exact iOS path as a verify-on-acquisition item**: the macOS path above is confirmed from a managed Mac; the iOS location should be confirmed against a full-file-system image rather than assumed identical. ([[05-full-file-system-acquisition]] is the only acquisition class that reaches it — none of this is in an iTunes/Finder backup.)
 
 The *legacy* configuration-profile state — the `.mobileconfig` payloads themselves, plus enrollment/supervision metadata — lives in the long-standing iOS profile stores (FFS-only, **not** in a backup):
 
@@ -290,7 +290,7 @@ And the install/enrollment trail:
 
 A concrete investigative pass against an iOS full-file-system image, in order: (1) parse `CloudConfigurationDetails.plist` to establish *whether* the device was ADE-enrolled, which MDM server URL it was assigned to, and whether supervision was set — this is the "who owns this device" anchor; (2) enumerate the `ConfigurationProfiles` payloads to read the *enforced* restrictions and accounts; (3) open `RemoteManagement.sqlite` (copy-first) to read the declaration graph — the activation predicates reveal the *conditions* under which policy applies, and the recovered status reveals what the device admitted to its server; (4) pull `remotemanagementd` log lines from any available sysdiagnose to timeline sync events, predicate flips, and apply failures; (5) cross-check the install log for *when* profiles arrived. Each layer corroborates the next, and contradictions (a restriction in a profile that the status reports as non-compliant, say) are leads.
 
-> 🔬 **Forensics note:** Together these answer "how was this device managed, by whom, since when, and what did it admit to?" — `CloudConfigurationDetails.plist` names the MDM and supervision state; the `ConfigurationProfiles` payloads spell out the *enforced* restrictions (which can corroborate or contradict a custodian's account of device limits); the `RemoteManagement.sqlite` declarations are the desired-state graph; and the reported status is the device's own self-assessment. See [[unified-logs-sysdiagnose-crash-network]] — a sysdiagnose captures `remotemanagementd` activity (sync timing, predicate flips, apply failures) even when you only have logical/sysdiagnose-level access rather than a full image.
+> 🔬 **Forensics note:** Together these answer "how was this device managed, by whom, since when, and what did it admit to?" — `CloudConfigurationDetails.plist` names the MDM and supervision state; the `ConfigurationProfiles` payloads spell out the *enforced* restrictions (which can corroborate or contradict a custodian's account of device limits); the `RemoteManagement.sqlite` declarations are the desired-state graph; and the reported status is the device's own self-assessment. See [[12-unified-logs-sysdiagnose-crash-network]] — a sysdiagnose captures `remotemanagementd` activity (sync timing, predicate flips, apply failures) even when you only have logical/sysdiagnose-level access rather than a full image.
 
 > ⚖️ **Authorization:** Management artifacts frequently belong to an *employer*, not the device's user — an ADE-enrolled, supervised corporate device's configuration profiles, MDM identity, and status history are organizational records. Confirm your authority covers the *managing organization's* data, not just the handset, before extracting or reporting it; supervision/enrollment state often determines who has standing to consent.
 
@@ -384,7 +384,7 @@ Use a public full-file-system reference image (Josh Hickman / Digital Corpora) t
 1. Locate `…/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles/` in the image. `ls` it and note which plists are present.
 2. `plutil -p CloudConfigurationDetails.plist` — extract the MDM server reference and supervision/ADE flags (or confirm the device was *unmanaged*, which is itself a finding).
 3. `plutil -p` any installed `.mobileconfig`/profile payload and enumerate the restrictions it enforces.
-4. Check `…/MobileDevice/ProvisioningProfiles/` for any `.mobileprovision` — their presence indicates sideloaded/in-house/enterprise-signed apps; cross-reference with [[the-app-bundle-and-ipa-structure]].
+4. Check `…/MobileDevice/ProvisioningProfiles/` for any `.mobileprovision` — their presence indicates sideloaded/in-house/enterprise-signed apps; cross-reference with [[04-the-app-bundle-and-ipa-structure]].
 
 **Fidelity caveat:** most public reference images are of *unmanaged* devices, so expect the artifact to document the *absence* of management. The skill — knowing the paths and parsing them — is the deliverable; a managed sample image makes it richer.
 
@@ -397,7 +397,7 @@ Use a public full-file-system reference image (Josh Hickman / Digital Corpora) t
 ## Pitfalls & gotchas
 
 - **"DDM replaced MDM" is wrong; DDM rides *on* MDM.** There is no separate enrollment, identity, or APNs path — the device must still be MDM-enrolled, and the bootstrap is an imperative `DeclarativeManagement` *command*. Don't expect to find DDM on a device with no MDM enrollment record.
-- **None of this is in a backup.** The DDM store, `ConfigurationProfiles`, and provisioning profiles are **full-file-system-only**. A logical/iTunes-Finder backup ([[the-itunes-finder-backup-format]]) will not contain the management posture — reaching for it requires [[full-file-system-acquisition]].
+- **None of this is in a backup.** The DDM store, `ConfigurationProfiles`, and provisioning profiles are **full-file-system-only**. A logical/iTunes-Finder backup ([[03-the-itunes-finder-backup-format]]) will not contain the management posture — reaching for it requires [[05-full-file-system-acquisition]].
 - **The OS-version split is real and load-bearing.** Imperative *software-update* commands/queries/restrictions are **removed in 27.0** — tooling that still issues them silently does nothing on a 27 device. The Intelligence/Siri/keyboard controls moved from MDM restrictions to declarative configurations (`com.apple.configuration.intelligence.settings`, `…siri.settings`, `…keyboard.settings`) starting **26.4**. Pin your version claims; 26.5 is current shipping, the 27 changes were announced at WWDC26 and ship in that cycle.
 - **Restore no longer carries management forward (27+).** Don't infer a device's management history from its current state if it has been restored — it re-ran ADE and pulled *current* policy. `do_not_use_profile_from_backup` is inert on 27.
 - **`ServerToken` ≠ a timestamp.** It's an opaque revision marker. You can order revisions by it only if the server uses an ordered scheme (many do, e.g. `v3`/dates); never *assume* it encodes time.
@@ -450,4 +450,4 @@ Use a public full-file-system reference image (Josh Hickman / Digital Corpora) t
 - `man profiles`, `man log`, `man plutil`, `man sqlite3` — exact flag semantics on the target OS version.
 
 ---
-*Related lessons: [[mdm-supervision-and-abm]] | [[configuration-profiles-and-mobileconfig]] | [[backup-restore-migration-and-transfer]] | [[lockdown-mode-and-enterprise-posture]] | [[full-file-system-acquisition]] | [[unified-logs-sysdiagnose-crash-network]]*
+*Related lessons: [[02-mdm-supervision-and-abm]] | [[04-configuration-profiles-and-mobileconfig]] | [[05-backup-restore-migration-and-transfer]] | [[06-lockdown-mode-and-enterprise-posture]] | [[05-full-file-system-acquisition]] | [[12-unified-logs-sysdiagnose-crash-network]]*

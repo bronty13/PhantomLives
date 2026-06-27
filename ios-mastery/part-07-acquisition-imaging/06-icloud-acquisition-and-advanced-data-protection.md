@@ -12,7 +12,7 @@ last_reviewed: 2026-06-26
 
 > **In one sentence:** Every iPhone has a second copy of itself in the cloud — an iCloud backup blob plus a constellation of CloudKit-synced containers — reachable three ways (credentials, a stolen auth token, or legal process to Apple), and **Advanced Data Protection** is the single switch that turns most of it end-to-end encrypted and slams all three routes shut for the categories it covers.
 
-> ⚖️ **AUTHORIZED USE ONLY.** Cloud acquisition reaches data that never left Apple's servers and that the account holder may not know is exposed — so it demands authority as clear as any device extraction, plus a *second* layer most physical methods don't: every route here runs against a third party (Apple) or a logged-in machine you've seized, and each carries its own legal instrument. Authenticating to a live iCloud account, replaying a lifted token, or serving legal process on Apple are all *searches* — do none of them without the matching authority (a warrant for content, the correct § 2703 instrument for metadata, consent, or a court order whose scope you have read; [[ios-forensics-landscape-and-authorization]] carries the full legal frame, incl. *Riley v. California*). A forensic login can also notify the subject and mutate the very account you are imaging, so scope *and* sequence matter. The mechanics below are inert facts; the authority to apply them is the whole job.
+> ⚖️ **AUTHORIZED USE ONLY.** Cloud acquisition reaches data that never left Apple's servers and that the account holder may not know is exposed — so it demands authority as clear as any device extraction, plus a *second* layer most physical methods don't: every route here runs against a third party (Apple) or a logged-in machine you've seized, and each carries its own legal instrument. Authenticating to a live iCloud account, replaying a lifted token, or serving legal process on Apple are all *searches* — do none of them without the matching authority (a warrant for content, the correct § 2703 instrument for metadata, consent, or a court order whose scope you have read; [[00-ios-forensics-landscape-and-authorization]] carries the full legal frame, incl. *Riley v. California*). A forensic login can also notify the subject and mutate the very account you are imaging, so scope *and* sequence matter. The mechanics below are inert facts; the authority to apply them is the whole job.
 
 ## Why this matters
 
@@ -24,7 +24,7 @@ When the device is dead, locked in BFU, A14-or-newer (so no BootROM exploit), an
 
 "iCloud" is two structurally different evidence stores sharing one Apple Account. Conflating them is the first beginner error.
 
-**iCloud Backup** is a *point-in-time blob* — a nightly snapshot of a single device, taken when it is locked, charging, and on Wi-Fi. It is the cloud twin of an iTunes/Finder backup (see [[the-itunes-finder-backup-format]]). It contains the camera roll, app container data, device settings, the Home-screen layout, SMS/MMS and (if escrowed) iMessage, visual voicemail, call history, and ringtones. One device → one backup chain of dated snapshots. It answers *"what did this phone look like on the night of the 14th?"*
+**iCloud Backup** is a *point-in-time blob* — a nightly snapshot of a single device, taken when it is locked, charging, and on Wi-Fi. It is the cloud twin of an iTunes/Finder backup (see [[03-the-itunes-finder-backup-format]]). It contains the camera roll, app container data, device settings, the Home-screen layout, SMS/MMS and (if escrowed) iMessage, visual voicemail, call history, and ringtones. One device → one backup chain of dated snapshots. It answers *"what did this phone look like on the night of the 14th?"*
 
 **CloudKit-synced data** is *current-state, multi-device, live*. There is no single snapshot — each category is a continuously-mirrored container that every signed-in device reads and writes. The CloudKit-synced categories are the ones the prompt-worthy investigations live in:
 
@@ -86,7 +86,7 @@ There are exactly three ways into a live iCloud account. Tools differ only in po
 
 **Route 3 — legal process to Apple** (its own section below). Not "into the account" — a request *to Apple* to produce what *Apple* can decrypt.
 
-> ⚠️ **ADVANCED — token extraction alters chain of custody.** Pulling the token from a *live* seized Mac requires the machine on, the account logged in, and (for the login keychain) the user's password or an unlocked keychain. Running an extraction tool against a live system writes to the disk, touches the keychain, and creates network connections to Apple under the subject's identity — all of which mutate the evidence and can *alter the very account you are imaging* (a forensic login can appear as a new sign-in, can trip Apple's anomaly response, and can push a notification to the subject's other devices). Image the Mac first, document the keychain state, and prefer the non-live token-extraction path (from a forensic image of the Mac) over touching the running machine. See [[acquisition-sop-and-chain-of-custody]].
+> ⚠️ **ADVANCED — token extraction alters chain of custody.** Pulling the token from a *live* seized Mac requires the machine on, the account logged in, and (for the login keychain) the user's password or an unlocked keychain. Running an extraction tool against a live system writes to the disk, touches the keychain, and creates network connections to Apple under the subject's identity — all of which mutate the evidence and can *alter the very account you are imaging* (a forensic login can appear as a new sign-in, can trip Apple's anomaly response, and can push a notification to the subject's other devices). Image the Mac first, document the keychain state, and prefer the non-live token-extraction path (from a forensic image of the Mac) over touching the running machine. See [[08-acquisition-sop-and-chain-of-custody]].
 
 > 🔬 **Forensics note — the 2026 protocol cutover.** Token-based iCloud extraction is an arms race against Apple's server protocols, not a stable capability. Apple executed a hard cutover in **January–February 2026**: the legacy authentication endpoints were retired and the cloud auth flow was overhauled, which **broke every token-based extraction tool overnight**. Vendors re-implemented against the new protocol — **Elcomsoft Phone Breaker 11 (April 2026)** restored synced-data, iCloud Drive, and backup extraction, *except the end-to-end-encrypted categories* (Health, iCloud Keychain, Messages, Maps, Safari history), which stayed inaccessible — a concrete reminder that no tool defeats E2EE, only the server-key tier. Apple then **reworked the iCloud Backup format from the ground up in iOS/iPadOS 26**, breaking the tools again until **EPB 11.2 (June 2026)** became the first to download iOS-26-era backups. The durable lesson: a cloud-acquisition tool's "supported" status is a perishable, version-stamped fact you confirm *the week of the exam*, never an assumption from a datasheet. Capability you had in December can be gone in February.
 
@@ -153,7 +153,7 @@ ADP's availability is no longer purely a user choice — it is now **jurisdictio
 | **Oxygen Forensic Cloud Extractor** | creds+2FA, token | iCloud + cross-cloud | ❌ |
 | **mvt** (Mobile Verification Toolkit, Amnesty) | *no cloud pull* | decrypts & parses **local** encrypted backups / FFS dumps, checks STIX2 IOCs (spyware triage) | n/a — backup-analysis, not acquisition |
 
-The unifying truth across the commercial row: every one of them needs **either** valid credentials+2FA **or** a token, and **none defeats ADP's end-to-end encryption** — they extract only what Apple's servers can decrypt. **mvt** is the odd one out and worth knowing precisely: it is *not* a cloud puller. It is an offline analyzer that decrypts an iTunes/Finder backup (or parses a full-filesystem dump) and runs it against indicator-of-compromise lists for spyware triage (Pegasus, Predator). Its "iCloud" relevance is limited to analyzing a backup you obtained by other means — the prompt's "mvt (limited)" framing. See [[decrypting-backups-and-images]] for the backup-decryption mechanics it shares.
+The unifying truth across the commercial row: every one of them needs **either** valid credentials+2FA **or** a token, and **none defeats ADP's end-to-end encryption** — they extract only what Apple's servers can decrypt. **mvt** is the odd one out and worth knowing precisely: it is *not* a cloud puller. It is an offline analyzer that decrypts an iTunes/Finder backup (or parses a full-filesystem dump) and runs it against indicator-of-compromise lists for spyware triage (Pegasus, Predator). Its "iCloud" relevance is limited to analyzing a backup you obtained by other means — the prompt's "mvt (limited)" framing. See [[07-decrypting-backups-and-images]] for the backup-decryption mechanics it shares.
 
 ## Hands-on
 
@@ -248,7 +248,7 @@ The non-live path (against an *image* of the signed-in computer) is the chain-of
 1. Run `defaults read MobileMeAccounts`. Record the `AccountID`, `LoggedIn`, and every service with `Enabled = 1`.
 2. Note whether **`BACKUP`** is enabled. Write one sentence on what that implies for Messages-in-iCloud reachability *if* ADP is off (the escrow trap).
 3. `cp ~/Library/Accounts/Accounts4.sqlite /tmp/accts.db` and enumerate `ZACCOUNT`. Cross-check that the iCloud account from step 1 appears, and list the data classes it services.
-4. **Fidelity caveat to write down:** this is the Mac's account store; the iOS equivalent is not on disk in plaintext — it lives behind Data Protection and is only reachable via device acquisition ([[full-file-system-acquisition]]).
+4. **Fidelity caveat to write down:** this is the Mac's account store; the iOS equivalent is not on disk in plaintext — it lives behind Data Protection and is only reachable via device acquisition ([[05-full-file-system-acquisition]]).
 
 ### Lab 2 — Build the ADP coverage matrix (substrate: read-only walkthrough of Apple's docs)
 
@@ -259,7 +259,7 @@ The non-live path (against an *image* of the signed-in computer) is the chain-of
 
 ### Lab 3 — Decrypt and triage a local backup with mvt (substrate: a public sample / your own encrypted backup)
 
-> The offline analogue to "iCloud Backup content," using the local backup format ([[the-itunes-finder-backup-format]]). Use a public sample encrypted backup (mvt's test data or a Hickman reference image) — no device needed.
+> The offline analogue to "iCloud Backup content," using the local backup format ([[03-the-itunes-finder-backup-format]]). Use a public sample encrypted backup (mvt's test data or a Hickman reference image) — no device needed.
 
 ```bash
 pipx install mvt
@@ -286,7 +286,7 @@ mvt-ios check-backup --output /tmp/mvt_out /tmp/decrypted
 - **Region ≠ ADP availability.** A UK-region account *cannot enable ADP* (2025–2026 TCN fallout), so its content stays warrant-reachable from Apple — a US account with ADP-on does not. Log the region.
 - **Metadata survives ADP.** Even fully E2EE, Apple still holds subscriber info, IP/connection logs (~25-day retention), mail headers, sign-in records, and device lists — subpoena/2703(d)-reachable. ADP is a *content* shield, not a metadata shield. Don't forget the metadata request just because the content is dark.
 - **Connection logs age out fast.** ~25 days. If IP attribution matters, the subpoena is time-critical — send it before the window closes.
-- **Backup vs. synced timestamps mean different things.** A backup timestamp is "snapshot taken"; a synced-item timestamp is "last edited on some device" — possibly *after* seizure, by a co-conspirator. Don't treat them interchangeably on a timeline ([[the-ios-timestamp-zoo]] discipline applies).
+- **Backup vs. synced timestamps mean different things.** A backup timestamp is "snapshot taken"; a synced-item timestamp is "last edited on some device" — possibly *after* seizure, by a co-conspirator. Don't treat them interchangeably on a timeline ([[00-the-ios-timestamp-zoo]] discipline applies).
 - **Don't conflate iCloud Backup with a full-file-system image.** The backup excludes a lot (no keychain in plaintext, no system/Data-Protection-class-A material the way a FFS dump has it). The cloud is a *complement* to device acquisition, not a substitute.
 
 ## Key takeaways
@@ -331,4 +331,4 @@ mvt-ios check-backup --output /tmp/mvt_out /tmp/decrypted
 - `man security`, `man defaults`, `man sqlite3` — exact flag semantics on your macOS version.
 
 ---
-*Related lessons: [[advanced-protections-lockdown-sdp-adp]] | [[the-acquisition-taxonomy]] | [[the-itunes-finder-backup-format]] | [[decrypting-backups-and-images]] | [[apple-account-icloud-and-apns]] | [[acquisition-sop-and-chain-of-custody]]*
+*Related lessons: [[09-advanced-protections-lockdown-sdp-adp]] | [[01-the-acquisition-taxonomy]] | [[03-the-itunes-finder-backup-format]] | [[07-decrypting-backups-and-images]] | [[07-apple-account-icloud-and-apns]] | [[08-acquisition-sop-and-chain-of-custody]]*

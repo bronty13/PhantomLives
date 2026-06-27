@@ -81,8 +81,8 @@ NSKeyedArchiver graph — why plutil shows nothing useful
 
 **Companion streams.** The same notification activity is *also* logged in two pattern-of-life stores you met earlier:
 
-- `knowledgeC.db` records a `/notification/usage` stream (in `ZOBJECT`, with per-notification metadata in `ZSTRUCTUREDMETADATA`) — *that* a notification for bundle X was delivered/interacted-with at time T (metadata, usually no body). See [[knowledgec-db-deep-dive]].
-- The DuetExpertCenter / Biome SEGB stream `userNotificationEvents` (`/private/var/mobile/Library/DuetExpertCenter/streams/userNotificationEvents/` and the iOS 17+ Biome equivalent) logs delivery/dismissal events as SEGB records. See [[biome-and-segb-streams]].
+- `knowledgeC.db` records a `/notification/usage` stream (in `ZOBJECT`, with per-notification metadata in `ZSTRUCTUREDMETADATA`) — *that* a notification for bundle X was delivered/interacted-with at time T (metadata, usually no body). See [[01-knowledgec-db-deep-dive]].
+- The DuetExpertCenter / Biome SEGB stream `userNotificationEvents` (`/private/var/mobile/Library/DuetExpertCenter/streams/userNotificationEvents/` and the iOS 17+ Biome equivalent) logs delivery/dismissal events as SEGB records. See [[02-biome-and-segb-streams]].
 
 So the play is: **bodies** from `UserNotifications/*.plist`, **timeline of delivery/interaction** from `knowledgeC` + the SEGB stream. They cross-validate.
 
@@ -386,7 +386,7 @@ That `fileID` is the on-disk filename (sharded into a two-hex-char subdirectory)
 1. On a Simulator, install two apps, then dump `applicationState.db` (`.tables`, then the identifier table). Record the bundle IDs and their state rows.
 2. **Delete one app.** Re-dump and observe whether the row persists. On the sample image, repeat for an app you know was uninstalled — does its bundle ID still appear?
 3. Pick one surviving bundle ID and resolve it to its container GUID under `Containers/Data/Application/<GUID>/`. Confirm the directory exists (or, for the deleted app, that the row outlived the directory).
-4. Tie it back: take a bundle ID that appeared in a recovered notification (Lab 1) and use `applicationState.db` to locate where that app's data *would have* lived — the exact carving target for [[deleted-data-recovery]].
+4. Tie it back: take a bundle ID that appeared in a recovered notification (Lab 1) and use `applicationState.db` to locate where that app's data *would have* lived — the exact carving target for [[14-deleted-data-recovery]].
 
 ---
 
@@ -399,7 +399,7 @@ That `fileID` is the on-disk filename (sharded into a two-hex-char subdirectory)
 - **Filenames drift.** `dynamic-text.dat` vs `<lang>-dynamic-text.dat`, `Accounts3` vs `Accounts4`, preference keys moving between versions, and Wi-Fi/Bluetooth config migrating out of `com.apple.*` plists into dedicated stores — verify exact names against the target OS version; the *mechanism* is durable, the *path* is perishable.
 - **The pasteboard is last-value-only and volatile.** No native history; the next copy destroys the prior. Grab it early in a live/AFU workflow or lose it. Don't expect a clipboard timeline from the OS — only third-party clipboard managers keep one (in their own containers).
 - **Copy before you query SQLite.** `Accounts3.sqlite`, `user_model_database.sqlite`, `UserDictionary.sqlite` — even a `SELECT` takes a write lock and can spawn `-wal`/`-shm` sidecars, altering the evidence. `cp` first (or open `?mode=ro` / `?immutable=1`).
-- **Lock state still governs decryptability.** These are Data-Protection-class files. On a **BFU** device most are encrypted and unreadable until first unlock; the survival properties above only help once you have a decrypted file-system image or an AFU acquisition. See [[app-sandbox-and-filesystem-layout]] and the BFU/AFU lesson.
+- **Lock state still governs decryptability.** These are Data-Protection-class files. On a **BFU** device most are encrypted and unreadable until first unlock; the survival properties above only help once you have a decrypted file-system image or an AFU acquisition. See [[00-app-sandbox-and-filesystem-layout]] and the BFU/AFU lesson.
 - **The lexicon is a privacy minefield in reporting, not just analysis.** A `strings` dump can surface third parties' names, the suspect's passwords, medical terms, and unrelated people's data with no context. Scope your extraction and your report — pulling the *whole* lexicon into a disclosed exhibit can over-collect well beyond the warrant. Carve for the terms in scope; don't dump the user's entire typed history into the record by reflex.
 - **`NSKeyedArchiver` versions and custom classes.** Notification payloads occasionally embed app-custom classes the deserializer doesn't know; a naïve walk can throw or silently drop a branch. Prefer a maintained parser (`iLEAPP`/`mac_apt`) and spot-check its output against a manual `ccl_bplist` walk on at least one record before trusting a bulk run.
 
@@ -448,4 +448,4 @@ That `fileID` is the on-disk filename (sharded into a two-hex-char subdirectory)
 - `man strings`, `man plutil`, `man sqlite3`, `xcrun simctl help push`
 
 ---
-*Related lessons: [[app-sandbox-and-filesystem-layout]] | [[knowledgec-db-deep-dive]] | [[biome-and-segb-streams]] | [[communications-imessage-and-sms]] | [[the-ios-timestamp-zoo]] | [[deleted-data-recovery]]*
+*Related lessons: [[00-app-sandbox-and-filesystem-layout]] | [[01-knowledgec-db-deep-dive]] | [[02-biome-and-segb-streams]] | [[04-communications-imessage-and-sms]] | [[00-the-ios-timestamp-zoo]] | [[14-deleted-data-recovery]]*

@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-Find My is the most-deployed piece of applied public-key cryptography most people will ever carry, and it is a forensic double-edged sword. The same rotating-key design that makes the beacons un-trackable by a third party also leaves a rich, decryptable trail *on the owner's device*: which AirTags are paired, their identity keys, where they've been, and — through the anti-stalking machinery — a log of *other people's* trackers that followed the device around. For a forensicator, `searchpartyd`'s on-disk stores answer "what devices does this person own?", "where was this AirTag?", and "was this person being stalked, and by whose tag?". For a builder/RE, the protocol is fully reverse-engineered (SEEMOO/OpenHaystack), so you can deploy your own beacons, query the mesh, and understand exactly which security property protects whom. And because the whole thing rides BLE advertisements and an iCloud-Keychain-synced key hierarchy, it ties together everything from [[radios-wifi-bt-nfc-uwb]] to [[keychain-on-ios]] to [[apple-account-icloud-and-apns]]. It is also one of the cleanest case studies in the course of a system where the *cryptography* is fully public yet the *evidence* is still gated by lock state, key custody, and an access-controlled server — exactly the BFU/AFU and key-recovery realities you'll meet again across Parts 07–08.
+Find My is the most-deployed piece of applied public-key cryptography most people will ever carry, and it is a forensic double-edged sword. The same rotating-key design that makes the beacons un-trackable by a third party also leaves a rich, decryptable trail *on the owner's device*: which AirTags are paired, their identity keys, where they've been, and — through the anti-stalking machinery — a log of *other people's* trackers that followed the device around. For a forensicator, `searchpartyd`'s on-disk stores answer "what devices does this person own?", "where was this AirTag?", and "was this person being stalked, and by whose tag?". For a builder/RE, the protocol is fully reverse-engineered (SEEMOO/OpenHaystack), so you can deploy your own beacons, query the mesh, and understand exactly which security property protects whom. And because the whole thing rides BLE advertisements and an iCloud-Keychain-synced key hierarchy, it ties together everything from [[05-radios-wifi-bt-nfc-uwb]] to [[08-keychain-on-ios]] to [[07-apple-account-icloud-and-apns]]. It is also one of the cleanest case studies in the course of a system where the *cryptography* is fully public yet the *evidence* is still gated by lock state, key custody, and an access-controlled server — exactly the BFU/AFU and key-recovery realities you'll meet again across Parts 07–08.
 
 ## Concepts
 
@@ -119,7 +119,7 @@ Two consequences a third-party tracker can't get around:
 1. **The BLE MAC address is a random static address that rotates in lockstep with the key** — every ~15 min for a lost iOS device, but only ~daily for a separated AirTag (it rolls *with* the key, never independently). Either way there is no stable hardware identifier to follow.
 2. **The advertised "identity" *is* an ephemeral public key** that looks like random bytes and changes every period, so consecutive beacons can't be linked to each other or to the device's owner.
 
-> 🖥️ **macOS contrast:** This is the same BLE-privacy posture as the **rotating, resolvable private addresses** you saw behind Continuity/Handoff in [[wifi-bluetooth-and-proximity]] — but pushed further. Continuity addresses rotate so passive sniffers can't follow a Mac around a conference; Find My beacons rotate *and* carry no resolvable identity at all, because the "address" is literally a throwaway public key. The unlinkability is structural, not just a randomized MAC.
+> 🖥️ **macOS contrast:** This is the same BLE-privacy posture as the **rotating, resolvable private addresses** you saw behind Continuity/Handoff in [[04-wifi-bluetooth-and-proximity]] — but pushed further. Continuity addresses rotate so passive sniffers can't follow a Mac around a conference; Find My beacons rotate *and* carry no resolvable identity at all, because the "address" is literally a throwaway public key. The unlinkability is structural, not just a randomized MAC.
 
 ### Nearby vs. separated: two states, two rotation cadences
 
@@ -199,7 +199,7 @@ The evasions follow directly: a tracker that never enters separated mode (owner 
 
 ### The research lineage: OWL → OpenHaystack → macless-haystack
 
-Apple published *none* of the above. It came from **SEEMOO/TU Darmstadt's Open Wireless Link (OWL)** project, which reverse-engineered AWDL first (see [[wifi-bluetooth-and-proximity]]) and then the offline-finding protocol, published as **"Who Can Find My Devices? Security and Privacy of Apple's Crowd-Sourced Bluetooth Location Tracking System"** (Heinrich et al., PoPETs 2021). They then released **OpenHaystack**: firmware (ESP32, nRF, Linux/BlueZ) that beacons a *fixed* `p_0`, plus a macOS app that fetches and decrypts the reports — i.e., **build-your-own-AirTag** for $5 of hardware, and a research scaffold for measuring the mesh.
+Apple published *none* of the above. It came from **SEEMOO/TU Darmstadt's Open Wireless Link (OWL)** project, which reverse-engineered AWDL first (see [[04-wifi-bluetooth-and-proximity]]) and then the offline-finding protocol, published as **"Who Can Find My Devices? Security and Privacy of Apple's Crowd-Sourced Bluetooth Location Tracking System"** (Heinrich et al., PoPETs 2021). They then released **OpenHaystack**: firmware (ESP32, nRF, Linux/BlueZ) that beacons a *fixed* `p_0`, plus a macOS app that fetches and decrypts the reports — i.e., **build-your-own-AirTag** for $5 of hardware, and a research scaffold for measuring the mesh.
 
 The original OpenHaystack had one ugly dependency: fetching reports needs an authenticated request to Apple's `gateway`/`fetch` endpoint, and OpenHaystack got those tokens by piggy-backing on **Apple Mail running with elevated privileges** (an Anisette/auth hack). The modern fork, **macless-haystack** (and the Python **FindMy.py** library), drops the Mail plugin and authenticates directly with an Apple ID + Anisette, so the whole fetch/decrypt loop runs headless on Linux/macOS with no Apple hardware in the path. That same loop is what lets a researcher (or examiner with the master key) reconstruct a tag's history programmatically.
 
@@ -241,7 +241,7 @@ Once decrypted, `Observations.db` is a small, normalized schema split across thr
 
 > 🔬 **Forensics note:** **`Observations.db` self-destructs fast.** Observation rows for beacons you don't own/aren't shared with are vacuumed within *hours*, and the live `-wal` routinely holds records absent from the main file — Hickman found "forty more records" in the WAL than the DB. So: **acquire the WAL, copy before you query, and treat this store as volatile** — it is closer to a rolling cache than a ledger. `OwnedBeacons`/`WildModeAssociationRecord` persist; `Observations.db` does not. Apple's **`Lost_Apples`** parser (Josh Hickman) and **iLEAPP** decode these once you supply the Keychain keys from a full-file-system or decrypted-backup acquisition.
 
-> 🔬 **Forensics note — what each store *proves*:** `OwnedBeacons` = devices/AirTags the subject **owns** (with pairing timestamps — a tag added the day before a victim noticed it is a strong signal). `WildModeAssociationRecord` = the subject **was followed** by tracker X starting at place/time Y (or, on the stalker's phone, evidence of evasion testing). `Observations.db` (while it survives) = a high-resolution by-product location trail: every Find My beacon the phone *relayed* was, by definition, **near this phone at `scanDate`** — i.e. it corroborates the device's own movements even when [[location-history]]'s primary stores are sparse.
+> 🔬 **Forensics note — what each store *proves*:** `OwnedBeacons` = devices/AirTags the subject **owns** (with pairing timestamps — a tag added the day before a victim noticed it is a strong signal). `WildModeAssociationRecord` = the subject **was followed** by tracker X starting at place/time Y (or, on the stalker's phone, evidence of evasion testing). `Observations.db` (while it survives) = a high-resolution by-product location trail: every Find My beacon the phone *relayed* was, by definition, **near this phone at `scanDate`** — i.e. it corroborates the device's own movements even when [[07-location-history]]'s primary stores are sparse.
 
 ## Hands-on
 
@@ -259,7 +259,7 @@ log show --last 1h --predicate 'process == "searchpartyd"' --style compact | hea
 # …searchparty… ‘BeaconManager’ rotated advertising key … submitted N reports …
 ```
 
-> 🔬 **Forensics note:** The Unified Log itself is a corroborating Find My artifact. `searchpartyd`'s log lines record key rotations, report submissions, and beacon observations with timestamps — so even when `Observations.db` has already vacuumed, the **log archive** (a separate acquisition target on both macOS and iOS sysdiagnose; see [[unified-logs-sysdiagnose-crash-network]]) may still hold the fact that the device relayed *something* at a given minute. Collect `log collect`/sysdiagnose alongside the `searchpartyd` container.
+> 🔬 **Forensics note:** The Unified Log itself is a corroborating Find My artifact. `searchpartyd`'s log lines record key rotations, report submissions, and beacon observations with timestamps — so even when `Observations.db` has already vacuumed, the **log archive** (a separate acquisition target on both macOS and iOS sysdiagnose; see [[12-unified-logs-sysdiagnose-crash-network]]) may still hold the fact that the device relayed *something* at a given minute. Collect `log collect`/sysdiagnose alongside the `searchpartyd` container.
 
 ### Inspect an owned-beacon record (encrypted bplist)
 
@@ -362,7 +362,7 @@ python3 Lost_Apples.py    # walks com.apple.icloud.searchpartyd + com.apple.find
 Substrate: a public iOS reference image (Josh Hickman / thebinaryhick.blog or the `Lost_Apples` test data) — needed because a Mac won't generate `WildModeAssociationRecord` and stores iOS records under different protection.
 
 1. Run **iLEAPP** (or `Lost_Apples`) against the image; locate its Find My / Search Party output module.
-2. In `OwnedBeacons`, find a tag's **pairing timestamp**; note the epoch (Apple/Mac Absolute Time, 2001-01-01 — see [[the-ios-timestamp-zoo]]).
+2. In `OwnedBeacons`, find a tag's **pairing timestamp**; note the epoch (Apple/Mac Absolute Time, 2001-01-01 — see [[00-the-ios-timestamp-zoo]]).
 3. In any `WildModeAssociationRecord`, read the `status` field — find a record in **"staged"** (alert pending) and note the **first-seen location**. Articulate, in one line, how this row alone could corroborate a stalking complaint and identify the offending tag.
 
 ### Lab 5 — Deploy-your-own-beacon, conceptually (read-only walkthrough)
@@ -394,7 +394,7 @@ Take one full manufacturer-data payload from your Lab 2 capture (extend the scan
 - **"AirTag" may not be an AirTag.** Certified third-party accessories advertise the same offline-finding payload. Don't write "AirTag" in a report off the bare presence of a Find My beacon — read the model/category/role fields from the decoded record before naming hardware.
 - **Activation Lock is not encryption.** A wiped, Activation-Locked device that won't progress past setup is blocked by a *server-side policy* tied to the Apple Account, not by at-rest encryption. Conflating the two in a report ("the data is encrypted") is wrong and may mislead on what legal process (Apple account records vs. on-device key recovery) would actually help.
 - **The crypto is open; the report store is not.** You can derive every `p_i` and `SHA-256(p_i)` index for *any* public key — that's public math. But fetching reports requires a live Apple ID session + **Anisette** token; without it you get 401s. "I can compute the index" ≠ "I can pull the location." Plan acquisitions around having the master keys *and* a working fetch path.
-- **Epoch trap.** `searchpartyd` timestamps are largely **Apple/Mac Absolute Time (2001-01-01)**; mixing them with Unix epoch throws everything off by 31 years. See [[the-ios-timestamp-zoo]].
+- **Epoch trap.** `searchpartyd` timestamps are largely **Apple/Mac Absolute Time (2001-01-01)**; mixing them with Unix epoch throws everything off by 31 years. See [[00-the-ios-timestamp-zoo]].
 - **A fix is a *relay event*, not a *presence* of the owner.** A decrypted report proves only that *some finder* and the *beacon* were co-located; it says nothing about where the owner was. Don't infer the owner's location from their lost tag's track.
 - **`Observations.db` rows are mostly strangers.** The vast majority of observed beacons are other people's devices the phone relayed for. Treat an observation as evidence of *the phone's* location at `scanDate`, not of any relationship to the observed beacon's owner — unless its key resolves to an owned/shared beacon.
 
@@ -452,4 +452,4 @@ Take one full manufacturer-data payload from your Lab 2 capture (extend the scan
 - `man bleak` / the `bleak` docs; furiousMAC `continuity` BLE message catalog (`github.com/furiousMAC/continuity`)
 
 ---
-*Related lessons: [[wifi-bluetooth-and-proximity]] | [[radios-wifi-bt-nfc-uwb]] | [[keychain-on-ios]] | [[apple-account-icloud-and-apns]] | [[location-history]] | [[the-ios-timestamp-zoo]]*
+*Related lessons: [[04-wifi-bluetooth-and-proximity]] | [[05-radios-wifi-bt-nfc-uwb]] | [[08-keychain-on-ios]] | [[07-apple-account-icloud-and-apns]] | [[07-location-history]] | [[00-the-ios-timestamp-zoo]]*

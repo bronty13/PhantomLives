@@ -73,7 +73,7 @@ last_reviewed: 2026-06-26
 
 Two structural points that trip people up:
 
-- **A single human is many `handle` rows.** Alice's iPhone number, her iCloud email, and the same number seen over SMS vs iMessage can each be a distinct `handle.ROWID`. Attribution requires deduplicating handles by `id` (and reconciling against the Contacts store — see [[call-history-voicemail-contacts-interactions]]).
+- **A single human is many `handle` rows.** Alice's iPhone number, her iCloud email, and the same number seen over SMS vs iMessage can each be a distinct `handle.ROWID`. Attribution requires deduplicating handles by `id` (and reconciling against the Contacts store — see [[05-call-history-voicemail-contacts-interactions]]).
 - **`message.handle_id` is the *remote* party only.** For an outbound message (`is_from_me = 1`) it identifies the recipient/thread, not the sender; in group chats it is frequently `0`. Direction comes from `is_from_me`, never from `handle_id`.
 
 ### Anatomy of the `message` table
@@ -218,7 +218,7 @@ WHERE c.style = 43          -- group chats only
 ORDER BY c.ROWID, h.id;
 ```
 
-> 🔬 **Forensics note:** Reconcile every `handle.id` against the device's address book (`AddressBook.sqlitedb`, see [[call-history-voicemail-contacts-interactions]]) before naming a participant in a report. A bare `+15551234567` is an *identifier*, not a *person* — the same human may appear under several handles, and a number can be reassigned. Attribution that skips the contacts reconciliation is attribution a defense expert will dismantle.
+> 🔬 **Forensics note:** Reconcile every `handle.id` against the device's address book (`AddressBook.sqlitedb`, see [[05-call-history-voicemail-contacts-interactions]]) before naming a participant in a report. A bare `+15551234567` is an *identifier*, not a *person* — the same human may appear under several handles, and a number can be reassigned. Attribution that skips the contacts reconciliation is attribution a defense expert will dismantle.
 
 ### iMessage vs SMS vs RCS, Continuity, and Messages in iCloud
 
@@ -226,7 +226,7 @@ The `service` column is your protocol discriminator. `'iMessage'` is Apple's E2E
 
 Two architecture facts change *what you even have*:
 
-- **Continuity / Text Message Forwarding** mirrors SMS to the user's other Apple devices, and **Messages in iCloud** keeps `sms.db` in sync across devices and the cloud. If Messages in iCloud is enabled, the on-device `sms.db` may be a **thinned cache** — older messages and full attachments live in iCloud (CloudKit), and full recovery means cloud acquisition (see [[icloud-acquisition-and-advanced-data-protection]]). ADP (Advanced Data Protection) E2EE-encrypts that iCloud copy and removes the cloud path entirely.
+- **Continuity / Text Message Forwarding** mirrors SMS to the user's other Apple devices, and **Messages in iCloud** keeps `sms.db` in sync across devices and the cloud. If Messages in iCloud is enabled, the on-device `sms.db` may be a **thinned cache** — older messages and full attachments live in iCloud (CloudKit), and full recovery means cloud acquisition (see [[06-icloud-acquisition-and-advanced-data-protection]]). ADP (Advanced Data Protection) E2EE-encrypts that iCloud copy and removes the cloud path entirely.
 - The **paired Mac** holds the same content in `chat.db`. Cross-device corroboration both strengthens a timeline and exposes tampering (a message present on the Mac but scrubbed from the phone).
 
 ### Edits and unsends (iOS 16+) — the original text survives
@@ -264,7 +264,7 @@ Each layer in turn:
 2. **Pending-purge bookkeeping.** A `deleted_messages` table tracks GUIDs of messages slated for removal/sync reconciliation; its presence flags churn even when bodies are gone. *(Exact role varies by version — confirm on your image.)*
 3. **The WAL.** Messages permanently deleted (or aged out of Recently Deleted) leave their last-written image in `sms.db-wal` until checkpointed and overwritten. The WAL is a sequence of **frames**, each a 24-byte frame header (page number + salt/checksum) followed by one full 4 KB database page. A delete doesn't scrub the page — SQLite writes a *new* version of the B-tree page with the cell removed, but the *prior* frame containing the live cell still sits earlier in the WAL. Carving frames in order, newest-wins per page number, recovers full deleted rows — body, handle, timestamps, sometimes attachment references — that exist in *no* version of the main file. This is precisely the content an auto-checkpoint destroys, which is why you carve the `-wal` before any client opens the set.
 4. **Unallocated / freelist pages.** Once checkpointed and the row deleted, the record persists in unallocated B-tree pages and the freelist until SQLite reuses the space (no `VACUUM`/overwrite yet). SQLite record carvers reconstruct these even with no live row.
-5. **Cross-store corroboration.** Message content is duplicated outside `sms.db`: into **Biome/SEGB streams** (`/private/var/mobile/Library/Biome/streams/...`, e.g. `AppIntent` — see [[biome-and-segb-streams]]) and into the **notification (push) store**. The notification angle is freshly load-bearing: **CVE-2026-28950** (patched in iOS/iPadOS 26.4.2 and 18.7.8, 2026-04-22) was a logging flaw in Apple's Notification Services where notifications *marked for deletion were never actually redacted* and lingered in the internal notification store — the FBI recovered deleted **Signal** message previews from that store despite the app having been removed (Apple's fix was described as "improved data redaction"). Even patched, the notification store remains a corroborating copy of `sms.db` previews (see [[notifications-keyboard-and-misc-stores]]).
+5. **Cross-store corroboration.** Message content is duplicated outside `sms.db`: into **Biome/SEGB streams** (`/private/var/mobile/Library/Biome/streams/...`, e.g. `AppIntent` — see [[02-biome-and-segb-streams]]) and into the **notification (push) store**. The notification angle is freshly load-bearing: **CVE-2026-28950** (patched in iOS/iPadOS 26.4.2 and 18.7.8, 2026-04-22) was a logging flaw in Apple's Notification Services where notifications *marked for deletion were never actually redacted* and lingered in the internal notification store — the FBI recovered deleted **Signal** message previews from that store despite the app having been removed (Apple's fix was described as "improved data redaction"). Even patched, the notification store remains a corroborating copy of `sms.db` previews (see [[13-notifications-keyboard-and-misc-stores]]).
 
 > ⚖️ **Authorization:** Recovering deleted and unsent content — especially from a paired Mac, an iCloud copy, or a third party's messages within the thread — frequently exceeds the literal scope of a "review the texts" request. Confirm your legal authority covers *deleted* data and *both sides* of the conversation, document the recovery method per message, and keep the body-source provenance (live row vs Recently-Deleted join vs WAL carve vs notification store) in your notes. Reconstructed evidence with murky provenance gets suppressed.
 
@@ -431,7 +431,7 @@ sqlite3 sms.db .recover > /tmp/recovered.sql    # SQLite's own structural recove
 2. **Handle reconciliation:** join `handle.id` against the image's `AddressBook.sqlitedb`. Produce a table mapping each handle to a named contact (or flag it "unknown identifier"). Note any human represented by more than one handle.
 3. **Tapback graph:** run the tapback-resolution query; confirm every reaction's `associated_message_guid` resolves to an existing parent. Any reaction pointing at a missing parent is a deletion artifact — log it.
 4. **Orphan hunt:** list files under `Attachments/` and diff against `attachment.filename`. Files with no row = orphaned media (deleted row, surviving file). Rows with no file = pruned media (surviving metadata, deleted file). Both are evidence.
-5. **Second source:** for one conversation, pull the same message text from a Biome/SEGB stream ([[biome-and-segb-streams]]) and/or the notification store ([[notifications-keyboard-and-misc-stores]]). Where the corpora disagree (present in Biome, absent from `sms.db`) you've found content the user deleted from Messages but failed to scrub everywhere — the strongest form of deleted-message proof.
+5. **Second source:** for one conversation, pull the same message text from a Biome/SEGB stream ([[02-biome-and-segb-streams]]) and/or the notification store ([[13-notifications-keyboard-and-misc-stores]]). Where the corpora disagree (present in Biome, absent from `sms.db`) you've found content the user deleted from Messages but failed to scrub everywhere — the strongest form of deleted-message proof.
 
 ## Pitfalls & gotchas
 
@@ -441,7 +441,7 @@ sqlite3 sms.db .recover > /tmp/recovered.sql    # SQLite's own structural recove
 - **Epoch errors.** Forgetting `/1e9` → far-future dates; forgetting `+978307200` → ~31-year-early dates. And never epoch-convert a `0` receipt — it fabricates a `2001-01-01` "read" time.
 - **`handle_id` ≠ sender.** It's the remote/thread identifier; in groups it's often `0`. Direction is `is_from_me`. Sender in a group comes from the per-message handle, not the chat.
 - **`ROWID` reuse.** Deleted-then-inserted rows reuse integer `ROWID`s; correlate on `guid` for stable identity across acquisitions.
-- **Messages in iCloud thinning.** When enabled, on-device `sms.db` can be a partial cache — older content is in iCloud. ADP removes the cloud path. Don't conclude "the user had few messages" from a thinned local store; check the iCloud posture (see [[icloud-acquisition-and-advanced-data-protection]]).
+- **Messages in iCloud thinning.** When enabled, on-device `sms.db` can be a partial cache — older content is in iCloud. ADP removes the cloud path. Don't conclude "the user had few messages" from a thinned local store; check the iCloud posture (see [[06-icloud-acquisition-and-advanced-data-protection]]).
 - **Recently-Deleted blind spots.** Tools that only walk `chat_message_join` miss the `chat_recoverable_message_join` pool — up to 30 days of "deleted" messages reported as gone.
 - **Assuming "unsent" means erased.** Edited/unsent originals survive in `message_summary_info`, the WAL, Biome/SEGB, and the notification store. Don't accept the conversation view at face value.
 - **Ignoring `Drafts/`.** Unsent intent lives in `composing.plist`, not the `message` table; a `sms.db`-only workflow misses it entirely.
@@ -497,4 +497,4 @@ sqlite3 sms.db .recover > /tmp/recovered.sql    # SQLite's own structural recove
 - `man sqlite3`; SQLite WAL & file-format docs (sqlite.org/walformat.html, sqlite.org/fileformat2.html).
 
 ---
-*Related lessons: [[app-sandbox-and-filesystem-layout]] | [[biome-and-segb-streams]] | [[the-ios-timestamp-zoo]] | [[deleted-data-recovery]] | [[notifications-keyboard-and-misc-stores]] | [[call-history-voicemail-contacts-interactions]] | [[icloud-acquisition-and-advanced-data-protection]]*
+*Related lessons: [[00-app-sandbox-and-filesystem-layout]] | [[02-biome-and-segb-streams]] | [[00-the-ios-timestamp-zoo]] | [[14-deleted-data-recovery]] | [[13-notifications-keyboard-and-misc-stores]] | [[05-call-history-voicemail-contacts-interactions]] | [[06-icloud-acquisition-and-advanced-data-protection]]*

@@ -30,7 +30,7 @@ You cannot `class-dump` an App Store app. You cannot point Ghidra, Hopper, IDA, 
 
 ### The encryption boundary: what FairPlay actually covers
 
-FairPlay encrypts a **single contiguous byte range of one Mach-O executable** — the app's main code in `__TEXT` — and records that range in one load command, `LC_ENCRYPTION_INFO_64` (the 32-bit variant `LC_ENCRYPTION_INFO` is legacy; arm64 store apps are all 64-bit). You met this struct in [[mach-o-arm64-deep-dive]]; here is the whole thing because three of its fields are the entire lesson:
+FairPlay encrypts a **single contiguous byte range of one Mach-O executable** — the app's main code in `__TEXT` — and records that range in one load command, `LC_ENCRYPTION_INFO_64` (the 32-bit variant `LC_ENCRYPTION_INFO` is legacy; arm64 store apps are all 64-bit). You met this struct in [[00-mach-o-arm64-deep-dive]]; here is the whole thing because three of its fields are the entire lesson:
 
 ```c
 struct encryption_info_command_64 {
@@ -162,7 +162,7 @@ Durable: the recipe above. Perishable: which tool is maintained and what it need
 | `bfdecrypt` / `bfinject` | `mremap_encrypted` on a fresh map | Jailbroken device | The "correct" syscall-driven approach; good fallback. |
 | `yacd` (DerekSelander) | No-JB FairPlay decrypt | **iOS ≤ 13.4.1 only** | Historical; the no-jailbreak path it used was patched. Don't expect it on modern iOS. |
 
-> ⚠️ **ADVANCED — getting a device you can dump on is itself gated.** To execute step 1 you need either (a) a **jailbreak** — `palera1n` covers **iOS 15.0–18.7.x** on bootrom-exploitable silicon (`checkm8` A8–A11; `usbliter8` A12–A13 as of 2026-06-18), with **no public kernel jailbreak for A12+ on iOS 18/26** and **no public bootrom exploit at all for A14+** — or (b) a **developer-provisioned, non-jailbroken** device where you **re-sign the IPA with your own developer certificate and inject the Frida gadget** (the "locked up but not locked out" path). A bootrom exploit gives code-exec *below* signature checks but is **not** a jailbreak and does **not** by itself defeat SEP/Data-Protection/passcode — you still need the device unlocked (AFU) with the user's keys. The newest apps on the newest hardware therefore have the **highest** acquisition bar. See [[the-jailbreak-landscape-2026]].
+> ⚠️ **ADVANCED — getting a device you can dump on is itself gated.** To execute step 1 you need either (a) a **jailbreak** — `palera1n` covers **iOS 15.0–18.7.x** on bootrom-exploitable silicon (`checkm8` A8–A11; `usbliter8` A12–A13 as of 2026-06-18), with **no public kernel jailbreak for A12+ on iOS 18/26** and **no public bootrom exploit at all for A14+** — or (b) a **developer-provisioned, non-jailbroken** device where you **re-sign the IPA with your own developer certificate and inject the Frida gadget** (the "locked up but not locked out" path). A bootrom exploit gives code-exec *below* signature checks but is **not** a jailbreak and does **not** by itself defeat SEP/Data-Protection/passcode — you still need the device unlocked (AFU) with the user's keys. The newest apps on the newest hardware therefore have the **highest** acquisition bar. See [[07-the-jailbreak-landscape-2026]].
 
 ### The no-jailbreak re-sign path (and why it still needs a device)
 
@@ -176,7 +176,7 @@ The hard requirement that never goes away: **a real device that will execute the
 
 ### After decryption you still need the dyld shared cache
 
-A `cryptid 0` binary is *necessary* but not *sufficient* for full static analysis. Store apps are thin — almost every symbol they call (UIKit, Foundation, Swift runtime, CoreFoundation) lives in the **dyld shared cache**, not in the app binary. A decrypted app's import stubs are just branches into shared-cache addresses; a disassembler that doesn't have the cache will show you `bl 0x1a2b3c4d` with no idea it's `-[NSString stringWithFormat:]`. So a complete pipeline pairs the decrypted binary with the **matching-version shared cache** (extracted from an IPSW or a device image) loaded into Ghidra/IDA/Binary Ninja via their shared-cache loaders. The cache is itself **not** FairPlay-encrypted (it's signed system code, plaintext), so unlike the app it needs no decrypt step — just extraction. See [[the-dyld-shared-cache]] and [[dyld-shared-cache-and-amfi]]. Practical sequence: decrypt the app (this lesson) → obtain the cache for the same OS build → load both → now imports resolve to real symbol names.
+A `cryptid 0` binary is *necessary* but not *sufficient* for full static analysis. Store apps are thin — almost every symbol they call (UIKit, Foundation, Swift runtime, CoreFoundation) lives in the **dyld shared cache**, not in the app binary. A decrypted app's import stubs are just branches into shared-cache addresses; a disassembler that doesn't have the cache will show you `bl 0x1a2b3c4d` with no idea it's `-[NSString stringWithFormat:]`. So a complete pipeline pairs the decrypted binary with the **matching-version shared cache** (extracted from an IPSW or a device image) loaded into Ghidra/IDA/Binary Ninja via their shared-cache loaders. The cache is itself **not** FairPlay-encrypted (it's signed system code, plaintext), so unlike the app it needs no decrypt step — just extraction. See [[02-the-dyld-shared-cache]] and [[07-dyld-shared-cache-and-amfi]]. Practical sequence: decrypt the app (this lesson) → obtain the cache for the same OS build → load both → now imports resolve to real symbol names.
 
 ### Detecting a decrypted / repacked binary (the investigative inverse)
 
@@ -186,7 +186,7 @@ The same `cryptid` field that gates *your* analysis also **betrays** a binary th
 - A code signature whose Team ID / authority isn't Apple's store signing, or an **ad-hoc** signature (`codesign -dv` shows no authority chain).
 - A `FridaGadget.dylib` / extra `LC_LOAD_DYLIB` in the load commands, or `frida`/`cycript` strings — the fingerprint of a re-sign-and-instrument dump.
 
-This matters in two directions: it's how anti-tamper code on the *defensive* side detects it's been decrypted (see [[anti-tamper-pinning-and-detection-both-sides]]), and it's how a forensic examiner flags an app that isn't the pristine store build.
+This matters in two directions: it's how anti-tamper code on the *defensive* side detects it's been decrypted (see [[11-anti-tamper-pinning-and-detection-both-sides]]), and it's how a forensic examiner flags an app that isn't the pristine store build.
 
 > 🔬 **Forensics note:** In a full-file-system image, comparing each installed `MH_EXECUTE`'s `cryptid` and code-signature authority against "should be Apple-signed, `cryptid 1`" is a fast triage sweep for **tampered or sideloaded** apps — a binary that's `cryptid 0` with a non-Apple/ad-hoc signature inside an otherwise-store-looking bundle is a red flag worth pulling for deeper analysis. Pair it with the `iTunesMetadata.plist`/`SC_Info` presence check from Lab 3.
 
@@ -200,7 +200,7 @@ Durable vs. perishable, made explicit. The **mechanism** here barely changes yea
 encrypted .ipa  ──(device + dump)──▶  cryptid-0 Mach-O  ──▶  static analysis        ──▶  dynamic analysis
 (cryptid 1)        THIS LESSON          (plaintext code)      class-dump / Hopper /        Frida hooks /
                                                               Ghidra / IDA / BinNinja      objection
-                                        [[static-analysis-class-dump-and-disassemblers]]   [[dynamic-analysis-with-frida]]
+                                        [[04-static-analysis-class-dump-and-disassemblers]]   [[05-dynamic-analysis-with-frida]]
 ```
 
 Decryption is **the gate**, not the goal. Everything downstream (class-dump, disassembly, the dyld-shared-cache cross-references, Frida instrumentation) assumes you already hold a `cryptid 0` binary. Get the gate wrong and every later step silently operates on noise.
@@ -352,7 +352,7 @@ find /tmp/dumped/Payload/*.app/PlugIns -name '*.appex' -maxdepth 1 2>/dev/null
 
 1. From the **Concepts** layout, write down what each licensing file binds: `.sinf` → Apple Account / purchase record; `.supp`/`.supf` → wrapped key material; `Manifest.plist` → sinf↔executable mapping; `iTunesMetadata.plist` → downloading account + `itemId`.
 2. On your **Simulator** `.app` bundle, confirm there is **no** `SC_Info/` and **no** `iTunesMetadata.plist`: `ls -la "$APP_BUNDLE"`, `find "$APP_BUNDLE" -name 'SC_Info' -o -name '*.sinf'` → empty. State the forensic inference: *no FairPlay payload ⇒ not a Store-provisioned install* (sideloaded/dev-signed/MDM).
-3. Reason about the device case: in a full-file-system image, the bundle under `/private/var/containers/Bundle/Application/<UUID>/` would carry `SC_Info/*.sinf` and a root `iTunesMetadata.plist` whose account fields attribute the install. Note which artifact you'd cite to tie an app to an Apple Account. (See [[the-app-bundle-and-ipa-structure]].)
+3. Reason about the device case: in a full-file-system image, the bundle under `/private/var/containers/Bundle/Application/<UUID>/` would carry `SC_Info/*.sinf` and a root `iTunesMetadata.plist` whose account fields attribute the install. Note which artifact you'd cite to tie an app to an Apple Account. (See [[04-the-app-bundle-and-ipa-structure]].)
 
 ### Lab 4 — The device decrypt, narrated *(substrate: read-only walkthrough)*
 
@@ -375,7 +375,7 @@ Write the one-line invariant in your notes: **`cryptid 0` ⇒ analyze now; `cryp
 1. On your Simulator `.app`, run `codesign -dvvv "$APPBIN" 2>&1 | grep -E 'Authority|TeamIdentifier|flags'`. Note the authority (your dev cert or ad-hoc) and that it is **not** Apple store signing — exactly the state a re-signed dump would show.
 2. Run `otool -L "$APPBIN" | grep -i -E 'frida|gadget'` (empty here). State that a **non-empty** result on a store-looking bundle is the fingerprint of a Frida-gadget re-sign dump.
 3. Build the triage checklist for a full-file-system image: for each installed `MH_EXECUTE`, flag it if **(`cryptid 0` AND non-Apple/ad-hoc signature AND store-style bundle)** OR **(`SC_Info`/`iTunesMetadata.plist` missing)** OR **(an injected `FridaGadget.dylib`/extra `LC_LOAD_DYLIB`)**. Each condition is a tell that the app is not the pristine store build.
-4. Tie it back: this is the *defensive* and *forensic* inverse of the decrypt step — the same `cryptid`/signature facts you used to gate analysis are what expose tampering. (See [[anti-tamper-pinning-and-detection-both-sides]].)
+4. Tie it back: this is the *defensive* and *forensic* inverse of the decrypt step — the same `cryptid`/signature facts you used to gate analysis are what expose tampering. (See [[11-anti-tamper-pinning-and-detection-both-sides]].)
 
 ---
 
@@ -389,7 +389,7 @@ Write the one-line invariant in your notes: **`cryptid 0` ⇒ analyze now; `cryp
 - **Newest device + newest app = highest bar.** A14+ has **no public bootrom exploit** and there is **no public kernel jailbreak for A12+ on iOS 18/26**, so for current flagships the only route is the **developer re-sign + Frida gadget** path on a device you own — and that needs the IPA downloadable under your account. Plan acquisition accordingly.
 - **`cryptid 0` ≠ "the whole binary decrypted correctly."** A botched dump can flip `cryptid` to `0` while the spliced bytes are wrong (truncated range, ASLR skew, wrong slice). Always *prove* success with a `class-dump`/disassembly that yields **coherent** types and code, not just the flag flip.
 - **`otool` vs `llvm-otool`.** On a Command-Line-Tools-only Mac, `otool` may be the llvm shim or missing; `llvm-otool` is the reliable spelling. Output is equivalent for this check.
-- **Lock-state still gates everything upstream.** Even with a jailbreak, a BFU device or one whose Data-Protection keys aren't available won't let the app launch into a state you can dump. You need an unlocked/AFU device with the user's keys (see [[the-jailbreak-landscape-2026]]).
+- **Lock-state still gates everything upstream.** Even with a jailbreak, a BFU device or one whose Data-Protection keys aren't available won't let the app launch into a state you can dump. You need an unlocked/AFU device with the user's keys (see [[07-the-jailbreak-landscape-2026]]).
 - **Decrypting to answer a question that's already plaintext.** If you only need the dependency list, entitlements, declared classes, or which SDKs ship inside the app, read them off the `cryptid 1` binary directly (see the "what you can still read" table). Burning a device pass to learn something that was never encrypted is a beginner tell.
 - **Wrong OS-build shared cache.** After decryption, loading a shared cache from a *different* iOS build than the app was running on yields mismatched or missing symbol resolution — branches resolve to the wrong functions. Match the cache to the device/OS build, not just "an iOS shared cache."
 - **`mremap_encrypted` cputype/cpusubtype mismatch.** The `bfdecrypt`-style approach must pass the binary's exact `cputype`/`cpusubtype` (arm64 vs arm64e); a mismatch fails the decrypt or returns garbage. Read them from the Mach-O header first.
@@ -447,4 +447,4 @@ Write the one-line invariant in your notes: **`cryptid 0` ⇒ analyze now; `cryp
 - theapplewiki.com — "Dev:Crack prevention" — the historical record of FairPlay/`cryptid` and the cat-and-mouse with dumpers.
 
 ---
-*Related lessons: [[mach-o-arm64-deep-dive]] | [[the-app-bundle-and-ipa-structure]] | [[static-analysis-class-dump-and-disassemblers]] | [[dynamic-analysis-with-frida]] | [[the-jailbreak-landscape-2026]] | [[owasp-mastg-and-app-security-testing]]*
+*Related lessons: [[00-mach-o-arm64-deep-dive]] | [[04-the-app-bundle-and-ipa-structure]] | [[04-static-analysis-class-dump-and-disassemblers]] | [[05-dynamic-analysis-with-frida]] | [[07-the-jailbreak-landscape-2026]] | [[10-owasp-mastg-and-app-security-testing]]*

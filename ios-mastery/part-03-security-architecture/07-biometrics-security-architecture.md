@@ -447,4 +447,4 @@ if ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) 
 - **man pages / tools** — `xcrun simctl` (the `keychain`, `boot`, `create` verbs), `log`, `security`; Frida + `objection` for demonstrating the `evaluatePolicy` bypass (see Part 11).
 
 ---
-*Related lessons: [[biometrics-hardware-faceid-touchid]] | [[data-protection-and-keybags]] | [[passcode-bfu-afu-and-inactivity]] | [[sep-sepos-deep-dive]] | [[keychain-on-ios]] | [[advanced-protections-lockdown-sdp-adp]] | [[bfu-vs-afu-and-data-protection-classes]] | [[objection-swizzling-and-runtime-exploration]]*
+*Related lessons: [[06-biometrics-hardware-faceid-touchid]] | [[02-data-protection-and-keybags]] | [[03-passcode-bfu-afu-and-inactivity]] | [[01-sep-sepos-deep-dive]] | [[08-keychain-on-ios]] | [[09-advanced-protections-lockdown-sdp-adp]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[06-objection-swizzling-and-runtime-exploration]]*

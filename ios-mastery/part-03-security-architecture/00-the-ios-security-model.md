@@ -63,15 +63,15 @@ The next six subsections walk the stack bottom-to-top — one paragraph of mecha
 
 The base of the stack is the **Secure Enclave** — a separate, isolated coprocessor on the SoC running its own OS (**sepOS**) off its own **Secure Enclave Boot ROM**, with its own AES engine and a **Memory Protection Engine** that encrypts/authenticates its DRAM (AES in an XEX-family mode with integrity tags) so the application processor — even a fully compromised one — cannot read SEP memory. Burned into the fuses are two keys the SEP can use but nothing can extract: the per-device **UID** and the per-model **GID**. *Every* secret above this layer ultimately ties back to the UID: the Data-Protection class keys are derived from the passcode **entangled with the UID**, so they can only be reconstructed on *this specific chip*, with the *user's secret*, at SEP-controlled rates. This is why there is no off-device brute force of a strong passcode and no cold-boot key recovery: the work is forced through one piece of silicon that counts attempts and rate-limits in hardware.
 
-Two more structural facts make Layer 0 the linchpin. First, a **dedicated AES engine sits inline on the storage DMA path** between flash and main memory, so per-file keys encrypt/decrypt at line rate *and the raw keys never enter application-processor-readable memory* — the AP gets plaintext blocks, never the key that produced them. Second, the SEP is the **single gatekeeper for everything that proves user presence**: it owns the Face ID/Touch ID templates, evaluates a match internally, and only *then* releases the keys or signs the "secure intent" a payment needs — biometrics never leave the enclave as raw data. The AP asks; the SEP decides. → drilled in [[sep-sepos-deep-dive]], hardware in [[secure-enclave-hardware]], biometrics in [[biometrics-security-architecture]].
+Two more structural facts make Layer 0 the linchpin. First, a **dedicated AES engine sits inline on the storage DMA path** between flash and main memory, so per-file keys encrypt/decrypt at line rate *and the raw keys never enter application-processor-readable memory* — the AP gets plaintext blocks, never the key that produced them. Second, the SEP is the **single gatekeeper for everything that proves user presence**: it owns the Face ID/Touch ID templates, evaluates a match internally, and only *then* releases the keys or signs the "secure intent" a payment needs — biometrics never leave the enclave as raw data. The AP asks; the SEP decides. → drilled in [[01-sep-sepos-deep-dive]], hardware in [[02-secure-enclave-hardware]], biometrics in [[07-biometrics-security-architecture]].
 
 > 🔬 **Forensics note:** Layer 0 is *why* "just copy the NAND and decrypt offline" doesn't work. The encrypted blocks are readable; the keys are not, because they are wrapped to a value only the SEP can compute from the UID + passcode under its own attempt counter. A commercial extraction box that "brute-forces the passcode" is really *driving the SEP* to test guesses at whatever rate the SEP permits — which is why a 6-digit numeric code is a different forensic proposition from a long alphanumeric one even though both encrypt the same files.
 
 ### Layer 1 — secure boot (the chain of trust)
 
-Power-on hands control to the **SecureROM** (mask-ROM, immutable, the hardware root of *boot* trust), which verifies and loads **iBoot**, which verifies and loads the **kernelcache** — each stage refusing to execute the next unless it is **Apple-signed**. Images are packaged as **IMG4** (an ASN.1/DER container of payload + manifest + signature) and **personalized**: at restore time Apple's signing server (TSS) issues an **APTicket/SHSH** blob binding the approved component hashes to *this device's* ECID and an anti-rollback nonce, so a blob signed for one device or one OS version can't be replayed onto another or rolled back to a vulnerable build. There is no LocalPolicy to lower and no Reduced-Security mode — the *only* way below a signature check is a **vulnerability** in the SecureROM itself (`checkm8`, A8–A11; the June-2026 `usbliter8` USB-DMA bug, A12–A13) or an iBoot/kernel chain. → drilled in [[boot-chain-securerom-iboot]] and [[image4-personalization-shsh]].
+Power-on hands control to the **SecureROM** (mask-ROM, immutable, the hardware root of *boot* trust), which verifies and loads **iBoot**, which verifies and loads the **kernelcache** — each stage refusing to execute the next unless it is **Apple-signed**. Images are packaged as **IMG4** (an ASN.1/DER container of payload + manifest + signature) and **personalized**: at restore time Apple's signing server (TSS) issues an **APTicket/SHSH** blob binding the approved component hashes to *this device's* ECID and an anti-rollback nonce, so a blob signed for one device or one OS version can't be replayed onto another or rolled back to a vulnerable build. There is no LocalPolicy to lower and no Reduced-Security mode — the *only* way below a signature check is a **vulnerability** in the SecureROM itself (`checkm8`, A8–A11; the June-2026 `usbliter8` USB-DMA bug, A12–A13) or an iBoot/kernel chain. → drilled in [[01-boot-chain-securerom-iboot]] and [[02-image4-personalization-shsh]].
 
-> 🔬 **Forensics note:** A SecureROM exploit is **code-execution below the signature check, not a decryption key**. It lets a tool boot its own ramdisk and reach the NAND and the SEP's front door — but it does not defeat Layer 0. With a *known or brute-forceable passcode* it enables a full-file-system extraction (because now the SEP can be driven to derive the class keys); without the passcode on a BFU device it still yields mostly ciphertext. The SoC generation therefore decides your entire acquisition tree before any other fact about the case. → [[the-acquisition-taxonomy]], [[full-file-system-acquisition]], [[the-jailbreak-landscape-2026]].
+> 🔬 **Forensics note:** A SecureROM exploit is **code-execution below the signature check, not a decryption key**. It lets a tool boot its own ramdisk and reach the NAND and the SEP's front door — but it does not defeat Layer 0. With a *known or brute-forceable passcode* it enables a full-file-system extraction (because now the SEP can be driven to derive the class keys); without the passcode on a BFU device it still yields mostly ciphertext. The SoC generation therefore decides your entire acquisition tree before any other fact about the case. → [[01-the-acquisition-taxonomy]], [[05-full-file-system-acquisition]], [[07-the-jailbreak-landscape-2026]].
 
 ### Layer 2 — OS integrity at runtime (SSV + the kernel-hardening ladder)
 
@@ -89,13 +89,13 @@ Secure boot proves the kernel was *Apple's at load time*; Layer 2 keeps the syst
 | **Exclaves** | Isolated trust domains carving sensitive services out of the kernel's reach | A18 / M4-era |
 | **MIE** | Memory Integrity Enforcement — always-on hardware memory tagging (EMTE) across kernel + userland | A19 / M5 (iPhone 17/Air/Pro) |
 
-→ drilled in [[kernel-hardening-pac-sptm-txm-mie]].
+→ drilled in [[06-kernel-hardening-pac-sptm-txm-mie]].
 
 > 🖥️ **macOS contrast:** SSV exists on the Mac too (same Merkle-sealed system volume since macOS 11) — but on the Mac you can *break the seal on purpose*: lower the LocalPolicy in 1TR, run `csrutil authenticated-root disable`, mount the system volume writable. On iOS there is no such command and no such mode; the seal is checked at boot with no toggle to skip it. SIP's "protect the system from root" intent survives, but it has graduated from a *flag root can clear* to a *cryptographic invariant the bootloader enforces*.
 
 ### Layer 3 — Data Protection (encryption at rest)
 
-Above an intact OS sits the at-rest encryption you met in the mental-model reset: **every file gets its own random per-file key**, each wrapped by one of a handful of **class keys** (A/Complete, B/CompleteUnlessOpen, C/UntilFirstUserAuthentication — *the default* — D/None), the class keys living in the **system keybag** and themselves wrapped by the passcode-entangled-with-UID secret from Layer 0. The wrapped per-file key rides in the APFS `cprotect` extended field. Readability is therefore not "is the disk unlocked" but **`(file's class) × (BFU/AFU/unlocked state)`**: a freshly-booted **BFU** device exposes only Class D; once the passcode is entered (**AFU**) the Class C keys become resident and stay resident across screen-locks until reboot, lighting up the *majority* of user data. → drilled in [[data-protection-and-keybags]] and [[passcode-bfu-afu-and-inactivity]]; storage substrate in [[storage-nand-aes-effaceable]].
+Above an intact OS sits the at-rest encryption you met in the mental-model reset: **every file gets its own random per-file key**, each wrapped by one of a handful of **class keys** (A/Complete, B/CompleteUnlessOpen, C/UntilFirstUserAuthentication — *the default* — D/None), the class keys living in the **system keybag** and themselves wrapped by the passcode-entangled-with-UID secret from Layer 0. The wrapped per-file key rides in the APFS `cprotect` extended field. Readability is therefore not "is the disk unlocked" but **`(file's class) × (BFU/AFU/unlocked state)`**: a freshly-booted **BFU** device exposes only Class D; once the passcode is entered (**AFU**) the Class C keys become resident and stay resident across screen-locks until reboot, lighting up the *majority* of user data. → drilled in [[02-data-protection-and-keybags]] and [[03-passcode-bfu-afu-and-inactivity]]; storage substrate in [[03-storage-nand-aes-effaceable]].
 
 > 🔬 **Forensics note:** This layer is the one most examiners misjudge by importing the FileVault model. FileVault is *one* volume key — unlock once, read everything. Data Protection re-locks per-class on every screen-lock for Class A and snaps the *whole* device back to near-opaque on reboot (BFU). Two SOP reflexes fall straight out and define the first minutes of a seizure: **never reboot the device**, and **keep it powered, awake, and radio-isolated** to beat the ~72 h **inactivity reboot** (since iOS 18.1) that the SEP uses to force AFU→BFU on its own.
 
@@ -105,7 +105,7 @@ Given a verified kernel and encrypted data, Layer 4 governs *what code runs and 
 
 - **Mandatory code signing (AMFI).** Every executable page must hash-match a signed **Code Directory**, checked **in-kernel at fault-in time**; platform binaries clear via the in-kernel **trust cache**, third-party apps via `amfid` validating the CMS signature + provisioning profile + entitlements. Unsigned pages are never made executable — `chmod +x` is meaningless and there is no JIT without the rare `dynamic-codesigning` entitlement.
 - **The sandbox.** Every app is confined at launch to its **Bundle** (signed, read-only code) and **Data** (read-write) containers by a per-app Seatbelt profile; cross-app data flows only through brokered channels (share sheet, App Groups, pasteboard), never raw paths.
-- **TCC + entitlements.** Privacy-sensitive resources (camera, mic, photos, location, contacts) are gated by an **entitlement plus a purpose string**; consent is recorded per-app in `TCC.db`. Privilege on iOS *is* the entitlement set baked into the signature — there is no uid to escalate to. → drilled in [[code-signing-amfi-entitlements]] and [[the-sandbox-and-tcc]]; the loader side in [[dyld-shared-cache-and-amfi]].
+- **TCC + entitlements.** Privacy-sensitive resources (camera, mic, photos, location, contacts) are gated by an **entitlement plus a purpose string**; consent is recorded per-app in `TCC.db`. Privilege on iOS *is* the entitlement set baked into the signature — there is no uid to escalate to. → drilled in [[04-code-signing-amfi-entitlements]] and [[05-the-sandbox-and-tcc]]; the loader side in [[07-dyld-shared-cache-and-amfi]].
 
 > 🖥️ **macOS contrast:** All three exist on the Mac and all three are *escapable*: Gatekeeper only gates quarantined GUI launches (run from the shell and it never fires); the App Sandbox is an opt-in entitlement most non-App-Store software ignores; TCC is a consent prompt a user (or, historically, a clever bug) can satisfy. iOS makes the identical machinery a **wall with no shell behind it** — AMFI is a kernel page-fault check, the sandbox is universal, and the entitlement gate trips *before* the consent prompt even appears.
 
@@ -117,9 +117,9 @@ The top layer extends the on-device trust model *off the device*, so that cloud 
 - **iCloud Keychain / escrow.** Synced secrets are end-to-end encrypted and recoverable only through **HSM-backed escrow** clusters that enforce a hard attempt limit on the recovery passcode, then destroy the escrow record — Apple itself cannot read the data.
 - **iMessage / BlastDoor.** Inbound message parsing runs in the tightly-sandboxed **BlastDoor** service, a direct structural answer to zero-click parser exploits.
 - **Find My / Activation Lock.** Activation Lock binds the device to its **Apple Account** in Apple's activation servers, so a wiped-and-reset device still demands the original account's credentials before it can be set up — turning the lower layers' crypto-erase into a *theft deterrent* (the thief gets a working brick, not a resellable phone). Find My's offline location uses a rotating-key BLE beacon design that even nearby Apple devices relay without learning the owner.
-- **ADP.** **Advanced Data Protection** extends end-to-end encryption to most iCloud categories (backups, Photos, Notes), removing Apple's ability to hand over readable data — and, for you, removing the cloud as an acquisition path. → services drilled across [[apple-account-icloud-and-apns]], [[keychain-on-ios]], [[biometrics-security-architecture]], [[advanced-protections-lockdown-sdp-adp]].
+- **ADP.** **Advanced Data Protection** extends end-to-end encryption to most iCloud categories (backups, Photos, Notes), removing Apple's ability to hand over readable data — and, for you, removing the cloud as an acquisition path. → services drilled across [[07-apple-account-icloud-and-apns]], [[08-keychain-on-ios]], [[07-biometrics-security-architecture]], [[09-advanced-protections-lockdown-sdp-adp]].
 
-> 🔬 **Forensics note:** Layer 5 is where the *cloud* acquisition path lives, and **ADP closes it**: with ADP on, the iCloud server side holds only ciphertext it cannot decrypt, so a legal-process return that used to yield readable iCloud backups now yields blobs. ADP status is therefore a case-shaping fact — it determines whether the cloud is even a productive target before you serve anything. → [[advanced-protections-lockdown-sdp-adp]].
+> 🔬 **Forensics note:** Layer 5 is where the *cloud* acquisition path lives, and **ADP closes it**: with ADP on, the iCloud server side holds only ciphertext it cannot decrypt, so a legal-process return that used to yield readable iCloud backups now yields blobs. ADP status is therefore a case-shaping fact — it determines whether the cloud is even a productive target before you serve anything. → [[09-advanced-protections-lockdown-sdp-adp]].
 
 One concern runs *across* all six rather than sitting in a single layer: **network security** — TLS with App Transport Security defaults, per-app and system VPN via NetworkExtension, MAC-address randomization, and the privacy-preserving designs behind Wi-Fi/Bluetooth/Find My. It is a cross-cutting band the *Platform Security Guide* treats as its own chapter; this course gives it a whole module (Part 04) rather than folding it into the on-device stack, because for both a builder and an examiner the wire is a distinct surface with its own tools (interception, pinning, the lockdown relay). Mentally, picture it wrapping the right edge of the stack diagram, touching every layer that talks to the outside.
 
@@ -191,7 +191,7 @@ You arrived knowing three macOS defenses. Here is the precise conversion — sam
 | **FileVault** — one volume key, unlock-once | **Data Protection** — per-file keys × class keys × BFU/AFU | One boolean lock → a *lock-state matrix* per file |
 | **Secure boot + LocalPolicy/1TR** — lowerable | **SecureROM → iBoot → kernel**, IMG4/SHSH, **no downgrade** | Same chain with the *escape hatch deleted* |
 
-The single sentence to keep: **iOS is the macOS security model with the user demoted from trust-root to subject, and every "off" switch removed and replaced by a hardware attestation.** (The mechanism-by-mechanism version of this table, with the daemon and kext names, is the whole of [[macos-to-ios-mental-model-reset]] — this is the security-architecture framing of the same truth.)
+The single sentence to keep: **iOS is the macOS security model with the user demoted from trust-root to subject, and every "off" switch removed and replaced by a hardware attestation.** (The mechanism-by-mechanism version of this table, with the daemon and kext names, is the whole of [[02-macos-to-ios-mental-model-reset]] — this is the security-architecture framing of the same truth.)
 
 ### The forensic lens: every layer is a wall
 
@@ -216,7 +216,7 @@ Want the data?  ──▶  which wall stops you?
 
 Nothing in Part 07 escapes this picture. A logical backup stops at Layer 4/5 (what the backup protocol and Data Protection expose). A full-file-system pull needs a Layer-1 foothold *and* a Layer-0/3 key state. A cloud warrant lives or dies at Layer 5 (ADP). The examiner who can name the wall in the first five minutes of a seizure — *what SoC, what state, ADP or not* — has already scoped the entire engagement.
 
-> ⚖️ **Authorization:** Naming the wall is a technical act; *going through it* is a legal one. Every method that defeats a layer here — booting a `checkm8`/`usbliter8` ramdisk, driving the SEP to test passcode guesses, serving legal process for an iCloud return — requires specific, documented lawful authority and a chain of custody recorded before you connect, because several of these steps **mutate device state** (a reboot alone can knock AFU→BFU and destroy evidence). The model tells you what is *possible*; your authorization defines what is *permitted*. → [[ios-forensics-landscape-and-authorization]].
+> ⚖️ **Authorization:** Naming the wall is a technical act; *going through it* is a legal one. Every method that defeats a layer here — booting a `checkm8`/`usbliter8` ramdisk, driving the SEP to test passcode guesses, serving legal process for an iCloud return — requires specific, documented lawful authority and a chain of custody recorded before you connect, because several of these steps **mutate device state** (a reboot alone can knock AFU→BFU and destroy evidence). The model tells you what is *possible*; your authorization defines what is *permitted*. → [[00-ios-forensics-landscape-and-authorization]].
 
 ### A map of the rest of this module
 
@@ -225,15 +225,15 @@ This lesson is the table of contents for the stack. Each layer above gets a dedi
 | Lesson | Layer it drills | One-line focus |
 |---|---|---|
 | **00 — the-ios-security-model** *(here)* | the whole stack | the layered map + threat model + the wall lens |
-| **01 — [[sep-sepos-deep-dive]]** | Layer 0 | sepOS, the UID/GID fuses, the keystore, secure boot of the SEP itself |
-| **02 — [[data-protection-and-keybags]]** | Layer 3 | per-file/class keys, the keybag types, `cprotect`, crypto-erase |
-| **03 — [[passcode-bfu-afu-and-inactivity]]** | Layer 0↔3 | passcode entanglement, BFU/AFU, SEP rate-limiting, inactivity reboot |
-| **04 — [[code-signing-amfi-entitlements]]** | Layer 4 | AMFI, Code Directory, trust cache, provisioning, the entitlement system |
-| **05 — [[the-sandbox-and-tcc]]** | Layer 4 | container profiles, brokered IPC, the TCC consent ledger |
-| **06 — [[kernel-hardening-pac-sptm-txm-mie]]** | Layer 2 | the PAC→PPL→SPTM/TXM→Exclaves→MIE ladder |
-| **07 — [[biometrics-security-architecture]]** | Layers 0/4 | Face ID/Touch ID enrollment, the SEP biometric pipeline, presence checks |
-| **08 — [[keychain-on-ios]]** | Layers 0/3/5 | keychain protection classes, access groups, `securityd`, iCloud escrow |
-| **09 — [[advanced-protections-lockdown-sdp-adp]]** | Layers 2/5 | Lockdown Mode, Stolen Device Protection, Advanced Data Protection |
+| **01 — [[01-sep-sepos-deep-dive]]** | Layer 0 | sepOS, the UID/GID fuses, the keystore, secure boot of the SEP itself |
+| **02 — [[02-data-protection-and-keybags]]** | Layer 3 | per-file/class keys, the keybag types, `cprotect`, crypto-erase |
+| **03 — [[03-passcode-bfu-afu-and-inactivity]]** | Layer 0↔3 | passcode entanglement, BFU/AFU, SEP rate-limiting, inactivity reboot |
+| **04 — [[04-code-signing-amfi-entitlements]]** | Layer 4 | AMFI, Code Directory, trust cache, provisioning, the entitlement system |
+| **05 — [[05-the-sandbox-and-tcc]]** | Layer 4 | container profiles, brokered IPC, the TCC consent ledger |
+| **06 — [[06-kernel-hardening-pac-sptm-txm-mie]]** | Layer 2 | the PAC→PPL→SPTM/TXM→Exclaves→MIE ladder |
+| **07 — [[07-biometrics-security-architecture]]** | Layers 0/4 | Face ID/Touch ID enrollment, the SEP biometric pipeline, presence checks |
+| **08 — [[08-keychain-on-ios]]** | Layers 0/3/5 | keychain protection classes, access groups, `securityd`, iCloud escrow |
+| **09 — [[09-advanced-protections-lockdown-sdp-adp]]** | Layers 2/5 | Lockdown Mode, Stolen Device Protection, Advanced Data Protection |
 
 Read them in order and the stack assembles bottom-up. Read any one in isolation and anchor it back to this map: *which layer am I in, what does it trust beneath it, and what wall is it for an examiner?*
 
@@ -243,12 +243,12 @@ One reference table for the whole model — keep it within reach as you work the
 
 | Layer | Core mechanism | Primarily defends against | The examiner's wall | Drilled in |
 |---|---|---|---|---|
-| **5 — Services** | E2EE, HSM escrow, SE, BlastDoor, **ADP** | cloud/server compromise, zero-click | ADP → cloud returns ciphertext | [[advanced-protections-lockdown-sdp-adp]] |
-| **4 — App security** | AMFI signing, sandbox, entitlements/TCC | malware, trojan apps, cross-app theft | no app reads another → go below via FFS/backup | [[code-signing-amfi-entitlements]], [[the-sandbox-and-tcc]] |
-| **3 — Data Protection** | per-file × class keys, keybag, BFU/AFU | device theft, dead-box extraction | BFU → only Class D; reboot re-locks | [[data-protection-and-keybags]] |
-| **2 — OS integrity** | SSV Merkle seal, PAC→…→MIE ladder | runtime tamper, kernel exploit chains | sealed/hardened kernel — needs an exploit | [[kernel-hardening-pac-sptm-txm-mie]] |
-| **1 — Secure boot** | SecureROM→iBoot→kernel, IMG4/SHSH | unsigned firmware, rollback, evil-maid | SoC ≥ A14 → no BootROM exploit | [[boot-chain-securerom-iboot]] |
-| **0 — Hardware root** | SEP, fused UID/GID, inline AES, rate-limit | key extraction, offline brute force | keys never leave the chip; SEP throttles | [[sep-sepos-deep-dive]] |
+| **5 — Services** | E2EE, HSM escrow, SE, BlastDoor, **ADP** | cloud/server compromise, zero-click | ADP → cloud returns ciphertext | [[09-advanced-protections-lockdown-sdp-adp]] |
+| **4 — App security** | AMFI signing, sandbox, entitlements/TCC | malware, trojan apps, cross-app theft | no app reads another → go below via FFS/backup | [[04-code-signing-amfi-entitlements]], [[05-the-sandbox-and-tcc]] |
+| **3 — Data Protection** | per-file × class keys, keybag, BFU/AFU | device theft, dead-box extraction | BFU → only Class D; reboot re-locks | [[02-data-protection-and-keybags]] |
+| **2 — OS integrity** | SSV Merkle seal, PAC→…→MIE ladder | runtime tamper, kernel exploit chains | sealed/hardened kernel — needs an exploit | [[06-kernel-hardening-pac-sptm-txm-mie]] |
+| **1 — Secure boot** | SecureROM→iBoot→kernel, IMG4/SHSH | unsigned firmware, rollback, evil-maid | SoC ≥ A14 → no BootROM exploit | [[01-boot-chain-securerom-iboot]] |
+| **0 — Hardware root** | SEP, fused UID/GID, inline AES, rate-limit | key extraction, offline brute force | keys never leave the chip; SEP throttles | [[01-sep-sepos-deep-dive]] |
 
 The column that matters most on seizure is **the examiner's wall**: it is the same six facts, restated as the questions you ask in order — *ADP? sandbox-or-below? BFU/AFU? sealed kernel? SoC generation? passcode strength?* Answer those and the engagement is scoped.
 
@@ -320,7 +320,7 @@ codesign -dvvv "$BIN" 2>&1 | sed -n '1,20p'
 codesign -d --entitlements :- "$BIN" 2>/dev/null | plutil -p - 2>/dev/null | head -30
 ```
 
-The point is to *see* the three things AMFI cares about — the **cdhash** (what the trust cache or `amfid` checks), the **signer** (ad-hoc here, Apple/Team on a device), and the **entitlements** (the capabilities the app is allowed to claim). On a device these are enforced in-kernel with no override; here they are just readable structure. → [[code-signing-amfi-entitlements]].
+The point is to *see* the three things AMFI cares about — the **cdhash** (what the trust cache or `amfid` checks), the **signer** (ad-hoc here, Apple/Team on a device), and the **entitlements** (the capabilities the app is allowed to claim). On a device these are enforced in-kernel with no override; here they are just readable structure. → [[04-code-signing-amfi-entitlements]].
 
 ### Read the model from the primary source (on the Mac)
 
@@ -344,7 +344,7 @@ curl -L -o apple-platform-security-2026.pdf \
 
 1. `brew install blacktop/tap/ipsw`, then obtain a current public IPSW for a device you don't own (e.g. from ipsw.me).
 2. Run `ipsw info <file>.ipsw` and list every firmware component. For each, label which layer of the stack it belongs to: `LLB`/`iBoot`/`iBEC` (Layer 1), `kernelcache` + trust cache (Layers 2/4), `sep`-firmware (Layer 0), the root-fs DMG (Layer 2 / SSV).
-3. Note the **personalization** dimension: explain in one sentence why this same IPSW will *not* restore unless Apple's TSS issues a SHSH blob bound to a specific device's ECID — i.e. why Layer 1 is per-device, not per-build. → [[image4-personalization-shsh]].
+3. Note the **personalization** dimension: explain in one sentence why this same IPSW will *not* restore unless Apple's TSS issues a SHSH blob bound to a specific device's ECID — i.e. why Layer 1 is per-device, not per-build. → [[02-image4-personalization-shsh]].
 
 ### Lab 2 — Prove the bottom layers are absent on the Simulator (Simulator)
 
@@ -389,7 +389,7 @@ Then answer: (a) For the A19-BFU row, why does the **SoC generation** (Layer 1) 
 - **Assuming a kernel compromise (jailbreak) collapses the whole stack.** It owns Layer 2 only. It does **not** forge a signature the SEP rejects, decrypt a **BFU** device, or read the fused UID — the layers fail independently *by design*. This is why even a jailbroken-but-BFU device is still mostly ciphertext.
 - **Treating "the disk is imaged" as "the data is recovered."** Imaging captures ciphertext at Layer 3; recovery needs the keys, which live behind Layer 0 and depend on BFU/AFU state. The FileVault reflex ("unlocked once → all readable") is the single most common macOS-examiner error on iOS.
 - **Forgetting the cloud is a separate wall.** Even with a perfect on-device picture, **ADP** (Layer 5) independently decides whether the iCloud path returns plaintext or blobs. Check ADP status *before* scoping a cloud effort.
-- **Conflating the SEP with the Secure Element.** Two different chips: the **SEP** (sepOS, keys, Data Protection, biometrics) and the **SE** (Apple Pay/transit credentials, certified payment chip). Apple Pay's card data lives in the **SE** and never reaches the OS — a distinct trust domain from the SEP. → [[secure-enclave-hardware]].
+- **Conflating the SEP with the Secure Element.** Two different chips: the **SEP** (sepOS, keys, Data Protection, biometrics) and the **SE** (Apple Pay/transit credentials, certified payment chip). Apple Pay's card data lives in the **SE** and never reaches the OS — a distinct trust domain from the SEP. → [[02-secure-enclave-hardware]].
 - **Expecting to "just remount the system volume writable" like on a Mac.** The macOS SSV escape (`csrutil authenticated-root disable`) has no iOS analogue. Even on a jailbroken device the system volume is **SSV-sealed**; modern tooling works around it with an overlay/shadow mount or by rebuilding the seal, not by flipping a flag — persistence on the system volume is *hard by construction*, which is why so much implant/tweak machinery lives in memory or in writable data paths instead.
 - **Validating any lower-layer claim on the Simulator.** The Simulator *has no* Layers 0–3. It is authoritative for schema and layout and worthless for encryption, lock state, or signing. Never "confirm" a Data-Protection or AMFI behavior there.
 - **Mistaking "code execution" for "the keys."** A BootROM exploit, a kernel jailbreak, even root on the device all stop at Layer 0: they buy you *authority at their own layer*, not the SEP-held keys. The phrase "I got code execution" answers a different question than "I got the data," and conflating them is how acquisition timelines slip — you still need the passcode (or escrow bag, and only for AFU) to make the SEP release class keys.
@@ -449,4 +449,4 @@ Then answer: (a) For the A19-BFU row, why does the **SoC generation** (Layer 1) 
 - `man simctl` · `ipsw --help` · `man codesign` — exact flags for the device-free Mac-side tooling.
 
 ---
-*Related lessons: [[macos-to-ios-mental-model-reset]] | [[secure-enclave-hardware]] | [[sep-sepos-deep-dive]] | [[data-protection-and-keybags]] | [[passcode-bfu-afu-and-inactivity]] | [[code-signing-amfi-entitlements]] | [[the-sandbox-and-tcc]] | [[kernel-hardening-pac-sptm-txm-mie]] | [[advanced-protections-lockdown-sdp-adp]] | [[the-acquisition-taxonomy]]*
+*Related lessons: [[02-macos-to-ios-mental-model-reset]] | [[02-secure-enclave-hardware]] | [[01-sep-sepos-deep-dive]] | [[02-data-protection-and-keybags]] | [[03-passcode-bfu-afu-and-inactivity]] | [[04-code-signing-amfi-entitlements]] | [[05-the-sandbox-and-tcc]] | [[06-kernel-hardening-pac-sptm-txm-mie]] | [[09-advanced-protections-lockdown-sdp-adp]] | [[01-the-acquisition-taxonomy]]*

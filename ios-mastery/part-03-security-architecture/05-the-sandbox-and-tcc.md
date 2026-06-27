@@ -71,11 +71,11 @@ Entitlements are how an app **widens** its container. They are not "permissions 
 | Entitlement | What the sandbox grants |
 |---|---|
 | `com.apple.security.application-groups` | read/write to the shared App Group container(s) |
-| `keychain-access-groups` | which keychain access groups the app may use (see [[keychain-on-ios]]) |
+| `keychain-access-groups` | which keychain access groups the app may use (see [[08-keychain-on-ios]]) |
 | `com.apple.developer.…` (HealthKit, HomeKit, etc.) | the Mach services / capability extensions for that framework |
 | `com.apple.private.…` (Apple-only) | privileged operations reserved for platform binaries |
 
-Entitlements are embedded in the **code signature** (the `Entitlements` blob inside the embedded signature `SuperBlob`) and are immutable after signing — covered in [[code-signing-amfi-entitlements]]. AMFI validates the signature at exec; the sandbox then reads the now-trusted entitlements to parameterize the profile.
+Entitlements are embedded in the **code signature** (the `Entitlements` blob inside the embedded signature `SuperBlob`) and are immutable after signing — covered in [[04-code-signing-amfi-entitlements]]. AMFI validates the signature at exec; the sandbox then reads the now-trusted entitlements to parameterize the profile.
 
 #### When the profile is applied: the exec path
 
@@ -107,7 +107,7 @@ This split is *the* security boundary between "Apple's code, which mediates reso
 
 ### The container on disk: UUIDs, the metadata plist, and the parsing skeleton
 
-A third-party app does not occupy a directory named after its bundle id. It is split across **three** container locations, each a **random UUID** directory (see [[filesystem-layout-and-containers]] for the full tour):
+A third-party app does not occupy a directory named after its bundle id. It is split across **three** container locations, each a **random UUID** directory (see [[08-filesystem-layout-and-containers]] for the full tour):
 
 ```
 /private/var/containers/Bundle/Application/<UUID-A>/        ← the signed .app bundle (read-only)
@@ -288,7 +288,7 @@ The columns that carry forensic weight:
 | `csreq` | the **code-signing requirement blob** the client must satisfy — anti-impersonation, so another binary reusing the bundle id can't inherit the grant |
 | `last_modified` | when this row last changed — **Unix epoch seconds** (not Apple Absolute Time!) |
 
-A copy-first query (always `cp` before `sqlite3` — even a `SELECT` write-locks SQLite and spawns `-wal`/`-shm`; see [[app-sandbox-and-filesystem-layout]]):
+A copy-first query (always `cp` before `sqlite3` — even a `SELECT` write-locks SQLite and spawns `-wal`/`-shm`; see [[00-app-sandbox-and-filesystem-layout]]):
 
 ```sql
 SELECT
@@ -305,9 +305,9 @@ ORDER BY last_modified DESC;
 
 This answers, per app: *which* privacy resources it was granted or denied, and *when that state last changed*. "Did this messaging app ever have microphone access, and was it revoked the day before the incident?" is a `last_modified` + `auth_value` question.
 
-> 🔬 **Forensics note (timestamp zoo):** TCC.db's `last_modified` is **plain Unix epoch** — do **not** add the Apple Absolute Time offset `978307200` you use for `knowledgeC`/Safari/most iOS stores. Adding it silently shifts every TCC timestamp ~31 years into the future. TCC is one of the handful of iOS SQLite stores on the Unix epoch; this lands in [[the-ios-timestamp-zoo]]. iLEAPP and mvt both have TCC parsers; APOLLO has a TCC module that joins this against the unified log.
+> 🔬 **Forensics note (timestamp zoo):** TCC.db's `last_modified` is **plain Unix epoch** — do **not** add the Apple Absolute Time offset `978307200` you use for `knowledgeC`/Safari/most iOS stores. Adding it silently shifts every TCC timestamp ~31 years into the future. TCC is one of the handful of iOS SQLite stores on the Unix epoch; this lands in [[00-the-ios-timestamp-zoo]]. iLEAPP and mvt both have TCC parsers; APOLLO has a TCC module that joins this against the unified log.
 
-> ⚖️ **Authorization:** TCC.db proves an **authorization state and its change history** — that consent existed and when it flipped — **not** that the resource was *used*. "Camera was `allowed` since 2026-03-01" is not evidence a photo was taken at the incident; correlate with the camera roll (`Photos.sqlite`), the unified log (`tccd`/`mediaserverd` access events), and `knowledgeC`/Biome app-in-focus to show actual use. Keep that distinction explicit in any report, and confine your examination to the authorized scope — pulling `/var/mobile/Library/TCC/` is full-filesystem territory, which carries its own legal-authority and acquisition-method constraints (see [[ios-forensics-landscape-and-authorization]]).
+> ⚖️ **Authorization:** TCC.db proves an **authorization state and its change history** — that consent existed and when it flipped — **not** that the resource was *used*. "Camera was `allowed` since 2026-03-01" is not evidence a photo was taken at the incident; correlate with the camera roll (`Photos.sqlite`), the unified log (`tccd`/`mediaserverd` access events), and `knowledgeC`/Biome app-in-focus to show actual use. Keep that distinction explicit in any report, and confine your examination to the authorized scope — pulling `/var/mobile/Library/TCC/` is full-filesystem territory, which carries its own legal-authority and acquisition-method constraints (see [[00-ios-forensics-landscape-and-authorization]]).
 
 > ⚠️ **ADVANCED:** Writing to a device's live `TCC.db` (to grant yourself access, or to plant/erase a row) requires defeating the sandbox + the signed system volume — i.e. a jailbreak — and on a non-jailbroken iOS 26 device it is simply not reachable. Don't model your understanding on "just edit the row"; on iOS that is a privileged exploit, not a config change. The legitimate way to flip a grant is Settings → Privacy & Security (which `tccd` writes), and the legitimate way to *read* the file for an exam is an authorized full-filesystem acquisition.
 
@@ -326,7 +326,7 @@ A trap that catches macOS-trained examiners: **location authorization is *not* i
 
 In `clients.plist`, each client (keyed by bundle id) carries an **`Authorization`** value — broadly `2` = while-in-use, `4` = always (system services also use `4`) — plus app-supplied keys. The purpose strings differ too: location uses `NSLocationWhenInUseUsageDescription` / `NSLocationAlwaysAndWhenInUseUsageDescription`, and the missing-string crash applies the same way, but the *decision record* lives in `locationd`, not `tccd`.
 
-> 🔬 **Forensics note:** A short-lived **`TemporaryAuthorization`** key can appear in a client's `clients.plist` entry while the app is foregrounded and holding a one-time/"allow once" grant — and it is **deleted when the app closes**, so its *absence* does not prove the app never had location. To reconstruct "did this app have location and when," cross-reference `clients.plist` with `routined`'s location stores and the unified log; location-history parsing proper is [[location-history]]. The takeaway here: when you enumerate "what private resources did app X hold," remember location is a separate store with separate semantics.
+> 🔬 **Forensics note:** A short-lived **`TemporaryAuthorization`** key can appear in a client's `clients.plist` entry while the app is foregrounded and holding a one-time/"allow once" grant — and it is **deleted when the app closes**, so its *absence* does not prove the app never had location. To reconstruct "did this app have location and when," cross-reference `clients.plist` with `routined`'s location stores and the unified log; location-history parsing proper is [[07-location-history]]. The takeaway here: when you enumerate "what private resources did app X hold," remember location is a separate store with separate semantics.
 
 ## Hands-on
 
@@ -443,7 +443,7 @@ plutil -p "/path/to/image/.../Data/Application/<UUID>/.com.apple.mobile_containe
 1. From `TCC.db.access`, list every `service`/`auth_value`/`last_modified` for one target `client` bundle id.
 2. Separately, open `…/locationd/clients.plist` and read that bundle id's `Authorization` value — prove to yourself location is a **different** store with different semantics.
 3. Check the app's **App Group** shared container and `pasteboardd` cache for resource-bearing data the Data container lacks.
-4. Produce a one-app "privacy posture" sheet: camera/mic/photos/contacts from TCC, location from locationd, and where each timestamp's epoch differs. This is the deliverable shape for [[third-party-app-methodology]].
+4. Produce a one-app "privacy posture" sheet: camera/mic/photos/contacts from TCC, location from locationd, and where each timestamp's epoch differs. This is the deliverable shape for [[11-third-party-app-methodology]].
 
 ## Pitfalls & gotchas
 
@@ -503,4 +503,4 @@ plutil -p "/path/to/image/.../Data/Application/<UUID>/.com.apple.mobile_containe
 - `man sandbox-exec`, `man codesign`, `man plutil`, `man sqlite3`; `xcrun simctl help privacy`.
 
 ---
-*Related lessons: [[code-signing-amfi-entitlements]] | [[filesystem-layout-and-containers]] | [[app-sandbox-and-filesystem-layout]] | [[the-app-sandbox-from-the-developer-side]] | [[location-history]] | [[the-ios-timestamp-zoo]]*
+*Related lessons: [[04-code-signing-amfi-entitlements]] | [[08-filesystem-layout-and-containers]] | [[00-app-sandbox-and-filesystem-layout]] | [[05-the-app-sandbox-from-the-developer-side]] | [[07-location-history]] | [[00-the-ios-timestamp-zoo]]*

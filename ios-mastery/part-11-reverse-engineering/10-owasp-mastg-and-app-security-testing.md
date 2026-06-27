@@ -70,7 +70,7 @@ MASVS v2 organizes the entire mobile attack surface into eight control groups. M
 | **MASVS-RESILIENCE** | Reverse-engineering & tamper resistance | Anti-debugging, jailbreak detection, integrity checks, obfuscation — defense in *depth*, not a boundary |
 | **MASVS-PRIVACY** | User-data privacy | Data minimization, consent, transparency, no unnecessary identifiers/tracking (added in v2.1.0, Jan 2024) |
 
-The first five map almost 1:1 onto subsystems you've already studied: STORAGE → the app container and Data Protection ([[app-sandbox-and-filesystem-layout]], [[data-protection-and-keybags]]), CRYPTO → [[keychain-on-ios]], AUTH → [[biometrics-security-architecture]], NETWORK → [[certificate-pinning-and-bypass]], PLATFORM → [[the-sandbox-and-tcc]]. RESILIENCE is the whole back half of this module ([[anti-tamper-pinning-and-detection-both-sides]]). PRIVACY is the newest and the one auditors most often skip.
+The first five map almost 1:1 onto subsystems you've already studied: STORAGE → the app container and Data Protection ([[00-app-sandbox-and-filesystem-layout]], [[02-data-protection-and-keybags]]), CRYPTO → [[08-keychain-on-ios]], AUTH → [[07-biometrics-security-architecture]], NETWORK → [[03-certificate-pinning-and-bypass]], PLATFORM → [[05-the-sandbox-and-tcc]]. RESILIENCE is the whole back half of this module ([[11-anti-tamper-pinning-and-detection-both-sides]]). PRIVACY is the newest and the one auditors most often skip.
 
 ### Each group, in concrete iOS terms
 
@@ -82,7 +82,7 @@ The standard is platform-agnostic; your job is to translate each group into the 
 - **NETWORK** — Cleartext HTTP, **ATS exceptions** (`NSAppTransportSecurity`/`NSAllowsArbitraryLoads` in `Info.plist`), weak TLS config, **absent or trivially-bypassable certificate pinning**, accepting invalid certs in a custom `URLSession` delegate.
 - **PLATFORM** — Unvalidated **custom URL schemes** / Universal Links, exported functionality, **WKWebView** with `javaScriptEnabled` + a native bridge over untrusted content, secrets on the **pasteboard** (`UIPasteboard.general`), missing `isSecureTextEntry`, data left visible in the app switcher snapshot, third-party-keyboard exposure.
 - **CODE** — Outdated/vulnerable third-party SDKs and Swift packages, debug logging/symbols and dev endpoints shipped in release, missing binary hardening (PIE, stack canaries, ARC), format-string/injection-prone patterns.
-- **RESILIENCE** — Jailbreak detection, anti-debugging (`ptrace(PT_DENY_ATTACH)`, `sysctl` `P_TRACED`), code-integrity/anti-tamper checks, obfuscation, anti-hooking (Frida/Cydia Substrate detection). All *cost-raising*, none a boundary — see [[anti-tamper-pinning-and-detection-both-sides]].
+- **RESILIENCE** — Jailbreak detection, anti-debugging (`ptrace(PT_DENY_ATTACH)`, `sysctl` `P_TRACED`), code-integrity/anti-tamper checks, obfuscation, anti-hooking (Frida/Cydia Substrate detection). All *cost-raising*, none a boundary — see [[11-anti-tamper-pinning-and-detection-both-sides]].
 - **PRIVACY** — Collecting more than declared in the **Privacy Manifest** (`PrivacyInfo.xcprivacy`) / **App Privacy "nutrition label,"** using **required-reason APIs** without a declared reason, harvesting device identifiers/`IDFA` without consent, fingerprinting, third-party SDK exfiltration.
 
 > 🔬 **Forensics note:** The **RESILIENCE** catalog is dual-use for the examiner. The same anti-debug / anti-hooking / jailbreak-detection patterns the tester *defeats* are exactly what a **stalkerware or spyware** sample uses to *hide* — recognizing `PT_DENY_ATTACH`, `sysctl` trace checks, Frida/Substrate detection, and integrity self-checks in a suspect binary is an indicator of an app built to resist analysis. And the **PRIVACY** group's required-reason-API and Privacy-Manifest checks are a fast triage lens for "what does this app secretly collect," complementing a behavioral run through `mvt` and the artifact stores in Part 08.
@@ -146,7 +146,7 @@ Working the other direction (you *found* something and need to file it) you walk
 
 The project ships a **MAS Checklist** (a spreadsheet, regenerated each release; also browsable on the MAS site) that pre-joins the three layers: every MASVS control, the MASWEs under it, and the MASTG-TEST IDs that verify them, with columns for status and notes. In a real engagement this is your **coverage ledger** — you scope by deleting the rows for profiles/groups out of scope, then drive testing row by row, marking pass/fail/NA. The filled checklist *is* the audit trail: it proves what you tested, not just what you found, which is precisely the documentation discipline that survives scrutiny.
 
-> 🔬 **Forensics note:** The MASTG-TECH catalog and the MASVS-STORAGE/PRIVACY tests are a ready-made **artifact-location index**. "Where does this app cache auth tokens / write PII / log secrets?" is the same question whether you're a tester finding a vuln or an examiner triaging a suspect app — and the MASTG already enumerates the candidate locations (the app container layers from [[app-sandbox-and-filesystem-layout]], the Keychain, `NSUserDefaults`/`Library/Preferences`, the `tmp`/`Caches` dirs, the unified log, the iTunes/Finder backup set). Run the storage tests against an evidentiary copy and you get a structured inventory of what the app holds. The crackmes below also give you **ground-truth samples** to validate your parsers and Frida scripts *before* you run them on real evidence.
+> 🔬 **Forensics note:** The MASTG-TECH catalog and the MASVS-STORAGE/PRIVACY tests are a ready-made **artifact-location index**. "Where does this app cache auth tokens / write PII / log secrets?" is the same question whether you're a tester finding a vuln or an examiner triaging a suspect app — and the MASTG already enumerates the candidate locations (the app container layers from [[00-app-sandbox-and-filesystem-layout]], the Keychain, `NSUserDefaults`/`Library/Preferences`, the `tmp`/`Caches` dirs, the unified log, the iTunes/Finder backup set). Run the storage tests against an evidentiary copy and you get a structured inventory of what the app holds. The crackmes below also give you **ground-truth samples** to validate your parsers and Frida scripts *before* you run them on real evidence.
 
 ### Building a device-free iOS test rig
 
@@ -182,7 +182,7 @@ A standard is as useful for what it excludes as for what it includes. MASVS/MAST
 - **It is not a business-logic review.** MASTG verifies *known weakness patterns*. Logic flaws, broken workflows, and abuse cases need a human reviewing intent, not a checklist.
 - **It is not a threat model.** You bring the threat model *to* scoping; MAS doesn't generate one. The profile you pick (and therefore the controls in scope) is only as good as that model.
 - **It is not a compliance certificate by itself.** "MASVS-verified" is a claim a tester makes; there's an optional independent verification/badging path, but the standard doesn't self-certify.
-- **It is platform-app-centric.** App Clips, extensions, widgets, and the WatchKit/companion surfaces each carry their own attack surface ([[extensions-app-clips-widgets-and-widgetkit]]); make sure scoping enumerates them rather than testing "the app" as a monolith.
+- **It is platform-app-centric.** App Clips, extensions, widgets, and the WatchKit/companion surfaces each carry their own attack surface ([[08-extensions-app-clips-widgets-and-widgetkit]]); make sure scoping enumerates them rather than testing "the app" as a monolith.
 
 ### The professional assessment process
 
@@ -207,7 +207,7 @@ The whole engagement is one loop, and every phase produces an artifact the next 
 The standard exists to be *run*, in three phases:
 
 1. **Scope.** Choose the **profile(s)** (L1? +L2? +R? +P?), the platform (iOS), the in-scope features and backends, a **data-classification** of what the app handles, and a **threat model** (who's the attacker — network MITM? a thief with the phone? a cracker with the binary?). Profile selection is what makes RESILIENCE testing in- or out-of-scope. Output: a tailored **MAS Checklist** (rows trimmed to scope).
-2. **Test.** Walk the checklist. For each in-scope MASTG-TEST: run the procedure (static/dynamic/network), record evidence (commands, screenshots, captured output), and mark pass/fail/NA. Combine static (cheap, broad — do it first) and dynamic (expensive, deep — confirm and exploit), exactly the pipeline from [[static-analysis-class-dump-and-disassemblers]] → [[dynamic-analysis-with-frida]].
+2. **Test.** Walk the checklist. For each in-scope MASTG-TEST: run the procedure (static/dynamic/network), record evidence (commands, screenshots, captured output), and mark pass/fail/NA. Combine static (cheap, broad — do it first) and dynamic (expensive, deep — confirm and exploit), exactly the pipeline from [[04-static-analysis-class-dump-and-disassemblers]] → [[05-dynamic-analysis-with-frida]].
 3. **Report.** Each finding carries: the **MASTG-TEST** that found it → the **MASWE** it proves → the **MASVS** group it violates → a **CWE** → a severity → reproduction steps → a **MASTG-BEST** remediation → a retest result. The filled checklist goes in as the coverage appendix. That four-ID spine is what makes a mobile report comparable across testers, tools, and time.
 
 A single finding, written to that shape, looks like:
@@ -229,14 +229,14 @@ Retest:       PASS — token now CSPRNG-derived (re-run 2026-06-26).
 
 #### Severity, and "fail" is not binary
 
-A MASTG test result is `pass / fail / NA`, but the *finding* needs a severity, and on mobile that is **context times data-classification times exploitability-under-the-threat-model**. The same MASWE is a different severity in different apps: a hardcoded API key for a public read-only endpoint is low; a hardcoded key that decrypts user PII at rest is critical. Use your house scale (CVSS-style, or client-defined) but anchor it to the **scoped threat model** — a network-MITM finding is moot if the threat model excludes a hostile network, and a STORAGE-at-rest finding's severity hinges entirely on the **Data-Protection class** and lock-state (BFU/AFU) from [[bfu-vs-afu-and-data-protection-classes]]. Report the reasoning, not just the rating.
+A MASTG test result is `pass / fail / NA`, but the *finding* needs a severity, and on mobile that is **context times data-classification times exploitability-under-the-threat-model**. The same MASWE is a different severity in different apps: a hardcoded API key for a public read-only endpoint is low; a hardcoded key that decrypts user PII at rest is critical. Use your house scale (CVSS-style, or client-defined) but anchor it to the **scoped threat model** — a network-MITM finding is moot if the threat model excludes a hostile network, and a STORAGE-at-rest finding's severity hinges entirely on the **Data-Protection class** and lock-state (BFU/AFU) from [[02-bfu-vs-afu-and-data-protection-classes]]. Report the reasoning, not just the rating.
 
 ### Where MAS fits the 2026 iOS landscape
 
 MASVS/MASTG is no longer just a pentester's checklist; in 2026 it's load-bearing in three places you should know about:
 
 - **Regulatory & compliance uptake.** MASVS is referenced or required by mobile-relevant standards (PCI's mobile payment standards, various national/sector app-security baselines). "MASVS-L2 verified" is increasingly a contractual line item, which is precisely why the *profile vocabulary* matters.
-- **App Store & marketplace vetting.** Apple's App Review and notarization apply their own automated and manual checks; they are **not** a MASVS audit, but they overlap (ATS, privacy manifests, required-reason APIs, entitlement sanity). Under the **EU DMA**, alternative marketplaces and notarized sideloading ([[eu-dma-sideloading-and-alternative-marketplaces]]) shift some vetting burden onto marketplace operators — MASVS is the natural framework they reach for. Tie this to your distribution mental model in [[distribution-testflight-appstore-enterprise]].
+- **App Store & marketplace vetting.** Apple's App Review and notarization apply their own automated and manual checks; they are **not** a MASVS audit, but they overlap (ATS, privacy manifests, required-reason APIs, entitlement sanity). Under the **EU DMA**, alternative marketplaces and notarized sideloading ([[10-eu-dma-sideloading-and-alternative-marketplaces]]) shift some vetting burden onto marketplace operators — MASVS is the natural framework they reach for. Tie this to your distribution mental model in [[09-distribution-testflight-appstore-enterprise]].
 - **The contributor model.** The v1→v2 refactor exists to *scale contribution* — atomic, individually-IDed test pages that vendors (Guardsquare, NowSecure) and the community port and extend. Practically: the corpus moves fast, so **cite the live edition and pin versions in a report** rather than quoting a number from memory.
 
 ### The legal lab corpus
@@ -245,7 +245,7 @@ The MAS project ships its own vulnerable apps so you never have to practice on s
 
 - **OWASP UnCrackable iOS — Level 1 / 2** (`Crackmes/iOS/Level_0N/` in the MASTG repo, also at `mas.owasp.org/crackmes/`). A graded pair of **MASVS-RESILIENCE** challenges — **iOS stops at Level 2** (only the Android ladder goes to Level 4):
   - **Level 1** — **jailbreak detection** plus a hidden secret string; the goal is to recover the secret. Bypass the detection (or sidestep it statically) and lift the flag — the friendly intro: the secret yields to `strings`/`class-dump` + basic Frida hooking.
-  - **Level 2** — the full resilience gauntlet on one binary: **jailbreak detection** (file-existence checks for `Cydia.app`/`MobileSubstrate.dylib`/`/bin/bash`/`sshd`/`/etc/apt`) **plus anti-debugging** (`ptrace(PT_DENY_ATTACH)` and a `sysctl` `P_TRACED` check) **plus an anti-tamper integrity check** (an MD5 over the `__TEXT` code section to detect patching) guarding an **AES-encrypted flag**. You must defeat the detections before you can decrypt the secret — the canonical target for the both-sides material in [[anti-tamper-pinning-and-detection-both-sides]].
+  - **Level 2** — the full resilience gauntlet on one binary: **jailbreak detection** (file-existence checks for `Cydia.app`/`MobileSubstrate.dylib`/`/bin/bash`/`sshd`/`/etc/apt`) **plus anti-debugging** (`ptrace(PT_DENY_ATTACH)` and a `sysctl` `P_TRACED` check) **plus an anti-tamper integrity check** (an MD5 over the `__TEXT` code section to detect patching) guarding an **AES-encrypted flag**. You must defeat the detections before you can decrypt the secret — the canonical target for the both-sides material in [[11-anti-tamper-pinning-and-detection-both-sides]].
   > These ship as signed **iOS-device `.ipa`s** — they run on a (jailbroken) device, not the Simulator. Device-free, you study them **statically**; the dynamic defeats are read-only walkthroughs here.
 - **OWASP iGoat-Swift** (**MASTG-APP-0028**, `github.com/OWASP/iGoat-Swift`) — "a Damn Vulnerable Swift Application," a learn-by-exploiting workbench with discrete lessons spanning STORAGE, CRYPTO, NETWORK, PLATFORM. **It builds from source in Xcode to the Simulator** (no signing, no device) — making it the best *dynamic* substrate you have.
 - **DVIA-v2** (Damn Vulnerable iOS App v2) — a third widely-used, self-built target covering a similar surface; also Simulator-buildable from source.
@@ -289,7 +289,7 @@ strings -a "$BIN" | grep -iE 'secret|flag|key|password'
 class-dump "$BIN" | grep -iE 'verify|secret|check|password'
 ```
 
-Described output: `cryptid 0` confirms you may analyze the binary directly (a real App Store binary would read `cryptid 1` and need [[fairplay-encryption-and-decrypting-app-store-apps]] first). On Level 1 the secret often falls straight out of `strings`/`class-dump`; on Level 2 it won't — the flag is AES-encrypted and guarded by anti-debug + anti-tamper, by design — pushing you to the dynamic walkthroughs.
+Described output: `cryptid 0` confirms you may analyze the binary directly (a real App Store binary would read `cryptid 1` and need [[03-fairplay-encryption-and-decrypting-app-store-apps]] first). On Level 1 the secret often falls straight out of `strings`/`class-dump`; on Level 2 it won't — the flag is AES-encrypted and guarded by anti-debug + anti-tamper, by design — pushing you to the dynamic walkthroughs.
 
 ### Automated MASVS-mapped static scan with MobSF
 
@@ -376,7 +376,7 @@ xcrun simctl get_app_container booted OWASP.iGoat-Swifth data
 
 1. Start `mitmproxy`, point the Simulator's HTTP proxy at it, trust the mitm CA in the Simulator.
 2. Trigger an iGoat network lesson; capture a request/response that reveals sensitive data in cleartext (after TLS termination) or a missing-TLS call.
-3. **Deliverable:** the captured flow (host, path, the sensitive field) and the MAS mapping (**MASVS-NETWORK**, the matching MASWE/CWE). State the caveat: you trivially intercepted because *you* installed the CA on a substrate with no pinning — on a pinned, device-resident app you'd be in [[certificate-pinning-and-bypass]] territory.
+3. **Deliverable:** the captured flow (host, path, the sensitive field) and the MAS mapping (**MASVS-NETWORK**, the matching MASWE/CWE). State the caveat: you trivially intercepted because *you* installed the CA on a substrate with no pinning — on a pinned, device-resident app you'd be in [[03-certificate-pinning-and-bypass]] territory.
 
 ### Lab 4 — Scope and build a MAS Checklist for a hypothetical engagement *(substrate: read-only walkthrough)*
 
@@ -459,4 +459,4 @@ xcrun simctl get_app_container booted OWASP.iGoat-Swifth data
 - `man otool`, `man codesign`, `man strings`, `man nm`; `frida --help`, `objection --help`, `mitmproxy --help`.
 
 ---
-*Related lessons: [[static-analysis-class-dump-and-disassemblers]] | [[dynamic-analysis-with-frida]] | [[objection-swizzling-and-runtime-exploration]] | [[anti-tamper-pinning-and-detection-both-sides]] | [[certificate-pinning-and-bypass]] | [[fairplay-encryption-and-decrypting-app-store-apps]] | [[app-sandbox-and-filesystem-layout]]*
+*Related lessons: [[04-static-analysis-class-dump-and-disassemblers]] | [[05-dynamic-analysis-with-frida]] | [[06-objection-swizzling-and-runtime-exploration]] | [[11-anti-tamper-pinning-and-detection-both-sides]] | [[03-certificate-pinning-and-bypass]] | [[03-fairplay-encryption-and-decrypting-app-store-apps]] | [[00-app-sandbox-and-filesystem-layout]]*

@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-The other Part 08 stores tell you what the *device* did: which app was in focus ([[knowledgec-db-deep-dive]]), what was on screen ([[biome-and-segb-streams]]), where the phone was ([[location-history]]). The Health store tells you what the **body carrying the device** did. A step-count sample is a denial that the phone sat motionless on a nightstand. A heart-rate series climbing from 60 to 150 bpm at 02:14 is a person who got up and moved. A `workouts` row with a per-second GPS track is a route map drawn by exertion, not by the location daemon. A sleep-analysis sample is a claim about when someone was *in bed*.
+The other Part 08 stores tell you what the *device* did: which app was in focus ([[01-knowledgec-db-deep-dive]]), what was on screen ([[02-biome-and-segb-streams]]), where the phone was ([[07-location-history]]). The Health store tells you what the **body carrying the device** did. A step-count sample is a denial that the phone sat motionless on a nightstand. A heart-rate series climbing from 60 to 150 bpm at 02:14 is a person who got up and moved. A `workouts` row with a per-second GPS track is a route map drawn by exertion, not by the location daemon. A sleep-analysis sample is a claim about when someone was *in bed*.
 
 And the data is doubly valuable because it is **multi-device by construction**. The phone's `healthdb_secure.sqlite` is the consolidated hub: it ingests samples from the phone's own motion coprocessor *and* from a paired Apple Watch, AirPods, third-party apps, and Bluetooth scales/monitors — each tagged with its origin. So the same file that gives you step counts also proves *which devices were paired to this phone, and across which OS versions*. Examiners routinely under-mine it. Don't.
 
@@ -50,7 +50,7 @@ This is the single most important operational fact in the lesson, so it goes fir
 - **The primary samples (`healthdb_secure.sqlite`) are Data-Protection class "Protected Unless Open" — `NSFileProtectionCompleteUnlessOpen` (Class B).** Apple documents a Health-specific grace: *"access to the data is relinquished 10 minutes after the device locks."* New samples can still be *written* while locked — Class B wraps with the always-present public class key — but the **private** key needed to *read* an already-closed file is gone ~10 minutes after lock.
 - **The metadata/management DB (`healthdb.sqlite`) is class "Protected Until First User Authentication" — `NSFileProtectionCompleteUntilFirstUserAuthentication` (Class C)** — the AFU-resident class, available from first unlock until reboot.
 
-Concretely (see [[bfu-vs-afu-and-data-protection-classes]] and [[passcode-bfu-afu-and-inactivity]]):
+Concretely (see [[02-bfu-vs-afu-and-data-protection-classes]] and [[03-passcode-bfu-afu-and-inactivity]]):
 
 | Device state | `healthdb_secure.sqlite` (samples, Class B) | `healthdb.sqlite` (metadata, Class C) |
 |---|---|---|
@@ -68,9 +68,9 @@ This is sharper than the usual "AFU = readable" rule of thumb, and it is the tra
 
 Because of this protection, only a subset of acquisition methods produce Health at all:
 
-- **Full-file-system extraction (unlocked / freshly-locked device)** — the gold path. checkm8/usbliter8 on a supported SoC, a kernel/BootROM exploit, or a commercial box (GrayKey/Cellebrite) — but the Class-B samples decrypt only if the device is unlocked, or within the ~10-minute post-lock window, at the moment keys are pulled. See [[full-file-system-acquisition]].
-- **Encrypted iTunes/Finder backup** — Health is included **only when a backup password is set.** A passwordless backup deliberately omits it. With the password, decrypt the backup and the Health files are inside. See [[the-itunes-finder-backup-format]] and [[decrypting-backups-and-images]].
-- **iCloud** — Health syncs to iCloud **end-to-end encrypted regardless of Advanced Data Protection**, keyed to the account + a trusted device or the HSA2/escrow path. So ADP being off does *not* hand you Health from the cloud the way it hands you a plain iCloud backup; Health is in the E2E set either way. See [[icloud-acquisition-and-advanced-data-protection]].
+- **Full-file-system extraction (unlocked / freshly-locked device)** — the gold path. checkm8/usbliter8 on a supported SoC, a kernel/BootROM exploit, or a commercial box (GrayKey/Cellebrite) — but the Class-B samples decrypt only if the device is unlocked, or within the ~10-minute post-lock window, at the moment keys are pulled. See [[05-full-file-system-acquisition]].
+- **Encrypted iTunes/Finder backup** — Health is included **only when a backup password is set.** A passwordless backup deliberately omits it. With the password, decrypt the backup and the Health files are inside. See [[03-the-itunes-finder-backup-format]] and [[07-decrypting-backups-and-images]].
+- **iCloud** — Health syncs to iCloud **end-to-end encrypted regardless of Advanced Data Protection**, keyed to the account + a trusted device or the HSA2/escrow path. So ADP being off does *not* hand you Health from the cloud the way it hands you a plain iCloud backup; Health is in the E2E set either way. See [[06-icloud-acquisition-and-advanced-data-protection]].
 
 A *passwordless* logical backup gives you essentially nothing here — a classic trap covered under Pitfalls.
 
@@ -141,7 +141,7 @@ datetime(start_date + 978307200, 'unixepoch')           -- UTC
 datetime(start_date + 978307200, 'unixepoch', 'localtime')  -- examiner-local; usually WRONG for the subject
 ```
 
-Prefer UTC in the database and resolve the *subject's* local time from the per-sample timezone (`data_provenances.tz_name`, or a `metadata_values` `HKTimeZone` key), not from your workstation's `localtime`. See [[the-ios-timestamp-zoo]] — Health is one more store in the zoo, and it is uniform Mac-Absolute, which is a small mercy.
+Prefer UTC in the database and resolve the *subject's* local time from the per-sample timezone (`data_provenances.tz_name`, or a `metadata_values` `HKTimeZone` key), not from your workstation's `localtime`. See [[00-the-ios-timestamp-zoo]] — Health is one more store in the zoo, and it is uniform Mac-Absolute, which is a small mercy.
 
 ### `data_type`: enumerate it, never hardcode it
 
@@ -176,7 +176,7 @@ ORDER BY n DESC;
 --     inspect with .schema and prefer the on-device mapping over any external list)
 ```
 
-If you must label types and the device registry is unavailable, derive the mapping from the iOS version's HealthKit headers/SDK (via [[the-dyld-shared-cache]]) rather than a static blog table. A mislabelled `data_type` is how "resting heart rate" gets reported as "step count" in court. The mechanism (enumerate → resolve against this version) is durable; the integers are perishable.
+If you must label types and the device registry is unavailable, derive the mapping from the iOS version's HealthKit headers/SDK (via [[02-the-dyld-shared-cache]]) rather than a static blog table. A mislabelled `data_type` is how "resting heart rate" gets reported as "step count" in court. The mechanism (enumerate → resolve against this version) is durable; the integers are perishable.
 
 > 🔬 **Forensics note:** By contrast, `workout_activities.activity_type` is the **public `HKWorkoutActivityType` enum** (running, walking, cycling, swimming, …) and is far more stable than the internal `samples.data_type`, because it's a documented API surface Apple avoids renumbering. Still verify the exact integer→name map against the SDK for the device's iOS version before testifying to "this was a *cycling* workout."
 
@@ -225,9 +225,9 @@ WHERE mv.object_id = :data_id;
 Health is a **nanosync** store — it mirrors bidirectionally to the paired Watch and (E2E) to iCloud, which means deletions must be *propagated*, not just applied locally. That propagation requirement leaves bookkeeping: deleted samples are typically recorded in a deletion ledger so peers can mirror the removal, rather than the row simply vanishing. The exact table name varies by version (inspect with `.schema` — look for a `*deleted*` or `*tombstone*`-style table and deletion markers on `objects`), so **enumerate it, don't assume it.** Two practical recovery angles regardless of the exact name:
 
 - The deletion ledger can prove a sample *existed and was removed* (the timestamp/UUID survives even when the measurement is gone) — a tampering indicator if the deletions cluster around a window of interest.
-- The `-wal`/`-shm` sidecars and the `.hfd` blob store may still hold recently-deleted rows/series not yet checkpointed or vacuumed — one more reason to copy the *whole* file set and consider [[deleted-data-recovery]] techniques (SQLite freelist/WAL carving) on the copy.
+- The `-wal`/`-shm` sidecars and the `.hfd` blob store may still hold recently-deleted rows/series not yet checkpointed or vacuumed — one more reason to copy the *whole* file set and consider [[14-deleted-data-recovery]] techniques (SQLite freelist/WAL carving) on the copy.
 
-> 🔬 **Forensics note:** A correlation between Health and other stores is strongest when the Health *deletion* ledger shows samples removed exactly when `knowledgeC.db` shows the Health app in focus — a person actively curating their own activity record. Anti-forensic editing of Health is rare but real (faked/removed workouts in fraud and alibi cases); the ledger + provenance are how you catch it. See [[correlation-and-anti-forensics]].
+> 🔬 **Forensics note:** A correlation between Health and other stores is strongest when the Health *deletion* ledger shows samples removed exactly when `knowledgeC.db` shows the Health app in focus — a person actively curating their own activity record. Anti-forensic editing of Health is rare but real (faked/removed workouts in fraud and alibi cases); the ledger + provenance are how you catch it. See [[02-correlation-and-anti-forensics]].
 
 ### `data_provenances`: the device-pairing and OS-history witness
 
@@ -267,11 +267,11 @@ The investigative payoff is turning raw samples into a **presence-and-activity t
 
 - **Step counts** (`data_type` = steps) are interval `quantity_samples`. A non-zero step bucket places the person *physically walking* in that window — a strong rebuttal to "the phone was left at home." The phone-only path stores these in **variable-length buckets**: forensic testing on older iPhones found a most-frequent interval around 60–70 s that the algorithm stretches dynamically up to a **600 s (10-minute) maximum** during sustained activity, while newer models often coalesce a whole walk into a single entry (enumerate the actual intervals per image). Resolution is therefore coarse and non-uniform, but the *fact of movement* in the window is unambiguous.
 - **Heart rate** (`quantity_samples`, count/min) from a paired Watch arrives every few seconds during workouts and periodically at rest. An elevated, *rising* HR series is exertion; resting HR samples through the night prove the watch was *worn while sleeping*. The beat-to-beat detail behind HRV/HR sits in `healthdb_secure.hfd`.
-- **Workouts** (`workouts` + `workout_activities`) bound an activity in time, type, energy, and distance — and the matching `location_series_data` / `.hfd` track turns it into a **route**. A run logged 06:02–06:41 with a GPS polyline is presence-plus-location with second resolution, sourced independently of [[location-history]]'s caches (and therefore a cross-check on them).
+- **Workouts** (`workouts` + `workout_activities`) bound an activity in time, type, energy, and distance — and the matching `location_series_data` / `.hfd` track turns it into a **route**. A run logged 06:02–06:41 with a GPS polyline is presence-plus-location with second resolution, sourced independently of [[07-location-history]]'s caches (and therefore a cross-check on them).
 - **Sleep analysis** (`category_samples`, sleep type) records in-bed / asleep / awake stages. It answers "when was this person asleep?" — directly relevant to "who was using the phone at 03:00?" If sleep says *asleep* while `knowledgeC.db` says an app was in foreground, that contradiction is itself a finding (someone else, or the subject awake).
 - **ECG / irregular-rhythm / fall-detection / Vitals** events are discrete, timestamped, and (for falls/crashes) sometimes tied to a location and an emergency-call attempt — a precise incident anchor.
 
-Each becomes one lane in a unified timeline; the real power is **correlation** — Health movement vs. `knowledgeC.db` app focus vs. [[location-history]] vs. [[powerlog-and-aggregate-dictionary]] charge/discharge. A step spike + HR climb + a workout + a CMSC location displacement at the same minute is four independent stores agreeing the person was moving. The shape you're building looks like this:
+Each becomes one lane in a unified timeline; the real power is **correlation** — Health movement vs. `knowledgeC.db` app focus vs. [[07-location-history]] vs. [[03-powerlog-and-aggregate-dictionary]] charge/discharge. A step spike + HR climb + a workout + a CMSC location displacement at the same minute is four independent stores agreeing the person was moving. The shape you're building looks like this:
 
 ```
         06:00      06:02            06:41   06:45        07:10
@@ -282,7 +282,7 @@ loc     │ home     │  polyline ───────────► park loo
                     └─ four stores agree: PERSON MOVING ─┘     └ back, sedentary
 ```
 
-Read top-to-bottom at any minute and the stores either corroborate or contradict — and a contradiction (Health says asleep while an app is in foreground) is itself the finding. See [[building-a-unified-timeline]] and [[correlation-and-anti-forensics]].
+Read top-to-bottom at any minute and the stores either corroborate or contradict — and a contradiction (Health says asleep while an app is in foreground) is itself the finding. See [[01-building-a-unified-timeline]] and [[02-correlation-and-anti-forensics]].
 
 > 🔬 **Forensics note (Watch-sourced uniqueness):** Samples whose provenance is the Watch are *only consolidated here.* The Watch keeps its own local store, but you rarely acquire the watch; the phone's `healthdb_secure.sqlite` is the practical single copy of the watch's contribution. That makes this file evidence about a device you may never image — and makes the Class-B/lock caveat doubly painful, because losing the phone to BFU, or just to an extended screen-lock, also loses your only copy of the watch's data.
 
@@ -394,8 +394,8 @@ Use a known iOS reference image with Health data (Josh Hickman's iOS images on t
 
 1. Extract three lanes into CSV from the copy: (a) step buckets, (b) heart-rate samples, (c) `workouts` rows with start/end.
 2. Pick one workout. Show that step counts rise and heart rate climbs across its window — three stores agreeing on "moving."
-3. If the image has sleep-analysis (`category_samples`), extract the asleep windows and look for any *contradiction*: an app in foreground in `knowledgeC.db` (from [[knowledgec-db-deep-dive]]) during a window Health calls "asleep." Document the contradiction as a finding.
-4. Merge the lanes by timestamp into one timeline; this is the seed of [[building-a-unified-timeline]].
+3. If the image has sleep-analysis (`category_samples`), extract the asleep windows and look for any *contradiction*: an app in foreground in `knowledgeC.db` (from [[01-knowledgec-db-deep-dive]]) during a window Health calls "asleep." Document the contradiction as a finding.
+4. Merge the lanes by timestamp into one timeline; this is the seed of [[01-building-a-unified-timeline]].
    - *Fidelity caveat:* the per-second GPS/HR detail lives in `.hfd`; plain SQLite gives you the aggregate samples. Decoding `.hfd` (christophhagen/HealthDB) is a stretch goal.
 
 ### Lab 4 — Feel the fidelity gap on the Simulator (substrate: Xcode Simulator)
@@ -464,4 +464,4 @@ Use a known iOS reference image with Health data (Josh Hickman's iOS images on t
 - ElcomSoft blog — "Securing and Extracting Health Data: Apple Health vs. Google Fit" (backup-password requirement, acquisition routes).
 
 ---
-*Related lessons: [[knowledgec-db-deep-dive]] | [[location-history]] | [[bfu-vs-afu-and-data-protection-classes]] | [[building-a-unified-timeline]] | [[the-ios-timestamp-zoo]] | [[correlation-and-anti-forensics]] | [[deleted-data-recovery]]*
+*Related lessons: [[01-knowledgec-db-deep-dive]] | [[07-location-history]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[01-building-a-unified-timeline]] | [[00-the-ios-timestamp-zoo]] | [[02-correlation-and-anti-forensics]] | [[14-deleted-data-recovery]]*

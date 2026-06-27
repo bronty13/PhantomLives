@@ -42,7 +42,7 @@ Steps 1–4 are *format recognition* — a transferable skill you already own fr
 
 ### Step 1 — Resolve the container (UUID → bundle)
 
-On a full-filesystem image (see [[full-file-system-acquisition]]) third-party data lives under three roots, all keyed by a randomly assigned UUID, **not** the bundle ID:
+On a full-filesystem image (see [[05-full-file-system-acquisition]]) third-party data lives under three roots, all keyed by a randomly assigned UUID, **not** the bundle ID:
 
 | Root | Holds | Path (device) |
 |---|---|---|
@@ -61,7 +61,7 @@ Four independent ways to map a UUID back to a bundle ID — cross-check them, be
 
 ### Step 2 — Inventory the stores
 
-Inside a Data container you'll find Apple's standard sandbox skeleton ([[app-sandbox-and-filesystem-layout]]):
+Inside a Data container you'll find Apple's standard sandbox skeleton ([[00-app-sandbox-and-filesystem-layout]]):
 
 ```
 Containers/Data/Application/<UUID>/
@@ -97,16 +97,16 @@ This is the heart of the method. Identify each store by its **magic bytes**, nev
 
 The rule that never fails: **`file` the thing, then `xxd | head` the thing, then decide.** A SQLCipher database is just "a file that *should* be SQLite by context (it has WAL siblings, it's named `signal.sqlite`) but whose first bytes are entropy instead of `SQLite format 3`." That single observation — header is noise where a header should be — is your encrypted-store detector for *any* app, not just Signal.
 
-> 🔬 **Forensics note:** WAL and SHM sidecars (`-wal`, `-shm`) are evidence in their own right and **part of the store** — copy them with the main DB. The `-wal` (write-ahead log) holds committed-but-not-yet-checkpointed rows, which for messengers routinely means **deleted and edited messages that no longer exist in the main B-tree.** This is true for SQLCipher too (the WAL is encrypted with the same key). Never query a DB whose WAL you left behind: at best you miss data, at worst your read triggers a checkpoint that destroys it. Copy main + `-wal` + `-shm` together, every time. See [[deleted-data-recovery]].
+> 🔬 **Forensics note:** WAL and SHM sidecars (`-wal`, `-shm`) are evidence in their own right and **part of the store** — copy them with the main DB. The `-wal` (write-ahead log) holds committed-but-not-yet-checkpointed rows, which for messengers routinely means **deleted and edited messages that no longer exist in the main B-tree.** This is true for SQLCipher too (the WAL is encrypted with the same key). Never query a DB whose WAL you left behind: at best you miss data, at worst your read triggers a checkpoint that destroys it. Copy main + `-wal` + `-shm` together, every time. See [[14-deleted-data-recovery]].
 
 ### Step 4 — Where the key lives
 
 If step 3 says "encrypted," you need the key before step 5 means anything. Decision tree, in order of likelihood:
 
-1. **The iOS Keychain.** By far the most common. The app generates a random DB key once and stores it as a Keychain item; the *database file* is portable junk without it. This is why a logical backup of an encrypted messenger is often useless — the file is there, the Keychain item is not (backups only include Keychain items whose protection class permits, and many are device-only). You need a **full-filesystem acquisition that also dumps the Keychain** ([[keychain-on-ios]]), which in turn needs the device unlocked at least once since boot (AFU, not BFU — see [[passcode-bfu-afu-and-inactivity]]). The Keychain item's own protection class (e.g. `AfterFirstUnlock` vs `WhenUnlockedThisDeviceOnly`) decides whether it's even extractable and whether it left the device in a backup. This is the single most important fact in encrypted-app forensics: **the data's recoverability is gated by the *key's* Data Protection class, not the database's.**
+1. **The iOS Keychain.** By far the most common. The app generates a random DB key once and stores it as a Keychain item; the *database file* is portable junk without it. This is why a logical backup of an encrypted messenger is often useless — the file is there, the Keychain item is not (backups only include Keychain items whose protection class permits, and many are device-only). You need a **full-filesystem acquisition that also dumps the Keychain** ([[08-keychain-on-ios]]), which in turn needs the device unlocked at least once since boot (AFU, not BFU — see [[03-passcode-bfu-afu-and-inactivity]]). The Keychain item's own protection class (e.g. `AfterFirstUnlock` vs `WhenUnlockedThisDeviceOnly`) decides whether it's even extractable and whether it left the device in a backup. This is the single most important fact in encrypted-app forensics: **the data's recoverability is gated by the *key's* Data Protection class, not the database's.**
 2. **Derived from the passcode / a user secret.** Some apps (password managers, encrypted notes) derive the key via PBKDF2/Argon2 from a user-entered passphrase that is *not* stored. No key on disk → you need the passphrase (consent, or a guided/brute-force attack on the KDF parameters).
 3. **In a plist or the file itself.** Weaker apps store the key in NSUserDefaults, a config plist, or even hardcoded/obfuscated in the binary. Always worth a grep; embarrassingly often productive.
-4. **Hardware-bound (SEP).** Keys wrapped by the Secure Enclave are non-exportable; you can only use them *on the live, unlocked device* (e.g. via a Frida hook that asks the running app to decrypt for you — see [[dynamic-analysis-with-frida]]). Off-device decryption is impossible by design.
+4. **Hardware-bound (SEP).** Keys wrapped by the Secure Enclave are non-exportable; you can only use them *on the live, unlocked device* (e.g. via a Frida hook that asks the running app to decrypt for you — see [[05-dynamic-analysis-with-frida]]). Off-device decryption is impossible by design.
 
 > 🖥️ **macOS contrast:** On the Mac, an encrypted app DB's key was often sittable-out with `security find-generic-password -s '<service>' -w` against the *login keychain* — a single SQLite-backed file (`login.keychain-db`) you could unlock with the user's password and dump from userland. iOS has no equivalent CLI and no single dumpable keychain file in a backup: keychain items are individually wrapped by class keys tied to the passcode and (for the higher classes) the SEP, so "get the app's DB key" escalates from a one-liner into a full-filesystem-acquisition-plus-keychain-decryption problem gated by device lock state. Same *concept* (per-app secret in the OS keystore), radically harder *acquisition*.
 
@@ -132,11 +132,11 @@ This is the whole point — apply the loop to something iLEAPP has never heard o
 2. **Inventory & fingerprint** every file. Build a table: path / size / true format. For a crypto wallet you might find a SQLite "wallet.db", a `bplist00` config, a `keystore` blob, and a `.realm` transaction cache — four formats, four sub-tasks.
 3. **For each encrypted store, run the step-4 tree.** Grep the Data container and `NSUserDefaults` plist for likely key names (`*key*`, `*secret*`, `*cipher*`, base64-looking values). Dump the Keychain and diff item names against the app's bundle ID prefix. If nothing on disk, suspect a passphrase-derived or SEP-bound key and pivot to a live-device Frida approach.
 4. **Decode payloads, not just containers.** A SQLite full of protobuf blobs, a plist whose value is a nested bplist, a LevelDB of serialized objects — descend until you reach plaintext fields.
-5. **Pin the epoch** of every timestamp before you believe a single one ([[the-ios-timestamp-zoo]]), and corroborate against Apple's own stores — even a fully-encrypted app leaks its *usage* into [[knowledgec-db-deep-dive]] and its *notification text* into [[notifications-keyboard-and-misc-stores]].
+5. **Pin the epoch** of every timestamp before you believe a single one ([[00-the-ios-timestamp-zoo]]), and corroborate against Apple's own stores — even a fully-encrypted app leaks its *usage* into [[01-knowledgec-db-deep-dive]] and its *notification text* into [[13-notifications-keyboard-and-misc-stores]].
 
 If you can do those five against a binary you've never seen, you have the actual skill this lesson exists to build.
 
-> ⚠️ **ADVANCED:** When the key is SEP-bound or passphrase-derived and off-device decryption is impossible, the only path is *live* — attach Frida to the running, unlocked app and hook its own decrypt routine to dump plaintext (or the resolved key) as the app produces it ([[dynamic-analysis-with-frida]]). This is device-bound, mutates a running process, and on A14+ has no public BootROM/jailbreak foothold to inject from — so it is a consent-device or lab-device technique, not a dead-box one. Document it as an alteration of the live system and never as a clean acquisition.
+> ⚠️ **ADVANCED:** When the key is SEP-bound or passphrase-derived and off-device decryption is impossible, the only path is *live* — attach Frida to the running, unlocked app and hook its own decrypt routine to dump plaintext (or the resolved key) as the app produces it ([[05-dynamic-analysis-with-frida]]). This is device-bound, mutates a running process, and on A14+ has no public BootROM/jailbreak foothold to inject from — so it is a consent-device or lab-device technique, not a dead-box one. Document it as an alteration of the live system and never as a clean acquisition.
 
 > 🔬 **Forensics note:** Before declaring an unknown app "encrypted, unrecoverable," prove the negative properly. Re-fingerprint after checking for a *plaintext sibling*: many apps keep an encrypted primary DB but a cleartext cache, search index, or analytics SQLite right next to it that mirrors enough content to reconstruct the case. The receipt/timeline metadata, draft messages, and notification mirrors are frequently in the clear even when the message store is not.
 
@@ -165,7 +165,7 @@ Three more places earn their keep once you're past the basic transcript:
 - **`ZWAMESSAGEINFO`** (in `ChatStorage.sqlite`) — per-recipient delivery/read receipts (and, for group messages, who read what when). This is the WhatsApp equivalent of Snapchat's receipt metadata: it survives even when content interpretation is contested, and it proves *awareness* and *timing*.
 - **`ZWACDCALLEVENT`** / **`ZWACDCALLEVENTPARTICIPANT`** — the voice/video **call log**, which WhatsApp keeps in a *separate* `CallHistory.sqlite` in the **same App Group** (note the `CD` infix, and note it is **not** in `ChatStorage.sqlite`): direction, duration, and outcome, with its own Mac-Absolute timestamp. Investigators chasing "they never spoke" findings forget that the call history is this sibling DB — which is exactly why you enumerate the *whole* App Group, not just the chat store. *(Table names are version-volatile — confirm with `.tables` against `CallHistory.sqlite`.)*
 
-`ZMESSAGEDATE` is **Core Data / Mac Absolute Time** — seconds since 2001-01-01 UTC — so add `978307200` to reach Unix epoch (the same constant you used for `knowledgeC` in [[knowledgec-db-deep-dive]]). Copy-before-query, then:
+`ZMESSAGEDATE` is **Core Data / Mac Absolute Time** — seconds since 2001-01-01 UTC — so add `978307200` to reach Unix epoch (the same constant you used for `knowledgeC` in [[01-knowledgec-db-deep-dive]]). Copy-before-query, then:
 
 ```sql
 SELECT cs.ZPARTNERNAME                                             AS chat,
@@ -208,11 +208,11 @@ SELECT sqlcipher_export('plain');
 DETACH DATABASE plain;
 ```
 
-You now have a normal SQLite file (`signal_plain.sqlite`) to query with any tool. Note GRDB schemas evolved through major model migrations (the legacy `TSInteraction`/`TSThread`/`TSAttachment` tables vs. the newer normalized message/thread/attachment tables) — **verify the live schema with `.tables`/`.schema`; do not assume column names.** Signal timestamps are typically **Unix epoch in milliseconds** (divide by 1000 before `datetime(...,'unixepoch')`), a different epoch from WhatsApp's — exactly the kind of per-app variation [[the-ios-timestamp-zoo]] exists to catch.
+You now have a normal SQLite file (`signal_plain.sqlite`) to query with any tool. Note GRDB schemas evolved through major model migrations (the legacy `TSInteraction`/`TSThread`/`TSAttachment` tables vs. the newer normalized message/thread/attachment tables) — **verify the live schema with `.tables`/`.schema`; do not assume column names.** Signal timestamps are typically **Unix epoch in milliseconds** (divide by 1000 before `datetime(...,'unixepoch')`), a different epoch from WhatsApp's — exactly the kind of per-app variation [[00-the-ios-timestamp-zoo]] exists to catch.
 
 There's a *second* layer of step 4 hiding here: decrypting `signal.sqlite` gets you the message text and metadata, but **the attachment files on disk are separately encrypted.** Signal writes each media file to the App Group in its own AES-encrypted blob; the per-file key (and an integrity digest) live in the *now-decrypted* attachment row, not in the Keychain. So the full pipeline is: Keychain key → decrypt DB → read each attachment's per-file key from the DB → decrypt that media file. Miss the second layer and you'll have a transcript that says "[photo]" with an undecryptable blob beside it. This nested-key pattern (a master key unlocks an index that holds per-item keys) recurs in well-built apps — recognize it.
 
-> 🔬 **Forensics note:** The recoverability story is entirely about the key, not the DB. The `GRDBDatabaseCipherKeySpec` Keychain item is protected device-only (broadly an "after first unlock, this device only" posture), so it is **not** in an iTunes/Finder backup and **not** reachable on a BFU device. Translation: a logical backup of an iPhone yields `signal.sqlite` as undecryptable noise; you need a **full-filesystem acquisition with Keychain decryption on an AFU device** ([[decrypting-backups-and-images]], [[bfu-vs-afu-and-data-protection-classes]]). If all you have is a backup, Signal content is gone — *but its existence/activity* may still surface via Apple's own stores (notification text in [[notifications-keyboard-and-misc-stores]], app-usage intervals in [[knowledgec-db-deep-dive]]).
+> 🔬 **Forensics note:** The recoverability story is entirely about the key, not the DB. The `GRDBDatabaseCipherKeySpec` Keychain item is protected device-only (broadly an "after first unlock, this device only" posture), so it is **not** in an iTunes/Finder backup and **not** reachable on a BFU device. Translation: a logical backup of an iPhone yields `signal.sqlite` as undecryptable noise; you need a **full-filesystem acquisition with Keychain decryption on an AFU device** ([[07-decrypting-backups-and-images]], [[02-bfu-vs-afu-and-data-protection-classes]]). If all you have is a backup, Signal content is gone — *but its existence/activity* may still surface via Apple's own stores (notification text in [[13-notifications-keyboard-and-misc-stores]], app-usage intervals in [[01-knowledgec-db-deep-dive]]).
 
 ### Worked example C — Telegram (custom postbox + LevelDB + serialized blobs)
 
@@ -237,12 +237,12 @@ The "designed to leave nothing" case, where the durable finding is *metadata abo
 The content (snaps, chats) is engineered to vanish after viewing. What survives:
 
 - **Receipt metadata** — sent/delivered/opened/screenshotted timestamps per interaction persist in the chat DB long after the *content* is purged. You can frequently prove *that* A messaged B at time T, and that B opened or screenshotted it, with the message body itself gone.
-- **WAL + freelist remnants.** "Clear Conversation" deletes rows from the live B-tree, but the bytes often linger in the `-wal` and in freelist pages of the main DB for days/weeks. Carving those ([[deleted-data-recovery]]) recovers records the UI swears are gone.
+- **WAL + freelist remnants.** "Clear Conversation" deletes rows from the live B-tree, but the bytes often linger in the `-wal` and in freelist pages of the main DB for days/weeks. Carving those ([[14-deleted-data-recovery]]) recovers records the UI swears are gone.
 - **Caches** — Memories cache, `My Eyes Only` (an encrypted vault — its own step-4 key problem), and stray media in `Caches/`/`tmp/` at acquisition time.
 - **Relationship & state stores** — the friends/contacts graph, per-friend `streak` counters, and any cached `bestFriends`/usernames survive purely as state, long outliving the conversations that built them. They establish *who knew whom* even when *what they said* is gone.
-- **Location** — if the user enabled Snap Map, cached location/last-seen fragments may persist in the app's stores or in [[knowledgec-db-deep-dive]]-adjacent system caches; worth correlating against [[location-history]].
+- **Location** — if the user enabled Snap Map, cached location/last-seen fragments may persist in the app's stores or in [[01-knowledgec-db-deep-dive]]-adjacent system caches; worth correlating against [[07-location-history]].
 
-The standing rule for *any* "disappearing messages" app — Snapchat, Wickr, Telegram Secret Chats, disappearing-mode WhatsApp/Signal: treat the content as a bonus and the *metadata, caches, WAL/freelist, and Apple-side leakage* as the case. The app's own purge logic almost never reaches the notification mirror, the keyboard cache ([[notifications-keyboard-and-misc-stores]]), or the system thumbnail/usage stores.
+The standing rule for *any* "disappearing messages" app — Snapchat, Wickr, Telegram Secret Chats, disappearing-mode WhatsApp/Signal: treat the content as a bonus and the *metadata, caches, WAL/freelist, and Apple-side leakage* as the case. The app's own purge logic almost never reaches the notification mirror, the keyboard cache ([[13-notifications-keyboard-and-misc-stores]]), or the system thumbnail/usage stores.
 
 > 🔬 **Forensics note:** With ephemeral apps, *invert your instinct*: stop chasing content and harvest **metadata + remnants**. The receipt timeline (delivered/opened/screenshot) is often more evidentially decisive than the message text — it proves contact, timing, and awareness. And because the WAL is where the un-checkpointed truth lives, the *single most destructive* mistake is letting any tool checkpoint or "helpfully repair" the DB before you've imaged main + `-wal` + `-shm`.
 
@@ -428,7 +428,7 @@ Substrate: a LevelDB you generate via Chrome on your Mac, or a sample app's WebK
 - **Trusting the extension.** A `.db` may be SQLCipher; a `.sqlite` may be Realm; a `.dat` may be a bplist. Always `xxd | head` and `file`. The header is law.
 - **Forgetting the WAL/SHM.** Copying only the main DB silently drops deleted/edited/in-flight rows and risks a checkpoint that destroys them. Copy `db` + `-wal` + `-shm`, and image before querying.
 - **Querying only the Data container.** Messengers hide the real DB in the **Shared App Group**. Enumerate every container *and* every App Group the bundle declares (read its entitlements).
-- **Assuming one epoch.** WhatsApp = Mac Absolute (2001, seconds). Signal/Snapchat = Unix **milliseconds**. Telegram = Unix seconds inside a blob. Mixing them puts events 31 years or 1000× off. Identify the epoch per store; see [[the-ios-timestamp-zoo]].
+- **Assuming one epoch.** WhatsApp = Mac Absolute (2001, seconds). Signal/Snapchat = Unix **milliseconds**. Telegram = Unix seconds inside a blob. Mixing them puts events 31 years or 1000× off. Identify the epoch per store; see [[00-the-ios-timestamp-zoo]].
 - **"It's SQLite, so I can read it."** Telegram's `db_sqlite` is SQLite holding opaque serialized blobs; you've parsed the *container*, not the *payload*. Two formats, two steps.
 - **Treating an encrypted DB as recoverable from a backup.** If the key is a device-only Keychain item, a logical/iTunes backup gives you ciphertext only. You need FFS + Keychain + an AFU device. Don't promise content you can't decrypt.
 - **Checkpointing/"repairing" before imaging.** Tools that auto-checkpoint or run `PRAGMA integrity_check` with write access can destroy freelist/WAL remnants — the exact bytes that recover deleted ephemeral messages. Work on copies; mount read-only.
@@ -485,4 +485,4 @@ Substrate: a LevelDB you generate via Chrome on your Mac, or a sample app's WebK
 - `man sqlite3`, `man file`, `man plutil`, `xcrun simctl help`.
 
 ---
-*Related lessons: [[app-sandbox-and-filesystem-layout]] | [[communications-imessage-and-sms]] | [[keychain-on-ios]] | [[deleted-data-recovery]] | [[the-ios-timestamp-zoo]] | [[decrypting-backups-and-images]] | [[full-file-system-acquisition]] | [[dynamic-analysis-with-frida]]*
+*Related lessons: [[00-app-sandbox-and-filesystem-layout]] | [[04-communications-imessage-and-sms]] | [[08-keychain-on-ios]] | [[14-deleted-data-recovery]] | [[00-the-ios-timestamp-zoo]] | [[07-decrypting-backups-and-images]] | [[05-full-file-system-acquisition]] | [[05-dynamic-analysis-with-frida]]*

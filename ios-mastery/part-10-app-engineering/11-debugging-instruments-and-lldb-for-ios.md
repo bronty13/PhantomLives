@@ -42,7 +42,7 @@ The crucial split: **lldb gives you control** (breakpoints, register/memory read
 
 ### lldb against the Simulator vs. a device
 
-A Simulator "app" is a normal **native Mach-O process running on the host macOS kernel** (the iOS *frameworks* are recompiled for the host arch; see [[simulator-internals-and-on-disk-filesystem]]). There is **no AMFI, no code-signing enforcement, no `get-task-allow` check** — lldb attaches like it would to any Terminal program. This is your unrestricted lab.
+A Simulator "app" is a normal **native Mach-O process running on the host macOS kernel** (the iOS *frameworks* are recompiled for the host arch; see [[01-simulator-internals-and-on-disk-filesystem]]). There is **no AMFI, no code-signing enforcement, no `get-task-allow` check** — lldb attaches like it would to any Terminal program. This is your unrestricted lab.
 
 ```
 ATTACH DECISION TREE
@@ -57,11 +57,11 @@ target is a Simulator process?
                         is re-signed with task_for_pid-allow            ← Part 11 RE path
 ```
 
-On a **device**, debugging rides this chain: Xcode's host-side lldb speaks the GDB-remote protocol to **`debugserver`**, a small stub that runs *on the device* and holds the entitlements `get-task-allow` and `task_for_pid-allow`. `debugserver` calls `task_for_pid()` to obtain the target's Mach **task port** — the capability that lets one process read/write another's memory and thread state (the same Mach primitive from [[processes-mach-xpc]]). The kernel grants `task_for_pid()` on a target **only if that target was signed with `get-task-allow = true`**. Xcode injects `get-task-allow` into every Debug build automatically via the development provisioning profile; the App Store submission pipeline strips it. Hence: your dev build is debuggable, a downloaded app is not.
+On a **device**, debugging rides this chain: Xcode's host-side lldb speaks the GDB-remote protocol to **`debugserver`**, a small stub that runs *on the device* and holds the entitlements `get-task-allow` and `task_for_pid-allow`. `debugserver` calls `task_for_pid()` to obtain the target's Mach **task port** — the capability that lets one process read/write another's memory and thread state (the same Mach primitive from [[05-processes-mach-xpc]]). The kernel grants `task_for_pid()` on a target **only if that target was signed with `get-task-allow = true`**. Xcode injects `get-task-allow` into every Debug build automatically via the development provisioning profile; the App Store submission pipeline strips it. Hence: your dev build is debuggable, a downloaded app is not.
 
-Transport has modernized. Pre-iOS 17, `debugserver` shipped inside the mounted **Developer Disk Image (DDI)** and Xcode tunnelled lldb over USB via `usbmuxd`. On **iOS 17+ / Xcode 15+** the stack is **CoreDevice**: the DDI is now **personalized** (Image4-signed to the specific device, like a mini-firmware — see [[image4-personalization-shsh]]), mounted via `mobile_image_mounter`, and lldb traffic rides a **RemoteXPC tunnel** brokered by `remotectl`/`devicectl` (you can see and drive devices with `xcrun devicectl device info`, `xcrun devicectl device process launch …`). The lldb command surface is unchanged; only the plumbing moved.
+Transport has modernized. Pre-iOS 17, `debugserver` shipped inside the mounted **Developer Disk Image (DDI)** and Xcode tunnelled lldb over USB via `usbmuxd`. On **iOS 17+ / Xcode 15+** the stack is **CoreDevice**: the DDI is now **personalized** (Image4-signed to the specific device, like a mini-firmware — see [[02-image4-personalization-shsh]]), mounted via `mobile_image_mounter`, and lldb traffic rides a **RemoteXPC tunnel** brokered by `remotectl`/`devicectl` (you can see and drive devices with `xcrun devicectl device info`, `xcrun devicectl device process launch …`). The lldb command surface is unchanged; only the plumbing moved.
 
-> ⚖️ **Authorization:** `get-task-allow` is the precise line between development and tampering. Attaching a debugger to *your own* dev build is routine engineering. Attaching to *someone else's* shipping app requires defeating that gate (re-sign + sideload, or a jailbroken device with an entitled `debugserver`) — that is a deliberate act with legal weight under the CFAA/DMCA §1201 and your engagement scope. Do it only on binaries you are authorized to analyze. The mechanism is covered as RE in [[dynamic-analysis-with-frida]] and [[fairplay-encryption-and-decrypting-app-store-apps]].
+> ⚖️ **Authorization:** `get-task-allow` is the precise line between development and tampering. Attaching a debugger to *your own* dev build is routine engineering. Attaching to *someone else's* shipping app requires defeating that gate (re-sign + sideload, or a jailbroken device with an entitled `debugserver`) — that is a deliberate act with legal weight under the CFAA/DMCA §1201 and your engagement scope. Do it only on binaries you are authorized to analyze. The mechanism is covered as RE in [[05-dynamic-analysis-with-frida]] and [[03-fairplay-encryption-and-decrypting-app-store-apps]].
 
 ### lldb commands you will actually use
 
@@ -83,7 +83,7 @@ The command set is identical to macOS lldb; the iOS-specific value is in what yo
 | `thread backtrace all` (`bt all`) | Stacks for every thread — for deadlocks/hangs |
 | `command script import lldb.macosx.heap` | Load `malloc_info`/`ptr_refs`/`cstr_refs` heap helpers (needs Malloc Stack Logging) |
 
-For Swift, set the language and watch for mangling: `breakpoint set -n` wants the mangled symbol (`$s5MyApp…`), while `-F` takes the human form. `image lookup -rn` on the shared cache (see [[the-dyld-shared-cache]]) is how you locate private framework methods to break on — the same move an RE uses, just on a binary you wrote.
+For Swift, set the language and watch for mangling: `breakpoint set -n` wants the mangled symbol (`$s5MyApp…`), while `-F` takes the human form. `image lookup -rn` on the shared cache (see [[02-the-dyld-shared-cache]]) is how you locate private framework methods to break on — the same move an RE uses, just on a binary you wrote.
 
 > 🔬 **Forensics note:** `image list -o -f` is the cheapest way to read the **ASLR slide** of every loaded image at runtime. Static disassembly (Part 11) gives file offsets; subtract the on-disk preferred base and add the runtime slide to translate a Ghidra/IDA address to a live address (and vice-versa). Get this backwards and every breakpoint and symbolicated frame lands in the wrong place.
 
@@ -107,7 +107,7 @@ Instruments is a front-end over **DTrace-style probes, `kperf`/`kdebug` sampling
 
 ### os_log / unified logging from the developer side
 
-You already read the unified log as an examiner (`macos-mastery`, and on iOS via [[unified-logging-and-sysdiagnose]]). From the *builder* side you **write** it with the **`OSLog`** framework — modern Swift uses the **`Logger`** type:
+You already read the unified log as an examiner (`macos-mastery`, and on iOS via [[09-unified-logging-and-sysdiagnose]]). From the *builder* side you **write** it with the **`OSLog`** framework — modern Swift uses the **`Logger`** type:
 
 ```swift
 import OSLog
@@ -158,14 +158,14 @@ Mechanism: signposts use the **same `os_log` ring buffer and `logd` path** as lo
 
 When a process faults, the kernel's exception machinery hands off to **`ReportCrash`** (its on-device crash writer), which serializes a report. Since iOS 15 / macOS 12 the format is **`.ips`**: a JSON file whose **first line is a small header object** and whose remainder is the payload object (so it isn't valid single-document JSON — split the first newline). On device, reports live under **`/private/var/mobile/Library/Logs/CrashReporter/`** (and per-app `DiagnosticReports`); you retrieve them via Xcode *Devices & Simulators ▸ View Device Logs*, a **sysdiagnose**, or `idevicecrashreport` (libimobiledevice).
 
-A raw `.ips` carries addresses + image UUIDs + slides but not your function names. **Symbolication** maps frame addresses back to source using the matching **`.dSYM`** (the external symbol bundle whose UUID must equal the crashing image's UUID — see [[ios-xcode-and-the-build-system]]):
+A raw `.ips` carries addresses + image UUIDs + slides but not your function names. **Symbolication** maps frame addresses back to source using the matching **`.dSYM`** (the external symbol bundle whose UUID must equal the crashing image's UUID — see [[00-ios-xcode-and-the-build-system]]):
 
 ```bash
 # Symbolicate one address against a dSYM (load-addr + slide come from the report's image map)
 atos -arch arm64 -o MyApp.app.dSYM/Contents/Resources/DWARF/MyApp -l 0x1029a4000 0x1029c1d3c
 ```
 
-**Hangs** (main-thread unresponsive > ~250 ms) are reported by `ReportCrash`'s watchdog path too, and surfaced live by the **Hangs & Hitches** instrument. The *kill* itself comes from two distinct mechanisms — not a single "watchdog daemon": the **launch/responsiveness watchdog enforced by SpringBoard/RunningBoard** terminates an app that takes too long to launch, resume, or service a UI event (the `0x8badf00d` exception code; crash-report namespace `SPRINGBOARD`/`FRONTBOARD`), while the **kernel's jetsam (`memorystatus`) subsystem** evicts an app for exceeding its memory limit or under system memory pressure (see [[memory-jetsam-app-lifecycle]]).
+**Hangs** (main-thread unresponsive > ~250 ms) are reported by `ReportCrash`'s watchdog path too, and surfaced live by the **Hangs & Hitches** instrument. The *kill* itself comes from two distinct mechanisms — not a single "watchdog daemon": the **launch/responsiveness watchdog enforced by SpringBoard/RunningBoard** terminates an app that takes too long to launch, resume, or service a UI event (the `0x8badf00d` exception code; crash-report namespace `SPRINGBOARD`/`FRONTBOARD`), while the **kernel's jetsam (`memorystatus`) subsystem** evicts an app for exceeding its memory limit or under system memory pressure (see [[06-memory-jetsam-app-lifecycle]]).
 
 > 🔬 **Forensics note:** Crash and jetsam logs are first-class artifacts. The **termination reason** and **exception type/code** distinguish a user-initiated quit from a `0x8badf00d` watchdog kill, an `0xdead10cc` ("deadlock"—a suspend with a held file lock), or a jetsam memory eviction — which can corroborate or refute claims about *when and how* an app stopped. They are in every sysdiagnose; pair them with the unified log for a per-app timeline.
 
@@ -312,7 +312,7 @@ malloc_history /tmp/MyApp.memgraph <address>    # alloc backtrace (needs MSL)
 ### Lab 4 — Walkthrough: the device debug + crash-log path (read-only)
 
 1. Read Apple's *Diagnosing issues using crash reports and device logs* and Dev:Debugserver on theapplewiki.com. Write the chain from memory: host lldb → RemoteXPC tunnel (`remotectl`) → personalized DDI mount (`mobile_image_mounter`) → on-device `debugserver` → `task_for_pid()` → target task port.
-2. Note the exact entitlement set that lets a **re-signed** `debugserver` attach to an *un*-debuggable app on a jailbroken device (`get-task-allow`, `task_for_pid-allow`, `com.apple.springboard.debugapplications`) — and why that is the RE bridge to [[dynamic-analysis-with-frida]].
+2. Note the exact entitlement set that lets a **re-signed** `debugserver` attach to an *un*-debuggable app on a jailbroken device (`get-task-allow`, `task_for_pid-allow`, `com.apple.springboard.debugapplications`) — and why that is the RE bridge to [[05-dynamic-analysis-with-frida]].
 3. From a public sample sysdiagnose (Josh Hickman / DFRWS), open a `.ips` crash report, split the header line from the payload, and identify `exception` type/code and `termination` reason. Map `0x8badf00d` and `0xdead10cc` to their causes.
 
 ### Lab 5 — Decode a MetricKit diagnostic payload (read-only / Simulator JSON)
@@ -384,4 +384,4 @@ malloc_history /tmp/MyApp.memgraph <address>    # alloc backtrace (needs MSL)
 - OWASP **MASTG** — "Dynamic Analysis on iOS" (lldb/`debugserver` setup, attaching to apps) as the RE counterpart to this builder-side lesson.
 
 ---
-*Related lessons: [[simulator-internals-and-on-disk-filesystem]] | [[processes-mach-xpc]] | [[ios-xcode-and-the-build-system]] | [[dynamic-analysis-with-frida]] | [[unified-logs-sysdiagnose-crash-network]] | [[memory-jetsam-app-lifecycle]] | [[code-signing-and-provisioning-in-depth]]*
+*Related lessons: [[01-simulator-internals-and-on-disk-filesystem]] | [[05-processes-mach-xpc]] | [[00-ios-xcode-and-the-build-system]] | [[05-dynamic-analysis-with-frida]] | [[12-unified-logs-sysdiagnose-crash-network]] | [[06-memory-jetsam-app-lifecycle]] | [[06-code-signing-and-provisioning-in-depth]]*

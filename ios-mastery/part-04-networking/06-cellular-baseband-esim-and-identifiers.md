@@ -24,7 +24,7 @@ Part 01 covered the cellular **hardware** — the baseband package, the modem li
 
 The application processor (AP — the A-series/M-series SoC running iOS) does **not** speak to the cellular network directly. A physically and logically separate **baseband processor (BP)** owns the radio. Between them sits a userspace daemon, **`CommCenter`** (the binary `…/CoreTelephony.framework/Support/CommCenter`, launched by `com.apple.CommCenter.plist` — the process is named `CommCenter`, *not* `commcenterd`), which is the single mediator for telephony, SMS, SIM/eUICC access, data-context setup, and carrier policy. Everything the OS knows about cellular flows through `CommCenter`; `CoreTelephony` (`CTTelephonyNetworkInfo`, `CTCarrier` — now largely deprecated for privacy) is the thin public API on top.
 
-Physically, the AP and BP share **mapped shared memory** plus a doorbell/interrupt mechanism; the BP is brought up and personalized as part of the boot chain (see [[boot-chain-securerom-iboot]]). On top of that transport runs one of two **closed-source** application protocols, depending on whose modem is inside:
+Physically, the AP and BP share **mapped shared memory** plus a doorbell/interrupt mechanism; the BP is brought up and personalized as part of the boot chain (see [[01-boot-chain-securerom-iboot]]). On top of that transport runs one of two **closed-source** application protocols, depending on whose modem is inside:
 
 | Modem vendor | Interface protocol | Notes |
 |---|---|---|
@@ -59,7 +59,7 @@ You don't parse LTE/5G frames in iOS forensics, but you must know the vocabulary
 
 - **RRC (Radio Resource Control)** — the control plane between the device (UE) and the base station (eNB/gNB): connection setup, handover, paging. Cell IDs and tracking-area codes live here.
 - **NAS (Non-Access Stratum)** — the control plane between the UE and the *core network* (MME in LTE, AMF in 5G): registration/attach, authentication, identity requests. **This is where the device historically had to reveal its IMSI** — and where 5G's SUPI/SUCI privacy fix applies.
-- **IMS (IP Multimedia Subsystem)** — the SIP-based core that carries **VoLTE** (Voice over LTE) and **VoNR** (Voice over New Radio / 5G). Modern voice is not a circuit call; it's SIP/RTP over a dedicated bearer. iOS exposes none of this, but VoLTE provisioning state is part of the carrier bundle, and call records still surface in the call-history store (see [[call-history-voicemail-contacts-interactions]]).
+- **IMS (IP Multimedia Subsystem)** — the SIP-based core that carries **VoLTE** (Voice over LTE) and **VoNR** (Voice over New Radio / 5G). Modern voice is not a circuit call; it's SIP/RTP over a dedicated bearer. iOS exposes none of this, but VoLTE provisioning state is part of the carrier bundle, and call records still surface in the call-history store (see [[05-call-history-voicemail-contacts-interactions]]).
 
 The single most useful idea here: **on 2G/3G/4G, a device that doesn't yet have a temporary identity (TMSI/GUTI) must transmit its IMSI in cleartext during attach.** That is the seam every IMSI-catcher exploits. 5G closes it (below).
 
@@ -82,7 +82,7 @@ This is the heart of the lesson. Every identifier ties the device to a *differen
 | **IDFV** | UUID | *vendor* identity (one developer's apps) | `UIDevice.identifierForVendor` |
 | **UDID** | 24-/40-char | the *device* (provisioning/management) | lockdownd `UniqueDeviceID`; backup `Target Identifier` |
 | **Serial number** | ~10–12 char | the *device* (manufacturing) | lockdownd `SerialNumber`; backup Info.plist |
-| **ECID** | 64-bit | the *SoC* (unique per chip) | personalization/SHSH ([[image4-personalization-shsh]]) |
+| **ECID** | 64-bit | the *SoC* (unique per chip) | personalization/SHSH ([[02-image4-personalization-shsh]]) |
 
 Three families, and the discipline is to keep them straight:
 
@@ -132,7 +132,7 @@ The cellular identifiers above are *network* identity. A second tier identifies 
 - **IDFV** (`UIDevice.current.identifierForVendor`) — a UUID **scoped to one developer's apps** on one device; **no ATT prompt required**. It persists across reinstalls *as long as at least one app from that vendor remains installed*; remove the last one and the IDFV is regenerated on next install. It is therefore a *per-vendor pseudonym*, not a device-global handle — a frequent misconception.
 - **UDID** (`UniqueDeviceID`) — the device-management/provisioning identifier (the backup's `Target Identifier`); modern iPhones derive it rather than expose the old 40-hex SHA-1. App-inaccessible since iOS 7.
 - **Serial number** — manufacturing identity (`SerialNumber`); ties to AppleCare/activation records.
-- **ECID** (Exclusive Chip ID) — a **64-bit per-SoC** unique value fused into the silicon, central to image personalization and SHSH (the modem and AP each have their own ECID-anchored personalization). It never appears in app data; it lives in the boot/restore world — see [[image4-personalization-shsh]].
+- **ECID** (Exclusive Chip ID) — a **64-bit per-SoC** unique value fused into the silicon, central to image personalization and SHSH (the modem and AP each have their own ECID-anchored personalization). It never appears in app data; it lives in the boot/restore world — see [[02-image4-personalization-shsh]].
 - **DeviceCheck / App Attest** — Apple's server-side anti-fraud primitives: DeviceCheck gives a developer two bits of persistent per-device state plus a server-verifiable token; App Attest cryptographically attests a genuine device+app to the developer's backend. Neither exposes a stable raw identifier to the app, by design.
 
 > 🖥️ **macOS contrast:** This tier is the *only* identifier family that crosses over — `ASIdentifierManager` and `identifierForVendor` exist on macOS, and a Mac has a serial number and a hardware UUID. But a Mac has no ECID-personalized baseband, no UDID-driven cellular activation, and crucially **no subscriber tier at all** — the cellular and SIM/eUICC identifiers simply have nothing to map to. That asymmetry is the whole reason a phone attributes to a *person* more readily than a laptop does.
@@ -162,7 +162,7 @@ The catcher playbook, and the on-device tells it leaves:
 
 iOS gives the user no native catcher alarm, but the radio environment is partially observable after the fact: the device's **serving-cell history and the crowd-sourced cell database** are where anomalies surface. **Lockdown Mode** — which since **iOS 17** disables **2G (and 3G)** cellular entirely, exactly to blunt bidding-down/downgrade attacks — removes the easiest downgrade path (there is no standalone "disable 2G" toggle in iOS outside Lockdown Mode, unlike Android's "Allow 2G" setting). CellGuard's model — compare observed cells against Apple's Cell Location Database and flag the impossible ones — is the practical detection approach.
 
-> 🔬 **Forensics note:** iOS does not log SUCI/SUPI to a user-readable store, but **cell-environment artifacts do persist**: the device's view of serving cells/tracking areas feeds `locationd`'s cell cache and the crowd-sourced cell database. Anomalous cells (a base station that forces 2G, an unknown cell ID with implausible signal) are the on-device footprint of an IMSI-catcher. The SEEMOO **CellGuard** app + Apple's Cell Location Database is the reference research approach to flagging rogue base stations from an iPhone. Cell-to-location correlation belongs to [[location-history]]; flag the cell-cache DBs there.
+> 🔬 **Forensics note:** iOS does not log SUCI/SUPI to a user-readable store, but **cell-environment artifacts do persist**: the device's view of serving cells/tracking areas feeds `locationd`'s cell cache and the crowd-sourced cell database. Anomalous cells (a base station that forces 2G, an unknown cell ID with implausible signal) are the on-device footprint of an IMSI-catcher. The SEEMOO **CellGuard** app + Apple's Cell Location Database is the reference research approach to flagging rogue base stations from an iPhone. Cell-to-location correlation belongs to [[07-location-history]]; flag the cell-cache DBs there.
 
 ### eSIM: the eUICC, the LPA, and the SM-DP+ provisioning flow
 
@@ -230,10 +230,10 @@ Where the identifiers and cellular history land on an iPhone's filesystem (paths
 | CommCenter SIM data | `…/Preferences/com.apple.commcenter.data.plist` | SIM/profile data, per-slot config |
 | **Device-specific (no-backup)** | `…/Preferences/com.apple.commcenter.device_specific_nobackup.plist` | **device IMEI** — note: *excluded from iTunes/Finder backups* |
 | SIM usage history | `…/Databases/CellularUsage.db` | `subscriber_info`: `subscriber_id`(ICCID), `subscriber_mdn`(number), `last_update_time` — **succession of SIMs** |
-| Data usage | `…/Databases/DataUsage.sqlite` | per-process WWAN/Wi-Fi byte counts (network-attribution; see [[the-ios-networking-stack]]) |
+| Data usage | `…/Databases/DataUsage.sqlite` | per-process WWAN/Wi-Fi byte counts (network-attribution; see [[00-the-ios-networking-stack]]) |
 | Backup metadata | `<backup>/Info.plist` | IMEI, ICCID, Phone Number, Serial, Product Type, Target Identifier(UDID) |
 
-> 🔬 **Forensics note:** The `_nobackup` suffix is the gotcha that bites investigators. **The canonical on-disk IMEI store is a plist deliberately kept out of the backup payload**, so an examiner browsing the backed-up *file tree* of a logical iTunes/Finder backup won't find the IMEI among the wireless plists (whereas ICCID/phone number do persist there). The IMEI usually *does* still surface — but in the backup's **top-level `Info.plist` metadata**, which iTunes/Finder writes from `lockdownd` at backup time, and over USB via `lockdownd` directly; the device's own `device_specific_nobackup.plist` itself comes only from a full-filesystem acquisition ([[full-file-system-acquisition]]), with `*#06#`/Settings and the engraving as offline fallbacks. So don't conclude "no IMEI on this device" — conclude "it isn't in *this part* of *this acquisition class*; check the backup `Info.plist` and `lockdownd`." Conversely `CellularUsage.db` is one of the highest-value cellular artifacts precisely because it preserves a **timeline of every ICCID the device has carried**, with timestamps — the closest thing to a SIM-history log iOS keeps.
+> 🔬 **Forensics note:** The `_nobackup` suffix is the gotcha that bites investigators. **The canonical on-disk IMEI store is a plist deliberately kept out of the backup payload**, so an examiner browsing the backed-up *file tree* of a logical iTunes/Finder backup won't find the IMEI among the wireless plists (whereas ICCID/phone number do persist there). The IMEI usually *does* still surface — but in the backup's **top-level `Info.plist` metadata**, which iTunes/Finder writes from `lockdownd` at backup time, and over USB via `lockdownd` directly; the device's own `device_specific_nobackup.plist` itself comes only from a full-filesystem acquisition ([[05-full-file-system-acquisition]]), with `*#06#`/Settings and the engraving as offline fallbacks. So don't conclude "no IMEI on this device" — conclude "it isn't in *this part* of *this acquisition class*; check the backup `Info.plist` and `lockdownd`." Conversely `CellularUsage.db` is one of the highest-value cellular artifacts precisely because it preserves a **timeline of every ICCID the device has carried**, with timestamps — the closest thing to a SIM-history log iOS keeps.
 
 ## Hands-on
 
@@ -265,7 +265,7 @@ pymobiledevice3 lockdown info | python3 -m json.tool | \
   grep -iE 'imei|iccid|imsi|meid|phonenumber|baseband|serial|uniquedevice'
 ```
 
-> ⚠️ **ADVANCED (device-bound):** Pairing over USB requires the device be **unlocked and the host trusted** (the "Trust this computer?" pairing prompt). On a locked, post-72h-inactivity **BFU** device, `lockdownd` will refuse most queries. This is acquisition, not browsing — see [[acquisition-sop-and-chain-of-custody]].
+> ⚠️ **ADVANCED (device-bound):** Pairing over USB requires the device be **unlocked and the host trusted** (the "Trust this computer?" pairing prompt). On a locked, post-72h-inactivity **BFU** device, `lockdownd` will refuse most queries. This is acquisition, not browsing — see [[08-acquisition-sop-and-chain-of-custody]].
 
 ### Parse the CommCenter plists (from a sample image / FFS extraction)
 
@@ -297,7 +297,7 @@ ORDER BY last_update_time DESC;
 "
 ```
 
-`last_update_time` here is **Mac absolute / Cocoa time** (seconds since 2001-01-01) — the *same* epoch most iOS stores use, so you **add `978307200`** to reach Unix before formatting. (iLEAPP's `subscriberInfo` parser does exactly this, via `convert_cocoa_core_data_ts_to_utc`.) Treat the raw value as Unix and every event lands ~31 years too early; see [[the-ios-timestamp-zoo]]. Multiple rows (the `subscriber_info` table tracks up to a few SIM slots/cards) = multiple SIM/eSIM profiles over the device's life.
+`last_update_time` here is **Mac absolute / Cocoa time** (seconds since 2001-01-01) — the *same* epoch most iOS stores use, so you **add `978307200`** to reach Unix before formatting. (iLEAPP's `subscriberInfo` parser does exactly this, via `convert_cocoa_core_data_ts_to_utc`.) Treat the raw value as Unix and every event lands ~31 years too early; see [[00-the-ios-timestamp-zoo]]. Multiple rows (the `subscriber_info` table tracks up to a few SIM slots/cards) = multiple SIM/eSIM profiles over the device's life.
 
 ### Validate identifiers (pure computation — no device)
 
@@ -369,7 +369,7 @@ python3 ileapp.py -t fs -i /path/to/extraction -o /tmp/ileapp_out
 
 1. Open a backup `Info.plist` (`plutil -p`). Record IMEI, ICCID, Phone Number, Serial, Target Identifier.
 2. Now open the FFS sample's `com.apple.commcenter.device_specific_nobackup.plist`. Note the IMEI is here too.
-3. State the lesson: a logical backup *may* expose IMEI via `Info.plist`, but the canonical on-disk IMEI store is the `_nobackup` plist, reachable only by FFS/USB/engraving. Which acquisition classes would and wouldn't yield the IMEI? (Cross-ref [[the-acquisition-taxonomy]].)
+3. State the lesson: a logical backup *may* expose IMEI via `Info.plist`, but the canonical on-disk IMEI store is the `_nobackup` plist, reachable only by FFS/USB/engraving. Which acquisition classes would and wouldn't yield the IMEI? (Cross-ref [[01-the-acquisition-taxonomy]].)
 
 ### Lab 4 — Read the AP↔baseband interface (read-only walkthrough)
 
@@ -393,7 +393,7 @@ python3 ileapp.py -t fs -i /path/to/extraction -o /tmp/ileapp_out
 - **ICCID ≠ IMSI ≠ phone number.** The most common rookie error. ICCID identifies the *card*, IMSI the *subscriber/account*, MSISDN the *dialable number*. They can all change independently (new SIM = new ICCID, same number ported; eSIM profile swap = new ICCID *and* new IMSI on the *same* EID).
 - **The MSISDN is editable and often wrong/blank.** Never assert "this is the suspect's number" from `subscriber_mdn` or a SIM EF alone — the operator writes it and may not. The IMSI is the reliable handle; the *carrier* maps IMSI→number→account.
 - **IMEI hides in a `_nobackup` plist.** A logical backup can leave you IMEI-less. Know your acquisition class before you claim the IMEI is absent.
-- **Wrong epoch on `CellularUsage.db`.** `last_update_time` is **Mac absolute / Cocoa time** (seconds since 2001), like most iOS stores — you **must add 978307200** to get Unix. Forgetting it (treating the raw value as Unix) shoves every SIM event ~31 years into the *past*. (iLEAPP's `subscriberInfo` parser converts it via `convert_cocoa_core_data_ts_to_utc`.) See [[the-ios-timestamp-zoo]].
+- **Wrong epoch on `CellularUsage.db`.** `last_update_time` is **Mac absolute / Cocoa time** (seconds since 2001), like most iOS stores — you **must add 978307200** to get Unix. Forgetting it (treating the raw value as Unix) shoves every SIM event ~31 years into the *past*. (iLEAPP's `subscriberInfo` parser converts it via `convert_cocoa_core_data_ts_to_utc`.) See [[00-the-ios-timestamp-zoo]].
 - **The Simulator has no cellular anything.** No baseband, no SIM, no `CommCenter` cellular state, no `CellularUsage.db`, empty `CTCarrier`. It validates telephony *API* code paths only.
 - **eSIM means "multiple ICCIDs, one chip."** A succession of ICCIDs in `CellularUsage.db` is *not* necessarily multiple physical cards — one eUICC (one EID) carries many profiles over time. The EID is the device-anchored constant; the ICCID/IMSI rotate.
 - **5G SUCI is not a silver bullet.** Concealment only holds on a clean 5G attach with a real protection scheme; null-scheme configs and 2G/LTE downgrade re-expose the IMSI. IMSI-catchers adapted, they didn't die.
@@ -450,4 +450,4 @@ python3 ileapp.py -t fs -i /path/to/extraction -o /tmp/ileapp_out
 - **Tooling** — libimobiledevice (`ideviceinfo`), pymobiledevice3, `plutil`, `sqlite3`; a PC/SC smart-card reader + `pySim-read.py` for physical SIMs.
 
 ---
-*Related lessons: [[baseband-and-cellular]] | [[the-ios-networking-stack]] | [[wifi-bluetooth-and-proximity]] | [[location-history]] | [[the-ios-timestamp-zoo]] | [[the-acquisition-taxonomy]] | [[full-file-system-acquisition]] | [[image4-personalization-shsh]]*
+*Related lessons: [[04-baseband-and-cellular]] | [[00-the-ios-networking-stack]] | [[04-wifi-bluetooth-and-proximity]] | [[07-location-history]] | [[00-the-ios-timestamp-zoo]] | [[01-the-acquisition-taxonomy]] | [[05-full-file-system-acquisition]] | [[02-image4-personalization-shsh]]*

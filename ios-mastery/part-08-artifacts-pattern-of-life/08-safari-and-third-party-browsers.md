@@ -40,9 +40,9 @@ Safari is a first-party system app, so its data does **not** live in a randomize
 └── Cache.db                    SQLite  — legacy WebKit URL cache (see "The cache" below)
 ```
 
-> 🖥️ **macOS contrast:** This is the *same software* you dissected in macOS-mastery, just relocated. On the Mac the set lives in `~/Library/Safari/` (`History.db`, `Bookmarks.db`, `CloudTabs.db`) and `~/Library/Cookies/Cookies.binarycookies`, with the identical schemas and the identical Mac-Absolute-Time-vs-WebKit-epoch trap. If you can parse macOS Safari, you can parse iOS Safari — the only differences are the path prefix (`/private/var/mobile/` instead of `~`), the addition of `SafariTabs.db` on the tab side, and that everything here is encrypted at rest until first unlock (AFU) under Data Protection. See [[the-itunes-finder-backup-format]] for what survives into a backup vs. a full file-system image.
+> 🖥️ **macOS contrast:** This is the *same software* you dissected in macOS-mastery, just relocated. On the Mac the set lives in `~/Library/Safari/` (`History.db`, `Bookmarks.db`, `CloudTabs.db`) and `~/Library/Cookies/Cookies.binarycookies`, with the identical schemas and the identical Mac-Absolute-Time-vs-WebKit-epoch trap. If you can parse macOS Safari, you can parse iOS Safari — the only differences are the path prefix (`/private/var/mobile/` instead of `~`), the addition of `SafariTabs.db` on the tab side, and that everything here is encrypted at rest until first unlock (AFU) under Data Protection. See [[03-the-itunes-finder-backup-format]] for what survives into a backup vs. a full file-system image.
 
-> 🔬 **Forensics note:** Safari being a *fixed-path* system app is a gift. With a third-party browser you must first resolve which random `Containers/Data/Application/<GUID>/` directory belongs to it (via the `.com.apple.mobile_container_manager.metadata.plist` → `MCMMetadataIdentifier` bundle-ID map). Safari needs no such hunt — but the trade-off is that Safari data is class **`NSFileProtectionCompleteUntilFirstUserAuthentication`**, so on a BFU (Before First Unlock) device the files are present but undecryptable until the passcode is entered once. See [[bfu-vs-afu-and-data-protection-classes]].
+> 🔬 **Forensics note:** Safari being a *fixed-path* system app is a gift. With a third-party browser you must first resolve which random `Containers/Data/Application/<GUID>/` directory belongs to it (via the `.com.apple.mobile_container_manager.metadata.plist` → `MCMMetadataIdentifier` bundle-ID map). Safari needs no such hunt — but the trade-off is that Safari data is class **`NSFileProtectionCompleteUntilFirstUserAuthentication`**, so on a BFU (Before First Unlock) device the files are present but undecryptable until the passcode is entered once. See [[02-bfu-vs-afu-and-data-protection-classes]].
 
 ### History.db — `history_items` ⋈ `history_visits`
 
@@ -119,7 +119,7 @@ SafariTabs.db / BrowserState.db
 
 This is the single most under-appreciated browser artifact for *attribution and scoping*. From one seized iPhone you can enumerate the **entire Apple-account device fleet** by name and infer URLs open elsewhere — which can justify a warrant for a second device, prove a suspect controls a particular Mac, or corroborate cross-device coordination. It only populates when the account is signed in and "Safari" is enabled in iCloud sync.
 
-> ⚖️ **Authorization:** `CloudTabs.db` exposes devices and URLs that belong to systems *outside* the one you seized. Enumerating the fleet is fair game on the device you lawfully hold; *acquiring those other devices* is a separate authorization. Document the fleet discovery in your notes — it's both a lead and a scope boundary. See [[ios-forensics-landscape-and-authorization]].
+> ⚖️ **Authorization:** `CloudTabs.db` exposes devices and URLs that belong to systems *outside* the one you seized. Enumerating the fleet is fair game on the device you lawfully hold; *acquiring those other devices* is a separate authorization. Document the fleet discovery in your notes — it's both a lead and a scope boundary. See [[00-ios-forensics-landscape-and-authorization]].
 
 ### `Bookmarks.db` — bookmarks + Reading List
 
@@ -195,7 +195,7 @@ A huge fraction of "browsing" on iOS never happens in a browser at all. Tapping 
 └── WebKit/WebsiteData/                     ← local storage, IndexedDB, service-worker data
 ```
 
-> 🔬 **Forensics note:** When `History.db` is thin but the user clearly browsed, look *inside the apps*. The link came from somewhere — a Messages bubble, an email, a social feed — and the rendered page or its cookies may sit in that app's container even though Safari knows nothing about it. This is the bridge to [[third-party-app-methodology]]: treat every app that can open a link as a potential browser.
+> 🔬 **Forensics note:** When `History.db` is thin but the user clearly browsed, look *inside the apps*. The link came from somewhere — a Messages bubble, an email, a social feed — and the rendered page or its cookies may sit in that app's container even though Safari knows nothing about it. This is the bridge to [[11-third-party-app-methodology]]: treat every app that can open a link as a potential browser.
 
 ### Auxiliary stores — favicons, Safe Browsing, downloads
 
@@ -217,7 +217,7 @@ datetime(last_visit_time/1000000 - 11644473600, 'unixepoch', 'localtime')
 
 So in the *same forensic case*, on the *same phone*, Safari's `History.db` is **Mac Absolute Time (2001, seconds)** and Chrome's `History` is **WebKit/Chrome epoch (1601, microseconds)**. Apply the wrong conversion and the timestamp can land wildly off — cross the 1601 and 2001 epoch *bases* and you're ~400 years out; read microseconds as seconds and you're off by a factor of a million (eons into the future). Those gross errors are usually obvious. The dangerous one is subtle: forget the `978307200` add on a Safari row and the date lands exactly **31 years early** (the 1970↔2001 gap) — a *plausible-looking but wrong* date that sails through review. Build the conversion into the query per store; never eyeball it.
 
-> 🔬 **Forensics note:** "WebKit" is a *misnomer trap* here. Safari is literally built on WebKit yet uses Mac Absolute Time in its SQLite; Chrome descends from WebKit/Blink yet uses the "WebKit epoch" (1601). The name tells you nothing about which epoch a given store uses. Tie the epoch to the *file you're reading* (Safari `History.db` → 2001; Chromium `History` → 1601; Firefox → 1970), not to the word "WebKit." See [[the-ios-timestamp-zoo]].
+> 🔬 **Forensics note:** "WebKit" is a *misnomer trap* here. Safari is literally built on WebKit yet uses Mac Absolute Time in its SQLite; Chrome descends from WebKit/Blink yet uses the "WebKit epoch" (1601). The name tells you nothing about which epoch a given store uses. Tie the epoch to the *file you're reading* (Safari `History.db` → 2001; Chromium `History` → 1601; Firefox → 1970), not to the word "WebKit." See [[00-the-ios-timestamp-zoo]].
 
 ## Hands-on
 
@@ -375,7 +375,7 @@ python3 ileapp.py -t fs -i /path/to/extraction -o ~/case/ileapp_out
 1. From a sample image (or a Simulator with Chrome installed and browsed), pull **Safari `History.db`** and **Chrome `History`**.
 2. Run the *Safari* query with `+ 978307200` and the *Chrome* query with `/1000000 - 11644473600`.
 3. Now deliberately swap the conversions (apply the Safari math to Chrome's `last_visit_time` and vice-versa).
-4. **Deliverable:** record the wrong dates each swap produces (applying Safari's `+ 978307200` to a Chrome µs-since-1601 value lands you absurdly far in the future; applying Chrome's `/1e6 - 11644473600` to a Safari seconds-since-2001 value collapses back to ~1601) and write a one-line rule that ties the epoch to the file, not the word "WebKit." This is the [[the-ios-timestamp-zoo]] lesson in miniature.
+4. **Deliverable:** record the wrong dates each swap produces (applying Safari's `+ 978307200` to a Chrome µs-since-1601 value lands you absurdly far in the future; applying Chrome's `/1e6 - 11644473600` to a Safari seconds-since-2001 value collapses back to ~1601) and write a one-line rule that ties the epoch to the file, not the word "WebKit." This is the [[00-the-ios-timestamp-zoo]] lesson in miniature.
 
 ### Lab 6 — Enumerate a device fleet from `CloudTabs.db` (public sample image)
 
@@ -392,7 +392,7 @@ python3 ileapp.py -t fs -i /path/to/extraction -o ~/case/ileapp_out
 - **Private mode leaves no `History.db` rows** — but an *open* private tab can sit in the tab stores (flagged private) until closed. Lock state at seizure decides whether you get it.
 - **Tab BLOBs are nested and padded.** `local_attributes`/`extra_attributes` are binary plists containing a *further* binary plist (`SessionState`) that has leading pad bytes before `bplist00`. Strip to the magic or the parse fails — that's a known Safari quirk, not corruption.
 - **Third-party browsers hide behind random GUIDs.** Resolve the container via `.com.apple.mobile_container_manager.metadata.plist` → `MCMMetadataIdentifier`; don't guess the directory.
-- **BFU undecryptable.** Safari files are `NSFileProtectionCompleteUntilFirstUserAuthentication`. On a Before-First-Unlock device the files exist but are ciphertext — you need at least one post-boot unlock (AFU) or a passcode. See [[passcode-bfu-afu-and-inactivity]].
+- **BFU undecryptable.** Safari files are `NSFileProtectionCompleteUntilFirstUserAuthentication`. On a Before-First-Unlock device the files exist but are ciphertext — you need at least one post-boot unlock (AFU) or a passcode. See [[03-passcode-bfu-afu-and-inactivity]].
 - **`CloudTabs.db` only populates with iCloud Safari sync on.** Empty doesn't mean single-device; it can mean sync off or signed out.
 - **Version drift in tab schemas.** Which store holds *open* vs *closed* tabs (`SafariTabs.db` vs `BrowserState.db`) and the exact column names shifted across iOS 15→16→17→26. Always `.schema` the actual DB; don't assume.
 - **The Simulator is structure-only for the device-bound pieces.** No Data Protection, no real iCloud fleet unless you sign in. Use sample images for `CloudTabs.db` realism and cleared-history scenarios.
@@ -449,4 +449,4 @@ python3 ileapp.py -t fs -i /path/to/extraction -o ~/case/ileapp_out
 - `man sqlite3`, `man plutil` — exact flag semantics for the conversions above
 
 ---
-*Related lessons: [[app-sandbox-and-filesystem-layout]] | [[the-ios-timestamp-zoo]] | [[bfu-vs-afu-and-data-protection-classes]] | [[building-a-unified-timeline]] | [[location-history]] | [[third-party-app-methodology]]*
+*Related lessons: [[00-app-sandbox-and-filesystem-layout]] | [[00-the-ios-timestamp-zoo]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[01-building-a-unified-timeline]] | [[07-location-history]] | [[11-third-party-app-methodology]]*

@@ -71,7 +71,7 @@ A hardware keyboard turns the iPad into a keyboard-navigable computer through th
 
 **2. The ⌘-hold discoverability HUD.** Holding the **Command** key with a hardware keyboard attached pops a translucent overlay listing every currently-available shortcut — grouped by the menu/command tree. This "keyboard shortcut HUD" is built automatically from the `title`s of the `UIKeyCommand`s reachable on the current responder chain plus the menu system. It is the iPad's *discoverability* surface: an app that declares its commands well gets a free, always-current cheat-sheet.
 
-**3. The command/menu tree (`UIMenuBuilder`).** Since iOS/iPadOS 13, an app builds its command hierarchy by overriding `buildMenu(with:)`, populating **`UIMenuSystem.main`** with `UIMenu`/`UICommand`/`UIKeyCommand` nodes. On iPad this same tree drives (a) the ⌘-hold HUD, (b) the **persistent menu bar** that iPadOS 26 surfaced at the top of every window (revealed by swiping down or pushing the pointer to the top edge — see [[how-ipados-diverges-from-ios]] and [[windowing-multitasking-and-external-display]]), and (c) the real Mac menu bar when the app runs under Mac Catalyst. One declaration, three renderings.
+**3. The command/menu tree (`UIMenuBuilder`).** Since iOS/iPadOS 13, an app builds its command hierarchy by overriding `buildMenu(with:)`, populating **`UIMenuSystem.main`** with `UIMenu`/`UICommand`/`UIKeyCommand` nodes. On iPad this same tree drives (a) the ⌘-hold HUD, (b) the **persistent menu bar** that iPadOS 26 surfaced at the top of every window (revealed by swiping down or pushing the pointer to the top edge — see [[00-how-ipados-diverges-from-ios]] and [[01-windowing-multitasking-and-external-display]]), and (c) the real Mac menu bar when the app runs under Mac Catalyst. One declaration, three renderings.
 
 Beyond app shortcuts, the **system** owns a layer of global shortcuts that apps cannot intercept: **Globe key** (the dedicated key on Apple's iPad keyboards) opens a system shortcut sheet and drives input-source switching; ⌘-Space (Spotlight), ⌘-Tab (app switcher), ⌘-H (Home), and the window/tiling shortcuts are handled by SpringBoard, not the foreground app. **Full Keyboard Access** (Accessibility) extends this to *complete* keyboard navigation of every control — a genuine power-user mode, and an accessibility feature repurposed as a productivity tool.
 
@@ -104,7 +104,7 @@ The forensically interesting ones are the *sensors that reach the stroke data*:
 - **Hover** (Apple Pencil 2/Pro/USB-C on hover-capable iPads — M2-and-later iPad Pro and iPad Air, plus the A17 Pro iPad mini) previews the landing point and tool shadow before the tip touches; it surfaces through `UIHoverGestureRecognizer` and a Pencil-specific hover phase.
 - **Double-tap** (2nd gen) and **squeeze** (Pro) are *user-configurable* actions set in **Settings → Apple Pencil**; by default they switch tools or open the tool picker. PencilKit/`UIPencilInteraction` reports them; the chosen action is a user preference (a plist), not stroke data.
 - **Barrel roll** (Pro) uses a gyroscope so rotating the barrel rotates shaped/flat brush tools — exposed per-point as a roll angle (confirm the exact `PKStrokePoint` property name against your PencilKit version before quoting it in a report).
-- **Find My** (Pro) registers the Pencil as a **Find My accessory** — a Bluetooth offline-finding beacon (see [[find-my-and-the-ble-mesh]]). That makes the Pencil itself a *trackable item* with a registry entry, not just a stylus.
+- **Find My** (Pro) registers the Pencil as a **Find My accessory** — a Bluetooth offline-finding beacon (see [[05-find-my-and-the-ble-mesh]]). That makes the Pencil itself a *trackable item* with a registry entry, not just a stylus.
 
 > 🔬 **Forensics note:** A paired Pencil is a Bluetooth accessory with a pairing record on the device (Bluetooth device plists / accessory registry — confirm the exact path on your target image; the Bluetooth store has moved across iOS versions). Two payoffs: (1) the presence of a paired Pencil *corroborates* that handwriting/markup evidence on the device is plausibly first-party rather than imported; (2) an **Apple Pencil Pro** registered with **Find My** is a location-bearing accessory — its Find My registration is a small additional location surface tied to the device's iCloud account.
 
@@ -155,9 +155,9 @@ let png = drawing.image(from: drawing.bounds, scale: 2).pngData()  // DERIVED ex
 ```
 
 Where the blob *lands* depends on the app:
-- **Notes** embeds the `PKDrawing` inline in the note's body — the gzipped-protobuf rich-text payload in `ZICNOTEDATA.ZDATA` inside `NoteStore.sqlite` (the lineage you dissect in [[mail-notes-calendar-reminders]]); rendered previews live under the Notes group container's media directories.
+- **Notes** embeds the `PKDrawing` inline in the note's body — the gzipped-protobuf rich-text payload in `ZICNOTEDATA.ZDATA` inside `NoteStore.sqlite` (the lineage you dissect in [[09-mail-notes-calendar-reminders]]); rendered previews live under the Notes group container's media directories.
 - **Freeform**, **Markup** (screenshot/PDF annotation), and many first-party canvases use PencilKit, so the same `PKDrawing` form recurs.
-- **Third-party note apps** (GoodNotes, Notability) store ink in their *own* containers — some wrap `PKDrawing`, some roll a proprietary stroke format. Always name the app before asserting a format; see [[third-party-app-methodology]].
+- **Third-party note apps** (GoodNotes, Notability) store ink in their *own* containers — some wrap `PKDrawing`, some roll a proprietary stroke format. Always name the app before asserting a format; see [[11-third-party-app-methodology]].
 
 > 🖥️ **macOS contrast:** The Mac has no native pen-ink framework with a stored vector format like this — the closest analogue is `PDFKit` annotations or an app's own drawing model. PencilKit is genuinely iPad-native (it exists on macOS only via Catalyst/Sidecar). So `PKDrawing` blobs are an **iPad-class artifact with no iPhone *and* no native-Mac equivalent** — when you find one, you are almost certainly looking at iPad-authored content.
 
@@ -165,7 +165,7 @@ Where the blob *lands* depends on the app:
 
 > ⚖️ **Authorization:** A rendered handwriting image is a **derived** exhibit, not the primary evidence. The primary evidence is the raw `PKDrawing` bytes (and the row that held them); the PNG you produce depends on the PencilKit *renderer version*, antialiasing, and scale. Preserve and hash the raw blob, record the exact tool/OS version used to rasterize, and treat the image as an interpretation — the same discipline you'd apply to transcoding any proprietary container for court.
 
-> 🔬 **Forensics note:** The stroke micro-timeline becomes far stronger when **correlated with the device's pattern-of-life stores**. The `PKStrokePath.creationDate` window (say, a note written 14:02–14:09) should line up with an **app-in-focus interval for the note app** in `knowledgeC`/Biome (`/app/inFocus`) and with display-on/unlock state — see [[notifications-keyboard-and-misc-stores]] and [[the-ios-timestamp-zoo]]. A drawing whose stroke times fall *outside* any recorded focus/unlock window for that app is a contradiction worth chasing (clock manipulation, sync from another device, or imported content). Treat the ink timeline as one track in a multi-source timeline, not in isolation.
+> 🔬 **Forensics note:** The stroke micro-timeline becomes far stronger when **correlated with the device's pattern-of-life stores**. The `PKStrokePath.creationDate` window (say, a note written 14:02–14:09) should line up with an **app-in-focus interval for the note app** in `knowledgeC`/Biome (`/app/inFocus`) and with display-on/unlock state — see [[13-notifications-keyboard-and-misc-stores]] and [[00-the-ios-timestamp-zoo]]. A drawing whose stroke times fall *outside* any recorded focus/unlock window for that app is a contradiction worth chasing (clock manipulation, sync from another device, or imported content). Treat the ink timeline as one track in a multi-source timeline, not in isolation.
 
 ### Scribble and on-device handwriting recognition
 
@@ -179,7 +179,7 @@ Looking forward (announced at **WWDC 2026**, session *"Read between the strokes 
 
 ### Text-interaction gestures (briefly)
 
-Selection and editing on iPad ride **`UITextInteraction`** and a set of system gestures: tap to place the caret, the magnifier loupe (touch-and-hold), double-tap to select a word, triple-tap a sentence/paragraph, drag the selection handles, and the **three-finger pinch/spread** for copy/cut/paste and the **three-finger swipe** for undo/redo (iPadOS 13+). The editing menu itself moved from the old `UIMenuController` to **`UIEditMenuInteraction`** (iOS 16+). These are mostly transient, but two leave traces worth knowing: **cut/copy/paste flows through the system pasteboard** (a cross-device, Continuity-aware surface — see [[continuity-with-the-mac]] and [[notifications-keyboard-and-misc-stores]]), and selection of recognized handwriting feeds the same draft/autosave machinery as typing.
+Selection and editing on iPad ride **`UITextInteraction`** and a set of system gestures: tap to place the caret, the magnifier loupe (touch-and-hold), double-tap to select a word, triple-tap a sentence/paragraph, drag the selection handles, and the **three-finger pinch/spread** for copy/cut/paste and the **three-finger swipe** for undo/redo (iPadOS 13+). The editing menu itself moved from the old `UIMenuController` to **`UIEditMenuInteraction`** (iOS 16+). These are mostly transient, but two leave traces worth knowing: **cut/copy/paste flows through the system pasteboard** (a cross-device, Continuity-aware surface — see [[04-continuity-with-the-mac]] and [[13-notifications-keyboard-and-misc-stores]]), and selection of recognized handwriting feeds the same draft/autosave machinery as typing.
 
 ### Accessibility features as power tools
 
@@ -194,7 +194,7 @@ Several Accessibility settings are, in practice, the most powerful input control
 
 ### The forensic surface: what each input plane leaves on disk
 
-Pulling the planes together, here is where input residue actually lands. Everything below is **device-only** (a full-filesystem acquisition in at least AFU state — see [[full-file-system-acquisition]] and [[bfu-vs-afu-and-data-protection-classes]]) and is **identical on iPad and iPhone** unless noted; the iPad simply generates *more* of it (Pencil) and from more sources (hardware keyboard).
+Pulling the planes together, here is where input residue actually lands. Everything below is **device-only** (a full-filesystem acquisition in at least AFU state — see [[05-full-file-system-acquisition]] and [[02-bfu-vs-afu-and-data-protection-classes]]) and is **identical on iPad and iPhone** unless noted; the iPad simply generates *more* of it (Pencil) and from more sources (hardware keyboard).
 
 **1. The keyboard learned lexicon — `/private/var/mobile/Library/Keyboard/`.** The predictive/autocorrect engine persists what the user types so it can learn:
 
@@ -204,7 +204,7 @@ Pulling the planes together, here is where input residue actually lands. Everyth
 | Swipe traces | `shapestore.db` (iOS 13+) | SQLite store backing QuickPath/swipe-typing; overlaps the dynamic lexicon's vocabulary. |
 | User dictionary | `UserDictionary.sqlite` | User-defined **Text Replacement** shortcuts and learned entries. |
 
-These persist **independently of the source app** and often survive deletion of the originating message/note — frequently the *only* place a distinctive term survives. Crucially for this lesson: **the lexicon grows the same whether the user typed on glass or on a Magic Keyboard**, and **Scribble-recognized handwriting feeds it too** — so on a Pencil-heavy, keyboard-equipped iPad the lexicon is *richer*, not bypassed. Full treatment in [[notifications-keyboard-and-misc-stores]].
+These persist **independently of the source app** and often survive deletion of the originating message/note — frequently the *only* place a distinctive term survives. Crucially for this lesson: **the lexicon grows the same whether the user typed on glass or on a Magic Keyboard**, and **Scribble-recognized handwriting feeds it too** — so on a Pencil-heavy, keyboard-equipped iPad the lexicon is *richer*, not bypassed. Full treatment in [[13-notifications-keyboard-and-misc-stores]].
 
 **2. Apple Pencil handwriting — `PKDrawing` blobs.** As above: inline in `NoteStore.sqlite` for Notes (`ZICNOTEDATA.ZDATA`), in Freeform, and in third-party note-app containers. Per-stroke timing inside; render or recognize for content.
 
@@ -270,7 +270,7 @@ sqlite3 /tmp/notestore.db "
 # table/column lineage against the NoteStore schema for the image's iOS version, then
 # gunzip + parse, locate the PKDrawing, and read PKStrokePath.creationDate per stroke.
 ```
-The Apple epoch (`+ 978307200`, Mac Absolute Time) is the same one you used across macOS and in [[the-ios-timestamp-zoo]].
+The Apple epoch (`+ 978307200`, Mac Absolute Time) is the same one you used across macOS and in [[00-the-ios-timestamp-zoo]].
 
 **Read the keyboard learned lexicon (sample image; device-only artifact):**
 ```bash
@@ -340,7 +340,7 @@ find /path/to/extraction -iname '*MobileBluetooth*' -o -iname '*bluetooth*.plist
 
 ### Lab 6 — Input-hardware pairing (Pencil / keyboard / trackpad) *(substrate: read-only walkthrough + sample image; caveat: pairing is device-only; Bluetooth store path is version-specific)*
 1. In a sample image, locate the Bluetooth accessory records; enumerate paired devices and identify any keyboard/trackpad/**Apple Pencil**.
-2. If an **Apple Pencil Pro** is present, note that it may also carry a **Find My accessory** registration (a location-bearing beacon — see [[find-my-and-the-ble-mesh]]).
+2. If an **Apple Pencil Pro** is present, note that it may also carry a **Find My accessory** registration (a location-bearing beacon — see [[05-find-my-and-the-ble-mesh]]).
 3. Tie it to the handwriting evidence: a paired Pencil corroborates that `PKDrawing` content on the device is plausibly first-party. Document the path/keys you used and flag them as version-specific.
 
 ## Pitfalls & gotchas
@@ -404,4 +404,4 @@ find /path/to/extraction -iname '*MobileBluetooth*' -o -iname '*bluetooth*.plist
 - `man strings`, `man sqlite3`, `exiftool` (Phil Harvey), `protoc --decode_raw` — always confirm flag semantics for your tool versions.
 
 ---
-*Related lessons: [[how-ipados-diverges-from-ios]] | [[windowing-multitasking-and-external-display]] | [[mail-notes-calendar-reminders]] | [[notifications-keyboard-and-misc-stores]] | [[photos-and-the-camera-roll]] | [[the-ios-timestamp-zoo]] | [[full-file-system-acquisition]] | [[find-my-and-the-ble-mesh]] | [[third-party-app-methodology]] | [[continuity-with-the-mac]]*
+*Related lessons: [[00-how-ipados-diverges-from-ios]] | [[01-windowing-multitasking-and-external-display]] | [[09-mail-notes-calendar-reminders]] | [[13-notifications-keyboard-and-misc-stores]] | [[06-photos-and-the-camera-roll]] | [[00-the-ios-timestamp-zoo]] | [[05-full-file-system-acquisition]] | [[05-find-my-and-the-ble-mesh]] | [[11-third-party-app-methodology]] | [[04-continuity-with-the-mac]]*

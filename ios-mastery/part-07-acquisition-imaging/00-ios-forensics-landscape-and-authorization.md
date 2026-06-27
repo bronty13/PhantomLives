@@ -46,7 +46,7 @@ Internalize these before any tool. Each one inverts a reflex you built on macOS/
 
 **Axiom 1 — There is no write-blocker.** A write-blocker works because the target is a passive block device that answers reads and you physically sever the write path. An iPhone is not a passive block device; it is an *active server* that hands you data only via authenticated services (`lockdownd` over USB/`usbmuxd`, the backup protocol, the AFC file-relay) or via a live exploit. There is no point in the path where you can interpose a blocker, because the device itself is doing the work, in RAM, while running. The closest you get to "read-only" is **discipline** — minimizing your footprint and documenting it — not a hardware guarantee.
 
-**Axiom 2 — The device is encrypted by default.** Since the iPhone 3GS, every iOS device encrypts the data partition with a hardware AES engine keyed from a UID fused into the SoC and entangled (on modern devices) with the passcode through the Secure Enclave. There is no "decrypt the image once" step. Decryptability is a *live property of the running, unlocked-at-least-once device*, not a property of the bytes. Pull the NAND off the board (chip-off) and you get ciphertext that no amount of compute will break, because the UID key never leaves the SEP. → [[storage-nand-aes-effaceable]], [[data-protection-and-keybags]].
+**Axiom 2 — The device is encrypted by default.** Since the iPhone 3GS, every iOS device encrypts the data partition with a hardware AES engine keyed from a UID fused into the SoC and entangled (on modern devices) with the passcode through the Secure Enclave. There is no "decrypt the image once" step. Decryptability is a *live property of the running, unlocked-at-least-once device*, not a property of the bytes. Pull the NAND off the board (chip-off) and you get ciphertext that no amount of compute will break, because the UID key never leaves the SEP. → [[03-storage-nand-aes-effaceable]], [[02-data-protection-and-keybags]].
 
 **Axiom 3 — Every acquisition action mutates state.** Pairing the device writes a pairing record and trust flags. Taking a backup spins up `backupd`/`mobilebackup2`, touches `lastBackupDate`, and can alter the backup-password state. Even just unlocking it to read the screen advances usage logs, `knowledgeC`/Biome streams, and the powerlog. You can never produce two identical acquisitions of the same phone; the second one is always of a *changed* phone. This is why the SOP is **acquire once, correctly, then never touch the original again** — your forensic copy (and its hash) is the frozen artifact, not the device.
 
@@ -94,7 +94,7 @@ Because you extract *through* the device, every method sits on a spectrum of how
 Two consequences a disk examiner under-weights:
 
 - **The order of operations is forensically load-bearing.** On a disk you can run ten tools in any order against the image. Here, the cheapest, least-mutating method that satisfies the warrant goes *first*, because a later heavier method may be blocked by — or may itself trip — a state change (an inactivity reboot, a wipe, a lockout). You plan the sequence the way you plan a memory dump on a live host: most-volatile first.
-- **"Cooperating" includes the suspect's account and the cloud.** An iPhone is a node in iCloud. Part of the recoverable set never lived on the NAND at all (or has been offloaded) and is reachable only with the **Apple Account** credentials or an iCloud token — a separate legal and technical track entirely, and one that **Advanced Data Protection (ADP)** can slam shut. → [[icloud-acquisition-and-advanced-data-protection]], [[advanced-protections-lockdown-sdp-adp]].
+- **"Cooperating" includes the suspect's account and the cloud.** An iPhone is a node in iCloud. Part of the recoverable set never lived on the NAND at all (or has been offloaded) and is reachable only with the **Apple Account** credentials or an iCloud token — a separate legal and technical track entirely, and one that **Advanced Data Protection (ADP)** can slam shut. → [[06-icloud-acquisition-and-advanced-data-protection]], [[09-advanced-protections-lockdown-sdp-adp]].
 
 Concretely, the cooperative front door — `lockdownd` over `usbmuxd` — brokers a fixed menu of services, and knowing what each *exposes* is the entire logical-acquisition map:
 
@@ -108,11 +108,11 @@ Concretely, the cooperative front door — `lockdownd` over `usbmuxd` — broker
 | `com.apple.mobile.diagnostics_relay` / `MCInstall` | Diagnostics, IORegistry, installed configuration profiles | AFU |
 | `com.apple.os_trace_relay` / `syslog_relay` | Live Unified Log / syslog stream | AFU |
 
-Note what is *not* on the menu: nothing here reaches a non-file-sharing app's **private** container, and nothing reaches Class-A data while the screen is locked. That gap is exactly why full-file-system acquisition — an on-device agent or an exploit — has to exist. → [[logical-acquisition-with-libimobiledevice]], [[full-file-system-acquisition]].
+Note what is *not* on the menu: nothing here reaches a non-file-sharing app's **private** container, and nothing reaches Class-A data while the screen is locked. That gap is exactly why full-file-system acquisition — an on-device agent or an exploit — has to exist. → [[04-logical-acquisition-with-libimobiledevice]], [[05-full-file-system-acquisition]].
 
 ### Lock state is the master variable
 
-You met BFU/AFU in [[passcode-bfu-afu-and-inactivity]]; here is the forensic restatement, because every acquisition decision keys off it.
+You met BFU/AFU in [[03-passcode-bfu-afu-and-inactivity]]; here is the forensic restatement, because every acquisition decision keys off it.
 
 | State | Definition | Class C/B/A keys in keybag? | Forensically reachable (roughly) |
 |---|---|---|---|
@@ -120,7 +120,7 @@ You met BFU/AFU in [[passcode-bfu-afu-and-inactivity]]; here is the forensic res
 | **AFU** (After First Unlock) | Unlocked **at least once** since boot, now locked. | Class C (the default for most app data) and B: **yes** (keys remain in RAM). Class A: depends. | The large majority of user data — most app SQLite stores, Messages, mail, much of Photos. The productive state. |
 | **Unlocked / passcode-known** | Screen unlocked, or you hold the passcode. | All classes keyed; can derive escrow/backup keys. | Everything the warrant allows, including full file system and encrypted backups. |
 
-The forensic implication is blunt: **an AFU device is a perishable asset and a BFU device is mostly a brick** for user data. The default Data-Protection class for newly created files is **`NSFileProtectionCompleteUntilFirstUserAuthentication`** (Class C) — which is *exactly* the class that stays unlocked through AFU and locks at BFU. That single design choice is why "keep it alive and AFU" is the prime directive at the scene, and why the inactivity reboot (below) is the threat you are racing. → [[bfu-vs-afu-and-data-protection-classes]] dissects the class lattice (A/B/C/D) and exactly which artifacts fall in each.
+The forensic implication is blunt: **an AFU device is a perishable asset and a BFU device is mostly a brick** for user data. The default Data-Protection class for newly created files is **`NSFileProtectionCompleteUntilFirstUserAuthentication`** (Class C) — which is *exactly* the class that stays unlocked through AFU and locks at BFU. That single design choice is why "keep it alive and AFU" is the prime directive at the scene, and why the inactivity reboot (below) is the threat you are racing. → [[02-bfu-vs-afu-and-data-protection-classes]] dissects the class lattice (A/B/C/D) and exactly which artifacts fall in each.
 
 > 🔬 **Forensics note:** "AFU" is not a single tier — it is a *floor*. Some high-value items (`NSFileProtectionComplete`, Class A: certain mail bodies, some health/keychain items, screen-locked-protected app data) re-lock the moment the screen locks, even within AFU. So two AFU acquisitions taken five seconds apart — one with the screen just-locked, one unlocked — can differ. When the warrant and the law allow it, acquire while *unlocked* and keep it awake; settle for AFU only when you must.
 
@@ -160,7 +160,7 @@ The *method* you can use is gated by the SoC, because the most powerful methods 
 
 Two things a disk examiner must not over-read:
 
-1. **A BootROM exploit is code execution, not a jailbreak and not a passcode bypass.** It gets you below the secure boot chain, but **the SEP, Data Protection, and the passcode still stand**. You still need lock state (or the passcode) to derive the user-data keys. checkm8/usbliter8 widen *which devices* you can do a BFU/physical extraction on; they do not magically decrypt a strong-passcode Class-C dataset. → [[boot-chain-securerom-iboot]], [[the-jailbreak-landscape-2026]].
+1. **A BootROM exploit is code execution, not a jailbreak and not a passcode bypass.** It gets you below the secure boot chain, but **the SEP, Data Protection, and the passcode still stand**. You still need lock state (or the passcode) to derive the user-data keys. checkm8/usbliter8 widen *which devices* you can do a BFU/physical extraction on; they do not magically decrypt a strong-passcode Class-C dataset. → [[01-boot-chain-securerom-iboot]], [[07-the-jailbreak-landscape-2026]].
 2. **The boundary moved, and it is not the one people quote.** The old shorthand "checkm8 dies at A11→A12" is stale: usbliter8 pushed the public BootROM-exploit frontier to **A8–A13**, and the real wall is now **A13→A14**. Re-verify this per-device at author time — exploit coverage is the most perishable fact in the whole field.
 
 ### The target is the ecosystem, not just the handset
@@ -168,7 +168,7 @@ Two things a disk examiner must not over-read:
 A disk is self-contained; an iPhone is a *node*. Three other sources routinely hold what the handset will not give you, and a competent examiner scopes all of them:
 
 - **The paired computer.** A seized Mac/PC that ever synced the phone holds (a) **pairing records** with an escrow keybag (`/var/db/lockdown/` on macOS, `%ProgramData%\Apple\Lockdown\` on Windows) that can authorize an AFU extraction *without* the on-device Trust prompt, and (b) possibly **local iTunes/Finder backups** at `~/Library/Application Support/MobileSync/Backup/<UDID>/` (macOS) or the `…\MobileSync\Backup\` tree under `%APPDATA%`/`%USERPROFILE%` (Windows) — a complete, already-extracted snapshot you can parse entirely offline. The fastest lawful path to a locked phone's data is sometimes its owner's laptop.
-- **iCloud.** Messages-in-iCloud, Photos, Drive, device backups, and the device list live server-side, reachable with the **Apple Account** credentials/token or by legal process to Apple — a separate authority track that **ADP** can render end-to-end-encrypted and unrecoverable. → [[icloud-acquisition-and-advanced-data-protection]].
+- **iCloud.** Messages-in-iCloud, Photos, Drive, device backups, and the device list live server-side, reachable with the **Apple Account** credentials/token or by legal process to Apple — a separate authority track that **ADP** can render end-to-end-encrypted and unrecoverable. → [[06-icloud-acquisition-and-advanced-data-protection]].
 - **The carrier.** Call-detail records, cell-site, and provisioning data live with the carrier under their own process (*Carpenter*).
 
 Scope the warrant — and your acquisition plan — to the *ecosystem*, then pick, per source, the least-mutating method the authority covers.
@@ -209,7 +209,7 @@ A seized iPhone with any live radio is a self-destructing evidence container. Th
 - **Faraday raises power draw.** A shielded phone hunts for signal at full transmit power and drains fast — and a **dead battery forces BFU** just like the inactivity reboot. So isolation and power must be solved *together*: a Faraday bag with an internal battery/charge pass-through, or a shielded acquisition tent/room where you can keep it powered. This is the scene-side corollary of the BFU clock.
 - **The cleanest isolation is a controlled acquisition environment**, not a bag indefinitely. The bag buys time to get the device to a shielded workstation where you can keep it AFU, powered, and proceed under the warrant.
 
-> 🔬 **Forensics note:** Find My / "Erase iPhone" and remote-lock events leave server-side and on-device traces (and the *Activation Lock* state is recorded against the device's identifiers). If a device is wiped post-seizure, the timing and source of the erase command become their own investigative thread — and a potential **obstruction/spoliation** matter. Document the isolation timeline precisely so a later wipe can be attributed to *before* your custody, not during it. → [[find-my-and-the-ble-mesh]].
+> 🔬 **Forensics note:** Find My / "Erase iPhone" and remote-lock events leave server-side and on-device traces (and the *Activation Lock* state is recorded against the device's identifiers). If a device is wiped post-seizure, the timing and source of the erase command become their own investigative thread — and a potential **obstruction/spoliation** matter. Document the isolation timeline precisely so a later wipe can be attributed to *before* your custody, not during it. → [[05-find-my-and-the-ble-mesh]].
 
 ### Chain of custody and the examiner mindset
 
@@ -233,7 +233,7 @@ A concrete intake entry looks like this, and you write it *before* you touch the
 
 Every later action appends to this log with its own authority line. The notebook, not the device, is the thing that does not change.
 
-> 🖥️ **macOS contrast:** On a dead-box Mac, integrity is *structural* — the write-blocker and the verified image make tampering physically hard, and the image's hash speaks for itself. On iOS, integrity is *procedural* — nothing physically prevents you from changing the device, so your **logging, hashing-on-output, and documented authorization** are the chain of custody. The examiner's notebook is not paperwork here; it is the evidentiary backbone that the static image was on macOS. → [[acquisition-sop-and-chain-of-custody]] turns this into a step-by-step SOP.
+> 🖥️ **macOS contrast:** On a dead-box Mac, integrity is *structural* — the write-blocker and the verified image make tampering physically hard, and the image's hash speaks for itself. On iOS, integrity is *procedural* — nothing physically prevents you from changing the device, so your **logging, hashing-on-output, and documented authorization** are the chain of custody. The examiner's notebook is not paperwork here; it is the evidentiary backbone that the static image was on macOS. → [[08-acquisition-sop-and-chain-of-custody]] turns this into a step-by-step SOP.
 
 ---
 
@@ -255,7 +255,7 @@ ideviceinfo -k ActivationState
 # error code -19" or a Trust-prompt requirement — the device is refusing service.
 ```
 
-`ProductType` → silicon is your acquisition-class lookup: `iPhone10,x` (A11, checkm8), `iPhone11,x`/`iPhone12,x` (A12/A13, usbliter8), `iPhone13,x`+ (A14+, the wall). Cross-reference with [[soc-lineup-and-device-matrix]].
+`ProductType` → silicon is your acquisition-class lookup: `iPhone10,x` (A11, checkm8), `iPhone11,x`/`iPhone12,x` (A12/A13, usbliter8), `iPhone13,x`+ (A14+, the wall). Cross-reference with [[00-soc-lineup-and-device-matrix]].
 
 **Inspect the trust relationship — the pairing record is itself an artifact.** When a Mac is "trusted," `usbmuxd` stores a pairing record (containing the escrow keybag material that enables AFU extraction) on the host:
 
@@ -301,7 +301,7 @@ plutil -p ~/Library/Application\ Support/MobileSync/Backup/*/Info.plist 2>/dev/n
   | grep -iE 'Product|Device Name|IMEI|Last Backup' | head
 ```
 
-This is the closest thing to a "static dead-box copy" iOS offers — and it may already exist on the host. The format is dissected in [[the-itunes-finder-backup-format]].
+This is the closest thing to a "static dead-box copy" iOS offers — and it may already exist on the host. The format is dissected in [[03-the-itunes-finder-backup-format]].
 
 **Spin up a Simulator to dissect *structure* (not encryption).** The Simulator has no SEP/Data Protection, so it teaches schema/layout, never lock-state behavior:
 
@@ -316,7 +316,7 @@ ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Applicati
 
 ## 🧪 Labs
 
-> Every lab here is **device-free**. None acquire content — this is the *landscape* lesson, so the labs build the mental model, the legal frame, and tool-readiness. The acquisition labs proper start in [[the-acquisition-taxonomy]] and [[logical-acquisition-with-libimobiledevice]].
+> Every lab here is **device-free**. None acquire content — this is the *landscape* lesson, so the labs build the mental model, the legal frame, and tool-readiness. The acquisition labs proper start in [[01-the-acquisition-taxonomy]] and [[04-logical-acquisition-with-libimobiledevice]].
 
 ### Lab 1 — Map the acquisition spectrum to your own toolbox (read-only, host)
 
@@ -348,7 +348,7 @@ ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Applicati
 
 1. Draft a 6-line **acquisition authorization checklist** you would complete before plugging in any seized iPhone: warrant number + scope summary; offenses/date-range/data-categories in scope; lock state at seizure; isolation method + time; authority for any unlock; planned method order (least-mutating first).
 2. For a hypothetical *AFU, locked, A14, no passcode* iPhone, write the decision: which methods are even possible, what the BFU clock means for your timeline, and which actions need *additional* authority (biometric compulsion? cloud pull?). Cite *Riley* and the 4A/5A distinction in your own words.
-3. Keep this checklist; [[acquisition-sop-and-chain-of-custody]] formalizes it into the full SOP.
+3. Keep this checklist; [[08-acquisition-sop-and-chain-of-custody]] formalizes it into the full SOP.
 
 ### Lab 5 — Remote-wipe & isolation tabletop (paper lab)
 
@@ -429,4 +429,4 @@ ls ~/Library/Developer/CoreSimulator/Devices/$DEV/data/Containers/Data/Applicati
 - **man pages / tools** — `ideviceinfo(1)`, `idevicebackup2(1)`, `idevicepair(1)`, `pymobiledevice3 --help`; Josh Hickman's iOS reference images (thebinaryhick.blog / Digital Corpora) for device-free labs.
 
 ---
-*Related lessons: [[the-acquisition-taxonomy]] | [[bfu-vs-afu-and-data-protection-classes]] | [[passcode-bfu-afu-and-inactivity]] | [[data-protection-and-keybags]] | [[acquisition-sop-and-chain-of-custody]] | [[icloud-acquisition-and-advanced-data-protection]] | [[macos-to-ios-mental-model-reset]]*
+*Related lessons: [[01-the-acquisition-taxonomy]] | [[02-bfu-vs-afu-and-data-protection-classes]] | [[03-passcode-bfu-afu-and-inactivity]] | [[02-data-protection-and-keybags]] | [[08-acquisition-sop-and-chain-of-custody]] | [[06-icloud-acquisition-and-advanced-data-protection]] | [[02-macos-to-ios-mental-model-reset]]*

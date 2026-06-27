@@ -16,13 +16,13 @@ last_reviewed: 2026-06-26
 
 You met the Secure Enclave already in `macos-mastery` — the T2 chip on Intel Macs, then the integrated SEP on Apple Silicon, holding FileVault keys you could not extract by DMA or cold boot. On iPhone and iPad the *same silicon lineage* does far more: it is the root of trust for Data Protection, the passcode-verification engine, the keystore behind every `kSecAttrTokenIDSecureEnclave` key, and the hardware that turns "guess the passcode" from a software problem into a physics problem.
 
-For a forensic examiner this is the most consequential block on the die. Almost every question you will ever ask about an iOS acquisition — *can I brute-force this? does chip-off help? is the wiped data recoverable? why is BFU different from AFU? does getting kernel code execution get me the keys?* — resolves to a property of this hardware, and getting the model wrong leads to wasted lab time and overpromised results in a report. This lesson stays strictly on the **silicon**: the cores, engines, memory protection, and fused keys. The software that runs on it (sepOS, the L4 microkernel, the keybag state machine) is [[sep-sepos-deep-dive]] in Part 03. Get the hardware model right first; everything in Parts 03 and 07 hangs off it.
+For a forensic examiner this is the most consequential block on the die. Almost every question you will ever ask about an iOS acquisition — *can I brute-force this? does chip-off help? is the wiped data recoverable? why is BFU different from AFU? does getting kernel code execution get me the keys?* — resolves to a property of this hardware, and getting the model wrong leads to wasted lab time and overpromised results in a report. This lesson stays strictly on the **silicon**: the cores, engines, memory protection, and fused keys. The software that runs on it (sepOS, the L4 microkernel, the keybag state machine) is [[01-sep-sepos-deep-dive]] in Part 03. Get the hardware model right first; everything in Parts 03 and 07 hangs off it.
 
 ## Concepts
 
 ### The SEP as a coprocessor on the die
 
-The Secure Enclave is not a chip you can point to on a board — since the A7 (2013) it is a region of the main SoC die, but a region with hardware walls around it. It shares the silicon with the Application Processor (AP — the P/E cores you metered in [[cpu-gpu-npu-microarchitecture]]) but shares almost nothing else: not the execution cores, not the cache, not the memory map. Apple's design rationale, verbatim: the SEP core *"is dedicated solely for Secure Enclave use. This helps prevent side-channel attacks that depend on malicious software sharing the same execution core as the target software under attack."*
+The Secure Enclave is not a chip you can point to on a board — since the A7 (2013) it is a region of the main SoC die, but a region with hardware walls around it. It shares the silicon with the Application Processor (AP — the P/E cores you metered in [[01-cpu-gpu-npu-microarchitecture]]) but shares almost nothing else: not the execution cores, not the cache, not the memory map. Apple's design rationale, verbatim: the SEP core *"is dedicated solely for Secure Enclave use. This helps prevent side-channel attacks that depend on malicious software sharing the same execution core as the target software under attack."*
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -66,11 +66,11 @@ Two things in that diagram are easy to miss and are the crux of the lesson. Firs
 
 Before the component tour, fix *why you should care* about each block: nearly every security-relevant subsystem you will investigate in Parts 03, 07, and 08 terminates at this hardware. The SEP is the hardware root for:
 
-- **Data Protection** — per-file class keys, the keybag, and the passcode-derived key all chain to the UID and are unwrapped by the SEP ([[data-protection-and-keybags]]).
+- **Data Protection** — per-file class keys, the keybag, and the passcode-derived key all chain to the UID and are unwrapped by the SEP ([[02-data-protection-and-keybags]]).
 - **The keychain** — items marked `kSecAttrTokenIDSecureEnclave`, and access-control'd items (`.whenUnlocked`, `.biometryCurrentSet`), are gated by the SEP/PKA.
-- **Biometrics** — Face ID/Touch ID matching runs in the Secure Neural Engine under the SEP; the AP sees only a yes/no ([[biometrics-hardware-faceid-touchid]]).
+- **Biometrics** — Face ID/Touch ID matching runs in the Secure Neural Engine under the SEP; the AP sees only a yes/no ([[06-biometrics-hardware-faceid-touchid]]).
 - **Passcode verification** — metered by the Secure Storage Component; the SEP is the only thing that can test a guess.
-- **FileVault / volume encryption equivalents and effaceable-storage crypto-erase** — UID-rooted wrapping keys ([[storage-nand-aes-effaceable]]).
+- **FileVault / volume encryption equivalents and effaceable-storage crypto-erase** — UID-rooted wrapping keys ([[03-storage-nand-aes-effaceable]]).
 - **Attestation, OS-bound keys, and secure boot of sepOS** — the PKA + Boot Monitor bind keys to device-and-OS.
 
 Misunderstand the silicon and you will mis-state what is acquirable, what is brute-forceable, and what is recoverable in *all* of those areas at once. That is why this is a Part 01 lesson, not a footnote in Part 07.
@@ -82,7 +82,7 @@ The SEP core is a small, dedicated processor that *"runs an Apple-customized ver
 - **It runs at a deliberately low clock.** Apple states it is *"designed to operate efficiently at a lower clock speed that helps to protect it against clock and power attacks."* A slow, fixed clock narrows the timing/glitch attack surface — you cannot race it the way you can a 4 GHz P-core.
 - **It is a real isolated core, not a hypervisor mode of the AP.** This is the difference between Apple's SEP and Arm TrustZone "secure world," which time-shares the *same* cores between secure and non-secure states. The SEP's physical separation is precisely what defeats the cross-core side channels TrustZone is exposed to.
 
-The SEP boots its own firmware (an Image4-wrapped `sep-firmware` payload personalized to the device — see [[image4-personalization-shsh]]) under the control of the Boot Monitor (below), establishing a chain of trust parallel to, and independent of, the AP's SecureROM→iBoot chain in [[boot-chain-securerom-iboot]].
+The SEP boots its own firmware (an Image4-wrapped `sep-firmware` payload personalized to the device — see [[02-image4-personalization-shsh]]) under the control of the Boot Monitor (below), establishing a chain of trust parallel to, and independent of, the AP's SecureROM→iBoot chain in [[01-boot-chain-securerom-iboot]].
 
 Coming from the Windows/Intel world you knew a TPM and Arm TrustZone; the SEP is neither, and the difference is the whole point:
 
@@ -96,7 +96,7 @@ That "physically separate core" line is exactly why Apple cites side-channel res
 
 ### The SEP Boot ROM: the immutable root
 
-The SEP has its **own Boot ROM** — mask ROM fixed in silicon at fabrication, *separate from* the AP's SecureROM ([[boot-chain-securerom-iboot]]). Like the AP's, it cannot be patched, updated, or reflashed: it is the immutable hardware anchor of the SEP's chain of trust. Two hardware jobs make it matter here:
+The SEP has its **own Boot ROM** — mask ROM fixed in silicon at fabrication, *separate from* the AP's SecureROM ([[01-boot-chain-securerom-iboot]]). Like the AP's, it cannot be patched, updated, or reflashed: it is the immutable hardware anchor of the SEP's chain of trust. Two hardware jobs make it matter here:
 
 - **It is the first link verified by hardware.** The SEP Boot ROM (with the Boot Monitor on A13+) is responsible for bringing up and measuring sepOS before any of it executes. Because it is unchangeable, a bug in sepOS *software* cannot rewrite the root that validates sepOS — the trust anchor is below the attack surface.
 - **It mints the Memory Protection Engine's ephemeral key.** As quoted above, *"the Secure Enclave Boot ROM generates a random ephemeral memory protection key for the Memory Protection Engine."* This happens at every boot, in ROM-resident code, before sepOS runs — which is why prior SEP DRAM is unrecoverable across a power cycle and why the boundary is anchored in hardware you cannot influence.
@@ -115,7 +115,7 @@ The mechanics, hardware-level:
 
 The security property is that the **request crosses the wall but the secret never does**. The AP asks "unwrap this class key"; the SEP unwraps it inside its own memory and hands back only a wrapped/usable handle. The plaintext class key, the UID, the passcode entropy — none of those is ever placed in a buffer the AP can read. You will see this same mailbox driver on the macOS host in the labs; the AP-side endpoints (`AppleSEPManager`, `AppleSEPUserClient`, `AppleSEPSharedMemoryChannel`) are visible in `ioreg`, but the SEP side of the conversation is opaque.
 
-> 🔬 **Forensics note:** This is why "just read the keys out of RAM" fails on a live, unlocked iPhone the way it sometimes works on commodity hardware. Even with a kernel-level memory read primitive on the AP (the kind a full-file-system exploit gives you — [[full-file-system-acquisition]]), the SEP's DRAM region is encrypted and authenticated by the Memory Protection Engine; the AP sees ciphertext. The keys you can recover from AP memory are the *already-unwrapped* class keys sepOS deliberately handed up for files in the current lock state — never the UID, and never anything for a protection class whose key the SEP has not released. The lock state at seizure decides what is in AP memory to take.
+> 🔬 **Forensics note:** This is why "just read the keys out of RAM" fails on a live, unlocked iPhone the way it sometimes works on commodity hardware. Even with a kernel-level memory read primitive on the AP (the kind a full-file-system exploit gives you — [[05-full-file-system-acquisition]]), the SEP's DRAM region is encrypted and authenticated by the Memory Protection Engine; the AP sees ciphertext. The keys you can recover from AP memory are the *already-unwrapped* class keys sepOS deliberately handed up for files in the current lock state — never the UID, and never anything for a protection class whose key the SEP has not released. The lock state at seizure decides what is in AP memory to take.
 
 ### The Memory Protection Engine (encrypted + authenticated SEP DRAM)
 
@@ -136,9 +136,9 @@ SEP read  block →  verify CMAC tag + nonce vs SRAM-rooted tree
                      └─ mismatch → reject (tamper/replay detected)
 ```
 
-The key for all of this is **ephemeral**: *"the Secure Enclave Boot ROM generates a random ephemeral memory protection key for the Memory Protection Engine"* at each boot. It exists only in SEP hardware, only for that boot session. Power-cycle the device and the entire prior SEP DRAM image becomes undecryptable noise — which is part of why a reboot to BFU is such a hard security boundary (see [[passcode-bfu-afu-and-inactivity]]).
+The key for all of this is **ephemeral**: *"the Secure Enclave Boot ROM generates a random ephemeral memory protection key for the Memory Protection Engine"* at each boot. It exists only in SEP hardware, only for that boot session. Power-cycle the device and the entire prior SEP DRAM image becomes undecryptable noise — which is part of why a reboot to BFU is such a hard security boundary (see [[03-passcode-bfu-afu-and-inactivity]]).
 
-On **A14/M1 and later** the MPE keeps *two* ephemeral keys: one for memory private to the SEP, and a second for memory shared with the **Secure Neural Engine** (the Face ID matching subsystem — [[biometrics-hardware-faceid-touchid]]), so biometric working data is cryptographically separated from the rest of SEP state even in DRAM.
+On **A14/M1 and later** the MPE keeps *two* ephemeral keys: one for memory private to the SEP, and a second for memory shared with the **Secure Neural Engine** (the Face ID matching subsystem — [[06-biometrics-hardware-faceid-touchid]]), so biometric working data is cryptographically separated from the rest of SEP state even in DRAM.
 
 > 🖥️ **macOS contrast:** This is the same Memory Protection Engine in your Mac's SEP. The forensic upshot is the one you learned for FileVault: a DRAM/cold-boot capture of an Apple Silicon machine yields SEP ciphertext, not keys. The integrity tree's SRAM root is the piece that makes even a *frozen* DRAM image worthless for replay — there is no off-chip copy of the root to splice back in.
 
@@ -174,7 +174,7 @@ UID (fused in SEP silicon — usable by AES Engine, readable by nothing)
  └─ class-D key (NSFileProtectionNone): UID-only, no passcode factor
 ```
 
-The passcode-to-key derivation is *"tangled"* with the UID inside the AES Engine, and the derivation is **deliberately slow** (calibrated to ~80 ms per attempt on-device). The class-key/keybag layers are [[data-protection-and-keybags]]; what matters at the silicon level is that **every step that touches the UID must execute on this specific SEP's AES Engine.** There is no transcript of the UID to take elsewhere.
+The passcode-to-key derivation is *"tangled"* with the UID inside the AES Engine, and the derivation is **deliberately slow** (calibrated to ~80 ms per attempt on-device). The class-key/keybag layers are [[02-data-protection-and-keybags]]; what matters at the silicon level is that **every step that touches the UID must execute on this specific SEP's AES Engine.** There is no transcript of the UID to take elsewhere.
 
 > ⚖️ **Authorization:** The non-extractability of the UID is also the legal/operational reality you must brief stakeholders on. "Can the lab clone the chip and brute-force the passcode on a farm of GPUs?" The honest answer is no: the derivation is bound to fused silicon that cannot be read or copied. Off-device passcode attack is not a budget question — it is foreclosed by the hardware. Acquisition strategy must be built around *on-device* exploitation and lock state, not around extracting key material. Set expectations accordingly and document the hardware basis in your report.
 
@@ -228,7 +228,7 @@ The protocol, hardware-enforced:
 1. **Create.** The SEP sends the IC a passcode entropy value and a max-attempt value. The component generates the salt with its own RNG and derives a passcode verifier and a *lockbox entropy value*.
 2. **Verify.** On a passcode attempt the SEP asks the component to check a candidate. The component **increments the counter first**, then compares verifiers. *"If the incremented counter exceeds the maximum attempt value, the Secure Storage Component completely erases the counter lockbox."* If the verifier matches, it *"returns the lockbox entropy value to the Secure Enclave and resets the counter to 0."*
 
-Because the counter lives on a separate tamper-detecting IC reachable only via the authenticated protocol, **you cannot reset it by replaying old flash contents, glitching the SEP, or imaging and re-imaging NAND.** Exceeding the limit doesn't just lock you out — it *erases the lockbox*, destroying the entropy required to unlock the data. This is the silicon behind the on-screen escalating delays (1 → 5 → 15 → 60 minutes …) and the "Erase Data after 10 attempts" setting; those policies are software, but the un-bypassable counting underneath them is this chip. (The full attempt-delay schedule and BFU/AFU interaction is [[passcode-bfu-afu-and-inactivity]].)
+Because the counter lives on a separate tamper-detecting IC reachable only via the authenticated protocol, **you cannot reset it by replaying old flash contents, glitching the SEP, or imaging and re-imaging NAND.** Exceeding the limit doesn't just lock you out — it *erases the lockbox*, destroying the entropy required to unlock the data. This is the silicon behind the on-screen escalating delays (1 → 5 → 15 → 60 minutes …) and the "Erase Data after 10 attempts" setting; those policies are software, but the un-bypassable counting underneath them is this chip. (The full attempt-delay schedule and BFU/AFU interaction is [[03-passcode-bfu-afu-and-inactivity]].)
 
 > 🔬 **Forensics note:** The Secure Storage Component is *the* reason a modern (A12/Fall-2020+) iPhone cannot be brute-forced even with a perfect NAND copy and a SEP exploit that lets you submit guesses. Each guess is metered by a counter on a chip you cannot reset, and overshooting wipes the lockbox entropy. Legacy attacks against pre-Secure-Storage devices (and the GrayKey-era races) targeted exactly the absence of this metering. When triaging a device for acquisition, the SoC + ship date tells you which generation you face and therefore whether attempt-limited attack is even theoretically on the table — checkm8-class devices (A8–A11, no Secure Storage Component) are a different world from A12+.
 
@@ -264,9 +264,9 @@ The SEP is not one fixed design — Apple has hardened it block-by-block across 
 | **2nd-gen** Secure Storage Component (**counter lockboxes**) | **Devices first shipped Fall 2020** | The un-resettable 8-bit attempt counter + self-erase |
 | MPE **dual ephemeral keys** (SEP + Secure Neural Engine) | **A14 / M1** | Biometric working data cryptographically split from the rest |
 
-The single most consequential line for an examiner is the **A12 / Fall-2020** Secure Storage Component boundary: it separates the checkm8-era "no hardware attempt metering" devices (A8–A11) from the modern "hardware-metered, self-erasing" devices that dominate the field. Identify the SoC and ship date first (see [[soc-lineup-and-device-matrix]]); it determines the entire feasibility envelope of the acquisition.
+The single most consequential line for an examiner is the **A12 / Fall-2020** Secure Storage Component boundary: it separates the checkm8-era "no hardware attempt metering" devices (A8–A11) from the modern "hardware-metered, self-erasing" devices that dominate the field. Identify the SoC and ship date first (see [[00-soc-lineup-and-device-matrix]]); it determines the entire feasibility envelope of the acquisition.
 
-> ⚠️ **ADVANCED — 2026 trajectory (dated):** On **A19 / A19 Pro** (iPhone 17 family) Apple extends always-on memory integrity from the SEP *outward to the Application Processor* with **Memory Integrity Enforcement (MIE)** — Enhanced Memory Tagging Extension (EMTE) plus the SPTM/TXM and Exclaves hardening you'll meet in [[sep-sepos-deep-dive]] and the Part 03 kernel-hardening lesson. Conceptually MIE is the SEP's Memory Protection Engine philosophy — *don't trust DRAM; authenticate every access* — generalized to the whole SoC. Treat the specific A19/MIE claims as 2026-era and verify against the current Platform Security guide; the *durable* point is that the SEP's encrypted-authenticated-memory model is the template the rest of the chip is now adopting.
+> ⚠️ **ADVANCED — 2026 trajectory (dated):** On **A19 / A19 Pro** (iPhone 17 family) Apple extends always-on memory integrity from the SEP *outward to the Application Processor* with **Memory Integrity Enforcement (MIE)** — Enhanced Memory Tagging Extension (EMTE) plus the SPTM/TXM and Exclaves hardening you'll meet in [[01-sep-sepos-deep-dive]] and the Part 03 kernel-hardening lesson. Conceptually MIE is the SEP's Memory Protection Engine philosophy — *don't trust DRAM; authenticate every access* — generalized to the whole SoC. Treat the specific A19/MIE claims as 2026-era and verify against the current Platform Security guide; the *durable* point is that the SEP's encrypted-authenticated-memory model is the template the rest of the chip is now adopting.
 
 ### Why this silicon makes off-device attack impossible — the synthesis
 
@@ -275,11 +275,11 @@ Pull the threads together, because this is the model you will reason from for th
 1. **Brute force must run on *this* SEP.** The passcode→key derivation is keyed by the fused UID, which executes only inside this device's AES Engine and is readable by nothing. There is no key material to exfiltrate and attack on a cluster. A guess is only testable on the device.
 2. **The device meters every guess.** The Secure Storage Component counts attempts in tamper-resistant silicon and erases the entropy on overflow. You get a small, fixed number of slow on-device tries — not billions of fast off-device ones.
 3. **Reboot collapses the working state.** The MPE's ephemeral key is regenerated each boot, so prior SEP DRAM is unrecoverable, and at BFU only class-D (UID-only) keys are available — the passcode-derived keys do not exist in memory until the passcode is entered again.
-4. **Crypto-erase is irreversible.** "Erase All Content and Settings" — and the failed-attempt wipe — work by destroying the small wrapping keys in **effaceable storage** ([[storage-nand-aes-effaceable]]) whose root of trust is the UID. Once those wrapping keys are gone, the bulk NAND ciphertext is undecryptable forever, because the only thing that could re-derive the chain is the fused UID, and *it was never the missing piece* — the deleted wrapping keys were. There is no copy anywhere. This is why iOS "remote wipe" is instantaneous and final: it is a key-deletion, not a data-overwrite.
+4. **Crypto-erase is irreversible.** "Erase All Content and Settings" — and the failed-attempt wipe — work by destroying the small wrapping keys in **effaceable storage** ([[03-storage-nand-aes-effaceable]]) whose root of trust is the UID. Once those wrapping keys are gone, the bulk NAND ciphertext is undecryptable forever, because the only thing that could re-derive the chain is the fused UID, and *it was never the missing piece* — the deleted wrapping keys were. There is no copy anywhere. This is why iOS "remote wipe" is instantaneous and final: it is a key-deletion, not a data-overwrite.
 
 That fourth point is worth internalizing as a forensic certainty: a properly crypto-erased iOS device is not "hard to recover" — it is *information-theoretically gone*. Chip-off recovers ciphertext with no path to a key.
 
-The whole lock-state question that dominates [[bfu-vs-afu-and-data-protection-classes]] reduces to *which keys the SEP has released into AP-reachable memory*. As a hardware-level cheat sheet:
+The whole lock-state question that dominates [[02-bfu-vs-afu-and-data-protection-classes]] reduces to *which keys the SEP has released into AP-reachable memory*. As a hardware-level cheat sheet:
 
 | Device state at seizure | What the SEP has unwrapped / what's reachable |
 |---|---|
@@ -346,7 +346,7 @@ unzip -l *.ipsw | grep -i sep
 ipsw info *.ipsw | grep -i sep
 ```
 
-Described result: the `sep-firmware.*.im4p` is an **Image4 payload** (`IM4P`) — the sepOS image, personalized and (on A12+) encrypted. You can see *that it exists* and *that it is Image4-wrapped and signed*, which is the hardware-trust story; you cannot decrypt or run it. Reverse-engineering sepOS itself is [[sep-sepos-deep-dive]] / [[the-jailbreak-landscape-2026]].
+Described result: the `sep-firmware.*.im4p` is an **Image4 payload** (`IM4P`) — the sepOS image, personalized and (on A12+) encrypted. You can see *that it exists* and *that it is Image4-wrapped and signed*, which is the hardware-trust story; you cannot decrypt or run it. Reverse-engineering sepOS itself is [[01-sep-sepos-deep-dive]] / [[07-the-jailbreak-landscape-2026]].
 
 ```bash
 # Extract the raw IM4P payload and inspect its framing (still no decryption on A12+):
@@ -355,7 +355,7 @@ xxd sep-firmware.*.payload | head        # four-cc 'IM4P' framing, then the
                                           # 'sepi' / compressed body — opaque on A12+
 ```
 
-The point of the lab is the *boundary*: the Image4 wrapper and signature are inspectable (that is the chain-of-trust surface in [[image4-personalization-shsh]]); the sepOS body on a modern device is not, because its decryption key is itself a SEP-held, GID-derived secret.
+The point of the lab is the *boundary*: the Image4 wrapper and signature are inspectable (that is the chain-of-trust surface in [[02-image4-personalization-shsh]]); the sepOS body on a modern device is not, because its decryption key is itself a SEP-held, GID-derived secret.
 
 ### Feel non-extractability: a Secure Enclave key on the host SEP
 
@@ -396,7 +396,7 @@ ideviceinfo -k ChipID             # numeric SoC id
 #   shipped Fall-2020+ → 2nd-gen (counter lockboxes / hardware attempt metering)
 ```
 
-The output you care about is a yes/no on **Secure Storage Component generation**, because that decides whether hardware-metered passcode attack even exists for this device — your single most important feasibility gate (cross-reference [[soc-lineup-and-device-matrix]] and [[the-acquisition-taxonomy]]). Note `UniqueChipID` is the **ECID** — useful, exposed, and *not* the secret UID.
+The output you care about is a yes/no on **Secure Storage Component generation**, because that decides whether hardware-metered passcode attack even exists for this device — your single most important feasibility gate (cross-reference [[00-soc-lineup-and-device-matrix]] and [[01-the-acquisition-taxonomy]]). Note `UniqueChipID` is the **ECID** — useful, exposed, and *not* the secret UID.
 
 ### The copy-before-query reflex still applies (artifacts side)
 
@@ -417,7 +417,7 @@ The SEP itself stores nothing on the filesystem, but the keybag/keystore state i
 
 1. Install `ipsw` (`brew install blacktop/tap/ipsw`) or obtain any iPhone IPSW.
 2. `unzip -l <ipsw> | grep -i sep` and `ipsw info <ipsw> | grep -i sep`. Locate `sep-firmware.<board>.RELEASE.im4p`.
-3. Confirm the payload is Image4: note the `IM4P` four-cc / Apple's `img4` framing. Record the per-device personalization implication (its digest appears in the device's SHSH at restore — [[image4-personalization-shsh]]).
+3. Confirm the payload is Image4: note the `IM4P` four-cc / Apple's `img4` framing. Record the per-device personalization implication (its digest appears in the device's SHSH at restore — [[02-image4-personalization-shsh]]).
 4. State plainly what you *can* learn statically (existence, signing, that A12+ payloads are encrypted) and what you cannot (decrypt/run sepOS). That boundary is the hardware-trust model.
 
 ### Lab 3 — Non-extractability at the API (host SEP)
@@ -440,7 +440,7 @@ The AP↔SEP key operations are observable in the unified log on your Mac (the k
 
 > ⚠️ **ADVANCED / device-only — do not attempt against real evidence.** This is a *thought-experiment walkthrough*, not a runnable lab; there is no Mac substrate for the Secure Storage Component.
 
-Trace, on paper, what happens on an A12+/Fall-2020+ iPhone for each wrong passcode entry: SEP sends candidate entropy → Secure Storage Component **increments the 8-bit counter first** → compares the 128-bit verifier → on mismatch, returns failure and the SEP escalates the UI delay; on counter > max, the component **erases the counter lockbox** (destroying the lockbox entropy). Now answer: (a) why imaging and re-flashing the NAND does not reset the counter; (b) why this defeats the off-device GPU brute-force a naïve examiner might propose; (c) how this differs on a checkm8 A8–A11 device with *no* Secure Storage Component. Cross-check your answers against [[passcode-bfu-afu-and-inactivity]] and [[the-acquisition-taxonomy]].
+Trace, on paper, what happens on an A12+/Fall-2020+ iPhone for each wrong passcode entry: SEP sends candidate entropy → Secure Storage Component **increments the 8-bit counter first** → compares the 128-bit verifier → on mismatch, returns failure and the SEP escalates the UI delay; on counter > max, the component **erases the counter lockbox** (destroying the lockbox entropy). Now answer: (a) why imaging and re-flashing the NAND does not reset the counter; (b) why this defeats the off-device GPU brute-force a naïve examiner might propose; (c) how this differs on a checkm8 A8–A11 device with *no* Secure Storage Component. Cross-check your answers against [[03-passcode-bfu-afu-and-inactivity]] and [[01-the-acquisition-taxonomy]].
 
 ## Pitfalls & gotchas
 
@@ -449,8 +449,8 @@ Trace, on paper, what happens on an A12+/Fall-2020+ iPhone for each wrong passco
 - **UID ≠ UDID ≠ serial ≠ ECID.** The fused **UID** is the unreadable hardware root key. The **UDID** (and the newer per-install identifiers), the **serial number**, and the **ECID** (the exposed unique chip ID used in personalization/SHSH) are *externally visible* identifiers — they have nothing to do with the secret UID and cannot be used to derive it. Mixing these up produces nonsense forensic claims.
 - **"Secure Enclave" vs "Secure Storage Component" are different chips.** The SEP is a region of the SoC die; the Secure Storage Component is a *separate IC*. Anti-replay for SEP *memory* (the integrity tree in SRAM, A11/S4+) and the *passcode-attempt* counter lockboxes (the separate IC, A12/S4+, 2nd-gen Fall-2020+) are two different anti-replay mechanisms at two different layers. Don't conflate them.
 - **Generation tracks ship date, not just SoC.** The same A12/A13/S4/S5 silicon shipped with a *1st-gen* Secure Storage Component before Fall 2020 and a *2nd-gen* one (counter lockboxes) after. When you classify a device's brute-force exposure, key off the *product release date*, not the chip name alone.
-- **A reboot is a security event, not a convenience.** The MPE's ephemeral key is regenerated at boot and prior SEP DRAM becomes undecryptable; combined with the keybag dropping to BFU, this changes what is acquirable. Never reboot a seized device "to see if it helps" — you may move it from AFU to BFU and lose class-C access. (See [[passcode-bfu-afu-and-inactivity]].)
-- **Crypto-erase is final — don't promise recovery.** The failed-attempt wipe and "Erase All Content and Settings" delete effaceable wrapping keys rooted in the UID. There is no overwrite to undo and no key to re-derive. Recovering "deleted" *files* on a non-wiped device is a different problem ([[deleted-data-recovery]]); a key-destroyed device is unrecoverable.
+- **A reboot is a security event, not a convenience.** The MPE's ephemeral key is regenerated at boot and prior SEP DRAM becomes undecryptable; combined with the keybag dropping to BFU, this changes what is acquirable. Never reboot a seized device "to see if it helps" — you may move it from AFU to BFU and lose class-C access. (See [[03-passcode-bfu-afu-and-inactivity]].)
+- **Crypto-erase is final — don't promise recovery.** The failed-attempt wipe and "Erase All Content and Settings" delete effaceable wrapping keys rooted in the UID. There is no overwrite to undo and no key to re-derive. Recovering "deleted" *files* on a non-wiped device is a different problem ([[14-deleted-data-recovery]]); a key-destroyed device is unrecoverable.
 - **checkm8 (A8–A11) is a pre-Secure-Storage world.** Those devices have a SEP but *no* Secure Storage Component, and a BootROM exploit. The whole "attempt-limited, hardware-metered" model in this lesson is an A12+ story; reasoning about an A11 device with A14 assumptions will mislead you.
 - **`SecureEnclave.isAvailable == false` on the Simulator is not a bug.** CryptoKit reports the SEP as unavailable in the iOS Simulator because there is no SEP there. Don't "fix" it; run SEP-touching code as a native macOS binary against the host SEP, or accept it as a known Simulator limitation in your test plan.
 - **Biometry lockout ≠ passcode lockout — both involve the SEP, separately.** After five failed Face ID/Touch ID matches the SEP disables biometric unlock and demands the passcode; that is a *different* SEP-enforced counter than the Secure Storage Component's passcode lockbox. Conflating "biometrics locked out" with "passcode attempts exhausted" will mislead a seizure assessment — the device may still accept the passcode normally.
@@ -499,4 +499,4 @@ Trace, on paper, what happens on an A12+/Fall-2020+ iPhone for each wrong passco
 - **Project Zero / Quarkslab / Trail of Bits** SEP and sepOS write-ups — for the attack-surface view (carried into Part 03 and Part 11).
 
 ---
-*Related lessons: [[cpu-gpu-npu-microarchitecture]] | [[sep-sepos-deep-dive]] | [[data-protection-and-keybags]] | [[passcode-bfu-afu-and-inactivity]] | [[storage-nand-aes-effaceable]] | [[biometrics-hardware-faceid-touchid]]*
+*Related lessons: [[01-cpu-gpu-npu-microarchitecture]] | [[01-sep-sepos-deep-dive]] | [[02-data-protection-and-keybags]] | [[03-passcode-bfu-afu-and-inactivity]] | [[03-storage-nand-aes-effaceable]] | [[06-biometrics-hardware-faceid-touchid]]*

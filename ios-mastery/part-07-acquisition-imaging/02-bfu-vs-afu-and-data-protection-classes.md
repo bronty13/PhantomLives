@@ -16,7 +16,7 @@ last_reviewed: 2026-06-26
 
 On the learner's Mac, FileVault is a binary: the volume is either locked (you have ciphertext and a recovery-key problem) or unlocked (you have everything). iOS does not work like that, and assuming it does is the single most expensive mistake in mobile acquisition. An iPhone that is sitting on your bench with the lock screen showing has *most* of its keys resident in RAM — it is nothing like a locked FileVault volume — but a different iPhone that rebooted forty minutes ago and is showing the identical lock screen has almost *no* user keys resident. Same UI, same "mounted" filesystem, wildly different evidentiary value.
 
-This lesson turns [[passcode-bfu-afu-and-inactivity]] from a security-model fact into an operational decision procedure. By the end you will be able to look at a seized device, classify its state, predict exactly which artifacts will decrypt, and read the two countdown clocks that are racing to take that data away from you. Getting this wrong means waiting three days for a tool update and watching the device crypto-shred itself back to BFU; getting it right means you isolate, power, and preserve correctly in the first ten minutes.
+This lesson turns [[03-passcode-bfu-afu-and-inactivity]] from a security-model fact into an operational decision procedure. By the end you will be able to look at a seized device, classify its state, predict exactly which artifacts will decrypt, and read the two countdown clocks that are racing to take that data away from you. Getting this wrong means waiting three days for a tool update and watching the device crypto-shred itself back to BFU; getting it right means you isolate, power, and preserve correctly in the first ten minutes.
 
 ## Concepts
 
@@ -26,7 +26,7 @@ This lesson turns [[passcode-bfu-afu-and-inactivity]] from a security-model fact
 
 ### Per-file keys and the wrapping chain
 
-Every file on the iOS Data volume gets its own random **per-file key** (AES-256) at creation. That key encrypts the file's contents. The per-file key is then **wrapped** (key-encrypted) by one of four **class keys** and the wrapped blob is stored in the file's metadata — the `cprotect` attribute carried in the APFS extended-attribute/inode metadata. The file *metadata itself* is encrypted with a volume-wide **metadata key** that lives in **Effaceable Storage** (a small, securely-eraseable NAND region — see [[storage-nand-aes-effaceable]]); wiping that one key is what makes "Erase All Content and Settings" instantaneous (crypto-shred).
+Every file on the iOS Data volume gets its own random **per-file key** (AES-256) at creation. That key encrypts the file's contents. The per-file key is then **wrapped** (key-encrypted) by one of four **class keys** and the wrapped blob is stored in the file's metadata — the `cprotect` attribute carried in the APFS extended-attribute/inode metadata. The file *metadata itself* is encrypted with a volume-wide **metadata key** that lives in **Effaceable Storage** (a small, securely-eraseable NAND region — see [[03-storage-nand-aes-effaceable]]); wiping that one key is what makes "Erase All Content and Settings" instantaneous (crypto-shred).
 
 ```
 File contents
@@ -35,7 +35,7 @@ File contents
               (the cprotect metadata is itself encrypted by the
                volume METADATA KEY held in Effaceable Storage — the crypto-erase target)
 
-  CLASS KEYS live in the SYSTEM KEYBAG (see [[data-protection-and-keybags]]):
+  CLASS KEYS live in the SYSTEM KEYBAG (see [[02-data-protection-and-keybags]]):
      Class D key   ── wrapped by:  UID-derived key  ONLY            → available at BFU
      Class A/B/C   ── wrapped by:  passcode ⊗ UID  (SEP-entangled)  → available only after 1st unlock
 ```
@@ -43,7 +43,7 @@ File contents
 The whole game is in that last block. The class keys are stored in the **system keybag**, and *how each class key is wrapped* is what makes BFU and AFU different states:
 
 - **Class D key** is wrapped using only a key derived from the hardware **UID** (fused into the SoC/SEP, never extractable). The SEP can unwrap it the instant the device powers on, with **no passcode**. So Class D data is readable in *every* state, including a freshly-booted, never-unlocked device.
-- **Class A / B / C keys** are wrapped using a key the SEP derives by **entangling the passcode with the UID**. The SEP will only produce that key after the user (or you) has entered the correct passcode at least once since boot. Until then those three class keys are mathematically unavailable — the SEP literally cannot compute them, and it rate-limits guessing (escalating delays enforced inside the SEP; see [[sep-sepos-deep-dive]]).
+- **Class A / B / C keys** are wrapped using a key the SEP derives by **entangling the passcode with the UID**. The SEP will only produce that key after the user (or you) has entered the correct passcode at least once since boot. Until then those three class keys are mathematically unavailable — the SEP literally cannot compute them, and it rate-limits guessing (escalating delays enforced inside the SEP; see [[01-sep-sepos-deep-dive]]).
 
 So **BFU vs AFU is not a UI state — it is "has the SEP unwrapped the A/B/C class keys since the last boot?"** First correct passcode entry flips that bit. A reboot (or inactivity reboot, or kernel panic, or power loss) clears it.
 
@@ -117,11 +117,11 @@ Read it as three columns of decreasing pain:
 
 ### Why this dominates *every* acquisition decision
 
-Everything downstream — which method ([[the-acquisition-taxonomy]]), whether a backup is worth taking ([[the-itunes-finder-backup-format]]), whether a full-file-system pull will even decrypt ([[full-file-system-acquisition]]) — is gated by the cell you land in.
+Everything downstream — which method ([[01-the-acquisition-taxonomy]]), whether a backup is worth taking ([[03-the-itunes-finder-backup-format]]), whether a full-file-system pull will even decrypt ([[05-full-file-system-acquisition]]) — is gated by the cell you land in.
 
-- **A logical/backup acquisition needs AFU.** A `mobilebackup2` backup (and `libimobiledevice` logical pulls — [[logical-acquisition-with-libimobiledevice]]) require the device to be **unlocked and paired/trusted**; in BFU the device refuses to start the backup service and the pairing record won't validate. You cannot back up a BFU phone.
-- **A full-file-system extraction in BFU returns mostly Class D.** Even if your exploit gives you root and a raw image, the **bytes you read are still wrapped by class keys the SEP won't release**. Root does not equal plaintext on iOS — the crypto is below you. (A BootROM exploit like checkm8/usbliter8 gives code-exec *below signature checks*, but **does not defeat Data Protection** — you still need lock state + the SEP to release keys. See the sibling lesson [[full-file-system-acquisition]].)
-- **The keychain has its own class system** mirroring file classes (`kSecAttrAccessibleWhenUnlocked` ≈ A, `…AfterFirstUnlock` ≈ C, `…Always`/deprecated ≈ D, plus `…ThisDeviceOnly` variants that block migration). Same matrix logic applies: in BFU you get only the `Always`/`ThisDeviceOnly`-`AfterFirstUnlock`-but-already-resident items — most credentials are sealed. See [[keychain-on-ios]].
+- **A logical/backup acquisition needs AFU.** A `mobilebackup2` backup (and `libimobiledevice` logical pulls — [[04-logical-acquisition-with-libimobiledevice]]) require the device to be **unlocked and paired/trusted**; in BFU the device refuses to start the backup service and the pairing record won't validate. You cannot back up a BFU phone.
+- **A full-file-system extraction in BFU returns mostly Class D.** Even if your exploit gives you root and a raw image, the **bytes you read are still wrapped by class keys the SEP won't release**. Root does not equal plaintext on iOS — the crypto is below you. (A BootROM exploit like checkm8/usbliter8 gives code-exec *below signature checks*, but **does not defeat Data Protection** — you still need lock state + the SEP to release keys. See the sibling lesson [[05-full-file-system-acquisition]].)
+- **The keychain has its own class system** mirroring file classes (`kSecAttrAccessibleWhenUnlocked` ≈ A, `…AfterFirstUnlock` ≈ C, `…Always`/deprecated ≈ D, plus `…ThisDeviceOnly` variants that block migration). Same matrix logic applies: in BFU you get only the `Always`/`ThisDeviceOnly`-`AfterFirstUnlock`-but-already-resident items — most credentials are sealed. See [[08-keychain-on-ios]].
 
 The operational corollary: **device state at the moment of seizure is your single most valuable, most perishable fact.** Record it before you do anything else, and treat it as evidence.
 
@@ -131,7 +131,7 @@ Seizing an AFU device does not freeze it in AFU. Two independent countdowns star
 
 #### Clock 1 — USB Restricted Mode (~1 hour)
 
-Since iOS 11.4.1, if the device has been **locked for ~1 hour** with no USB data accessory connected, iOS disables the **data** pins on the Lightning/USB-C port (charging continues). After that, a forensic bridge can power the phone but cannot speak the USB protocols an acquisition tool needs. The setting is *Settings → Face ID & Passcode → Allow Access When Locked → Accessories*; **Lockdown Mode** ([[advanced-protections-lockdown-sdp-adp]]) hardens it further by disabling wired data while locked outright.
+Since iOS 11.4.1, if the device has been **locked for ~1 hour** with no USB data accessory connected, iOS disables the **data** pins on the Lightning/USB-C port (charging continues). After that, a forensic bridge can power the phone but cannot speak the USB protocols an acquisition tool needs. The setting is *Settings → Face ID & Passcode → Allow Access When Locked → Accessories*; **Lockdown Mode** ([[09-advanced-protections-lockdown-sdp-adp]]) hardens it further by disabling wired data while locked outright.
 
 The mechanism has had bypasses — most recently **CVE-2025-24200**, an Accessibility-framework flaw that let a physical attacker disable USB Restricted Mode, **patched in iOS 18.3.1 (Feb 2025)**. Assume on a current (≥18.3.1, 26.x) device the ~1-hour clock holds.
 
@@ -145,7 +145,7 @@ The reboot's purpose is precisely to **demote AFU → BFU**: it flushes the Clas
 
 The two clocks compound. A device seized AFU-screen-locked is on **both** countdowns at once: the ~1-hour USB clock (already ticking, possibly already expired) decides whether you can *connect*, and the ≤72-hour inactivity clock decides whether the data is even still *resident* to extract. And — the cruel part — **if the device was already locked when you seized it, you cannot tell how much of either clock is left.** You don't know when it was last unlocked, so you must assume the worst: minutes, not hours.
 
-> ⚖️ **Authorization:** Keeping a device powered, networked-isolated, and out of its inactivity reboot is **evidence preservation**, and the lawful basis for it (warrant, consent, exigent circumstances) must already be in place — powering and connecting a seized phone is a search. Document the device state at seizure (screen on/off, locked/unlocked, battery %, time on screen), the time you connected power, and every tool you attached, in the chain-of-custody log ([[acquisition-sop-and-chain-of-custody]]). The two clocks are exactly why "we'll image it next week" is sometimes legally and technically indefensible.
+> ⚖️ **Authorization:** Keeping a device powered, networked-isolated, and out of its inactivity reboot is **evidence preservation**, and the lawful basis for it (warrant, consent, exigent circumstances) must already be in place — powering and connecting a seized phone is a search. Document the device state at seizure (screen on/off, locked/unlocked, battery %, time on screen), the time you connected power, and every tool you attached, in the chain-of-custody log ([[08-acquisition-sop-and-chain-of-custody]]). The two clocks are exactly why "we'll image it next week" is sometimes legally and technically indefensible.
 
 ### Vendor countermeasures: fighting the reboot clock
 
@@ -293,7 +293,7 @@ Run both forms. The second — the realistic "we don't know when it was last unl
 - **A Faraday bag without power is a timer to BFU.** Isolation stops remote wipe but a flat battery powers the phone off → next boot is BFU. You need isolation **and** pass-through power.
 - **USB Restricted Mode is a transport loss, not a crypto loss — and vice versa.** Don't confuse them: past the 1h USB window the Class C key may still be perfectly resident; you just can't reach it. Past the 72h reboot the port may work fine but there's nothing left to decrypt.
 - **Class membership shifts across iOS versions and per app.** Don't hard-code "Messages is Class C." Verify against the firmware and the app; promotion of stores to Class A/B is a real and moving target.
-- **Lockdown Mode and ADP change the calculus entirely.** Lockdown Mode disables wired data when locked (no USB acquisition path at all in that state); ADP removes the iCloud fallback ([[icloud-acquisition-and-advanced-data-protection]]). The matrix still holds, but several columns of your *options* vanish.
+- **Lockdown Mode and ADP change the calculus entirely.** Lockdown Mode disables wired data when locked (no USB acquisition path at all in that state); ADP removes the iCloud fallback ([[06-icloud-acquisition-and-advanced-data-protection]]). The matrix still holds, but several columns of your *options* vanish.
 
 ## Key takeaways
 
@@ -338,4 +338,4 @@ Run both forms. The second — the realistic "we don't know when it was last unl
 - `man` / docs: `pymobiledevice3 lockdown`, `ideviceinfo` (libimobiledevice), `xcrun simctl`.
 
 ---
-*Related lessons: [[passcode-bfu-afu-and-inactivity]] | [[data-protection-and-keybags]] | [[the-acquisition-taxonomy]] | [[full-file-system-acquisition]] | [[sep-sepos-deep-dive]] | [[keychain-on-ios]] | [[storage-nand-aes-effaceable]] | [[acquisition-sop-and-chain-of-custody]] | [[advanced-protections-lockdown-sdp-adp]]*
+*Related lessons: [[03-passcode-bfu-afu-and-inactivity]] | [[02-data-protection-and-keybags]] | [[01-the-acquisition-taxonomy]] | [[05-full-file-system-acquisition]] | [[01-sep-sepos-deep-dive]] | [[08-keychain-on-ios]] | [[03-storage-nand-aes-effaceable]] | [[08-acquisition-sop-and-chain-of-custody]] | [[09-advanced-protections-lockdown-sdp-adp]]*

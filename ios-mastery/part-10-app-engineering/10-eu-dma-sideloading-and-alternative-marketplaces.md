@@ -55,7 +55,7 @@ Post-DMA, an EU iOS device can receive an app through **four** routes. Three are
 1. **App Store** — unchanged, global, full App Review.
 2. **Alternative app marketplaces** — third-party stores that are themselves iOS apps, installed *from the marketplace operator's own website* (web-installed, behind a one-time developer approval — the same web-download plumbing as Web Distribution, but governed by the separate **marketplace-authorization** program, *not* Web Distribution's 1M-install eligibility bar), that then vend other apps using **MarketplaceKit**. EU + (since iOS 26.2) Japan.
 3. **Web Distribution** — an authorized developer hosts the app on **their own website** and installs it directly to EU users after the user approves that developer in Settings.
-4. The **old non-App-Store channels** — Developer/Ad-Hoc/Enterprise (in-house) and exploit-based sideloads (AltStore "classic," TrollStore, Sideloadly). These predate the DMA, are **not** notarized-for-iOS, and are a *separate* provenance class — see [[trollstore-and-the-coretrust-bug]].
+4. The **old non-App-Store channels** — Developer/Ad-Hoc/Enterprise (in-house) and exploit-based sideloads (AltStore "classic," TrollStore, Sideloadly). These predate the DMA, are **not** notarized-for-iOS, and are a *separate* provenance class — see [[08-trollstore-and-the-coretrust-bug]].
 
 The crucial mental shift: routes 2 and 3 are **not** "raw sideloading." They are Apple-mediated installs that happen to originate off the App Store. Apple still signs the binary, still runs Notarization, still tracks the install through system frameworks.
 
@@ -113,7 +113,7 @@ The "good standing + 1M installs" floor means Web Distribution is, in practice, 
 
 ### The Alternative Distribution Packet (ADP) — the off-store package format
 
-App Store apps ship as an **`.ipa`** (a zip with `Payload/<App>.app/`, plus `iTunesMetadata.plist` and a StoreKit receipt injected by the store — see [[the-app-bundle-and-ipa-structure]]). Off-store apps use a different container: the **Alternative Distribution Packet (ADP)**.
+App Store apps ship as an **`.ipa`** (a zip with `Payload/<App>.app/`, plus `iTunesMetadata.plist` and a StoreKit receipt injected by the store — see [[04-the-app-bundle-and-ipa-structure]]). Off-store apps use a different container: the **Alternative Distribution Packet (ADP)**.
 
 Mechanism:
 
@@ -125,7 +125,7 @@ Mechanism:
 
 The ADP is *not* an `.ipa` you can rename and AirDrop. It is an Apple-signed, encrypted distribution unit whose verification is enforced at install — which is precisely why off-store distribution can be "open" (any developer, any server) yet still attributable (Apple signed every byte that lands).
 
-> 🔬 **Forensics note:** Because Apple **signs and encrypts** every notarized ADP, an alternative-marketplace or web-distributed app on disk carries an **Apple-issued code signature** in its `Contents`/embedded signature blob — just like an App Store app, and unlike a Developer-ID/enterprise/exploit-sideloaded binary. The *presence* of a valid Apple notarization signature, combined with the *absence* of a full App Store StoreKit receipt and `iTunesMetadata.plist`'s App Store account block, is the on-disk fingerprint of "notarized but off-store." See the provenance table below and [[the-code-signature-blob-and-entitlements-on-ios]].
+> 🔬 **Forensics note:** Because Apple **signs and encrypts** every notarized ADP, an alternative-marketplace or web-distributed app on disk carries an **Apple-issued code signature** in its `Contents`/embedded signature blob — just like an App Store app, and unlike a Developer-ID/enterprise/exploit-sideloaded binary. The *presence* of a valid Apple notarization signature, combined with the *absence* of a full App Store StoreKit receipt and `iTunesMetadata.plist`'s App Store account block, is the on-disk fingerprint of "notarized but off-store." See the provenance table below and [[01-the-code-signature-blob-and-entitlements-on-ios]].
 
 ### Notarization-for-iOS — the gate every channel shares
 
@@ -154,7 +154,7 @@ The entitlement family (verify exact suffixes — the BrowserEngineKit set has b
 
 "On paper," because as of mid-2026 the practical uptake was near-zero (verify): browser vendors and **Open Web Advocacy** argued Apple's terms — EU-only binaries, a requirement to test on physical EU devices, and the loss of cross-region reach — made shipping a real non-WebKit iOS engine commercially unattractive, so no major browser had broadly shipped one. The EU opened a specification proceeding over exactly this. Treat "has anyone actually shipped a non-WebKit engine at scale?" as a live, verify-at-author-time question.
 
-> 🔬 **Forensics note:** A non-WebKit iOS browser is an **artifact landmine**. Your Safari/`WKWebView` parsing assumptions — `History.db` schema, `WebKit/` cache layout, `Cookies.binarycookies` format from [[safari-and-third-party-browsers]] — **do not apply** to a Blink- or Gecko-based browser. A Chromium engine writes Chromium artifacts (a `History` SQLite with `urls`/`visits`, a `Network/Cookies` store, `Login Data`), a Gecko engine writes `places.sqlite`. If you ever encounter a true alternative-engine browser on an EU device, identify the engine *first* and switch parsers accordingly.
+> 🔬 **Forensics note:** A non-WebKit iOS browser is an **artifact landmine**. Your Safari/`WKWebView` parsing assumptions — `History.db` schema, `WebKit/` cache layout, `Cookies.binarycookies` format from [[08-safari-and-third-party-browsers]] — **do not apply** to a Blink- or Gecko-based browser. A Chromium engine writes Chromium artifacts (a `History` SQLite with `urls`/`visits`, a `Network/Cookies` store, `Login Data`), a Gecko engine writes `places.sqlite`. If you ever encounter a true alternative-engine browser on an EU device, identify the engine *first* and switch parsers accordingly.
 
 ### The fee transition: CTF → CTC (perishable — verify exact rates)
 
@@ -197,10 +197,10 @@ Here is the table an examiner actually uses. The same bundle on disk looks diffe
 | **App Store** | Yes | Apple App Store | **Full** (account block, `apple-id`, `purchaseDate`, `itemId`) | **Yes** | No (App Store apps have none) | `iTunesMetadata.plist` `com.apple.iTunesStore.downloadInfo` → `accountInfo` (purchaser AppleID + DSID) |
 | **Alternative marketplace** | **Yes** | Apple (notarization) | Off-store metadata; **no App Store account block** | **No** App Store receipt | No | MarketplaceKit records; marketplace bundle ID associated; notarized signature |
 | **Web Distribution** | **Yes** | Apple (notarization) | Off-store metadata | **No** | No | Web-distribution approval record; developer-domain provenance; notarized signature |
-| **TestFlight** | (beta review) | Apple | TestFlight metadata | **Sandbox** receipt | No | TestFlight container/markers (see [[distribution-testflight-appstore-enterprise]]) |
+| **TestFlight** | (beta review) | Apple | TestFlight metadata | **Sandbox** receipt | No | TestFlight container/markers (see [[09-distribution-testflight-appstore-enterprise]]) |
 | **Enterprise (in-house)** | **No** | Enterprise distribution cert | Usually **absent** | No | **Yes** (enterprise profile) | Enterprise provisioning profile + cert; trusted-developer record |
 | **Dev / Ad-Hoc sideload** | **No** | Developer cert | **Absent** | No | **Yes** (dev/ad-hoc profile) | Embedded `embedded.mobileprovision`; UDID allowlist (ad-hoc) |
-| **Exploit sideload (TrollStore)** | **No** | **Fake/forged** (CoreTrust bug) | Absent | No | None / forged | No valid Apple chain; CoreTrust-era only (≤ iOS 17.0); see [[trollstore-and-the-coretrust-bug]] |
+| **Exploit sideload (TrollStore)** | **No** | **Fake/forged** (CoreTrust bug) | Absent | No | None / forged | No valid Apple chain; CoreTrust-era only (≤ iOS 17.0); see [[08-trollstore-and-the-coretrust-bug]] |
 
 The big-picture rule: **notarization splits the world.** App Store, marketplace, web-distributed, and TestFlight apps are all **Apple-signed/attributable**; enterprise, dev, ad-hoc, and exploit installs are **not notarized** and carry a *different* trust anchor (or none). Within the notarized set, the **App Store account block in `iTunesMetadata.plist` + a StoreKit receipt** is what specifically marks an *App Store* install — its absence on an otherwise-notarized app points to a marketplace or Web Distribution origin.
 
@@ -215,7 +215,7 @@ Beyond the per-app `iTunesMetadata.plist` and the code-signature blob inside eac
 - **The install ledger.** `installd` is the daemon that unpacks every bundle into `/private/var/containers/Bundle/Application/<UUID>/` and registers it. SpringBoard/FrontBoard tracks app/container state in **`applicationState.db`** (`/private/var/mobile/Library/FrontBoard/applicationState.db`, SQLite) — bundle IDs, container UUIDs, and state flags. This ledger doesn't care *which channel* installed the app, but it's the authoritative list of "what is/was installed," and it persists references after a bundle is removed.
 - **MarketplaceKit association records.** MarketplaceKit must remember which marketplaces the user added and authorized, and (per Apple's model) which apps were installed via which marketplace, so it can route updates and uninstalls. That state lives in MarketplaceKit's own data store under the framework's container (exact filename/path is worth confirming on iOS 26 — do not quote one you haven't verified). It is the artifact that ties an off-store app back to *the specific marketplace* that vended it.
 - **The developer-approval record (Web Distribution + enterprise).** Approving a developer to install from their website, like trusting an enterprise certificate, writes a trust record surfaced in **Settings → General → VPN & Device Management**. The presence of a trusted *Web-Distribution* developer is direct evidence the device was set up to receive web-distributed apps.
-- **Unified logs.** The install handoff is chatty: the browser's `marketplace-kit` scheme invocation, MarketplaceKit's back-end conversation, and `installd`'s unpack/verify all emit `os_log` entries. On a live or sysdiagnose-captured device you can pivot on the `installd` / MarketplaceKit subsystems to time-anchor an install. (Confirm the exact subsystem strings rather than trusting memory — see [[third-party-app-methodology]] for the methodology of mapping an app's stores.)
+- **Unified logs.** The install handoff is chatty: the browser's `marketplace-kit` scheme invocation, MarketplaceKit's back-end conversation, and `installd`'s unpack/verify all emit `os_log` entries. On a live or sysdiagnose-captured device you can pivot on the `installd` / MarketplaceKit subsystems to time-anchor an install. (Confirm the exact subsystem strings rather than trusting memory — see [[11-third-party-app-methodology]] for the methodology of mapping an app's stores.)
 
 > 🔬 **Forensics note:** The forensic win of the DMA channels is *attribution density*. A raw pre-DMA sideload (dev cert + AltServer) is comparatively anonymous. A DMA-channel install threads through **four** corroborating records — the Apple notarization signature on the bundle, the `applicationState.db` registration, the MarketplaceKit/marketplace association (or the Web-Distribution developer-approval record), and the unified-log handoff trail. Reconstruct them together; any one alone is weaker than the chain.
 
@@ -279,7 +279,7 @@ plutil -p /tmp/ipa_extract/iTunesMetadata.plist \
 codesign -dvvv /path/to/SomeApp.app 2>&1 | grep -iE 'Authority|TeamIdentifier|flags'
 ```
 
-**The developer-side ADP export** (walkthrough — requires EU authorization, but the *shape* of the workflow is the same `xcodebuild -exportArchive` machinery you know from [[distribution-testflight-appstore-enterprise]]). You archive, then export with an `ExportOptions.plist` whose `method` selects an alternative-distribution variant instead of `app-store`/`ad-hoc`/`enterprise`:
+**The developer-side ADP export** (walkthrough — requires EU authorization, but the *shape* of the workflow is the same `xcodebuild -exportArchive` machinery you know from [[09-distribution-testflight-appstore-enterprise]]). You archive, then export with an `ExportOptions.plist` whose `method` selects an alternative-distribution variant instead of `app-store`/`ad-hoc`/`enterprise`:
 
 ```bash
 # 1. Archive as usual
@@ -308,7 +308,7 @@ The takeaway is structural: the build/sign machinery is the same toolchain; only
 ### Lab 1 — Map the entitlement gates (substrate: iOS SDK on your Mac)
 
 1. Run the `xcrun --sdk iphoneos --show-sdk-path` + `ls … | grep` commands above. Confirm `MarketplaceKit.framework` and `BrowserEngineKit.framework` exist in your SDK.
-2. From [[code-signing-and-provisioning-in-depth]], recall that a privileged entitlement must be *both* declared in the build *and* authorized by a provisioning profile/Apple. List the four channels (marketplace, web-distribution, browser-engine host, embedded browser engine) and write the entitlement that gates each.
+2. From [[06-code-signing-and-provisioning-in-depth]], recall that a privileged entitlement must be *both* declared in the build *and* authorized by a provisioning profile/Apple. List the four channels (marketplace, web-distribution, browser-engine host, embedded browser engine) and write the entitlement that gates each.
 3. **Caveat:** the framework existing in the SDK does **not** mean the Simulator will honor a marketplace install — entitlement enforcement is a *device* behavior absent on the Simulator.
 
 ### Lab 2 — Build the provenance fingerprint table from a sample image (substrate: public sample forensic image, e.g. Josh Hickman's iOS reference image / iLEAPP test data)
@@ -322,7 +322,7 @@ The takeaway is structural: the build/sign machinery is the same toolchain; only
 
 1. On paper, trace an install from a browser tap to a running app: `marketplace-kit://` URL → MarketplaceKit → the marketplace's `MarketplaceExtension` → marketplace back-end → notarized ADP returned → `installd` places the bundle → AMFI verifies Apple's signature → launch.
 2. Identify, at each step, **what an examiner could recover**: the URL scheme invocation (browser history / unified logs), the MarketplaceKit association records, the bundle container + `iTunesMetadata.plist`, and the Apple-signed code-signature blob.
-3. Contrast with a TrollStore install ([[trollstore-and-the-coretrust-bug]]): no MarketplaceKit, no notarization, a **forged** signature — i.e., the *opposite* provenance fingerprint.
+3. Contrast with a TrollStore install ([[08-trollstore-and-the-coretrust-bug]]): no MarketplaceKit, no notarization, a **forged** signature — i.e., the *opposite* provenance fingerprint.
 
 ### Lab 4 — Distinguish trust anchors with `codesign` (substrate: Simulator build + any signed `.app` you own)
 
@@ -397,4 +397,4 @@ The takeaway is structural: the build/sign machinery is the same toolchain; only
 - `man codesign`, Apple TN3125 (inside code signing); `xcrun`, `plutil`, `nm`
 
 ---
-*Related lessons: [[distribution-testflight-appstore-enterprise]] | [[the-app-bundle-and-ipa-structure]] | [[code-signing-and-provisioning-in-depth]] | [[the-code-signature-blob-and-entitlements-on-ios]] | [[trollstore-and-the-coretrust-bug]] | [[third-party-app-methodology]] | [[safari-and-third-party-browsers]]*
+*Related lessons: [[09-distribution-testflight-appstore-enterprise]] | [[04-the-app-bundle-and-ipa-structure]] | [[06-code-signing-and-provisioning-in-depth]] | [[01-the-code-signature-blob-and-entitlements-on-ios]] | [[08-trollstore-and-the-coretrust-bug]] | [[11-third-party-app-methodology]] | [[08-safari-and-third-party-browsers]]*

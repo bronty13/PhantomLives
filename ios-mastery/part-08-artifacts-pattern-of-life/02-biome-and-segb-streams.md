@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ## Why this matters
 
-In [[knowledgec-db-deep-dive]] you learned to mine `knowledgeC.db` — one tidy SQLite database, one `ZOBJECT` table, one `APOLLO` run. That world is closing. Since iOS 15 Apple has been migrating behavioral telemetry out of the monolithic SQLite store and into **Biome**: a constellation of hundreds of small append-only binary files, one per "stream," each holding protobuf records. On a modern iOS 17/18/26 image, `knowledgeC.db` is **sparse or near-empty for the streams that matter** — `/app/inFocus`, notifications, app launches — and the evidence has moved into `streams/.../local` SEGB files that no SQL query will touch. If you only know how to `sqlite3 knowledgeC.db`, you are blind on a current device.
+In [[01-knowledgec-db-deep-dive]] you learned to mine `knowledgeC.db` — one tidy SQLite database, one `ZOBJECT` table, one `APOLLO` run. That world is closing. Since iOS 15 Apple has been migrating behavioral telemetry out of the monolithic SQLite store and into **Biome**: a constellation of hundreds of small append-only binary files, one per "stream," each holding protobuf records. On a modern iOS 17/18/26 image, `knowledgeC.db` is **sparse or near-empty for the streams that matter** — `/app/inFocus`, notifications, app launches — and the evidence has moved into `streams/.../local` SEGB files that no SQL query will touch. If you only know how to `sqlite3 knowledgeC.db`, you are blind on a current device.
 
 Biome is also where the **deleted-data recovery** game is richest. SEGB is an append-and-tombstone log: superseded records are flagged `Deleted` (state `3`) but their bytes survive in place until the file is compacted, so a record a user "removed" is frequently still readable. This lesson teaches you the on-disk format byte-for-byte — both the v1 layout (iOS 15–16) and the v2 trailer layout (iOS 17+) — the stream catalog, how to parse it with `ccl-segb`, and how to corroborate a Biome record against its knowledgeC cousin for the same event. This is the live 2026 forensic frontier; treat it as a workhorse skill, not a curiosity.
 
@@ -37,7 +37,7 @@ Plus a closely-related SEGB sibling that is *not* under `Biome/` but uses the id
 /private/var/mobile/Library/DuetExpertCenter/streams/userNotificationEvents/local   ← notification events
 ```
 
-Inside each stream directory the `local/` folder holds one or more SEGB files (often the data file plus sync/sibling files). The `public` vs `restricted` split is an **access-class label** (which clients may subscribe to the stream), not a Data-Protection class — do not confuse it with the file-protection classes from [[data-protection-and-keybags]].
+Inside each stream directory the `local/` folder holds one or more SEGB files (often the data file plus sync/sibling files). The `public` vs `restricted` split is an **access-class label** (which clients may subscribe to the stream), not a Data-Protection class — do not confuse it with the file-protection classes from [[02-data-protection-and-keybags]].
 
 > 🖥️ **macOS contrast:** macOS grew the *same* `Biome/streams/` tree under `~/Library/Biome/` (and a system one under `/private/var/db/biome/`) and the *same* `SEGB` format — the format and the directory convention are **cross-platform Apple plumbing**, shared by iOS, iPadOS, macOS, watchOS, and tvOS. What differs is the **stream catalog**: this lesson is the iOS-specific census. The macOS forensic-artifacts lesson you finished focused on `knowledgeC.db`; on macOS Sonoma+ the same drain into SEGB is underway, so the parsing muscle transfers directly.
 
@@ -64,9 +64,9 @@ For the examiner the consequence is structural: the evidence is **spread across 
 
 Before you parse anything, know whether your acquisition *has* Biome at all — this trips up examiners who expect Biome in a backup:
 
-- **Logical/iTunes-Finder backups do not include Biome.** The backup engine excludes `Library/Biome`, `Library/DuetExpertCenter`, `knowledgeC.db`, PowerLog, and most of the behavioral stores from the backup manifest. A logical backup ([[the-itunes-finder-backup-format]]) is therefore the **wrong tool** for Biome — you will not find these streams in it.
-- **You need a full-file-system acquisition.** Biome lives in the protected Data volume, so reading it requires a decrypted **FFS** extraction — agent-based, BootROM-exploit-class (checkm8 A8–A11 / usbliter8 A12–A13), or a commercial GrayKey/Cellebrite FFS. See [[full-file-system-acquisition]].
-- **Lock state gates decryptability.** Biome files sit behind Data Protection. In **BFU** (Before First Unlock) the class keys for these files are not in memory and the files are **not decryptable**; you need at least **AFU** (After First Unlock) for the common protection classes to be readable. This is the same BFU/AFU wall from [[bfu-vs-afu-and-data-protection-classes]] — verify the exact protection class per stream on your image rather than assuming.
+- **Logical/iTunes-Finder backups do not include Biome.** The backup engine excludes `Library/Biome`, `Library/DuetExpertCenter`, `knowledgeC.db`, PowerLog, and most of the behavioral stores from the backup manifest. A logical backup ([[03-the-itunes-finder-backup-format]]) is therefore the **wrong tool** for Biome — you will not find these streams in it.
+- **You need a full-file-system acquisition.** Biome lives in the protected Data volume, so reading it requires a decrypted **FFS** extraction — agent-based, BootROM-exploit-class (checkm8 A8–A11 / usbliter8 A12–A13), or a commercial GrayKey/Cellebrite FFS. See [[05-full-file-system-acquisition]].
+- **Lock state gates decryptability.** Biome files sit behind Data Protection. In **BFU** (Before First Unlock) the class keys for these files are not in memory and the files are **not decryptable**; you need at least **AFU** (After First Unlock) for the common protection classes to be readable. This is the same BFU/AFU wall from [[02-bfu-vs-afu-and-data-protection-classes]] — verify the exact protection class per stream on your image rather than assuming.
 
 > ⚖️ **Authorization:** Because Biome only comes from an FFS acquisition — which itself depends on an exploit or commercial tool and a favorable lock state — the **chain of custody for the acquisition method** is part of the Biome evidence story. Document how you obtained FFS, the device's lock state at seizure, and the tool/exploit used, because the defense's first move against a Biome timeline is to attack how you got below Data Protection to read it.
 
@@ -136,7 +136,7 @@ v2:  [HDR 32][e-hdr][payload][pad][e-hdr][payload][pad]...[TRAILER: N×16]
                                                           ^entries grow backward from EOF
 ```
 
-> 🔬 **Forensics note:** SEGB is **append-and-tombstone**, not in-place delete. When an event is superseded or "removed," its trailer/record state flips to `3` (Deleted) but the **payload bytes remain** in the entry area until the stream file is compacted/rewritten. So `state == 3` records are not noise — they are **recoverable deleted events**. Always parse and surface tombstoned records (flagged, with their state), and also carve the **slack** beyond `end_of_data_offset` (v1) or below the live trailer for stale protobufs. This is one of the highest-yield deleted-data sources on modern iOS (continued in [[deleted-data-recovery]]).
+> 🔬 **Forensics note:** SEGB is **append-and-tombstone**, not in-place delete. When an event is superseded or "removed," its trailer/record state flips to `3` (Deleted) but the **payload bytes remain** in the entry area until the stream file is compacted/rewritten. So `state == 3` records are not noise — they are **recoverable deleted events**. Always parse and surface tombstoned records (flagged, with their state), and also carve the **slack** beyond `end_of_data_offset` (v1) or below the live trailer for stale protobufs. This is one of the highest-yield deleted-data sources on modern iOS (continued in [[14-deleted-data-recovery]]).
 
 ### A v2 record, walked by hand
 
@@ -248,7 +248,7 @@ Biome's architecture makes it **awkward to scrub cleanly**, which is good for th
 - **`maxAge`-younger-than-expected boundaries**: if a stream's oldest record is much newer than the device's known activity and other stores reach further back, the stream may have been truncated rather than naturally aged.
 - **CRC failures clustered in one region** of an otherwise clean file — a sign of hand-editing rather than normal rotation.
 
-None of these are individually conclusive, but cross-checked against the other pattern-of-life stores they distinguish "naturally aged out" from "deliberately removed." Carry that distinction into [[correlation-and-anti-forensics]].
+None of these are individually conclusive, but cross-checked against the other pattern-of-life stores they distinguish "naturally aged out" from "deliberately removed." Carry that distinction into [[02-correlation-and-anti-forensics]].
 
 ## Hands-on
 
@@ -496,4 +496,4 @@ Obtain a SEGB file (from the Lab 3 image, or any `*/streams/*/local/*` file from
 - `man 1 protoc` / `protoc --decode_raw`; `blackbox-protobuf` (github.com/nccgroup/blackboxprotobuf) — schema-free protobuf decoding for SEGB payloads.
 
 ---
-*Related lessons: [[knowledgec-db-deep-dive]] | [[powerlog-and-aggregate-dictionary]] | [[the-ios-timestamp-zoo]] | [[deleted-data-recovery]] | [[building-a-unified-timeline]] | [[third-party-app-methodology]]*
+*Related lessons: [[01-knowledgec-db-deep-dive]] | [[03-powerlog-and-aggregate-dictionary]] | [[00-the-ios-timestamp-zoo]] | [[14-deleted-data-recovery]] | [[01-building-a-unified-timeline]] | [[11-third-party-app-methodology]]*

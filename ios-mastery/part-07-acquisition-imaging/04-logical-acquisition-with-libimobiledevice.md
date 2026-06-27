@@ -14,7 +14,7 @@ last_reviewed: 2026-06-26
 
 ---
 
-> ⚖️ **AUTHORIZED USE ONLY.** Everything below assumes a lawfully seized device *and* lawful authority over any computer you lift a pairing record from — your own gear, authorized IR work, or a matter under a warrant/consent/court order whose scope you have read ([[ios-forensics-landscape-and-authorization]] carries the full legal frame, incl. *Riley v. California*). A pairing record is a **bearer credential into the phone's protected data**: replaying one against a seized device is *accessing that device*, not merely reading a file, and a paired computer is rarely in-scope by accident. The tools below are inert facts; the authority to point them at this phone — and the standing duty to stay inside the warrant, work on copies, hash everything, and log every command — is the whole job.
+> ⚖️ **AUTHORIZED USE ONLY.** Everything below assumes a lawfully seized device *and* lawful authority over any computer you lift a pairing record from — your own gear, authorized IR work, or a matter under a warrant/consent/court order whose scope you have read ([[00-ios-forensics-landscape-and-authorization]] carries the full legal frame, incl. *Riley v. California*). A pairing record is a **bearer credential into the phone's protected data**: replaying one against a seized device is *accessing that device*, not merely reading a file, and a paired computer is rarely in-scope by accident. The tools below are inert facts; the authority to point them at this phone — and the standing duty to stay inside the warrant, work on copies, hash everything, and log every command — is the whole job.
 
 ---
 
@@ -26,7 +26,7 @@ Commercial tools (Cellebrite UFED, GrayKey, Magnet, MSAB XRY, Elcomsoft iOS Fore
 
 ### The trust spine: `usbmuxd` → `lockdownd` → services
 
-You met `usbmuxd` and `lockdownd` conceptually in [[device-services-and-backups]]. Here they become your acquisition substrate. The whole logical-acquisition surface rides one daemon-to-daemon channel:
+You met `usbmuxd` and `lockdownd` conceptually in [[10-device-services-and-backups]]. Here they become your acquisition substrate. The whole logical-acquisition surface rides one daemon-to-daemon channel:
 
 ```
   Examiner Mac                          iPhone (target)
@@ -98,7 +98,7 @@ The escrow bag is minted in that first exchange while the device is unlocked —
 
 ### The escrow keybag — AFU extraction without the passcode
 
-This is the part that makes logical acquisition powerful and the part defendants rarely understand. Recall the Data-Protection model from [[data-protection-and-keybags]]: file class keys are wrapped by the passcode-derived key, and after the user unlocks once the keys for `NSFileProtectionCompleteUntilFirstUserAuthentication` (the default for most app data) stay available in memory until reboot — the **AFU** (After First Unlock) state.
+This is the part that makes logical acquisition powerful and the part defendants rarely understand. Recall the Data-Protection model from [[02-data-protection-and-keybags]]: file class keys are wrapped by the passcode-derived key, and after the user unlocks once the keys for `NSFileProtectionCompleteUntilFirstUserAuthentication` (the default for most app data) stay available in memory until reboot — the **AFU** (After First Unlock) state.
 
 At pair time, while the device is unlocked, it builds an **escrow keybag**: a copy of the class keys, stored on the device, wrapped with a key it hands to the host as the `EscrowBag` value. The on-device escrow record is itself protected `UntilFirstUserAuthentication`. The consequence:
 
@@ -115,13 +115,13 @@ AFU          │ YES — host presents   │ YES. With a valid pair record + esc
  boot)       │                       │ protected data — no passcode prompt.
 ```
 
-So the recipe a seized **paired computer** enables: phone seized in **AFU**, pairing record (with escrow bag) recovered from the computer, replayed → **full logical/backup acquisition with no passcode**. This is why the [[passcode-bfu-afu-and-inactivity]] state at seizure dictates everything, why iOS 18's **72-hour inactivity reboot** (AFU→BFU) is an anti-forensic clock running against you, and why **USB Restricted Mode** (locked >1 h cuts the USB data pins) can sever the channel before you ever start.
+So the recipe a seized **paired computer** enables: phone seized in **AFU**, pairing record (with escrow bag) recovered from the computer, replayed → **full logical/backup acquisition with no passcode**. This is why the [[03-passcode-bfu-afu-and-inactivity]] state at seizure dictates everything, why iOS 18's **72-hour inactivity reboot** (AFU→BFU) is an anti-forensic clock running against you, and why **USB Restricted Mode** (locked >1 h cuts the USB data pins) can sever the channel before you ever start.
 
 > 🔬 **Forensics note:** On seizure, photograph the lock state, keep the phone **powered and warm** (a Faraday bag with a battery pack), and **before** anything else triage any seized computer for `/var/db/lockdown/*.plist` (macOS) or `%ProgramData%\Apple\Lockdown\*.plist` (Windows). One examiner's `EscrowBag` is the difference between a complete AFU backup and a BFU brick. The `lockdownd_start_service_with_escrow_bag()` call in `libimobiledevice`'s `src/lockdown.c` is literally the code path that consumes it.
 
 ### What logical acquisition reaches — and what it cannot
 
-Logical acquisition is **not** a full filesystem image (that's [[full-file-system-acquisition]], which needs a BootROM exploit or a jailbreak/agent). It is the union of what these `lockdownd` services will serve to a trusted host:
+Logical acquisition is **not** a full filesystem image (that's [[05-full-file-system-acquisition]], which needs a BootROM exploit or a jailbreak/agent). It is the union of what these `lockdownd` services will serve to a trusted host:
 
 | Service | Tool | Reaches | Misses |
 |---|---|---|---|
@@ -134,11 +134,11 @@ Logical acquisition is **not** a full filesystem image (that's [[full-file-syste
 | `com.apple.mobile.diagnostics_relay` | `idevicediagnostics` | Battery/IORegistry diagnostics, `WiFi`/`GasGauge`, restart/shutdown | — |
 | `lockdownd GetValue` | `ideviceinfo` | Device facts: `UniqueDeviceID`, `SerialNumber`, `IMEI`, `ProductVersion`, `PasswordProtected`, activation state | — |
 
-> 🔬 **Forensics note:** The single richest source is the **encrypted** `mobilebackup2` image. Counter-intuitively, turn backup encryption **on** (with a password you choose, e.g. `forensics`) before backing up: Apple only includes Health, HomeKit, Wi-Fi passwords, call history, and Safari history **in encrypted backups**. An unencrypted backup silently omits them. You decrypt afterward with the password you set — covered in [[decrypting-backups-and-images]].
+> 🔬 **Forensics note:** The single richest source is the **encrypted** `mobilebackup2` image. Counter-intuitively, turn backup encryption **on** (with a password you choose, e.g. `forensics`) before backing up: Apple only includes Health, HomeKit, Wi-Fi passwords, call history, and Safari history **in encrypted backups**. An unencrypted backup silently omits them. You decrypt afterward with the password you set — covered in [[07-decrypting-backups-and-images]].
 
 ### The iOS 17+ wrinkle: RemoteXPC and why classic logical doesn't need it
 
-On iOS 17 and later, Apple moved the **developer/instruments/debug** services (`com.apple.instruments.server`, `com.apple.debugserver`, XCUITest) off direct `lockdownd StartService` and onto **RemoteXPC** over a **RemoteServiceDiscovery (RSD)** tunnel — an IPv6 QUIC channel that `pymobiledevice3` brings up with `remote tunneld` / `remote start-tunnel` (needs root to create the TUN interface; Python 3.14+ allows a no-root `--userspace` in-process tunnel). This is the modern reality you'll hit when you move into [[debugging-instruments-and-lldb-for-ios]].
+On iOS 17 and later, Apple moved the **developer/instruments/debug** services (`com.apple.instruments.server`, `com.apple.debugserver`, XCUITest) off direct `lockdownd StartService` and onto **RemoteXPC** over a **RemoteServiceDiscovery (RSD)** tunnel — an IPv6 QUIC channel that `pymobiledevice3` brings up with `remote tunneld` / `remote start-tunnel` (needs root to create the TUN interface; Python 3.14+ allows a no-root `--userspace` in-process tunnel). This is the modern reality you'll hit when you move into [[11-debugging-instruments-and-lldb-for-ios]].
 
 But — and this matters for acquisition — the **classic logical-acquisition services still live on plain `lockdownd`/`usbmux`**. `mobilebackup2`, `afc`, `installation_proxy`, `crashreportcopymobile`, `syslog_relay` all answer `StartService` directly, no tunnel required, on iOS 26 just as on iOS 12. You only need the RSD tunnel when you reach for developer services. Don't let "you need a tunnel on iOS 17+" scare you off a backup; it doesn't apply to the backup.
 
@@ -165,7 +165,7 @@ Amnesty International's **Mobile Verification Toolkit** (`mvt`) sits *downstream
 - `mvt-ios check-fs` — the same against a full filesystem extraction.
 - `mvt-ios download-indicators` — fetch/update the public IOC feed.
 
-It is the open-source triage layer for **targeted-surveillance** cases (Pegasus, Predator, stalkerware), and a clean, scriptable backup parser even when spyware isn't suspected. Pair it with iLEAPP ([[third-party-app-methodology]]) for broader artifact coverage.
+It is the open-source triage layer for **targeted-surveillance** cases (Pegasus, Predator, stalkerware), and a clean, scriptable backup parser even when spyware isn't suspected. Pair it with iLEAPP ([[11-third-party-app-methodology]]) for broader artifact coverage.
 
 > 🔬 **Forensics note:** `mvt` works on a **copy** of the backup by design and writes only to its own output dir — but the spyware-detection result is an *indicator*, not a verdict. A `pegasus.stix2` hit is a lead to corroborate (process-execution timing, network domains, anomalous `DataUsage` rows), never a conclusion on its own. Document the **indicator-feed version/date** you ran against; the feed updates and reproducibility depends on pinning it.
 
@@ -246,7 +246,7 @@ idevicebackup2 -u <UDID> backup --full /Volumes/CASE/iphone_backup/
 #  Backup Successful.
 ```
 
-The output directory is a standard backup tree (`Manifest.db`, `Manifest.plist`, `Info.plist`, `Status.plist`, plus SHA-1-named files sharded into two-hex-char subdirectories) — the same format Finder produces, dissected in [[the-itunes-finder-backup-format]]. The `pymobiledevice3` equivalent:
+The output directory is a standard backup tree (`Manifest.db`, `Manifest.plist`, `Info.plist`, `Status.plist`, plus SHA-1-named files sharded into two-hex-char subdirectories) — the same format Finder produces, dissected in [[03-the-itunes-finder-backup-format]]. The `pymobiledevice3` equivalent:
 
 ```bash
 pymobiledevice3 backup2 backup --full /Volumes/CASE/iphone_backup/
@@ -313,7 +313,7 @@ mvt-ios check-backup \
 
 ### Read the backup's `Manifest.db` directly
 
-The backup index is itself SQLite — query it (copy first, per [[the-itunes-finder-backup-format]] hygiene) to map a known artifact to its on-disk sharded file:
+The backup index is itself SQLite — query it (copy first, per [[03-the-itunes-finder-backup-format]] hygiene) to map a known artifact to its on-disk sharded file:
 
 ```bash
 cp /Volumes/CASE/iphone_backup/<UDID>/Manifest.db /tmp/manifest.db
@@ -385,13 +385,13 @@ You have no real `/var/db/lockdown/<UDID>.plist`, so build a faithful skeleton a
 
 ### Lab 5 — Author the acquisition SOP from the CLI (substrate: read-only walkthrough)
 
-Write a one-page SOP (you'll reuse it in [[acquisition-sop-and-chain-of-custody]]) that an examiner could follow against a real device, using **only** the commands in this lesson, in order: (1) record lock state + isolate (Faraday); (2) `ideviceinfo -x` provenance dump + hash; (3) confirm/inherit trust; (4) `encryption on`; (5) `idevicebackup2 backup --full`; (6) `idevicecrashreport --keep`; (7) AFC media pull; (8) `mvt-ios` decrypt+check with a pinned indicator feed; (9) hash the entire output tree. For each step note **what it touches** and **why it's defensible** ("same protocol Finder uses").
+Write a one-page SOP (you'll reuse it in [[08-acquisition-sop-and-chain-of-custody]]) that an examiner could follow against a real device, using **only** the commands in this lesson, in order: (1) record lock state + isolate (Faraday); (2) `ideviceinfo -x` provenance dump + hash; (3) confirm/inherit trust; (4) `encryption on`; (5) `idevicebackup2 backup --full`; (6) `idevicecrashreport --keep`; (7) AFC media pull; (8) `mvt-ios` decrypt+check with a pinned indicator feed; (9) hash the entire output tree. For each step note **what it touches** and **why it's defensible** ("same protocol Finder uses").
 
 ## Pitfalls & gotchas
 
-- **Logical ≠ full filesystem.** `idevicebackup2` gives you the *backup set*, not `/var`. App caches, Mail attachments, many SQLite WALs, and anything an app marks "exclude from backup" are simply absent. If the case needs them, you need [[full-file-system-acquisition]] (BootROM exploit / agent), not a better backup flag.
+- **Logical ≠ full filesystem.** `idevicebackup2` gives you the *backup set*, not `/var`. App caches, Mail attachments, many SQLite WALs, and anything an app marks "exclude from backup" are simply absent. If the case needs them, you need [[05-full-file-system-acquisition]] (BootROM exploit / agent), not a better backup flag.
 - **Unencrypted backups silently drop evidence.** Health, Wi-Fi passwords, call history, Safari history, and HomeKit data are **only** in *encrypted* backups. Forgetting `encryption on` produces a "successful" backup that's missing the good stuff — and you may not notice until the parse comes up empty.
-- **BFU defeats everything here.** No escrow bag, no class keys, no passcode → `lockdownd` may still pair-validate but the protected data won't decrypt. The [[passcode-bfu-afu-and-inactivity]] state at seizure is decisive; the iOS-18 **72 h inactivity reboot** silently flips AFU→BFU while the phone sits in your evidence locker.
+- **BFU defeats everything here.** No escrow bag, no class keys, no passcode → `lockdownd` may still pair-validate but the protected data won't decrypt. The [[03-passcode-bfu-afu-and-inactivity]] state at seizure is decisive; the iOS-18 **72 h inactivity reboot** silently flips AFU→BFU while the phone sits in your evidence locker.
 - **USB Restricted Mode can cut you off mid-case.** Device locked **> 1 hour** disables USB data; even a valid pairing record can't reach a service until someone unlocks. Keep the device awake/charged and work promptly.
 - **`idevicecrashreport` clears by default.** Omitting `--keep` *deletes* the CrashReporter store off the device — a modification you'll have to explain. Audit every tool for write side-effects before you run it on evidence.
 - **"You need a tunnel on iOS 17+" is for developer services, not backups.** Don't bolt up an RSD/RemoteXPC tunnel to take a backup — `mobilebackup2`/`afc`/`installation_proxy` answer plain `lockdownd`. The tunnel is only for `instruments`/`debugserver`/DVT.
@@ -442,4 +442,4 @@ Write a one-page SOP (you'll reuse it in [[acquisition-sop-and-chain-of-custody]
 - **SANS FOR585** — Smartphone Forensic Analysis In-Depth; the canonical course for the full acquisition→artifact pipeline.
 
 ---
-*Related lessons: [[device-services-and-backups]] | [[the-itunes-finder-backup-format]] | [[data-protection-and-keybags]] | [[passcode-bfu-afu-and-inactivity]] | [[the-acquisition-taxonomy]] | [[full-file-system-acquisition]] | [[decrypting-backups-and-images]] | [[acquisition-sop-and-chain-of-custody]]*
+*Related lessons: [[10-device-services-and-backups]] | [[03-the-itunes-finder-backup-format]] | [[02-data-protection-and-keybags]] | [[03-passcode-bfu-afu-and-inactivity]] | [[01-the-acquisition-taxonomy]] | [[05-full-file-system-acquisition]] | [[07-decrypting-backups-and-images]] | [[08-acquisition-sop-and-chain-of-custody]]*
