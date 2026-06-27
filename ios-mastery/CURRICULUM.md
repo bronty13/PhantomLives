@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–03 + 07 complete (42/105 lessons ✅) — foundation tier + Forensic Acquisition done. 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–03 + 07–08 complete (57/105 lessons ✅) — foundation tier + the forensics acquisition & artifact pillars done. 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -128,21 +128,21 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [The app sandbox & filesystem layout](part-08-artifacts-pattern-of-life/00-app-sandbox-and-filesystem-layout.md) | ⬜ |
-| 01 | [knowledgeC.db deep dive](part-08-artifacts-pattern-of-life/01-knowledgec-db-deep-dive.md) | ⬜ |
-| 02 | [Biome & SEGB streams](part-08-artifacts-pattern-of-life/02-biome-and-segb-streams.md) | ⬜ |
-| 03 | [PowerLog & the Aggregate Dictionary](part-08-artifacts-pattern-of-life/03-powerlog-and-aggregate-dictionary.md) | ⬜ |
-| 04 | [Communications: iMessage & SMS](part-08-artifacts-pattern-of-life/04-communications-imessage-and-sms.md) | ⬜ |
-| 05 | [Calls, voicemail, contacts & interactions](part-08-artifacts-pattern-of-life/05-call-history-voicemail-contacts-interactions.md) | ⬜ |
-| 06 | [Photos & the camera roll](part-08-artifacts-pattern-of-life/06-photos-and-the-camera-roll.md) | ⬜ |
-| 07 | [Location history](part-08-artifacts-pattern-of-life/07-location-history.md) | ⬜ |
-| 08 | [Safari & third-party browsers](part-08-artifacts-pattern-of-life/08-safari-and-third-party-browsers.md) | ⬜ |
-| 09 | [Mail, Notes, Calendar & Reminders](part-08-artifacts-pattern-of-life/09-mail-notes-calendar-reminders.md) | ⬜ |
-| 10 | [Health & fitness](part-08-artifacts-pattern-of-life/10-health-and-fitness.md) | ⬜ |
-| 11 | [Third-party app methodology](part-08-artifacts-pattern-of-life/11-third-party-app-methodology.md) | ⬜ |
-| 12 | [Unified logs, sysdiagnose, crash & network](part-08-artifacts-pattern-of-life/12-unified-logs-sysdiagnose-crash-network.md) | ⬜ |
-| 13 | [Notifications, keyboard & misc stores](part-08-artifacts-pattern-of-life/13-notifications-keyboard-and-misc-stores.md) | ⬜ |
-| 14 | [Deleted-data recovery](part-08-artifacts-pattern-of-life/14-deleted-data-recovery.md) | ⬜ |
+| 00 | [The app sandbox & filesystem layout](part-08-artifacts-pattern-of-life/00-app-sandbox-and-filesystem-layout.md) | ✅ |
+| 01 | [knowledgeC.db deep dive](part-08-artifacts-pattern-of-life/01-knowledgec-db-deep-dive.md) | ✅ |
+| 02 | [Biome & SEGB streams](part-08-artifacts-pattern-of-life/02-biome-and-segb-streams.md) | ✅ |
+| 03 | [PowerLog & the Aggregate Dictionary](part-08-artifacts-pattern-of-life/03-powerlog-and-aggregate-dictionary.md) | ✅ |
+| 04 | [Communications: iMessage & SMS](part-08-artifacts-pattern-of-life/04-communications-imessage-and-sms.md) | ✅ |
+| 05 | [Calls, voicemail, contacts & interactions](part-08-artifacts-pattern-of-life/05-call-history-voicemail-contacts-interactions.md) | ✅ |
+| 06 | [Photos & the camera roll](part-08-artifacts-pattern-of-life/06-photos-and-the-camera-roll.md) | ✅ |
+| 07 | [Location history](part-08-artifacts-pattern-of-life/07-location-history.md) | ✅ |
+| 08 | [Safari & third-party browsers](part-08-artifacts-pattern-of-life/08-safari-and-third-party-browsers.md) | ✅ |
+| 09 | [Mail, Notes, Calendar & Reminders](part-08-artifacts-pattern-of-life/09-mail-notes-calendar-reminders.md) | ✅ |
+| 10 | [Health & fitness](part-08-artifacts-pattern-of-life/10-health-and-fitness.md) | ✅ |
+| 11 | [Third-party app methodology](part-08-artifacts-pattern-of-life/11-third-party-app-methodology.md) | ✅ |
+| 12 | [Unified logs, sysdiagnose, crash & network](part-08-artifacts-pattern-of-life/12-unified-logs-sysdiagnose-crash-network.md) | ✅ |
+| 13 | [Notifications, keyboard & misc stores](part-08-artifacts-pattern-of-life/13-notifications-keyboard-and-misc-stores.md) | ✅ |
+| 14 | [Deleted-data recovery](part-08-artifacts-pattern-of-life/14-deleted-data-recovery.md) | ✅ |
 
 ## Part 09 — Timeline, Analysis & Anti-Forensics
 

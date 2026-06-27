@@ -3,6 +3,24 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 08 (Forensic Artifacts & Pattern of Life) built — 57/105 lessons ✅ — the heart of the course
+
+The on-disk evidence corpus (15 lessons, the biggest module; 30 agents, ~3.56M tokens, built
+in 5 chunks of 3): the app-sandbox/container map; knowledgeC.db; Biome/SEGB (v1 vs v2);
+PowerLog + Aggregate Dictionary; iMessage/SMS (sms.db, the nanosecond epoch, attributedBody);
+calls/voicemail/contacts/interactionC; Photos.sqlite (ZASSET/faces/GPS/Recently-Deleted);
+location (routined Cache.sqlite, ZRTCLLOCATIONMO speeds, Significant Locations); Safari + 3rd-
+party browsers; Mail/Notes(NoteStoreProto)/Calendar/Reminders; Health (healthdb_secure, AFU-
+only); the third-party-app methodology (WhatsApp/Signal-SQLCipher/Telegram/Snapchat); unified
+logs/sysdiagnose/crash + network (DataUsage/netusage); notifications + the keyboard lexicon +
+Accounts; and SQLite deleted-data recovery (WAL/freelist/soft-deletes, undark/walitean).
+
+- 0 review problems. **Live-research catch:** the iMessage lesson surfaced **CVE-2026-28950**
+  (verified via NVD / The Hacker News / Help Net Security) — a real April-2026 iOS Notification-
+  Services data-retention flaw (deletion-marked notifications weren't redacted; the FBI recovered
+  deleted Signal previews from the notification store; patched 26.4.2 / 18.7.8). Used accurately
+  to reinforce the notification-store-as-corroborating-artifact point.
+
 ## 2026-06-26 — Part 07 (Forensic Acquisition & Imaging) built — 42/105 lessons ✅
 
 The first forensics pillar, leaning directly on the security foundation (BFU/AFU, keybags,
