@@ -3,6 +3,20 @@
 All notable changes to this curriculum. Dates are absolute (this content goes stale, so the
 date matters).
 
+## 2026-06-26 — Part 09 (Timeline, Analysis & Anti-Forensics) built — 60/105 lessons ✅ — FORENSICS PILLAR COMPLETE
+
+The forensics capstone (3 lessons): the iOS timestamp zoo + exact conversions (Mac-Absolute
+/Cocoa, the nanosecond variant, Unix, WebKit-1601, Mach absolute vs continuous time, the
+epoch-mixing signatures); building a unified super-timeline (APOLLO + iLEAPP + plaso/Timesketch
+across knowledgeC/Biome/PowerLog); and the analyst capstone — cross-artifact corroboration (the
+multiple-independent-witnesses principle) + detecting clock manipulation / wiped stores /
+anti-forensic indicators + writing the defensible report section. 0 review problems.
+
+With Parts 07–09 done, **the full forensics pillar (27 lessons) is complete** — acquisition,
+artifacts/pattern-of-life, and timeline/analysis. Remaining: the development pillar (Parts 10–11,
+app-engineering + reverse-engineering) and the platform-breadth modules (Parts 04 networking,
+05 iPadOS, 06 automation/ops).
+
 ## 2026-06-26 — Part 08 (Forensic Artifacts & Pattern of Life) built — 57/105 lessons ✅ — the heart of the course
 
 The on-disk evidence corpus (15 lessons, the biggest module; 30 agents, ~3.56M tokens, built

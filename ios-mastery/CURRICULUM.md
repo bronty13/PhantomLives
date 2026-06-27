@@ -11,7 +11,7 @@ build status. Track *your own* completion in [PROGRESS.md](PROGRESS.md).
 
 **Status legend:** ✅ written · 🚧 in progress · ⬜ planned (stub/not yet written)
 
-> **Corpus status:** **building** — Parts 00–03 + 07–08 complete (57/105 lessons ✅) — foundation tier + the forensics acquisition & artifact pillars done. 105 lessons planned across 12 parts; reference layer is
+> **Corpus status:** **building** — Parts 00–03 + 07–09 complete (60/105 lessons ✅) — foundation tier + the full forensics pillar (acquisition, artifacts, timeline) done. 105 lessons planned across 12 parts; reference layer is
 > 7 hand-authored spines + 7 derived indexes. The build is module-by-module (see
 > [CHANGELOG.md](CHANGELOG.md) for what's landed). This course is the iOS sibling of
 > [`macos-mastery`](../macos-mastery/CURRICULUM.md) and assumes it.
@@ -148,9 +148,9 @@ Lesson files are named `NN-slug.md` inside each `part-*` folder. Reference spine
 
 | # | Lesson | Status |
 |---|---|---|
-| 00 | [The iOS timestamp zoo](part-09-timeline-analysis/00-the-ios-timestamp-zoo.md) | ⬜ |
-| 01 | [Building a unified timeline](part-09-timeline-analysis/01-building-a-unified-timeline.md) | ⬜ |
-| 02 | [Correlation & anti-forensics](part-09-timeline-analysis/02-correlation-and-anti-forensics.md) | ⬜ |
+| 00 | [The iOS timestamp zoo](part-09-timeline-analysis/00-the-ios-timestamp-zoo.md) | ✅ |
+| 01 | [Building a unified timeline](part-09-timeline-analysis/01-building-a-unified-timeline.md) | ✅ |
+| 02 | [Correlation & anti-forensics](part-09-timeline-analysis/02-correlation-and-anti-forensics.md) | ✅ |
 
 ## Part 10 — iOS App Engineering
 
