@@ -383,6 +383,15 @@ class GameUI {
         }
         break
       }
+      case 'fleetLost': {
+        this.pushLog(`⚓ ${this.nameOf(ev.player)}'s fleet in the ${this.seaName(ev.sea)} was lost — no port`)
+        const sp = SEA_POS.get(ev.sea)
+        if (sp) {
+          this.fx.push({ kind: 'ripple', nx: sp.nx, ny: sp.ny, color: '#888', start: now, dur: 520 })
+          this.startLoop()
+        }
+        break
+      }
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
         Sound.place()

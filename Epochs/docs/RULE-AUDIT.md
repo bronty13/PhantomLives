@@ -31,6 +31,7 @@
 > - ✅ **Sumeria §3.11 — capital added** (v0.43.0): the neutral seed now places an
 >   owner-less Capital on Lower Tigris (flips to the conqueror's City when taken).
 > - ✅ **G5 — Monument unaffected by conquest** (v0.44.0): a monument keeps scoring for its builder when its land is taken (no transfer); only Events remove it.
+> - ✅ **G6 — fleet ports + unlimited oceans** (v0.45.0): a fleet without a controlled coastal port is destroyed (§5.5); oceans hold unlimited fleets (§7.4). Audit had the direction but mis-stated caps; ocean combat stays optional (coexistence faithful).
 > - ✅ **G2 / G3 / G4 — debunked** by `tests/sample-game.test.ts` (combat model, fort = +1,
 >   no capital defensive bonus all match the book's worked combat).
 >

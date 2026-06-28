@@ -259,6 +259,28 @@ describe('per-unit placement (army / fleet / fort in one expansion loop)', () =>
   })
 })
 
+describe('fleet ports (§5.5) — every surviving fleet has a coastal land its owner holds', () => {
+  it('prunes unbased fleets each turn, so no fleet outlives its port', () => {
+    const board = new Board(WORLD_MAP_DATA)
+    for (const seed of [1, 5, 12]) {
+      const game = worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))
+      const it = game.play()
+      let step = it.next()
+      while (!step.done) {
+        if (step.value.type === 'turnEnd') {
+          for (const f of game.state.fleets) {
+            const based = board
+              .landsOnSea(f.sea)
+              .some((l) => game.state.pieces.some((p) => p.land === l && p.kind === 'army' && p.owner === f.owner))
+            expect(based, `unbased fleet ${f.owner} @ ${f.sea}`).toBe(true)
+          }
+        }
+        step = it.next()
+      }
+    }
+  })
+})
+
 describe('turn order within an epoch follows Empire Card # (§3.3)', () => {
   it('plays empires in ascending card-number order each epoch, not draft order', () => {
     const orderOf = new Map(WORLD_EMPIRES.map((e) => [e.name, e.order]))

@@ -142,6 +142,7 @@ export type GameEvent =
   | { type: 'foundKingdom'; player: PlayerId; land: LandId }
   | { type: 'fleet'; player: PlayerId; sea: SeaId }
   | { type: 'navalCombat'; player: PlayerId; sea: SeaId; won: boolean }
+  | { type: 'fleetLost'; player: PlayerId; sea: SeaId }
   | { type: 'fortBuilt'; player: PlayerId; land: LandId }
   | { type: 'monumentBuilt'; player: PlayerId; land: LandId }
   /** Human seat: choose which land (of the forced tier) gets a Monument. Resume with a `LandId`. */
@@ -376,6 +377,7 @@ export class Game {
         yield { type: 'foundKingdom', player: pid, land }
       }
     }
+    yield* this.pruneUnbasedFleets() // §5.5: drop fleets whose coastal port was lost this turn
     yield* this.buildMonuments(pid, this.humanSeats.has(pid))
     const breakdown = scoreBreakdown(
       this.state.pieces,
@@ -1080,7 +1082,7 @@ export class Game {
       const enemy = !isOcean(sea) && this.state.fleets.some((f) => f.sea === sea && f.owner !== pid)
       const total = this.state.fleets.filter((f) => f.sea === sea).length
       if (enemy) out.push({ sea, battle: true })
-      else if (total < 2) out.push({ sea, battle: false })
+      else if (isOcean(sea) || total < 2) out.push({ sea, battle: false }) // oceans: unlimited (§7.4)
     }
     return out
   }
@@ -1102,10 +1104,25 @@ export class Game {
       const won = defenders === 0
       if (won) this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch })
       yield { type: 'navalCombat', player: pid, sea, won }
-    } else if (this.state.fleets.filter((f) => f.sea === sea).length < 2) {
-      this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch }) // ≤2 per body
+    } else if (isOcean(sea) || this.state.fleets.filter((f) => f.sea === sea).length < 2) {
+      // ≤2 fleets in an enclosed Sea (§7.3); unlimited in an Ocean (§7.4).
+      this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch })
       yield { type: 'fleet', player: pid, sea }
     }
+  }
+
+  /** §5.5 PORTS: a fleet survives only while its owner controls a Land bordering its
+   *  Sea/Ocean (a port). Once that port is lost — e.g. an enemy conquers the coastal
+   *  land — the fleet is immediately destroyed. Run after each turn's expansion. */
+  private *pruneUnbasedFleets(): Generator<GameEvent, void, PlayInput> {
+    const based = (f: FleetPiece): boolean =>
+      this.board
+        .landsOnSea(f.sea)
+        .some((l) => this.state.pieces.some((p) => p.land === l && p.kind === 'army' && p.owner === f.owner))
+    const lost = this.state.fleets.filter((f) => !based(f))
+    if (lost.length === 0) return
+    this.state.fleets = this.state.fleets.filter(based)
+    for (const f of lost) yield { type: 'fleetLost', player: f.owner, sea: f.sea }
   }
 
   /** Lands `pid` holds with a current-epoch army. */

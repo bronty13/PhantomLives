@@ -2,6 +2,25 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.45.0] — 2026-06-28
+
+Audit fix G6 — fleet ports + unlimited oceans (source-verified).
+
+### Added / Fixed
+- **Fleet ports (§5.5).** A fleet survives only while its owner controls a coastal land
+  on its sea (a port). Lose the port — e.g. an enemy conquers your only coast — and the
+  fleet is **immediately destroyed**. `pruneUnbasedFleets` runs after each turn's
+  expansion; new `fleetLost` event (logged + a grey ripple on the map).
+- **Oceans hold unlimited fleets (§7.4).** Enclosed seas stay capped at 2 (one player);
+  the five open oceans now take any number of fleets from any number of players, with no
+  forced combat (combat is "optional" — our coexistence is faithful). We had wrongly
+  capped oceans at 2.
+- Rulebook updated (port rule added; the stale "navigation always builds a fleet" line
+  corrected — fleets are optional since v0.40.1).
+
+Verified against §5.5 / §7.3 / §7.4 (the audit had the direction but mis-stated the
+caps). Tournament steady (73.8 / 74.2 / 85.0%). 138 tests pass.
+
 ## [0.44.0] — 2026-06-28
 
 Audit fix G5 — a Monument is unaffected by conquest.

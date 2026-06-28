@@ -209,11 +209,13 @@ export const RULEBOOK: RuleSection[] = [
     title: 'Seas & Navigation',
     body: `
       <p>An empire's <b>navigation</b> lists which seas it may sail. To actually sail
-      one it must <b>launch a fleet</b> there (spending one of its Strength points — a
-      navigation empire always builds at least one). Once a fleet sits in a sea, the
-      empire's armies can land on <i>any</i> coast of that sea. This is the only way to
-      the <b>overseas continents</b> — the Americas, Australasia and sub-Saharan Africa,
-      which no land route touches.</p>
+      one it <b>launches a fleet</b> there (one of its units — optional, build one only
+      when you want to cross). Once a fleet sits in a sea, the empire's armies can land
+      on <i>any</i> coast of that sea. This is the only way to the <b>overseas
+      continents</b> — the Americas, Australasia and sub-Saharan Africa, which no land
+      route touches.</p>
+      <p>A fleet needs a <b>port</b>: a coastal land on its sea that you control. Lose
+      that land — say an enemy conquers your only coast — and the fleet is lost with it.</p>
       <p>The waters come in two kinds. <b>Enclosed seas</b> (the Mediterranean, North
       Sea, Red Sea, and the like) host <b>naval combat</b> — a fleet entering one that
       already holds an enemy fleet must fight for it (same dice as a land battle), so a
