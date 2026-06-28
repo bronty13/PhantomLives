@@ -14,6 +14,12 @@ DEFAULTS = {
     "thumbCache": "~/Library/Caches/PeekServer/thumbs",
     "thumbSize": 512,                        # max thumbnail dimension (px)
     "roots": [],                             # [{path,label,kind}]
+    # --- Phase 2: keep→Photos import worker (runs on the host with the Photos library) ---
+    "osxphotosBin": "osxphotos",             # PATH or absolute; delegates the PhotoKit import
+    "exiftoolBin": "exiftool",               # used to embed XMP:Rating for favorites
+    "keptAudioDir": "~/Downloads/PeekServer/Kept Audio",   # Photos can't hold audio → keep-export here
+    "stagingDir": "~/Library/Caches/PeekServer/staging",   # favorites staged here (rating embedded)
+    "purplePeekDb": "~/Library/Application Support/PurplePeek/purplepeek.sqlite",  # decision migration source
 }
 
 
@@ -37,8 +43,11 @@ def load() -> dict:
     p = config_path()
     if p.exists():
         cfg.update(json.loads(p.read_text(encoding="utf-8")))
-    cfg["dbPath"] = _expand(cfg["dbPath"])
-    cfg["thumbCache"] = _expand(cfg["thumbCache"])
+    for k in ("dbPath", "thumbCache", "keptAudioDir", "stagingDir", "purplePeekDb"):
+        cfg[k] = _expand(cfg[k])
+    for k in ("osxphotosBin", "exiftoolBin"):           # expand ~ but leave bare PATH names alone
+        if cfg[k].startswith("~") or cfg[k].startswith("/"):
+            cfg[k] = _expand(cfg[k])
     # Normalize roots: expand paths, default label to basename, default kind.
     norm = []
     for r in cfg.get("roots", []):

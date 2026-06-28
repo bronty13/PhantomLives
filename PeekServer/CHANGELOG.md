@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0 — Phase 2 (keep→Photos import + migration + warm-up)
+
+- **Import worker** (`importer.py`) — the keep→Photos pipeline, delegating to proven tools on the
+  Photos host: keepers → `osxphotos import` with title/description/keyword/album set on the asset
+  (favorites staged with an exiftool-embedded `XMP:Rating` + `--favorite-rating`); kept audio →
+  keep-export to `keptAudioDir` (Photos can't hold audio); skips → Trash (recoverable). The argv
+  builder is pure/unit-tested; `process_pending` **defaults to DRY-RUN** (nothing imports/trashes
+  without `--execute`).
+- **PurplePeek decision migration** (`migrate.py`) — copies existing keep/favorite/title/caption/
+  keywords/albums from `purplepeek.sqlite` into PeekServer's DB, matched by file path (idempotent).
+- **`--warm`** — scan + pre-generate every thumbnail (the one-time cold-cache pass), so the first
+  browse is already fast. CLI: `--warm`, `--migrate-purplepeek [DB]`, `--import [--execute] [--limit N]`.
+- **API:** `POST /api/migrate`, `POST /api/process` (dry-run unless `{"execute":true}`).
+- New config: `osxphotosBin`, `exiftoolBin`, `keptAudioDir`, `stagingDir`, `purplePeekDb`.
+- DB: `mark_imported/exported/deleted`, `pending_imports/audio/skips`.
+- Tests: +5 (import argv incl. favorite, migration mapping + path-matching, dry-run worker) → 13 total.
+
 ## 0.1.0 — Phase 1 (LAN review MVP)
 
 - New subproject: a dependency-free (Python stdlib + macOS `sips`/`qlmanage`) HTTP service for

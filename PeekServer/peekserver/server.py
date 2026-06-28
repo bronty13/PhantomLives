@@ -17,7 +17,7 @@ import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import __version__, db, media, scan
+from . import __version__, db, importer, media, migrate, scan
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 _CFG = {}
@@ -114,6 +114,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "missing id"}, 400)
             rec = db.update_decision(mid, data)
             return self._json(rec) if rec else self._notfound()
+        if u.path == "/api/migrate":
+            return self._json(migrate.migrate_from_purplepeek(_CFG["purplePeekDb"]))
+        if u.path == "/api/process":
+            data = self._read_json()
+            # destructive (import/trash) only when execute is explicitly true; default dry-run
+            res = importer.process_pending(_CFG, execute=bool(data.get("execute")),
+                                           limit=data.get("limit"))
+            return self._json(res["summary"])
         return self._notfound()
 
     def _read_json(self):

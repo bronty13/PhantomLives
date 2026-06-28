@@ -49,10 +49,26 @@ A keyboard-driven thumbnail grid (open `/` in a browser):
 `GET /api/roots` · `GET /api/items?root&decision&offset&limit` · `GET /api/item/<id>` ·
 `GET /thumb/<id>` · `GET /full/<id>` (Range-aware) · `POST /api/decision` · `POST /api/scan`
 
+## Keep → Photos (Phase 2)
+
+Once you've triaged, run the worker on the host with the Photos library:
+
+```bash
+./run.sh --migrate-purplepeek   # one-time: pull existing PurplePeek decisions into the DB
+./run.sh --import               # DRY-RUN: shows what would import/trash/export
+./run.sh --import --execute     # actually do it
+```
+
+- Keepers → `osxphotos import` (title/description/keyword/album on the asset; favorites via a
+  staged copy with `exiftool` `XMP:Rating` + `--favorite-rating`).
+- Kept audio → keep-exported to `keptAudioDir` (Photos can't hold audio).
+- Skips → moved to the Trash (recoverable; needs Finder Automation permission on the host).
+
+`process_pending` is **dry-run by default** — nothing imports or trashes without `--execute`.
+
 ## Status / roadmap
 
-- **Phase 1 (this):** scan + cached thumbnails + decisions DB + the web review UI. ✅
-- **Phase 2:** the keep→Photos **import worker** — delegates to `exiftool` + `osxphotos import`
-  (metadata + albums + favorite via PhotoKit) on the host with the Photos library; skips → Trash;
-  audio → keep-export. Migrate existing PurplePeek decisions in.
-- **Phase 3:** deploy to airy (launchd agent; move REDONE + config).
+- **Phase 1:** scan + cached thumbnails + decisions DB + the web review UI. ✅
+- **Phase 2:** keep→Photos import worker (`exiftool` + `osxphotos import`), kept-audio export,
+  skip→Trash, and PurplePeek decision migration. ✅
+- **Phase 3:** deploy to airy (launchd agent; move REDONE + config). ◻️

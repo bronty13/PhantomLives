@@ -212,6 +212,49 @@ def update_decision(mid: str, fields: dict):
     return get_media(mid)
 
 
+# ---- import-worker state (Phase 2) -----------------------------------------
+
+def mark_imported(mid: str, asset_id: str = None):
+    with connect() as c:
+        c.execute("UPDATE media_files SET imported_at=?, photos_asset_id=?, updated_at=? WHERE id=?",
+                  (now(), asset_id, now(), mid))
+
+
+def mark_exported(mid: str):
+    with connect() as c:
+        c.execute("UPDATE media_files SET exported_at=?, updated_at=? WHERE id=?", (now(), now(), mid))
+
+
+def mark_deleted(mid: str):
+    with connect() as c:
+        c.execute("UPDATE media_files SET deleted_at=?, updated_at=? WHERE id=?", (now(), now(), mid))
+
+
+def pending_imports() -> list:
+    """Kept, not yet imported, not audio, not deleted/missing → import to Photos."""
+    with connect() as c:
+        return [dict(r) for r in c.execute(
+            """SELECT * FROM media_files WHERE keep=1 AND imported_at IS NULL
+               AND file_type<>'audio' AND deleted_at IS NULL AND missing_at IS NULL
+               ORDER BY file_name""").fetchall()]
+
+
+def pending_audio() -> list:
+    """Kept audio, not yet keep-exported (Photos can't hold audio)."""
+    with connect() as c:
+        return [dict(r) for r in c.execute(
+            """SELECT * FROM media_files WHERE keep=1 AND file_type='audio'
+               AND exported_at IS NULL AND deleted_at IS NULL AND missing_at IS NULL""").fetchall()]
+
+
+def pending_skips() -> list:
+    """Skipped, not yet trashed."""
+    with connect() as c:
+        return [dict(r) for r in c.execute(
+            """SELECT * FROM media_files WHERE keep=0 AND deleted_at IS NULL
+               AND missing_at IS NULL""").fetchall()]
+
+
 def _set_keywords(c, mid: str, names: list):
     c.execute("DELETE FROM file_keywords WHERE file_id=?", (mid,))
     for name in names:
