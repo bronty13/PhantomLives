@@ -96,6 +96,10 @@ grouped by host (e.g. "Runner · Photos").
   (opens Terminal via `ssh://`), **SMB** (opens file sharing in Finder via `smb://`), and **Screen
   Sharing** (opens VNC via `vnc://`). SMB/VNC require File Sharing / Screen Sharing enabled on the
   remote Mac.
+- **Live IP tracking:** each host's current IP is re-resolved every rescan and shown in the host
+  row. For a Mac whose address changes (DHCP), set its host to the **Bonjour `.local` name** (e.g.
+  `Rachels-MacBook-Pro.local`) — connections + shortcuts then follow the IP automatically, and the
+  row still shows the live numeric address.
 - Everything is additive — a default install with only the local Mac behaves exactly as before.
 
 ### Fleet (mesh) — every node sees every other

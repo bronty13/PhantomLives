@@ -4,6 +4,12 @@ All notable changes to PurpleMirror are documented here.
 
 ## Unreleased
 
+- **Live IP tracking for hosts.** Each host's current primary IP is re-resolved every rescan
+  (`HostContext.refreshIP`) and shown in Settings ▸ Hosts. Combined with addressing a host by its
+  **Bonjour `.local` name** (whose IP follows DHCP), a host that gets a new lease keeps working *and*
+  shows its live address. The Hosts rows now observe each `HostContext`, so IP + offline/last-seen
+  update in place. (Rachel's Mac is configured this way — `Rachels-MacBook-Pro.local`.)
+
 - **Per-host quick-connect shortcuts.** Each remote host in Settings ▸ Hosts now has three buttons —
   **SSH** (`terminal`, opens a Terminal session via `ssh://`), **SMB** (`folder`, opens file sharing
   in Finder via `smb://`), and **Screen Sharing** (`display`, opens VNC via `vnc://`) — built from the

@@ -5,7 +5,6 @@ import SwiftUI
 /// ones. Monitoring + Run Now work for remote jobs now; schedule editing is a later phase.
 struct HostsSettingsView: View {
     @ObservedObject var model: JobsModel
-    @Environment(\.openURL) private var openURL
 
     @State private var newName = ""
     @State private var newUser = ""
@@ -19,51 +18,15 @@ struct HostsSettingsView: View {
     var body: some View {
         Form {
             Section("Monitored hosts") {
-                ForEach(model.monitoredHosts) { host in
-                    HStack(spacing: 10) {
-                        Image(systemName: host.isLocal ? "desktopcomputer" : "network")
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 6) {
-                                Text(host.displayName).fontWeight(.medium)
-                                if host.fromFleet {
-                                    Text("FLEET").font(.system(size: 9, weight: .semibold))
-                                        .padding(.horizontal, 4).padding(.vertical, 1)
-                                        .background(.tint.opacity(0.18), in: Capsule())
-                                        .foregroundStyle(.tint)
-                                }
-                            }
-                            Text(host.isLocal ? "this machine" : host.sshTarget)
-                                .font(.caption).foregroundStyle(.secondary)
-                            if let msg = testResult[host.id] {
-                                Text(msg).font(.caption2).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        Spacer()
-                        if !host.isLocal {
-                            // Quick-connect: SSH (Terminal), SMB (Finder), Screen Sharing (VNC)
-                            HStack(spacing: 1) {
-                                connectButton("terminal", host.sshURLString, "SSH to \(host.displayName) (Terminal)")
-                                connectButton("folder", host.smbURLString, "Open file sharing (SMB) on \(host.displayName)")
-                                connectButton("display", host.vncURLString, "Screen Sharing (VNC) to \(host.displayName)")
-                            }
-                            .foregroundStyle(.secondary)
-                            if testing.contains(host.id) {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Button("Test") { test(host) }.buttonStyle(.bordered)
-                            }
-                            // Fleet hosts are managed in fleet.json, not removable here.
-                            if !host.fromFleet {
-                                Button(role: .destructive) { remove(host) } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Stop monitoring \(host.displayName)")
-                            }
-                        }
-                    }
+                ForEach(model.hostContexts, id: \.host.id) { ctx in
+                    HostRowView(
+                        ctx: ctx,
+                        testResultMsg: testResult[ctx.host.id],
+                        isTesting: testing.contains(ctx.host.id),
+                        onTest: { test(ctx.host) },
+                        // fleet hosts are managed in fleet.json; local can't be removed
+                        onRemove: (!ctx.host.isLocal && !ctx.host.fromFleet) ? { remove(ctx.host) } : nil
+                    )
                 }
             }
 
@@ -97,20 +60,6 @@ struct HostsSettingsView: View {
 
     private var canAdd: Bool {
         !newName.trimmed.isEmpty && !newUser.trimmed.isEmpty && !newHost.trimmed.isEmpty
-    }
-
-    // MARK: Connect shortcuts
-
-    @ViewBuilder
-    private func connectButton(_ symbol: String, _ urlString: String?, _ help: String) -> some View {
-        Button {
-            if let s = urlString, let url = URL(string: s) { openURL(url) }
-        } label: {
-            Image(systemName: symbol)
-        }
-        .buttonStyle(.borderless)
-        .help(help)
-        .disabled(urlString == nil)
     }
 
     // MARK: Actions
@@ -152,6 +101,7 @@ struct HostsSettingsView: View {
         Task {
             let ctx = HostContext(host: host)
             await ctx.ensureResolved()
+            await ctx.refreshIP()
             let (st, out) = await ctx.shell("echo purplemirror-ok")
             testing.remove(host.id)
             if st == 0, out.contains("purplemirror-ok") {
@@ -168,6 +118,84 @@ struct HostsSettingsView: View {
         let lowered = s.lowercased().replacingOccurrences(of: " ", with: "-")
         let allowed = String(lowered.filter { $0.isLetter || $0.isNumber || $0 == "-" })
         return allowed.isEmpty ? "host-\(UInt(bitPattern: s.hashValue))" : allowed
+    }
+}
+
+/// One host row. Observes the host's `HostContext` so the live IP + reachability update in place
+/// (the context publishes when `refreshIP`/reachability change, even when the job list doesn't).
+private struct HostRowView: View {
+    @ObservedObject var ctx: HostContext
+    let testResultMsg: String?
+    let isTesting: Bool
+    let onTest: () -> Void
+    let onRemove: (() -> Void)?
+    @Environment(\.openURL) private var openURL
+
+    private var host: MonitoredHost { ctx.host }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: host.isLocal ? "desktopcomputer" : "network")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(host.displayName).fontWeight(.medium)
+                    if host.fromFleet {
+                        Text("FLEET").font(.system(size: 9, weight: .semibold))
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(.tint.opacity(0.18), in: Capsule())
+                            .foregroundStyle(.tint)
+                    }
+                }
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                if let msg = testResultMsg {
+                    Text(msg).font(.caption2).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer()
+            if !host.isLocal {
+                HStack(spacing: 1) {   // SSH (Terminal) · SMB (Finder) · Screen Sharing (VNC)
+                    connectButton("terminal", host.sshURLString, "SSH to \(host.displayName) (Terminal)")
+                    connectButton("folder", host.smbURLString, "Open file sharing (SMB) on \(host.displayName)")
+                    connectButton("display", host.vncURLString, "Screen Sharing (VNC) to \(host.displayName)")
+                }
+                .foregroundStyle(.secondary)
+                if isTesting {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button("Test", action: onTest).buttonStyle(.bordered)
+                }
+                if let onRemove {
+                    Button(role: .destructive, action: onRemove) { Image(systemName: "trash") }
+                        .buttonStyle(.borderless)
+                        .help("Stop monitoring \(host.displayName)")
+                }
+            }
+        }
+    }
+
+    /// `user@host` + the live tracked IP (when host is addressed by name) + offline/last-seen.
+    private var subtitle: String {
+        if host.isLocal {
+            return "this machine" + (ctx.resolvedIP.map { " · \($0)" } ?? "")
+        }
+        var s = host.sshTarget
+        if let ip = ctx.resolvedIP, !host.sshHost.contains(ip) { s += " · \(ip)" }
+        if !ctx.reachable { s += " · offline (\(ctx.lastSeenRelative))" }
+        return s
+    }
+
+    @ViewBuilder
+    private func connectButton(_ symbol: String, _ urlString: String?, _ help: String) -> some View {
+        Button {
+            if let s = urlString, let url = URL(string: s) { openURL(url) }
+        } label: {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .disabled(urlString == nil)
     }
 }
 

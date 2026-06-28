@@ -61,6 +61,7 @@ final class JobsModel: ObservableObject {
                     continue
                 }
             }
+            await ctx.refreshIP()   // track the host's live IP (local + reachable remotes)
             let paths = await ctx.listLaunchAgentPlists()
             if !ctx.host.isLocal && !ctx.reachable {
                 found.append(contentsOf: jobs.filter { $0.host.id == hostID })

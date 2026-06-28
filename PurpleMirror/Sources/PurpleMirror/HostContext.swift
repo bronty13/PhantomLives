@@ -21,6 +21,9 @@ final class HostContext: ObservableObject {
     private(set) var uid: Int
     private(set) var home: String
     private var resolved: Bool
+    /// The host's current primary LAN IP, re-resolved each rescan. Lets a host addressed by a
+    /// Bonjour `.local` name (whose IP follows DHCP) still show its live numeric address.
+    @Published private(set) var resolvedIP: String?
 
     init(host: MonitoredHost) {
         self.host = host
@@ -57,6 +60,17 @@ final class HostContext: ObservableObject {
         let lines = out.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         if st == 0, lines.count >= 2, let u = Int(lines[0]), !lines[1].isEmpty {
             uid = u; home = lines[1]; resolved = true
+        }
+    }
+
+    /// Re-resolve the host's current primary IPv4 (en0, then en1). Cheap (one mux'd ssh), called
+    /// each rescan so the displayed address tracks DHCP changes even when addressing by `.local`.
+    func refreshIP() async {
+        guard resolved else { return }
+        let (st, out) = await shell("ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true")
+        let ip = out.trimmingCharacters(in: .whitespacesAndNewlines)
+        if st == 0, ip.contains("."), ip.allSatisfy({ $0.isNumber || $0 == "." }) {
+            resolvedIP = ip
         }
     }
 
