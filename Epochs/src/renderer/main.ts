@@ -62,6 +62,8 @@ class GameUI {
   private pendingEvents: AwaitEventsEvent | null = null
   private pendingTarget: { card: string; targets: string[] } | null = null
   private pendingDraft: Extract<GameEvent, { type: 'awaitDraft' }> | null = null
+  private pendingBuy: Extract<GameEvent, { type: 'awaitBuy' }> | null = null
+  private buySel = { fleets: 0, forts: 0 }
   private pendingIntro: { player: PlayerId; empire: string; epoch: EpochId } | null = null
   private pendingRoll: { rolls: { player: PlayerId; roll: number }[]; first: PlayerId } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
@@ -215,11 +217,13 @@ class GameUI {
     this.pendingIntro = null
     this.pendingRoll = null
     this.pendingDraft = null
+    this.pendingBuy = null
     this.eventSel = {}
     this.hideEventPanel()
     ;(this.root.querySelector('#epoch-intro') as HTMLElement | null)?.classList.add('hidden')
     ;(this.root.querySelector('#start-roll') as HTMLElement | null)?.classList.add('hidden')
     ;(this.root.querySelector('#draft-panel') as HTMLElement | null)?.classList.add('hidden')
+    ;(this.root.querySelector('#buy-panel') as HTMLElement | null)?.classList.add('hidden')
     if (this.rafId != null) cancelAnimationFrame(this.rafId)
     this.rafId = null
     this.fx = []
@@ -256,6 +260,7 @@ class GameUI {
       !this.pendingIntro &&
       !this.pendingRoll &&
       !this.pendingDraft &&
+      !this.pendingBuy &&
       !this.over &&
       !this.helpOpen
     ) {
@@ -291,6 +296,12 @@ class GameUI {
         this.pendingDraft = ev
         this.status = `Epoch ${ROMAN[ev.epoch]} draft — keep ${ev.empire.name}, or pass it to a player with no empire`
         this.showDraftPanel(ev)
+        break
+      case 'awaitBuy':
+        this.pendingBuy = ev
+        this.buySel = { fleets: ev.maxFleets > 0 ? 1 : 0, forts: 0 } // default to the required fleet
+        this.status = `${ev.empire}: buy your units (${ev.budget} Strength to spend)`
+        this.showBuyPanel()
         break
       case 'awaitEvents':
         this.pendingEvents = ev
@@ -515,7 +526,7 @@ class GameUI {
    * timer, so this is a no-op there.)
    */
   private drainToInteractive(): void {
-    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll && !this.pendingDraft) {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll && !this.pendingDraft && !this.pendingBuy) {
       this.advance()
     }
   }
@@ -652,6 +663,63 @@ class GameUI {
     this.pendingDraft = null
     ;(this.root.querySelector('#draft-panel') as HTMLElement).classList.add('hidden')
     this.pushLog('passTo' in choice ? `You passed ${e} to ${this.nameOf(choice.passTo)}` : `You kept ${e}`)
+    this.advance(choice)
+  }
+
+  // Buy phase: split Strength across fleets / forts / armies.
+  private showBuyPanel(): void {
+    const ev = this.pendingBuy
+    if (!ev) return
+    const armies = Math.max(0, ev.budget - this.buySel.fleets - this.buySel.forts)
+    const stepper = (label: string, key: 'fleets' | 'forts', max: number, icon: string): string =>
+      `<div class="buy-row"><span class="buy-label">${icon} ${label}</span>` +
+      `<div class="buy-step"><button class="buy-dec" data-k="${key}">−</button>` +
+      `<span class="buy-n">${this.buySel[key]}</span>` +
+      `<button class="buy-inc" data-k="${key}" data-max="${max}">+</button></div></div>`
+    const el = this.root.querySelector('#buy-panel') as HTMLElement
+    el.innerHTML =
+      `<div class="evt-box intro-box buy-box">` +
+      `<div class="intro-epoch">Buy Units<span>${esc(ev.empire)} — ${ev.budget} Strength to spend</span></div>` +
+      `<div class="buy-rows">` +
+      (ev.maxFleets > 0 ? stepper('Fleets', 'fleets', ev.maxFleets, '⛵') : '') +
+      stepper('Forts', 'forts', ev.maxForts, '▮') +
+      `<div class="buy-row buy-armies"><span class="buy-label">⚔ Armies</span><span class="buy-n">${armies}</span></div>` +
+      `</div>` +
+      (ev.maxFleets > 0 ? `<p class="buy-note">A navigation empire must build at least one fleet.</p>` : '') +
+      `<div class="evt-actions"><button id="buy-confirm" class="primary">Deploy ▶</button></div>` +
+      `</div>`
+    el.classList.remove('hidden')
+    el.querySelectorAll<HTMLButtonElement>('.buy-dec').forEach((b) => {
+      b.onclick = (): void => this.adjustBuy(b.dataset.k as 'fleets' | 'forts', -1)
+    })
+    el.querySelectorAll<HTMLButtonElement>('.buy-inc').forEach((b) => {
+      b.onclick = (): void => this.adjustBuy(b.dataset.k as 'fleets' | 'forts', +1)
+    })
+    ;(el.querySelector('#buy-confirm') as HTMLButtonElement).onclick = (): void => this.resolveBuy()
+  }
+
+  private adjustBuy(key: 'fleets' | 'forts', delta: number): void {
+    const ev = this.pendingBuy
+    if (!ev) return
+    const max = key === 'fleets' ? ev.maxFleets : ev.maxForts
+    const min = key === 'fleets' && ev.maxFleets > 0 ? 1 : 0 // navigation needs ≥1 fleet
+    const other = key === 'fleets' ? this.buySel.forts : this.buySel.fleets
+    let v = this.buySel[key] + delta
+    v = Math.max(min, Math.min(max, v))
+    if (v + other > ev.budget) v = ev.budget - other
+    this.buySel[key] = Math.max(min, v)
+    this.showBuyPanel()
+  }
+
+  private resolveBuy(): void {
+    if (!this.pendingBuy) return
+    const choice = { ...this.buySel }
+    this.pendingBuy = null
+    ;(this.root.querySelector('#buy-panel') as HTMLElement).classList.add('hidden')
+    const bits = [choice.fleets ? `${choice.fleets} fleet${choice.fleets > 1 ? 's' : ''}` : '', choice.forts ? `${choice.forts} fort${choice.forts > 1 ? 's' : ''}` : '']
+      .filter(Boolean)
+      .join(' + ')
+    if (bits) this.pushLog(`You built ${bits}`)
     this.advance(choice)
   }
 
@@ -956,7 +1024,7 @@ const TEMPLATE = `
     <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="buy-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
       <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Rulebook</h3><div class="rb-tabs"><button id="rb-tab-rules" class="rb-tab on">Rules</button><button id="rb-tab-classic" class="rb-tab">Classic scans</button></div><button id="rb-close">Close</button></div><div class="rb-body"><div class="rb-rules"><nav class="rb-nav"></nav><div class="rb-content"></div></div><div class="rb-pages hidden"></div></div></div></div>
       <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">

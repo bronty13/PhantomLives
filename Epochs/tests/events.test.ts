@@ -218,6 +218,33 @@ describe('Keep/Pass draft', () => {
   })
 })
 
+describe('interactive buy (fleets + forts)', () => {
+  it('a human who buys a fort gets one placed on a held land', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const players: PlayerConfig[] = [{ id: 'P1', name: 'P1', isHuman: true }, ...hardBots(['P2', 'P3'])]
+      const game = worldGame(seed, players)
+      const it = game.play()
+      let step = it.next()
+      let boughtAFort = false
+      while (!step.done) {
+        const ev = step.value
+        if (ev.type === 'awaitBuy') {
+          if (ev.maxForts > 0) boughtAFort = true
+          step = it.next({ fleets: ev.maxFleets > 0 ? 1 : 0, forts: Math.min(1, ev.maxForts) })
+        } else if (ev.type === 'awaitDraft') {
+          step = it.next({ keep: true })
+        } else if (ev.type === 'awaitPlacement') {
+          step = it.next(ev.frontier[0]?.land)
+        } else {
+          step = it.next()
+        }
+      }
+      if (boughtAFort && game.state.pieces.some((p) => p.kind === 'fort' && p.owner === 'P1')) return
+    }
+    throw new Error('buying a fort never put one on the board')
+  })
+})
+
 describe('naval combat (seas) vs coexistence (oceans)', () => {
   it('classifies the 5 great oceans; everything else is a sea', () => {
     expect(OCEANS.size).toBe(5)

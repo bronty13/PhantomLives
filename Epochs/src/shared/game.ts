@@ -92,8 +92,11 @@ const emptyTurnEffects = (): TurnEffects => ({
 /** Keep the drawn empire, or pass (gift) it to an empire-less player. */
 export type DraftChoice = { keep: true } | { passTo: PlayerId }
 
+/** How to spend Strength: this many fleets + forts; the rest become armies. */
+export type BuyChoice = { fleets: number; forts: number }
+
 /** What the driver may pass back into `play()` when resuming a yield. */
-export type PlayInput = LandId | EventChoice | DraftChoice | undefined
+export type PlayInput = LandId | EventChoice | DraftChoice | BuyChoice | undefined
 
 export interface GameState {
   epoch: EpochId
@@ -130,6 +133,15 @@ export type GameEvent =
       epoch: EpochId
       empire: { name: string; strength: number; startLand: LandId; hasCapital: boolean; navigates: boolean }
       canPassTo: PlayerId[]
+    }
+  | {
+      type: 'awaitBuy'
+      player: PlayerId
+      empire: string
+      /** Strength available to spend on fleets/forts (the rest become armies). */
+      budget: number
+      maxFleets: number
+      maxForts: number
     }
   | { type: 'eventsPlayed'; player: PlayerId; played: string[] }
   | { type: 'disaster'; player: PlayerId; card: string; land: LandId; effect: string }
@@ -380,39 +392,15 @@ export class Game {
     const isHuman = this.humanSeats.has(pid)
     if (!bot && !isHuman) return
 
-    // Fleets: a navigation empire must build & use ≥1 fleet. Deploy one into its best
-    // navigable sea (bordering a land it holds), spending one Strength point — armies
-    // can now only land overseas via a Sea the player has a fleet in (or Ship Building).
-    let fleetsBought = 0
-    const navSeas = 'all' in empire.navigation ? this.board.seas : empire.navigation.seas
-    if (navSeas.length > 0 && empire.strength >= 2) {
-      const sea = this.bestFleetSea(navSeas, this.currentLands(pid))
-      if (sea) {
-        fleetsBought = 1 // the Strength is spent whether or not the landing succeeds
-        const enemyFleets = isOcean(sea)
-          ? 0 // open oceans: all players' fleets coexist, no combat
-          : this.state.fleets.filter((f) => f.sea === sea && f.owner !== pid).length
-        if (enemyFleets > 0) {
-          // naval combat (enclosed seas): the entering fleet must beat each enemy fleet;
-          // it is repelled the first round it loses (same dice as land, no terrain/fort).
-          let defenders = enemyFleets
-          while (defenders > 0) {
-            const res = resolveAssault(this.state.rng, NAVAL_CTX)
-            if (res.outcome === 'attacker') {
-              this.removeOneEnemyFleet(sea, pid)
-              defenders -= 1
-            } else break
-          }
-          const won = defenders === 0
-          if (won) this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch })
-          yield { type: 'navalCombat', player: pid, sea, won }
-        } else if (this.state.fleets.filter((f) => f.sea === sea).length < 2) {
-          this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch }) // ≤2 per body
-          yield { type: 'fleet', player: pid, sea }
-        }
-      }
-    }
-    let remaining = empire.strength - 1 - fleetsBought + effects.bonusArmies // setup placed 1 army
+    // ── Buy units: split Strength across fleets / forts / armies ──────────────
+    // (The setup army already cost 1.) The human chooses; the bot keeps it simple
+    // (one fleet if it navigates — the rule's minimum — and the rest armies).
+    const navigates = 'all' in empire.navigation || empire.navigation.seas.length > 0
+    const budget = Math.max(0, empire.strength - 1)
+    const buy = yield* this.chooseBuy(pid, empire, navigates, budget)
+    for (let i = 0; i < buy.fleets; i++) yield* this.deployOneFleet(pid, empire)
+    for (let i = 0; i < buy.forts; i++) this.placeBoughtFort(pid)
+    let remaining = budget - buy.fleets - buy.forts + effects.bonusArmies
     while (remaining > 0) {
       const frontier = this.computeFrontier(pid, empire, effects.navigateAll)
       if (frontier.length === 0) break
@@ -968,6 +956,78 @@ export class Game {
     const seas = new Set<SeaId>()
     for (const f of this.state.fleets) if (f.owner === pid && !isOcean(f.sea)) seas.add(f.sea)
     return seas.size
+  }
+
+  /** Decide the fleet/fort split. The human chooses via `awaitBuy`; the bot builds one
+   *  fleet if it navigates (the rule's minimum) and no forts. */
+  private *chooseBuy(
+    pid: PlayerId,
+    empire: EmpireCard,
+    navigates: boolean,
+    budget: number,
+  ): Generator<GameEvent, BuyChoice, PlayInput> {
+    if (budget <= 0) return { fleets: 0, forts: 0 }
+    const maxFleets = navigates ? budget : 0
+    const maxForts = budget
+    if (this.humanSeats.has(pid)) {
+      const choice = (yield {
+        type: 'awaitBuy',
+        player: pid,
+        empire: empire.name,
+        budget,
+        maxFleets,
+        maxForts,
+      }) as BuyChoice | undefined
+      let fleets = Math.max(0, Math.min(maxFleets, choice?.fleets ?? 0))
+      const forts = Math.max(0, Math.min(maxForts - fleets, choice?.forts ?? 0))
+      if (navigates && fleets === 0 && budget - forts >= 1) fleets = 1 // must build ≥1 fleet
+      return { fleets, forts: Math.min(forts, budget - fleets) }
+    }
+    return { fleets: navigates ? 1 : 0, forts: 0 }
+  }
+
+  /** Deploy one fleet into the empire's best navigable sea (with naval combat). */
+  private *deployOneFleet(pid: PlayerId, empire: EmpireCard): Generator<GameEvent, void, PlayInput> {
+    const navSeas = 'all' in empire.navigation ? this.board.seas : empire.navigation.seas
+    const sea = this.bestFleetSea(navSeas, this.currentLands(pid))
+    if (!sea) return
+    const enemyFleets = isOcean(sea)
+      ? 0
+      : this.state.fleets.filter((f) => f.sea === sea && f.owner !== pid).length
+    if (enemyFleets > 0) {
+      let defenders = enemyFleets
+      while (defenders > 0) {
+        const res = resolveAssault(this.state.rng, NAVAL_CTX)
+        if (res.outcome === 'attacker') {
+          this.removeOneEnemyFleet(sea, pid)
+          defenders -= 1
+        } else break
+      }
+      const won = defenders === 0
+      if (won) this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch })
+      yield { type: 'navalCombat', player: pid, sea, won }
+    } else if (this.state.fleets.filter((f) => f.sea === sea).length < 2) {
+      this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch }) // ≤2 per body
+      yield { type: 'fleet', player: pid, sea }
+    }
+  }
+
+  /** Place a bought fort on the empire's best fort-less holding (its seat first). */
+  private placeBoughtFort(pid: PlayerId): void {
+    const hasFort = (l: LandId): boolean =>
+      this.state.pieces.some((p) => p.land === l && p.kind === 'fort')
+    const held = [...this.currentLands(pid)].filter((l) => !hasFort(l))
+    if (held.length === 0) return
+    const capLand = this.state.pieces.find((p) => p.owner === pid && p.kind === 'capital')?.land
+    const target =
+      capLand && held.includes(capLand)
+        ? capLand
+        : held.sort(
+            (a, b) =>
+              areaValue(this.board.land(b)?.area ?? '', this.state.epoch) -
+              areaValue(this.board.land(a)?.area ?? '', this.state.epoch),
+          )[0]
+    this.addPiece({ land: target, kind: 'fort', owner: pid, epochColor: this.state.epoch })
   }
 
   /** Lands `pid` holds with a current-epoch army. */

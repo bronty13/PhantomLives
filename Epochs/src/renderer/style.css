@@ -237,6 +237,20 @@ input[type=range] { flex: 1; }
 .pass-btn:hover { background: #e7d6a8; border-color: #c8a23a; }
 .pass-btn .dot { width: 9px; height: 9px; border-radius: 50%; }
 
+/* buy-units screen (reuses the intro-box parchment base) */
+.buy-box { width: min(420px, 92%); padding: 0 0 18px; }
+.buy-rows { padding: 16px 26px 6px; display: flex; flex-direction: column; gap: 10px; }
+.buy-row { display: flex; align-items: center; justify-content: space-between; }
+.buy-label { font-size: 15px; color: #3a2a12; font-weight: 600; }
+.buy-step { display: inline-flex; align-items: center; gap: 12px; }
+.buy-step button { width: 28px; height: 28px; border-radius: 7px; border: 1px solid #b09356; background: #efe3c2; color: #3a2a12; font-size: 18px; line-height: 1; cursor: pointer; }
+.buy-step button:hover { background: #e7d6a8; border-color: #c8a23a; }
+.buy-n { min-width: 22px; text-align: center; font-size: 18px; font-weight: 700; color: #2c2012; font-variant-numeric: tabular-nums; }
+.buy-armies { border-top: 1px solid rgba(138, 106, 54, 0.25); padding-top: 10px; margin-top: 2px; }
+.buy-armies .buy-n { min-width: auto; }
+.buy-note { margin: 8px 26px 0; font-size: 12px; color: #7a6238; text-align: center; }
+.buy-box .evt-actions { padding: 10px 26px 0; justify-content: center; }
+
 /* event panel — parchment event cards (reuses the intro-box parchment base) */
 .evt-box-wide { width: min(640px, 94%); padding: 0 0 18px; }
 .evt-box-wide .evt-body { padding: 16px 22px 4px; max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }

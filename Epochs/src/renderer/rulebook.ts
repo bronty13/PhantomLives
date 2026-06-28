@@ -71,8 +71,11 @@ export const RULEBOOK: RuleSection[] = [
         <li><b>Minor Empire</b> — if you played one, it takes a full mini-turn first.</li>
         <li><b>Set up</b> — place your capital (if any) and first army on your homeland,
         clearing whatever army or fort stood there.</li>
-        <li><b>Expand</b> — place the rest of your armies (your empire's
-        <b>strength</b>), one at a time, into reachable lands, fighting where needed.</li>
+        <li><b>Buy units</b> — spend your empire's remaining <b>strength</b> on any mix
+        of <b>armies, fleets, and forts</b> (each costs one). A navigation empire must
+        build at least one fleet.</li>
+        <li><b>Expand</b> — place your armies one at a time into reachable lands,
+        fighting where needed; fleets sail into seas, forts fortify your lands.</li>
         <li><b>Build</b> — raise Monuments from your resource lands.</li>
         <li><b>Score</b> — total your Areas and structures, and add it to your VP.</li>
       </ol>`,
@@ -160,7 +163,8 @@ export const RULEBOOK: RuleSection[] = [
         <li><b>City</b> — a lesser seat (worth 1).</li>
         <li><b>Monument</b> — built in the Build step: one for every <b>two resource
         lands</b> ${RESOURCE} you hold (worth 1).</li>
-        <li><b>Fort</b> — defensive only (no points); strengthens the land in combat.</li>
+        <li><b>Fort</b> — defensive only (no points); strengthens the land in combat. You
+        buy forts with strength in the Buy step (and the Kingdoms event grants one).</li>
       </ul>
       <p>Crucially, <b>structures persist across epochs</b> while armies fade — a city or
       monument you raise keeps scoring for you in <i>every</i> later epoch, so works are

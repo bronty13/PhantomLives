@@ -2,6 +2,23 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.34.0] — 2026-06-28
+
+Fidelity pass, slice 4 — fleets (chunk 4b: interactive buy + bought forts). **Fleets complete.**
+
+### Added
+- **Buy phase.** Each turn you now spend your empire's Strength across **armies,
+  fleets, and forts** — a parchment Buy Units screen with steppers and a live army
+  count (a navigation empire must build ≥1 fleet). New `awaitBuy` step + `BuyChoice`
+  input; bots keep the simple split (one fleet if they navigate, rest armies).
+- **Forts as a bought unit** — spend strength on forts (placed on your best fort-less
+  holding, the seat first), not only the Kingdoms event.
+- Engine refactor: `chooseBuy` / `deployOneFleet` / `placeBoughtFort`. Rulebook turn +
+  structures updated.
+
+This finishes **slice 4 (fleets)** — gating, naval combat, sea scoring, rendering, and
+now the interactive economy. Only **slice 5 (events as 9 colour-piles)** remains.
+
 ## [0.33.0] — 2026-06-28
 
 Fidelity pass, slice 4 — fleets (chunk 4a: fleets on the map).
