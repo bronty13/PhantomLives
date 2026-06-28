@@ -191,6 +191,18 @@ export class Game {
   private readonly bots: Map<PlayerId, Bot>
   private readonly prevEmpireOrder = new Map<PlayerId, number>()
   private readonly startRolls = new Map<PlayerId, number>() // opening die roll → epoch-1 order
+  private _areaSizes: Map<string, number> | null = null
+
+  /** Non-barren land count of an Area — the Control tier needs "every land". */
+  private readonly areaSize = (area: string): number => {
+    if (!this._areaSizes) {
+      this._areaSizes = new Map()
+      for (const [id, def] of this.board.areas) {
+        this._areaSizes.set(id, def.lands.filter((l) => !this.board.land(l)?.barren).length)
+      }
+    }
+    return this._areaSizes.get(area) ?? 0
+  }
   private readonly seed: number
   private readonly humanSeats: Set<PlayerId>
 
@@ -328,6 +340,7 @@ export class Game {
       this.board.areaIds,
       this.state.epoch,
       pid,
+      this.areaSize,
     )
     const gained = breakdown.total
     this.player(pid).vp += gained
@@ -821,13 +834,16 @@ export class Game {
     const hasMonument = (land: LandId): boolean =>
       this.state.pieces.some((p) => p.land === land && p.kind === 'monument')
 
-    for (const kind of ['capital', 'city', 'army'] as const) {
-      const lands = controlledLands(kind)
-      const open = lands.find((l) => !hasMonument(l))
+    // Build order: Capital land, then a City land, then a held Resource land (orig).
+    for (const kind of ['capital', 'city'] as const) {
+      const open = controlledLands(kind).find((l) => !hasMonument(l))
       if (open) return open
     }
-    // every controlled land already carries a monument → unplaceable, so it
-    // isn't built (SPEC §8.2 — one monument per land)
+    const resourceLand = controlledLands('army').find(
+      (l) => !hasMonument(l) && !!this.board.land(l)?.hasResource,
+    )
+    if (resourceLand) return resourceLand
+    // no eligible land (every capital/city/resource land already has a monument)
     return null
   }
 

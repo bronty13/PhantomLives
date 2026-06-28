@@ -16,17 +16,16 @@ export const TIER_MULTIPLIER: Record<Tier, number> = {
 }
 
 /**
- * Tier for a player in one Area given their own army count and every rival's
- * count in that Area (SPEC §9.1):
- *   control   — own ≥ 3 AND no rival has any army
- *   dominance — own ≥ 2 AND own > every rival
- *   presence  — own ≥ 1
+ * Tier for a player in one Area, by the number of LANDS they hold there vs every
+ * rival, and the Area's size (its non-barren land count) — SPEC §9.1 / original:
+ *   control   — holds EVERY land in the Area
+ *   dominance — holds ≥ 3 lands AND more than every rival
+ *   presence  — holds ≥ 1 land
  */
-export function areaTier(own: number, rivalCounts: number[]): Tier {
+export function areaTier(own: number, rivalCounts: number[], areaSize: number): Tier {
   const maxRival = rivalCounts.length ? Math.max(...rivalCounts) : 0
-  const anyRival = maxRival > 0
-  if (own >= 3 && !anyRival) return 'control'
-  if (own >= 2 && own > maxRival) return 'dominance'
+  if (areaSize > 0 && own >= areaSize) return 'control' // every land (implies no rival)
+  if (own >= 3 && own > maxRival) return 'dominance'
   if (own >= 1) return 'presence'
   return 'none'
 }
@@ -37,50 +36,61 @@ export function scoreArea(
   epoch: EpochId,
   own: number,
   rivalCounts: number[],
+  areaSize: number,
 ): number {
-  return areaValue(area, epoch) * TIER_MULTIPLIER[areaTier(own, rivalCounts)]
+  return areaValue(area, epoch) * TIER_MULTIPLIER[areaTier(own, rivalCounts, areaSize)]
 }
 
-/** Count each player's armies in a given Area, using a land→area resolver. */
+/** Count the distinct LANDS each player holds in an Area (army stacks count once). */
 export function armiesByPlayerInArea(
   pieces: BoardPiece[],
   areaOf: (land: LandId) => AreaId | null,
   area: AreaId,
 ): Map<PlayerId, number> {
-  const counts = new Map<PlayerId, number>()
+  const landsByPlayer = new Map<PlayerId, Set<LandId>>()
   for (const p of pieces) {
     if (p.kind !== 'army' || p.owner == null) continue
     if (areaOf(p.land) !== area) continue
-    counts.set(p.owner, (counts.get(p.owner) ?? 0) + 1)
+    let s = landsByPlayer.get(p.owner)
+    if (!s) {
+      s = new Set()
+      landsByPlayer.set(p.owner, s)
+    }
+    s.add(p.land)
   }
+  const counts = new Map<PlayerId, number>()
+  for (const [pid, s] of landsByPlayer) counts.set(pid, s.size)
   return counts
 }
 
-/** Score one Area for one player from a precomputed per-player army count map. */
+/** Score one Area for one player from a precomputed per-player land-count map. */
 export function scoreAreaForPlayer(
   area: AreaId,
   epoch: EpochId,
   player: PlayerId,
   counts: Map<PlayerId, number>,
+  areaSize: number,
 ): number {
   const own = counts.get(player) ?? 0
   const rivals: number[] = []
   for (const [id, c] of counts) if (id !== player) rivals.push(c)
-  return scoreArea(area, epoch, own, rivals)
+  return scoreArea(area, epoch, own, rivals, areaSize)
 }
 
-/** Total area-control VP for a player across the given Areas. */
+/** Total area-control VP for a player across the given Areas. `areaSize` resolves
+ *  each Area's non-barren land count (for the Control tier). */
 export function scoreAllAreasForPlayer(
   pieces: BoardPiece[],
   areaOf: (land: LandId) => AreaId | null,
   areas: AreaId[],
   epoch: EpochId,
   player: PlayerId,
+  areaSize: (area: AreaId) => number,
 ): number {
   let total = 0
   for (const area of areas) {
     const counts = armiesByPlayerInArea(pieces, areaOf, area)
-    total += scoreAreaForPlayer(area, epoch, player, counts)
+    total += scoreAreaForPlayer(area, epoch, player, counts, areaSize(area))
   }
   return total
 }
@@ -125,6 +135,7 @@ export function scoreBreakdown(
   areas: AreaId[],
   epoch: EpochId,
   player: PlayerId,
+  areaSize: (area: AreaId) => number,
 ): ScoreBreakdown {
   const areaScores: AreaScore[] = []
   let areaVp = 0
@@ -134,7 +145,7 @@ export function scoreBreakdown(
     if (own === 0) continue
     const rivals: number[] = []
     for (const [id, c] of counts) if (id !== player) rivals.push(c)
-    const tier = areaTier(own, rivals)
+    const tier = areaTier(own, rivals, areaSize(area))
     const base = areaValue(area, epoch)
     const vp = base * TIER_MULTIPLIER[tier]
     areaScores.push({ area, tier, base, own, vp })
@@ -170,6 +181,7 @@ export function scoreEmpireTurn(
   areas: AreaId[],
   epoch: EpochId,
   player: PlayerId,
+  areaSize: (area: AreaId) => number,
 ): number {
-  return scoreBreakdown(pieces, areaOf, areas, epoch, player).total
+  return scoreBreakdown(pieces, areaOf, areas, epoch, player, areaSize).total
 }

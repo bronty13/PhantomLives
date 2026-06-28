@@ -31,6 +31,8 @@ const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
 const EPOCH_ERA = ['', '3000–1900 BC', '1900–950 BC', '950 BC – AD 1', 'AD 1 – 700', 'AD 700 – 1300', 'AD 1300 – 1700', 'AD 1700 – 2000']
 const lands = WORLD_MAP_DATA.lands
 const LAND_BY_ID = new Map<string, Land>(lands.map((l) => [l.id, l]))
+const AREA_SIZE = new Map<string, number>() // non-barren land count per Area (Control tier)
+for (const l of lands) if (!l.barren && l.area) AREA_SIZE.set(l.area, (AREA_SIZE.get(l.area) ?? 0) + 1)
 // The board scan (art/board-crop.jpg → public/board.jpg) is the map. Land
 // coordinates are normalized fractions of THIS image, so the view rect is framed
 // to the image's aspect ratio (letterboxed) and projectLand maps straight onto it.
@@ -788,7 +790,7 @@ class GameUI {
     const humanId = this.opts.humanSeat ? `P${this.opts.humanSeat}` : null
     if (humanId && this.game) {
       const areaOf = (l: string): AreaId | null => (LAND_BY_ID.get(l)?.area as AreaId) ?? null
-      const bd = scoreBreakdown(this.game.state.pieces, areaOf, Object.keys(AREA_VALUES) as AreaId[], this.currentEpoch, humanId)
+      const bd = scoreBreakdown(this.game.state.pieces, areaOf, Object.keys(AREA_VALUES) as AreaId[], this.currentEpoch, humanId, (a) => AREA_SIZE.get(a) ?? 0)
       for (const a of bd.areas) mine.set(a.area, { tier: a.tier, vp: a.vp })
     }
     const glyph = (t?: string): string => (t === 'control' ? '★' : t === 'dominance' ? '◆' : t === 'presence' ? '●' : '')

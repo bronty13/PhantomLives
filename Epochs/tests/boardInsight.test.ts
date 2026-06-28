@@ -61,11 +61,17 @@ describe('placementInfo', () => {
 
 describe('areaControl', () => {
   it('identifies the leader, tier, and banked VP of each scoring region', () => {
+    // 3 of Middle East's 4 lands, no rival → DOMINANCE (control now needs all 4)
     const pieces = [army('mesopotamia', 'P1'), army('levant', 'P1'), army('persia', 'P1')]
     const me = areaControl(board, pieces, 1).find((r) => r.areaId === 'middle_east')!
     expect(me.leaderId).toBe('P1')
-    expect(me.tier).toBe('control') // 3 armies, no rival
-    expect(me.bankVP).toBe(me.value * 3) // control = ×3
+    expect(me.tier).toBe('dominance')
+    expect(me.bankVP).toBe(me.value * 2) // dominance = ×2
+    // holding all 4 lands → control ×3
+    const all = [...pieces, army('anatolia', 'P1')]
+    const me2 = areaControl(board, all, 1).find((r) => r.areaId === 'middle_east')!
+    expect(me2.tier).toBe('control')
+    expect(me2.bankVP).toBe(me2.value * 3)
   })
 
   it('marks contested when two players tie for the lead', () => {

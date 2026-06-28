@@ -2,6 +2,21 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.27.0] — 2026-06-27
+
+Fidelity pass, slice 1 of 5 — scoring tiers + monument placement.
+
+### Changed
+- **Area scoring tiers now match the rules exactly.** **Dominance** requires
+  holding **≥3 lands** in an Area (was ≥2), and **Control** means holding **EVERY
+  land** in the Area (was "≥3 with no rival"). Tiers are computed from distinct
+  **lands held** vs each rival and the Area's non-barren size, so the math stays
+  correct when stacking arrives. Threads an `areaSize` resolver through
+  `areaTier`/`scoreArea`/`scoreBreakdown` and the AI's board insight + value
+  function, so what the AI optimises and what the VP Table shows both match.
+- **Monuments build on a held Resource land** as the third choice (Capital → City →
+  Resource), per the original, instead of any held land.
+
 ## [0.26.0] — 2026-06-27
 
 ### Added

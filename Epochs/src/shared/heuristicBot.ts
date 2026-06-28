@@ -337,6 +337,10 @@ export class HeuristicBot implements Bot {
     }
 
     // ── engine-parity area value over the horizon ─────────────────────────
+    const areaSizeOf = (area: AreaId): number => {
+      const def = view.board.areas.get(area)
+      return def ? def.lands.filter((l) => !view.board.land(l)?.barren).length : 0
+    }
     const fwdScore = (
       area: AreaId,
       rho: number,
@@ -346,10 +350,11 @@ export class HeuristicBot implements Bot {
       const own = counts.get(perspective) ?? 0
       const rivals: number[] = []
       for (const [id, c] of counts) if (id !== perspective) rivals.push(c)
+      const aSize = areaSizeOf(area)
       let total = 0
       let weight = 1
       for (let k = 0; k <= remainingEpochs; k++) {
-        total += weight * scoreArea(area, (E + k) as EpochId, own, rivals)
+        total += weight * scoreArea(area, (E + k) as EpochId, own, rivals, aSize)
         weight *= rho
       }
       return total

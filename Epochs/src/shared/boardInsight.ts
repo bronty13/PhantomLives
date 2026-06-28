@@ -15,6 +15,12 @@ function armyOwnerOn(pieces: readonly BoardPiece[], land: LandId): PlayerId | nu
   return null
 }
 
+/** Non-barren land count of an Area (the Control tier needs "every land"). */
+function areaSizeOf(board: Board, area: AreaId): number {
+  const def = board.areas.get(area)
+  return def ? def.lands.filter((l) => !board.land(l)?.barren).length : 0
+}
+
 export interface PlacementCtx {
   board: Board
   pieces: readonly BoardPiece[]
@@ -46,17 +52,18 @@ export function placementInfo(
     const value = areaValue(area, ctx.epoch)
     if (value > 0) {
       const counts = armiesByPlayerInArea(ctx.pieces as BoardPiece[], ctx.board.areaOfFn, area)
+      const aSize = areaSizeOf(ctx.board, area)
       const own = counts.get(ctx.player) ?? 0
       const rivalsNow: number[] = []
       for (const [id, c] of counts) if (id !== ctx.player) rivalsNow.push(c)
-      const tierNow = areaTier(own, rivalsNow)
+      const tierNow = areaTier(own, rivalsNow, aSize)
       const name = AREA_NAMES[area] ?? area
       if (kind === 'own_old') {
         lines.push(`${name} (×${value}): no new ground`)
       } else {
         let tierAfter: Tier
         if (kind === 'empty') {
-          tierAfter = areaTier(own + 1, rivalsNow)
+          tierAfter = areaTier(own + 1, rivalsNow, aSize)
         } else {
           const defender = armyOwnerOn(ctx.pieces, land)
           const after = new Map(counts)
@@ -66,7 +73,7 @@ export function placementInfo(
           }
           const rivalsAfter: number[] = []
           for (const [id, c] of after) if (id !== ctx.player) rivalsAfter.push(c)
-          tierAfter = areaTier(own + 1, rivalsAfter)
+          tierAfter = areaTier(own + 1, rivalsAfter, aSize)
         }
         const gain = (TIER_MULTIPLIER[tierAfter] - TIER_MULTIPLIER[tierNow]) * value
         lines.push(
@@ -126,7 +133,7 @@ export function areaControl(
     }
     const rivals: number[] = []
     for (const [id, c] of counts) if (id !== leaderId) rivals.push(c)
-    const tier: Tier = leaderId ? areaTier(leaderCount, rivals) : 'none'
+    const tier: Tier = leaderId ? areaTier(leaderCount, rivals, areaSizeOf(board, areaId)) : 'none'
     rows.push({
       areaId,
       name: AREA_NAMES[areaId] ?? areaId,
