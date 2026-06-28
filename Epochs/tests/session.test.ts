@@ -29,7 +29,8 @@ const count = (events: GameEvent[], type: GameEvent['type']) =>
 describe('Game.play() — the step-driven generator', () => {
   it('emits a well-formed event sequence', () => {
     const { events } = drive(makeGame(1, bots(['P1', 'P2', 'P3'])))
-    expect(events[0].type).toBe('epochStart')
+    expect(events[0].type).toBe('startRoll') // opening die roll
+    expect(events[1].type).toBe('epochStart')
     expect(events[events.length - 1].type).toBe('gameEnd')
     expect(count(events, 'epochStart')).toBe(7)
     expect(count(events, 'epochEnd')).toBe(7)

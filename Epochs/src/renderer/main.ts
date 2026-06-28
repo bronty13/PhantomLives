@@ -55,6 +55,7 @@ class GameUI {
   private pendingEvents: AwaitEventsEvent | null = null
   private pendingTarget: { card: string; targets: string[] } | null = null
   private pendingIntro: { player: PlayerId; empire: string; epoch: EpochId } | null = null
+  private pendingRoll: { rolls: { player: PlayerId; roll: number }[]; first: PlayerId } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
   private auto = false
   private speed = 320
@@ -66,6 +67,8 @@ class GameUI {
   private rafId: number | null = null
   private activePlayer: PlayerId | null = null
   private attackOdds: number | null = null // win% of the human's pending attack (clash float)
+  private lastSeed = 0 // seed last auto-filled into #seed (to detect a user-typed override)
+  private readonly randomSeed = (): number => Math.floor(Math.random() * 1_000_000) + 1
 
   private opts: NewGameOpts = { players: 4, difficulty: 'medium', humanSeat: 1, seed: 1 }
   private playerOrder: string[] = []
@@ -82,6 +85,10 @@ class GameUI {
     this.canvas.addEventListener('mouseleave', () => { this.hovered = null; this.render() })
     this.canvas.addEventListener('click', (e) => this.onClick(e))
     window.addEventListener('resize', () => this.render())
+    // First game gets a random seed too (so it isn't always the same draw).
+    this.lastSeed = this.randomSeed()
+    this.opts.seed = this.lastSeed
+    ;(root.querySelector('#seed') as HTMLInputElement).value = String(this.lastSeed)
     this.newGame()
     this.showHelp() // first-run onboarding (pauses until dismissed)
   }
@@ -160,9 +167,11 @@ class GameUI {
     this.pendingEvents = null
     this.pendingTarget = null
     this.pendingIntro = null
+    this.pendingRoll = null
     this.eventSel = {}
     this.hideEventPanel()
     ;(this.root.querySelector('#epoch-intro') as HTMLElement | null)?.classList.add('hidden')
+    ;(this.root.querySelector('#start-roll') as HTMLElement | null)?.classList.add('hidden')
     if (this.rafId != null) cancelAnimationFrame(this.rafId)
     this.rafId = null
     this.fx = []
@@ -197,6 +206,7 @@ class GameUI {
       !this.pendingEvents &&
       !this.pendingTarget &&
       !this.pendingIntro &&
+      !this.pendingRoll &&
       !this.over &&
       !this.helpOpen
     ) {
@@ -210,6 +220,11 @@ class GameUI {
   private handle(ev: GameEvent): void {
     const now = performance.now()
     switch (ev.type) {
+      case 'startRoll':
+        this.pendingRoll = { rolls: ev.rolls, first: ev.first }
+        this.pushLog(`${this.nameOf(ev.first)} rolls highest — plays first`)
+        this.showStartRoll()
+        break
       case 'epochStart':
         this.currentEpoch = ev.epoch
         this.pushLog(`— Epoch ${ROMAN[ev.epoch]} —`)
@@ -409,7 +424,7 @@ class GameUI {
    * timer, so this is a no-op there.)
    */
   private drainToInteractive(): void {
-    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro) {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll) {
       this.advance()
     }
   }
@@ -465,6 +480,46 @@ class GameUI {
   private hideEpochIntro(): void {
     this.pendingIntro = null
     ;(this.root.querySelector('#epoch-intro') as HTMLElement).classList.add('hidden')
+    this.render()
+    this.drainToInteractive()
+    this.scheduleNext()
+  }
+
+  // The opening die-roll splash: each player rolls; highest plays first.
+  private showStartRoll(): void {
+    const r = this.pendingRoll
+    if (!r) return
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    const dice = r.rolls
+      .map((d) => {
+        const win = d.player === r.first
+        return (
+          `<div class="roll-die${win ? ' win' : ''}">` +
+          `<div class="roll-face" style="border-color:${this.colorOf(d.player)}">${d.roll}</div>` +
+          `<div class="roll-name"><span class="dot" style="background:${this.colorOf(d.player)}"></span>${esc(this.nameOf(d.player))}</div></div>`
+        )
+      })
+      .join('')
+    const el = this.root.querySelector('#start-roll') as HTMLElement
+    el.innerHTML =
+      `<div class="evt-box intro-box roll-box">` +
+      `<div class="intro-epoch">Opening Roll<span>highest die plays first</span></div>` +
+      `<div class="roll-dice">${dice}</div>` +
+      `<p class="intro-sub"><b>${esc(this.nameOf(r.first))}</b> plays first</p>` +
+      `<div class="evt-actions"><button id="roll-begin" class="primary">Begin ▶</button></div>` +
+      `</div>`
+    el.classList.remove('hidden')
+    ;(el.querySelector('#roll-begin') as HTMLButtonElement).onclick = () => this.hideStartRoll()
+    this.timer = setTimeout(() => this.hideStartRoll(), 2800) // auto-advance to keep the opening flowing
+  }
+
+  private hideStartRoll(): void {
+    if (!this.pendingRoll) return
+    this.pendingRoll = null
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    ;(this.root.querySelector('#start-roll') as HTMLElement).classList.add('hidden')
     this.render()
     this.drainToInteractive()
     this.scheduleNext()
@@ -686,11 +741,18 @@ class GameUI {
       if (this.pending) this.advance(undefined) // stop placing this turn
     }
     q<HTMLButtonElement>('#newgame').onclick = () => {
+      const field = q<HTMLInputElement>('#seed')
+      const typed = parseInt(field.value, 10)
+      // A fresh random seed each game (so empires + dice vary, not always Egypt).
+      // If you TYPE a specific seed it's honoured, for replaying a game.
+      const seed = typed && typed !== this.lastSeed ? typed : this.randomSeed()
+      this.lastSeed = seed
+      field.value = String(seed)
       this.opts = {
         players: parseInt(q<HTMLSelectElement>('#players').value, 10),
         difficulty: q<HTMLSelectElement>('#difficulty').value as Difficulty,
         humanSeat: q<HTMLInputElement>('#human').checked ? 1 : 0,
-        seed: parseInt(q<HTMLInputElement>('#seed').value, 10) || 1,
+        seed,
       }
       this.newGame()
     }
@@ -733,7 +795,7 @@ const TEMPLATE = `
     <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
       <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Original Rulebook &amp; Sample Game</h3><button id="rb-close">Close</button></div><div class="rb-pages"></div></div></div>
       <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">

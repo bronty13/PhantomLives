@@ -138,6 +138,27 @@ describe('human event play', () => {
   })
 })
 
+describe('opening roll — first player + empire variety', () => {
+  it('emits startRoll first, with first = the highest roller', () => {
+    const events = drive(worldGame(7, hardBots(['P1', 'P2', 'P3', 'P4'])))
+    const sr = events[0]
+    expect(sr.type).toBe('startRoll')
+    if (sr.type === 'startRoll') {
+      const maxRoll = Math.max(...sr.rolls.map((r) => r.roll))
+      expect(sr.rolls.find((r) => r.player === sr.first)!.roll).toBe(maxRoll)
+    }
+  })
+
+  it("P1's epoch-1 empire varies across seeds (no longer always the same draw)", () => {
+    const p1Empire = (seed: number): string | undefined => {
+      const draft = drive(worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))).find((e) => e.type === 'draft')
+      return draft?.type === 'draft' ? draft.assignments.find((a) => a.player === 'P1')?.empire : undefined
+    }
+    const seen = new Set([1, 2, 3, 5, 8, 13, 21].map(p1Empire))
+    expect(seen.size).toBeGreaterThan(1)
+  })
+})
+
 describe('describeEffect (event card text for the panel)', () => {
   const kinds: EventEffect[] = [
     { kind: 'leader' },

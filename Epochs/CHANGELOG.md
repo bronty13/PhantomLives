@@ -2,6 +2,22 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.17.1] — 2026-06-27
+
+### Fixed
+- **You no longer always draw Egypt.** Two causes: epoch 1 ties on VP so the draw
+  order fell to seating (P1 first → strongest empire → Egypt), and new games reused
+  the same seed. Fixed both — see below.
+
+### Added
+- **Opening die roll.** Each player rolls a d6 at game start; **highest plays first**
+  (ties → seating), which breaks the epoch-1 tie instead of defaulting to seat order.
+  Shown as a parchment splash — four player-coloured dice, the winner highlighted in
+  gold, "X plays first", Begin (auto-advances). New `startRoll` engine event +
+  `#start-roll` panel.
+- **Fresh random seed per new game** (so empires + dice vary each game); the seed is
+  shown in the field and an explicitly-typed seed is still honoured for replay.
+
 ## [0.17.0] — 2026-06-27
 
 Event system, slice 4 — the disasters spread.

@@ -83,6 +83,7 @@ export interface GameResult {
  * resume the generator with the chosen LandId (or `undefined` to stop placing).
  */
 export type GameEvent =
+  | { type: 'startRoll'; rolls: { player: PlayerId; roll: number }[]; first: PlayerId }
   | { type: 'epochStart'; epoch: EpochId }
   | { type: 'draft'; epoch: EpochId; assignments: { player: PlayerId; empire: string }[] }
   | { type: 'turnStart'; player: PlayerId; empire: string; epoch: EpochId }
@@ -161,6 +162,7 @@ export class Game {
   private readonly empiresByEpoch: Map<EpochId, EmpireCard[]>
   private readonly bots: Map<PlayerId, Bot>
   private readonly prevEmpireOrder = new Map<PlayerId, number>()
+  private readonly startRolls = new Map<PlayerId, number>() // opening die roll → epoch-1 order
   private readonly seed: number
   private readonly humanSeats: Set<PlayerId>
 
@@ -225,6 +227,20 @@ export class Game {
    * `.next(landId)` (or `.next(undefined)` to stop placing). `run()` drains it.
    */
   *play(): Generator<GameEvent, GameResult, PlayInput> {
+    // Opening roll: each player rolls a die; highest goes first (ties → seating).
+    // Breaks the epoch-1 all-tied draw order so it isn't always seat order.
+    for (const p of this.state.players) this.startRolls.set(p.id, this.state.rng.rollDie())
+    const first = [...this.state.players].sort((a, b) => {
+      const ra = this.startRolls.get(a.id)!
+      const rb = this.startRolls.get(b.id)!
+      return rb - ra || this.state.players.indexOf(a) - this.state.players.indexOf(b)
+    })[0].id
+    yield {
+      type: 'startRoll',
+      rolls: this.state.players.map((p) => ({ player: p.id, roll: this.startRolls.get(p.id)! })),
+      first,
+    }
+
     for (const epoch of EPOCHS) {
       this.state.epoch = epoch
       yield { type: 'epochStart', epoch }
@@ -492,7 +508,8 @@ export class Game {
   }
 
   // ── phases ──────────────────────────────────────────────────────────────
-  /** Lowest VP first; tie-break by previous epoch's empire order, then seating. */
+  /** Lowest VP first; tie-break by previous epoch's empire order, then the opening
+   *  roll (higher first), then seating. In epoch 1 (all tied) the roll decides. */
   private drawOrder(): PlayerId[] {
     return [...this.state.players]
       .map((p, i) => ({ p, i }))
@@ -501,6 +518,9 @@ export class Game {
         const ao = this.prevEmpireOrder.get(a.p.id) ?? 0
         const bo = this.prevEmpireOrder.get(b.p.id) ?? 0
         if (ao !== bo) return ao - bo
+        const ra = this.startRolls.get(a.p.id) ?? 0
+        const rb = this.startRolls.get(b.p.id) ?? 0
+        if (ra !== rb) return rb - ra // higher opening roll drafts first
         return a.i - b.i
       })
       .map((x) => x.p.id)
