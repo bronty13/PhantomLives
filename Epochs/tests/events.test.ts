@@ -128,6 +128,8 @@ describe('human event play', () => {
         }
       } else if (ev.type === 'awaitPlacement') {
         step = it.next(ev.frontier[0]?.land)
+      } else if (ev.type === 'awaitDraft') {
+        step = it.next({ keep: true })
       } else {
         step = it.next()
       }
@@ -163,6 +165,39 @@ describe('Minor Empires', () => {
       }
     }
     // No bot summoned a Minor Empire across 40 seeds — acceptable (draw-dependent).
+  })
+})
+
+describe('Keep/Pass draft', () => {
+  it('passing a drawn empire gives it to the chosen empire-less player (not the passer)', () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const players: PlayerConfig[] = [{ id: 'P1', name: 'P1', isHuman: true }, ...hardBots(['P2', 'P3', 'P4'])]
+      const it = worldGame(seed, players).play()
+      let step = it.next()
+      let passedEmpire: string | undefined
+      let draftEv: Extract<GameEvent, { type: 'draft' }> | undefined
+      while (!step.done) {
+        const ev = step.value
+        if (ev.type === 'awaitDraft') {
+          if (!passedEmpire && ev.canPassTo.includes('P2')) {
+            passedEmpire = ev.empire.name
+            step = it.next({ passTo: 'P2' })
+          } else {
+            step = it.next({ keep: true })
+          }
+        } else if (ev.type === 'draft') {
+          draftEv = ev
+          break
+        } else {
+          step = it.next()
+        }
+      }
+      if (!passedEmpire || !draftEv) continue // P1 drafted last this seed — try another
+      expect(draftEv.assignments.find((a) => a.player === 'P2')?.empire).toBe(passedEmpire)
+      expect(draftEv.assignments.find((a) => a.player === 'P1')?.empire).not.toBe(passedEmpire)
+      return
+    }
+    throw new Error('no seed in 1..12 let P1 pass to P2')
   })
 })
 

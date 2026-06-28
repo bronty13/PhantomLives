@@ -74,6 +74,8 @@ describe('Game.play() — human seats', () => {
       events.push(ev)
       if (ev.type === 'awaitPlacement') {
         step = it.next(pick(ev.frontier.map((f) => f.land)))
+      } else if (ev.type === 'awaitDraft') {
+        step = it.next({ keep: true })
       } else {
         step = it.next()
       }

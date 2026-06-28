@@ -70,8 +70,11 @@ const emptyTurnEffects = (): TurnEffects => ({
   minorEmpire: null,
 })
 
+/** Keep the drawn empire, or pass (gift) it to an empire-less player. */
+export type DraftChoice = { keep: true } | { passTo: PlayerId }
+
 /** What the driver may pass back into `play()` when resuming a yield. */
-export type PlayInput = LandId | EventChoice | undefined
+export type PlayInput = LandId | EventChoice | DraftChoice | undefined
 
 export interface GameState {
   epoch: EpochId
@@ -101,6 +104,13 @@ export type GameEvent =
   | { type: 'turnStart'; player: PlayerId; empire: string; epoch: EpochId }
   | { type: 'awaitEvents'; player: PlayerId; empire: string; hand: EventHand }
   | { type: 'awaitEventTarget'; player: PlayerId; card: string; targets: LandId[] }
+  | {
+      type: 'awaitDraft'
+      player: PlayerId
+      epoch: EpochId
+      empire: { name: string; strength: number; startLand: LandId; hasCapital: boolean; navigates: boolean }
+      canPassTo: PlayerId[]
+    }
   | { type: 'eventsPlayed'; player: PlayerId; played: string[] }
   | { type: 'disaster'; player: PlayerId; card: string; land: LandId; effect: string }
   | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
@@ -258,7 +268,7 @@ export class Game {
       this.state.epoch = epoch
       yield { type: 'epochStart', epoch }
       const order = this.drawOrder()
-      const assignment = this.draft(epoch, order)
+      const assignment = yield* this.draftGen(epoch, order)
       yield {
         type: 'draft',
         epoch,
@@ -543,18 +553,53 @@ export class Game {
       .map((x) => x.p.id)
   }
 
-  /** Simplified catch-up draft: strongest available empire to the first drawer. */
-  private draft(epoch: EpochId, order: PlayerId[]): Map<PlayerId, EmpireCard> {
-    const pool = [...(this.empiresByEpoch.get(epoch) ?? [])].sort(
-      (a, b) => b.strength - a.strength,
-    )
+  /** Keep/Pass draft (catch-up order): each drafter is dealt the strongest empire
+   *  left and may KEEP it or PASS (gift) it to a player who has none yet — then draws
+   *  again. Human seats decide via `awaitDraft`; bots keep. Surplus players (fewer
+   *  empires than players) sit out — run()'s `if (!empire) continue` handles it. */
+  private *draftGen(
+    epoch: EpochId,
+    order: PlayerId[],
+  ): Generator<GameEvent, Map<PlayerId, EmpireCard>, PlayInput> {
+    const pool = [...(this.empiresByEpoch.get(epoch) ?? [])].sort((a, b) => b.strength - a.strength)
     const assign = new Map<PlayerId, EmpireCard>()
-    // Each empire is drafted at most once; surplus players (more players than
-    // empires this epoch) sit out — run()'s `if (!empire) continue` handles it.
-    order.forEach((pid, i) => {
-      if (i < pool.length) assign.set(pid, pool[i])
-    })
+    for (const pid of order) {
+      while (!assign.has(pid) && pool.length > 0) {
+        const top = pool[0]
+        const canPassTo = order.filter((p) => p !== pid && !assign.has(p))
+        let choice: DraftChoice
+        if (this.humanSeats.has(pid) && canPassTo.length > 0) {
+          choice = (yield {
+            type: 'awaitDraft',
+            player: pid,
+            epoch,
+            empire: {
+              name: top.name,
+              strength: top.strength,
+              startLand: top.startLand,
+              hasCapital: top.hasCapital,
+              navigates: 'all' in top.navigation || top.navigation.seas.length > 0,
+            },
+            canPassTo,
+          }) as DraftChoice
+        } else {
+          choice = this.botDraftChoice()
+        }
+        // Pass only if a valid empire-less recipient was named; otherwise keep.
+        if ('passTo' in choice && canPassTo.includes(choice.passTo)) {
+          assign.set(choice.passTo, pool.shift()!) // gift it away; pid draws again
+        } else {
+          assign.set(pid, pool.shift()!)
+        }
+      }
+    }
     return assign
+  }
+
+  /** v1 bot draft policy: keep the empire dealt (catch-up order already gives the
+   *  weakest player the strongest empire — gifting is reserved for human strategy). */
+  private botDraftChoice(): DraftChoice {
+    return { keep: true }
   }
 
   private setupEmpire(pid: PlayerId, empire: EmpireCard): void {

@@ -2,6 +2,18 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.19.0] — 2026-06-27
+
+### Added
+- **Keep/Pass draft.** When you're dealt an empire at the start of an epoch you may
+  now **Keep it, or pass (gift) it to a player who has no empire yet** — then you
+  draw again. A parchment Keep/Pass screen shows the drawn empire (strength, capital,
+  seafaring, homeland), a Keep button, and a pass button per empire-less player. The
+  draft runs in catch-up order (the opening roll breaks epoch-1 ties); v1 bots keep,
+  so passing is your strategic lever (hand a weak empire to a rival, or a strong one
+  to an ally). New `awaitDraft` engine step + `DraftChoice` (`{keep}` | `{passTo}`);
+  the old auto-assign draft is replaced by an interactive `draftGen` generator.
+
 ## [0.18.0] — 2026-06-27
 
 The marquee event — **true Minor Empires**: a second empire-turn.

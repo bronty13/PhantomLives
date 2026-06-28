@@ -5,6 +5,7 @@ import { Board } from '../shared/board'
 import { WORLD_MAP_DATA } from '../shared/data/board'
 import { WORLD_EMPIRES } from '../shared/data/empires'
 import {
+  type DraftChoice,
   Game,
   type GameEvent,
   type GameResult,
@@ -54,6 +55,7 @@ class GameUI {
   private pending: AwaitEvent | null = null
   private pendingEvents: AwaitEventsEvent | null = null
   private pendingTarget: { card: string; targets: string[] } | null = null
+  private pendingDraft: Extract<GameEvent, { type: 'awaitDraft' }> | null = null
   private pendingIntro: { player: PlayerId; empire: string; epoch: EpochId } | null = null
   private pendingRoll: { rolls: { player: PlayerId; roll: number }[]; first: PlayerId } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
@@ -168,10 +170,12 @@ class GameUI {
     this.pendingTarget = null
     this.pendingIntro = null
     this.pendingRoll = null
+    this.pendingDraft = null
     this.eventSel = {}
     this.hideEventPanel()
     ;(this.root.querySelector('#epoch-intro') as HTMLElement | null)?.classList.add('hidden')
     ;(this.root.querySelector('#start-roll') as HTMLElement | null)?.classList.add('hidden')
+    ;(this.root.querySelector('#draft-panel') as HTMLElement | null)?.classList.add('hidden')
     if (this.rafId != null) cancelAnimationFrame(this.rafId)
     this.rafId = null
     this.fx = []
@@ -207,6 +211,7 @@ class GameUI {
       !this.pendingTarget &&
       !this.pendingIntro &&
       !this.pendingRoll &&
+      !this.pendingDraft &&
       !this.over &&
       !this.helpOpen
     ) {
@@ -237,6 +242,11 @@ class GameUI {
           this.pendingIntro = { player: ev.player, empire: ev.empire, epoch: ev.epoch }
           this.showEpochIntro()
         }
+        break
+      case 'awaitDraft':
+        this.pendingDraft = ev
+        this.status = `Epoch ${ROMAN[ev.epoch]} draft — keep ${ev.empire.name}, or pass it to a player with no empire`
+        this.showDraftPanel(ev)
         break
       case 'awaitEvents':
         this.pendingEvents = ev
@@ -428,7 +438,7 @@ class GameUI {
    * timer, so this is a no-op there.)
    */
   private drainToInteractive(): void {
-    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll) {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll && !this.pendingDraft) {
       this.advance()
     }
   }
@@ -527,6 +537,45 @@ class GameUI {
     this.render()
     this.drainToInteractive()
     this.scheduleNext()
+  }
+
+  // Keep/Pass draft: you drew an empire — keep it, or gift it to an empire-less player.
+  private showDraftPanel(ev: Extract<GameEvent, { type: 'awaitDraft' }>): void {
+    const e = ev.empire
+    const tags = [`Strength ${e.strength}`, e.hasCapital ? 'Capital' : 'No capital', e.navigates ? 'Seafaring' : 'Landlocked']
+      .map((t) => `<span class="draft-tag">${esc(t)}</span>`)
+      .join('')
+    const passBtns = ev.canPassTo
+      .map(
+        (p) =>
+          `<button class="pass-btn" data-pass="${esc(p)}"><span class="dot" style="background:${this.colorOf(p)}"></span>${esc(this.nameOf(p))}</button>`,
+      )
+      .join('')
+    const el = this.root.querySelector('#draft-panel') as HTMLElement
+    el.innerHTML =
+      `<div class="evt-box intro-box draft-box">` +
+      `<div class="intro-epoch">Epoch ${ROMAN[ev.epoch]} — Draft<span>you drew an empire</span></div>` +
+      `<div class="draft-empire"><div class="draft-name">${esc(e.name)}</div><div class="draft-tags">${tags}</div>` +
+      `<div class="draft-home">Homeland — ${esc(this.landName(e.startLand))}</div></div>` +
+      `<div class="draft-actions"><button id="draft-keep" class="primary">Keep ${esc(e.name)}</button></div>` +
+      (passBtns
+        ? `<div class="draft-pass"><span class="draft-pass-label">…or pass it to a player with no empire:</span><div class="pass-row">${passBtns}</div></div>`
+        : '') +
+      `</div>`
+    el.classList.remove('hidden')
+    ;(el.querySelector('#draft-keep') as HTMLButtonElement).onclick = () => this.resolveDraft({ keep: true })
+    el.querySelectorAll<HTMLButtonElement>('.pass-btn').forEach((b) => {
+      b.onclick = () => this.resolveDraft({ passTo: b.dataset.pass! })
+    })
+  }
+
+  private resolveDraft(choice: DraftChoice): void {
+    if (!this.pendingDraft) return
+    const e = this.pendingDraft.empire.name
+    this.pendingDraft = null
+    ;(this.root.querySelector('#draft-panel') as HTMLElement).classList.add('hidden')
+    this.pushLog('passTo' in choice ? `You passed ${e} to ${this.nameOf(choice.passTo)}` : `You kept ${e}`)
+    this.advance(choice)
   }
 
   private toCanvas(e: MouseEvent): { px: number; py: number } {
@@ -799,7 +848,7 @@ const TEMPLATE = `
     <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
       <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Original Rulebook &amp; Sample Game</h3><button id="rb-close">Close</button></div><div class="rb-pages"></div></div></div>
       <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">

@@ -201,6 +201,21 @@ input[type=range] { flex: 1; }
 .roll-name .dot { width: 9px; height: 9px; border-radius: 50%; }
 .roll-box .evt-actions { padding: 6px 28px 0; justify-content: center; }
 
+/* keep/pass draft screen (reuses the intro-box parchment base) */
+.draft-box { width: min(440px, 92%); padding: 0 0 20px; }
+.draft-empire { text-align: center; padding: 18px 22px 6px; }
+.draft-name { font-size: 26px; font-weight: 700; color: #2c2012; font-family: Georgia, serif; }
+.draft-tags { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 10px 0 8px; }
+.draft-tag { font-size: 11px; padding: 3px 9px; border-radius: 10px; background: #e7d6a8; border: 1px solid #b09356; color: #5a4a2a; }
+.draft-home { font-size: 13px; color: #6a4f24; }
+.draft-actions { display: flex; justify-content: center; padding: 4px 22px; }
+.draft-pass { padding: 12px 22px 0; text-align: center; border-top: 1px solid rgba(138, 106, 54, 0.25); margin-top: 12px; }
+.draft-pass-label { font-size: 12px; color: #7a6238; }
+.pass-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.pass-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; background: #efe3c2; border: 1px solid #b09356; color: #3a2a12; cursor: pointer; font-size: 13px; }
+.pass-btn:hover { background: #e7d6a8; border-color: #c8a23a; }
+.pass-btn .dot { width: 9px; height: 9px; border-radius: 50%; }
+
 /* event panel — parchment event cards (reuses the intro-box parchment base) */
 .evt-box-wide { width: min(640px, 94%); padding: 0 0 18px; }
 .evt-box-wide .evt-body { padding: 16px 22px 4px; max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
