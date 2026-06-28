@@ -500,26 +500,28 @@ final class AppState: ObservableObject {
             errorMessage = error.localizedDescription
         }
 
-        // Exact-duplicate detection (size-prefiltered content hashing), if enabled.
-        if settings.dedupeEnabled {
-            scanMessage = "Checking for duplicates…"
-            await computeAndStoreHashes(for: rootPath)
-        }
-
         selectedRootPath = rootPath
         selectedFolderPath = nil
         selectedFileId = nil
         decisionUndoStack = []
         reloadScanRoots()
-        reloadMediaFiles()   // rebuilds the duplicate index from the fresh hashes
+        reloadMediaFiles()
 
+        // The scan itself is finished and the grid is populated, so release the scanning gate
+        // NOW — the toolbar Refresh button and auto-rescan are disabled while `isScanning` is
+        // true, and exact-duplicate detection (next) reads every file's FULL content (sha256),
+        // which is minutes-to-hours on slow/remote storage like the REDONE archive. Holding the
+        // gate across hashing made Refresh appear permanently disabled. Hashing now runs in the
+        // background and surfaces its groups when ready (same path as a freshly-selected root).
         isScanning = false
         scanProgress = 1
-        let dupSets = dupMembersByRep.count
         var base = "Scanned \(files.count) item\(files.count == 1 ? "" : "s") in \((rootPath as NSString).lastPathComponent)."
         if missingCount > 0 { base += " \(missingCount) now missing from disk." }
-        if dupSets > 0 { base += " \(dupSets) duplicate set\(dupSets == 1 ? "" : "s") found." }
         statusMessage = base
+
+        // Exact-duplicate detection (size-prefiltered content hashing), if enabled — off the
+        // `isScanning` gate so it can't freeze the UI on slow storage.
+        hashSelectedRootIfNeeded(rootPath)
     }
 
     /// Select a scan root (from the sidebar) and load its files.

@@ -5,6 +5,15 @@ All notable changes to PurplePeek are documented here. Versions are git-derived
 
 ## Unreleased
 
+- **Fix: Refresh no longer locks up on slow/remote libraries.** The toolbar Refresh button (and
+  auto-rescan) is gated on `isScanning`, but a scan kept that flag `true` through the post-scan
+  exact-duplicate pass — which sha256-hashes every file's *full content*. On a fast local disk that
+  was quick; once a library lives on slow/remote storage (the REDONE SMR archive, ~38k unhashed
+  files / 150 GB+) that hash takes hours, so Refresh appeared permanently disabled. The scan now
+  releases the gate as soon as the grid is populated and runs duplicate hashing in the background
+  (the same path a freshly-selected root already uses), surfacing duplicate groups when ready.
+  Tip: for a large archive on slow storage that background agents keep writing to, also turn off
+  Settings → General → "Auto-refresh when files are added…" to avoid constant re-walks.
 - **Reuses PeekServer's thumbnail cache.** `ThumbnailService` now checks PeekServer's persistent
   on-disk thumbnail cache (`~/Library/Caches/PeekServer/thumbs`, keyed by `sha1(file_path)[:16]`,
   identical to PeekServer) before generating via QuickLook. Since both index the same files at the
