@@ -142,10 +142,10 @@ describe('applyCapture — sack/pillage is enemy-only (SPEC §8.1)', () => {
     expect(pieces).toHaveLength(0)
   })
 
-  it('transfers a monument to the occupier without razing', () => {
+  it('leaves a monument UNAFFECTED by conquest — it keeps scoring for its builder (§8/§9.3)', () => {
     const { pieces, razed } = applyCapture([piece('x', 'monument', 'P2')], 'x', 'P1')
     expect(razed).toBe(0)
-    expect(pieces[0]).toMatchObject({ kind: 'monument', owner: 'P1' })
+    expect(pieces[0]).toMatchObject({ kind: 'monument', owner: 'P2' }) // still P2's, not transferred
   })
 
   it('does not touch pieces on other lands', () => {

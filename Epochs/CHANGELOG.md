@@ -2,6 +2,23 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.44.0] — 2026-06-28
+
+Audit fix G5 — a Monument is unaffected by conquest.
+
+### Fixed
+- **Monuments no longer transfer to the conqueror.** Per §8 (conquest: fort/city
+  eliminated, capital flipped, *"a Monument therein remains unaffected"*) and §9.3
+  (removed only by Events), a monument keeps scoring **for its builder** even after the
+  land is taken — until an Event razes it. `applyCapture` previously reassigned the
+  monument to the occupier; now it leaves it untouched. (The audit's other half —
+  "needs an army on the land to score" — is *not* in the rules and was not applied;
+  monuments score as forces-in-play regardless.)
+- Rulebook: monument permanence noted; the Fort entry corrected (placed as a unit during
+  expansion, not a removed "Buy step").
+
+Tournament steady/sharper (72.5 / 74.6 / 85.0%). 137 tests pass.
+
 ## [0.43.0] — 2026-06-28
 
 Two confirmed fixes from the clause-level rule audit.

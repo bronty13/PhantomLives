@@ -207,7 +207,9 @@ export function applyCapture(
     } else if (p.kind === 'city' && p.owner !== pid) {
       razed++ // enemy city sacked → dropped
     } else if (p.kind === 'monument') {
-      out.push({ ...p, owner: pid })
+      out.push(p) // §8/§9.3: a Monument is UNAFFECTED by conquest — it keeps scoring
+      // for its builder (only Events remove it). The conqueror holds the land/area but
+      // does NOT take the monument's VP.
     } else {
       out.push(p) // own capital/city, army, or fort — untouched here
     }

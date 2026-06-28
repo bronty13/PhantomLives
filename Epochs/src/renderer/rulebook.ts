@@ -172,10 +172,12 @@ export const RULEBOOK: RuleSection[] = [
       <ul>
         <li><b>Capital</b> — your empire's seat (worth 2). Reduced to a city if taken.</li>
         <li><b>City</b> — a lesser seat (worth 1).</li>
-        <li><b>Monument</b> — built in the Build step: one for every <b>two resource
-        lands</b> ${RESOURCE} you hold (worth 1).</li>
-        <li><b>Fort</b> — defensive only (no points); strengthens the land in combat. You
-        buy forts with strength in the Buy step (and the Kingdoms event grants one).</li>
+        <li><b>Monument</b> — one for every <b>two resource lands</b> ${RESOURCE} you hold
+        (worth 1). A monument is <b>permanent</b>: conquest can't take it, so it keeps
+        scoring for whoever <i>built</i> it — even deep in enemy land — until an Event
+        razes it.</li>
+        <li><b>Fort</b> — defensive only (no points); strengthens the land in combat.
+        Place one as a unit during expansion (and the Kingdoms event grants one).</li>
       </ul>
       <p>Crucially, <b>structures persist across epochs</b> while armies fade — a city or
       monument you raise keeps scoring for you in <i>every</i> later epoch, so works are
