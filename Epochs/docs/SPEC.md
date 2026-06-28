@@ -5,9 +5,16 @@
 > Brothers), built for single-player play against AI opponents. This document
 > is the canonical, implementable spec for the rules engine and the data model.
 >
-> **Status:** v0.1 — rules engine fully specified from the official manual;
-> content data (board adjacency, empire roster, event texts) enumerated as
-> data-entry tasks (§14). This is a living document; update it as data lands.
+> **Status:** v0.36 — **fully implemented and rule-complete.** The engine, the
+> photographed 100-land board, the 48-empire roster, and the UI are all built, and a
+> five-slice **fidelity pass** has brought every mechanic in line with the original
+> rules: the authentic scoring tiers (§9, updated below), the catch-up draft,
+> 3-armies-per-land with multi-round assaults, the full naval game (buy
+> armies/fleets/forts, naval combat, sea scoring), the event deck as 9 colour-piles,
+> retreating, and the neutral Sumerian seed. Where this spec once described a
+> *simplified* mechanic it has been corrected to the implemented (faithful) one.
+> See **`../CHANGELOG.md`** (slices in v0.27–v0.36) and **`../HANDOFF.md`** for the
+> orientation map; **`docs/AUTHENTIC-RULES.md`** for the rules research.
 
 ---
 
@@ -240,9 +247,13 @@ having no capital of its own.
 
 ## 6. Expansion & movement
 
+- Strength is first **bought** as armies / fleets / forts (a navigation empire builds
+  ≥ 1 fleet); units are then placed one at a time.
 - Expansion proceeds **one Land at a time** outward from the empire's controlled
   Lands (starting at `startLand`/capital), into **adjacent** Lands.
-- **One army per Land** (no stacking).
+- **Up to three armies per Land** — you may reinforce your own holdings. Attacking a
+  stack is a multi-round assault (win one round per defender, repelled on the first
+  loss).
 - **Barren Lands** cannot be entered or crossed.
 - **Expanding into a Land that already holds your *own* past-epoch army:** no
   combat — replace it (return the old army to your pool, place the new-color
@@ -370,12 +381,14 @@ pieces of the **current epoch's color**, wherever placed):
 
 | Tier | Condition | Multiplier |
 |---|---|---:|
-| **Presence** | ≥ 1 army in the Area | **× base** (1×) |
-| **Dominance** | ≥ 2 armies **and** more than any other player in the Area | **× 2** |
-| **Control** | ≥ 3 armies **and** no other player has any army in the Area | **× 3** |
+| **Presence** | holds ≥ 1 land in the Area | **× base** (1×) |
+| **Dominance** | holds ≥ 3 lands **and** more than any other player | **× 2** |
+| **Control** | holds **every** (non-barren) land in the Area | **× 3** |
 
-`base` = that Area's `valueByEpoch[currentEpoch]` (§9.3). Score the **highest
-tier** achieved for each Area, summed across all Areas.
+`base` = that Area's `valueByEpoch[currentEpoch]` (§9.3). Tiers count **distinct
+lands held** (stack-safe). Score the **highest tier** achieved for each Area, summed
+across all Areas. Plus **+1 VP per enclosed sea controlled** with a fleet (the 5 open
+oceans don't score). All three components are produced by `scoreBreakdown`.
 
 ### 9.2 Structure points
 

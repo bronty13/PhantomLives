@@ -7,17 +7,20 @@ the Ragnar Brothers) — own map, own art, own wording, for **private personal
 use**. See [`docs/SPEC.md`](docs/SPEC.md) for the full rules + data spec and the
 legal posture (we reimplement uncopyrightable mechanics only).
 
-> **Status: v0.8 — polished, full game.** The whole game: 97-territory world,
-> 49 historical empires, area-control scoring, **and the event system** (finite
-> hands of Leaders/Weaponry/Reallocation/Minor-Empire + Coins→forts). Watch the
-> AI or **play a seat** (click-to-place + an event panel), with a scoreboard,
-> epoch HUD, and log. Animated combat/placement, hover decision-support (combat
-> odds + VP swing), and a game-over pre-eminence reveal. 88 tests. **A real app:**
-> `./build-app.sh` builds +
-> installs a signed `/Applications/Epochs.app`; or `npm run dev:web` (browser) /
-> `npm run dev` (Electron) for development. The AI is **self-play-tuned** (monotonic
-> easy/medium/hard) and an in-app **“How to play”** explains the rules on first
-> load. Remaining (optional): save/load.
+> **Status: v0.36 — rule-complete & faithful.** The full game on the photographed
+> 100-land world: **48 historical empires** drafted by **Keep/Pass** (Sumeria is the
+> neutral seed), a **3-armies-per-land** map with multi-round assaults, the complete
+> **naval game** (buy armies/fleets/forts, sail and fight for seas, score them), the
+> **event deck as 9 colour-piles**, and area-control scoring with the authentic
+> tiers. A five-slice **fidelity pass** brought every mechanic in line with the
+> original rules (scoring tiers, draft order, army density, fleets, the event-deck
+> structure) plus retreating and the neutral Sumerians. Watch the AI or **play a
+> seat** — opening roll, Keep/Pass draft, Buy-Units screen, click-to-place expansion,
+> event panel — with a scoreboard, epoch HUD, live VP-table "You" column, in-app
+> **Rulebook**, and log. **120 tests**; a clean, self-play-tuned difficulty ladder.
+> **A real app:** `./build-app.sh` builds + installs a signed `/Applications/Epochs.app`;
+> or `npm run dev:web` (browser) / `npm run dev` (Electron). Remaining (optional):
+> save/load, polish (animation/sound), an end-game summary.
 
 ## Stack
 
@@ -32,9 +35,9 @@ src/
     types.ts         entity types (Land, Area, EmpireCard, BoardPiece, MapData…)
     rng.ts           seeded deterministic RNG (mulberry32)
     combat.ts        dice combat: closed-form odds + seeded resolution
-    scoring.ts       presence/dominance/control area scoring + structures
+    scoring.ts       area tiers (presence/dominance ≥3/control = all lands) + structures + seas + scoreBreakdown
     board.ts         queryable map wrapper (adjacency, sea index, areas)
-    game.ts          the Game state machine + applyCapture (the turn loop)
+    game.ts          the Game state machine (turn loop, draft, buy, combat, fleets) + applyCapture
     bot.ts           Bot interface + GreedyStubBot / RandomBot (+ BotView)
     heuristicBot.ts  the real AI: marginal-expected-VP bot + difficulty levels
     sim.ts           headless runner + tournament harness (runMatch/tournament)
@@ -42,11 +45,17 @@ src/
     palette.ts       area + player colors
     data/
       areaValues.ts    the real per-epoch Victory-Point table (13 areas)
-      board.ts         GENERATED — the 97-land real-geography world map
-      empires.ts       GENERATED — the 49 historical empires (7×7)
-      events.ts        the event deck (Greater + Lesser cards)
+      seas.ts          sea vs ocean classification (5 oceans; 24 enclosed seas)
+      board.ts         GENERATED — the 100-land photographed world map
+      empires.ts       GENERATED — the 48 historical empires (6 in Epoch I + 7×6)
+      minorEmpires.ts  the 7 Minor Empires (one per epoch)
+      events.ts        the event deck as 9 colour-piles of 7
       fixtureMap.ts    small board for fast deterministic unit tests
       fixtureEmpires.ts small empire deck for unit tests
+  renderer/
+    main.ts          session/controls + all interactive panels (roll, draft, buy, events, rulebook)
+    map.ts           the board-scan canvas layer (armies/fleets/structures, stack badges)
+    rulebook.ts      the in-app Rulebook content (own-words, 13 sections incl. a sample game)
   main/          # Electron main process (window lifecycle)
   preload/       # contextBridge surface
   renderer/      # the game UI: main.ts (session/controls) + map.ts + anim.ts (fx)
