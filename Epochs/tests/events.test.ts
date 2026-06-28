@@ -215,6 +215,32 @@ describe('Keep/Pass draft', () => {
   })
 })
 
+describe('seas — overseas reach', () => {
+  const OVERSEAS = new Set(['north_america', 'south_america', 'australia', 'africa'])
+  const byId = new Map(WORLD_MAP_DATA.lands.map((l) => [l.id, l]))
+
+  it('the Atlantic / Pacific / Indian Ocean each bridge an overseas landmass to the rest', () => {
+    const areasOn = (sea: string) =>
+      new Set(WORLD_MAP_DATA.lands.filter((l) => l.seaBorders.includes(sea)).map((l) => l.area))
+    for (const sea of ['atlantic', 'pacific', 'indian_ocean']) {
+      const areas = [...areasOn(sea)]
+      expect(areas.some((a) => OVERSEAS.has(a as string)), `${sea} touches no overseas area`).toBe(true)
+      expect(areas.some((a) => !OVERSEAS.has(a as string)), `${sea} touches no mainland area`).toBe(true)
+    }
+  })
+
+  it('empires actually sail overseas — an overseas land gets occupied in some game', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const game = worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))
+      drive(game)
+      if (game.state.pieces.some((p) => p.kind === 'army' && OVERSEAS.has((byId.get(p.land)?.area as string) ?? ''))) {
+        return
+      }
+    }
+    throw new Error('no empire reached an overseas landmass across 40 seeds — sea reach is not working')
+  })
+})
+
 describe('Kingdoms + Barbarians', () => {
   it('a played Kingdom raises a fortified city (city + fort) on a held land', () => {
     for (let seed = 1; seed <= 60; seed++) {

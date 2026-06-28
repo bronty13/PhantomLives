@@ -2,6 +2,23 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.22.0] — 2026-06-27
+
+Seas are live — the dormant naval system is activated.
+
+### Added
+- **Coastlines.** Every coastal land now declares which of the 29 seas it borders
+  (75 of 100 lands; the 8 barren lands stay sea-less). This was the missing data:
+  the engine already computed sea-reach (a navigating empire reaches any land on a
+  sea it sails), but no land was linked to a sea, so navigation did nothing.
+- **Overseas travel works.** With coastlines wired, empires that navigate the
+  Atlantic / Pacific / Indian Ocean / Caribbean can now sail to the **Americas,
+  Australasia, and sub-Saharan Africa** — previously unreachable, sealed-off
+  landmasses. The generator's connectivity collapsed from 5 components to **1**
+  (land + sea) and a new test confirms an overseas land actually gets occupied in
+  play.
+  - Unblocks the naval events (Pirates, Naval Supremacy, Ship Building, Storm at Sea).
+
 ## [0.21.0] — 2026-06-27
 
 Event system, slice 5 — two new event families.
