@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let fleetCfgLog = Logger(subsystem: "com.bronty13.PurpleMirror", category: "fleet")
 
 /// A machine in the PurpleMirror **fleet** — the shared set of Macs that should all monitor and
 /// control each other. The fleet is defined once and placed on every node; each node identifies
@@ -36,9 +39,19 @@ enum FleetStore {
 
     /// The fleet machines (empty if there's no fleet.json).
     static func load() -> [FleetMachine] {
-        guard let data = try? Data(contentsOf: fileURL()),
-              let cfg = try? JSONDecoder().decode(FleetConfig.self, from: data) else { return [] }
-        return cfg.machines
+        let url = fileURL()
+        guard let data = try? Data(contentsOf: url) else {
+            fleetCfgLog.notice("fleet.load: no file at \(url.path, privacy: .public)")
+            return []
+        }
+        do {
+            let cfg = try JSONDecoder().decode(FleetConfig.self, from: data)
+            fleetCfgLog.notice("fleet.load: \(cfg.machines.count) machine(s) from \(url.path, privacy: .public) (\(data.count) bytes)")
+            return cfg.machines
+        } catch {
+            fleetCfgLog.error("fleet.load: decode FAILED at \(url.path, privacy: .public): \(String(describing: error), privacy: .public)")
+            return []
+        }
     }
 
     /// This Mac's ComputerName (matches `scutil --get ComputerName`), used to exclude self.

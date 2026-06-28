@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import Combine
 import UserNotifications
+import os
+
+private let fleetLog = Logger(subsystem: "com.bronty13.PurpleMirror", category: "fleet")
 
 /// Discovers and owns the set of managed launchd jobs across one or more hosts (the local Mac plus
 /// any remote runners from ``HostStore``). For each host it lists `~/Library/LaunchAgents`, keeps
@@ -28,6 +31,7 @@ final class JobsModel: ObservableObject {
     init() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         self.hostContexts = HostStore.allHosts().map { HostContext(host: $0) }
+        Self.logHosts(self.hostContexts, "init")
         Task { await rescan(); await refreshAll() }
         // Light periodic refresh so the menu-bar glyph + rows stay current, and
         // newly-installed agents appear without a relaunch.
@@ -44,7 +48,16 @@ final class JobsModel: ObservableObject {
         hostContexts = hosts.map { h in
             hostContexts.first(where: { $0.host == h }) ?? HostContext(host: h)
         }
+        Self.logHosts(hostContexts, "reloadHosts")
         Task { await rescan(); await refreshAll() }
+    }
+
+    /// Diagnostic: which hosts were resolved (fleet + manual). Surfaces, e.g., a node that read
+    /// no fleet.json → only `local`. View with: `log show --predicate 'subsystem=="com.bronty13.PurpleMirror"'`.
+    private static func logHosts(_ ctxs: [HostContext], _ phase: String) {
+        let ids = ctxs.map(\.host.id).joined(separator: ",")
+        let remotes = ctxs.filter { !$0.host.isLocal }.count
+        fleetLog.notice("[\(phase, privacy: .public)] resolved \(ctxs.count) host(s) [\(ids, privacy: .public)] — \(remotes) remote")
     }
 
     /// (Re)scan every host's LaunchAgents directory and reconcile the job list, preserving the

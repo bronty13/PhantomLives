@@ -12,8 +12,15 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            if !model.offlineHosts.isEmpty { offlineBanner }
-            Divider()
+            if model.hasRemoteHosts {
+                ClusterSection(model: model)
+                Divider()
+            } else if !model.offlineHosts.isEmpty {
+                offlineBanner
+                Divider()
+            } else {
+                Divider()
+            }
             if model.jobs.isEmpty {
                 Text("No managed jobs found.\nPurpleMirror watches PhantomLives launchd agents in ~/Library/LaunchAgents.")
                     .font(.callout)
@@ -200,6 +207,95 @@ struct MenuView: View {
             fallback.alertStyle = .informational
             fallback.runModal()
         }
+    }
+}
+
+/// The **Cluster** panel: one row per node (local + every fleet/remote host) with a live status
+/// dot, quick-connect shortcuts, and an IP/host tooltip on hover.
+private struct ClusterSection: View {
+    @ObservedObject var model: JobsModel
+    @State private var expanded = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button { expanded.toggle() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Image(systemName: "rectangle.3.group").font(.caption).foregroundStyle(.secondary)
+                    Text("Cluster").font(.subheadline.weight(.semibold))
+                    Text("\(model.monitoredHosts.count)").font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            if expanded {
+                VStack(spacing: 5) {
+                    ForEach(model.hostContexts, id: \.host.id) { ctx in NodeRow(ctx: ctx) }
+                }
+                .padding(.leading, 4)
+            }
+        }
+    }
+}
+
+/// One cluster node: status dot · name · SSH/SMB/Screen-Sharing shortcuts. Hover shows IP + host.
+private struct NodeRow: View {
+    @ObservedObject var ctx: HostContext
+    @Environment(\.openURL) private var openURL
+    private var host: MonitoredHost { ctx.host }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(statusColor).frame(width: 8, height: 8)
+                .help(statusText)
+            Text(host.displayName).font(.callout.weight(.medium))
+            if host.fromFleet {
+                Text("FLEET").font(.system(size: 8, weight: .semibold))
+                    .padding(.horizontal, 3).padding(.vertical, 1)
+                    .background(.tint.opacity(0.18), in: Capsule()).foregroundStyle(.tint)
+            }
+            Spacer(minLength: 6)
+            if !host.isLocal {
+                connectButton("terminal", host.sshURLString, "SSH to \(host.displayName) (Terminal)")
+                connectButton("folder", host.smbURLString, "File sharing (SMB) on \(host.displayName)")
+                connectButton("display", host.vncURLString, "Screen Sharing (VNC) to \(host.displayName)")
+            } else {
+                Text("this Mac").font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .help(tooltip)   // hover → IP + host info
+    }
+
+    private var statusColor: Color {
+        if host.isLocal { return .green }
+        return ctx.reachable ? .green : .orange
+    }
+    private var statusText: String {
+        host.isLocal ? "this machine" : (ctx.reachable ? "online" : "offline — last seen \(ctx.lastSeenRelative)")
+    }
+    /// Hover tooltip: connection target, live IP, and online/offline + last-seen.
+    private var tooltip: String {
+        if host.isLocal {
+            return "This Mac" + (ctx.resolvedIP.map { "\nIP: \($0)" } ?? "")
+        }
+        var lines = [host.sshTarget]
+        if let ip = ctx.resolvedIP { lines.append("IP: \(ip)") }
+        lines.append(ctx.reachable ? "online" : "offline — last seen \(ctx.lastSeenRelative)")
+        return lines.joined(separator: "\n")
+    }
+
+    @ViewBuilder
+    private func connectButton(_ symbol: String, _ urlString: String?, _ help: String) -> some View {
+        Button {
+            if let s = urlString, let url = URL(string: s) { openURL(url) }
+        } label: {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(help)
+        .disabled(urlString == nil)
     }
 }
 

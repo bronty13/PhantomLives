@@ -4,6 +4,12 @@ All notable changes to PurpleMirror are documented here.
 
 ## Unreleased
 
+- **Cluster view in the menu.** A new collapsible **Cluster** section in the menu-bar panel lists
+  every node (local + fleet/remote) with a live status dot, the SSH/SMB/Screen-Sharing shortcuts,
+  and an IP + host-info tooltip on hover. Replaces the bare offline banner when remote hosts exist.
+  Plus `.notice` fleet diagnostics (`FleetStore.load` / resolved-host count) for troubleshooting a
+  node that isn't picking up the fleet.
+
 - **Live IP tracking for hosts.** Each host's current primary IP is re-resolved every rescan
   (`HostContext.refreshIP`) and shown in Settings ▸ Hosts. Combined with addressing a host by its
   **Bonjour `.local` name** (whose IP follows DHCP), a host that gets a new lease keeps working *and*
