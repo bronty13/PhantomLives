@@ -273,6 +273,7 @@ describe('fleet ports (§5.5) — every surviving fleet has a coastal land its o
               .landsOnSea(f.sea)
               .some((l) => game.state.pieces.some((p) => p.land === l && p.kind === 'army' && p.owner === f.owner))
             expect(based, `unbased fleet ${f.owner} @ ${f.sea}`).toBe(true)
+            expect(f.sea, 'no fleet may enter the Caspian (§7.3)').not.toBe('caspian_sea')
           }
         }
         step = it.next()

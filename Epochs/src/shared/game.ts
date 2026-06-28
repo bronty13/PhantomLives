@@ -1078,6 +1078,7 @@ export class Game {
     const occupied = this.currentLands(pid)
     const out: { sea: SeaId; battle: boolean }[] = []
     for (const sea of navSeas) {
+      if (sea === 'caspian_sea') continue // §7.3: fleets may never enter the Caspian
       if (!this.board.landsOnSea(sea).some((l) => occupied.has(l))) continue
       const enemy = !isOcean(sea) && this.state.fleets.some((f) => f.sea === sea && f.owner !== pid)
       const total = this.state.fleets.filter((f) => f.sea === sea).length

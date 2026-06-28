@@ -2,6 +2,12 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.45.1] — 2026-06-28
+
+Audit edge-case — the Caspian admits no fleets (§7.3). `placeableSeas` now excludes
+`caspian_sea`; its shores are all land-connected so nothing is cut off. Test asserts no
+fleet ever sits there. 138 tests pass.
+
 ## [0.45.0] — 2026-06-28
 
 Audit fix G6 — fleet ports + unlimited oceans (source-verified).
