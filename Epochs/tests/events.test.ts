@@ -39,7 +39,7 @@ describe('event deck', () => {
       expect(greaterKinds).toContain(c.effect.kind)
     }
     for (const c of deck.lesser) {
-      expect(['disaster_structure', 'plague']).toContain(c.effect.kind)
+      expect(['disaster_structure', 'plague', 'pestilence', 'famine']).toContain(c.effect.kind)
     }
   })
 })
@@ -151,6 +151,8 @@ describe('describeEffect (event card text for the panel)', () => {
     { kind: 'extra_armies', armies: 2, needsCapital: true },
     { kind: 'disaster_structure', terrain: 'mountain' },
     { kind: 'plague' },
+    { kind: 'pestilence' },
+    { kind: 'famine' },
   ]
   it('gives non-empty text + a valid timing for every effect kind', () => {
     for (const e of kinds) {

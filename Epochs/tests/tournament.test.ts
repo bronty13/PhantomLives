@@ -47,13 +47,13 @@ describe('AI strength (seat-averaged headless tournaments)', () => {
         `\n  medium vs easy (2p): ${pct(mVsE)}` +
         `\n  hard vs easy (2p): ${pct(hVsE)}`,
     )
-    // Deterministic (seeded) win rates. Pure random-move handicap (easy 0.50 /
-    // medium 0.28 / hard 0.0). The end-to-end signal is clear (hard >> easy, ~61%);
-    // ADJACENT tiers sit within the tournament's sample noise (~51–53%), so we assert
-    // a monotonic DIRECTION (each ≥ 50%) with a clear hard-vs-easy margin rather than
-    // a large adjacent gap the sample can't reliably show. Observed 51.2 / 52.9 / 60.8%.
-    expect(hVsM).toBeGreaterThan(0.5)
-    expect(mVsE).toBeGreaterThan(0.5)
-    expect(hVsE).toBeGreaterThan(0.56)
+    // Deterministic (seeded) win rates, clean monotonic ladder. Strong random-move
+    // handicap (easy 0.70 / medium 0.38 / hard 0.0) — random moves are cheap when
+    // positions have many near-equal options, so easy must be made genuinely weak
+    // for the difference to be felt (and to clear the disaster-event variance).
+    // Observed 53.8 / 60.8 / 72.5%.
+    expect(hVsM).toBeGreaterThan(0.51)
+    expect(mVsE).toBeGreaterThan(0.56)
+    expect(hVsE).toBeGreaterThan(0.68)
   })
 })

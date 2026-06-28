@@ -78,10 +78,17 @@ export type EventEffect =
   // ── targeted disasters (played BEFORE turn, aimed at an enemy Land) ──
   | { kind: 'disaster_structure'; terrain: DisasterTerrain } // Flood/Volcano/Fire: wreck structures
   | { kind: 'plague' } // the target Land's army rolls 4 dice; a '1' eliminates it
+  | { kind: 'pestilence' } // target army rolls 3 dice; each adjacent enemy army rolls 2 — '1' kills
+  | { kind: 'famine' } // every enemy army in the target's Area rolls 2 dice; a '1' kills
 
 /** True for effects that must be aimed at a target Land. */
 export function effectNeedsTarget(e: EventEffect): boolean {
-  return e.kind === 'disaster_structure' || e.kind === 'plague'
+  return (
+    e.kind === 'disaster_structure' ||
+    e.kind === 'plague' ||
+    e.kind === 'pestilence' ||
+    e.kind === 'famine'
+  )
 }
 
 export interface EventCard {

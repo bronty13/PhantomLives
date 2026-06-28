@@ -39,6 +39,10 @@ export function describeEffect(e: EventEffect): { text: string; timing: 'during'
     }
     case 'plague':
       return { text: 'Strike an enemy land: its army rolls 4 dice — a single 1 wipes it out.', timing: 'before' }
+    case 'pestilence':
+      return { text: 'Strike an enemy land (3 dice) — and it spreads: each adjacent enemy army rolls 2. A 1 kills.', timing: 'before' }
+    case 'famine':
+      return { text: "Strike an enemy region: every army in that whole Area rolls 2 dice — each 1 starves.", timing: 'before' }
   }
 }
 
@@ -71,6 +75,8 @@ const DISASTERS: Array<[string, EventEffect, number]> = [
   ['Volcano', { kind: 'disaster_structure', terrain: 'mountain' }, 4],
   ['Great Fire', { kind: 'disaster_structure', terrain: 'any' }, 6],
   ['Plague', { kind: 'plague' }, 6],
+  ['Pestilence', { kind: 'pestilence' }, 4],
+  ['Famine', { kind: 'famine' }, 4],
 ]
 
 export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {

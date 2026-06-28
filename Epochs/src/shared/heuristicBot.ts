@@ -91,8 +91,8 @@ export function difficultyWeights(d: Difficulty): HeuristicWeights {
     // Pure random-move handicap — monotonic by construction. (The old `easy`
     // overlay added timidity/opponent-blindness, but "timid" plays SAFE and
     // scored ~even with medium; plain extra noise is a cleaner, ordered weakening.)
-    easy: { randomMoveProb: 0.5 },
-    medium: { randomMoveProb: 0.28 },
+    easy: { randomMoveProb: 0.7 },
+    medium: { randomMoveProb: 0.38 },
     hard: { randomMoveProb: 0.0 },
   }
   return { ...DEFAULT_WEIGHTS, ...overlays[d] }
@@ -194,6 +194,26 @@ export class HeuristicBot implements Bot {
       } else if (effect.kind === 'plague') {
         if (p.kind !== 'army') continue
         score = 1 + areaValue(land.area ?? '', view.epoch)
+      } else if (effect.kind === 'pestilence') {
+        if (p.kind !== 'army') continue
+        // value the spread — aim where adjacent enemy armies cluster
+        const adjEnemies = view.board
+          .neighbors(p.land)
+          .filter((nb) =>
+            view.pieces.some((q) => q.land === nb && q.kind === 'army' && q.owner != null && q.owner !== view.player),
+          ).length
+        score = 1 + adjEnemies * 1.5 + areaValue(land.area ?? '', view.epoch) * 0.5
+      } else if (effect.kind === 'famine') {
+        if (p.kind !== 'army') continue
+        // value the whole region — aim at the enemy's most-armied Area
+        const areaArmies = view.pieces.filter(
+          (q) =>
+            q.kind === 'army' &&
+            q.owner != null &&
+            q.owner !== view.player &&
+            view.board.land(q.land)?.area === land.area,
+        ).length
+        score = areaArmies + areaValue(land.area ?? '', view.epoch)
       }
       if (score > bestScore) {
         bestScore = score

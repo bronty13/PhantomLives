@@ -415,14 +415,34 @@ export class Game {
       })
     } else if (effect.kind === 'plague') {
       // The army on the Land rolls 4 dice; any '1' eliminates it.
-      const army = this.state.pieces.find((p) => p.land === land && p.kind === 'army')
-      if (army) {
-        let killed = false
-        for (let i = 0; i < 4; i++) if (this.state.rng.rollDie() === 1) killed = true
-        if (killed) this.removeArmyOn(land)
+      this.rollPlague(land, 4)
+    } else if (effect.kind === 'pestilence') {
+      // Target army rolls 3 dice; each ADJACENT enemy army rolls 2 (it spreads).
+      this.rollPlague(land, 3)
+      for (const nb of this.board.neighbors(land)) {
+        const a = this.armyOn(nb)
+        if (a && a.owner !== pid) this.rollPlague(nb, 2)
+      }
+    } else if (effect.kind === 'famine') {
+      // Every enemy army in the target's whole Area rolls 2 dice; a '1' kills.
+      const area = this.board.land(land)?.area
+      if (area != null) {
+        for (const p of [...this.state.pieces]) {
+          if (p.kind === 'army' && p.owner !== pid && this.board.land(p.land)?.area === area) {
+            this.rollPlague(p.land, 2)
+          }
+        }
       }
     }
     void pid
+  }
+
+  /** The army on `land` rolls `dice` d6; any '1' eliminates it. */
+  private rollPlague(land: LandId, dice: number): void {
+    if (!this.armyOn(land)) return
+    let killed = false
+    for (let i = 0; i < dice; i++) if (this.state.rng.rollDie() === 1) killed = true
+    if (killed) this.removeArmyOn(land)
   }
 
   /** Enemy Lands a disaster may legally strike (honours the terrain restriction). */
@@ -437,8 +457,8 @@ export class Game {
         if (effect.terrain === 'coastal' && land.seaBorders.length === 0) continue
         if (effect.terrain === 'mountain' && !land.difficultTerrain.includes('mountain')) continue
         out.add(p.land)
-      } else if (effect.kind === 'plague') {
-        if (p.kind === 'army') out.add(p.land)
+      } else if (effect.kind === 'plague' || effect.kind === 'pestilence' || effect.kind === 'famine') {
+        if (p.kind === 'army') out.add(p.land) // any enemy army is a legal aim point
       }
     }
     return [...out]

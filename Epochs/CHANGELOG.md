@@ -2,6 +2,25 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.17.0] — 2026-06-27
+
+Event system, slice 4 — the disasters spread.
+
+### Added
+- **Pestilence** (Lesser) — strike an enemy land (3 dice) and it *spreads*: each
+  adjacent enemy army rolls 2 dice; a 1 kills. Aim it where the enemy's armies
+  cluster.
+- **Famine** (Lesser) — strike an enemy *region*: every enemy army in that whole
+  Area rolls 2 dice, each 1 starves. Hits the enemy's most-armied region.
+  Both reuse the targeted-disaster machinery (`resolveDisaster` + a shared
+  `rollPlague` helper); the bot aims each by spread / region army-count.
+
+### Changed
+- **AI difficulty handicap strengthened** (easy 0.70 / medium 0.38 / hard 0.0).
+  Random moves are cheap when many positions are near-equal, so easy had to be made
+  genuinely weak for the tiers to separate above the disaster variance. Clean ladder
+  now: hard > medium > easy at 53.8 / 60.8 / **72.5%**.
+
 ## [0.16.1] — 2026-06-27
 
 ### Fixed
