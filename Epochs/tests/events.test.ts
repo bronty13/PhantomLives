@@ -293,13 +293,13 @@ describe('Kingdoms + Barbarians', () => {
 })
 
 describe('opening roll — first player + empire variety', () => {
-  it('emits startRoll first, with first = the highest roller', () => {
+  it('emits startRoll first, with first = the LOWEST roller (epoch-1 catch-up)', () => {
     const events = drive(worldGame(7, hardBots(['P1', 'P2', 'P3', 'P4'])))
     const sr = events[0]
     expect(sr.type).toBe('startRoll')
     if (sr.type === 'startRoll') {
-      const maxRoll = Math.max(...sr.rolls.map((r) => r.roll))
-      expect(sr.rolls.find((r) => r.player === sr.first)!.roll).toBe(maxRoll)
+      const minRoll = Math.min(...sr.rolls.map((r) => r.roll))
+      expect(sr.rolls.find((r) => r.player === sr.first)!.roll).toBe(minRoll)
     }
   })
 

@@ -270,7 +270,7 @@ class GameUI {
     switch (ev.type) {
       case 'startRoll':
         this.pendingRoll = { rolls: ev.rolls, first: ev.first }
-        this.pushLog(`${this.nameOf(ev.first)} rolls highest — plays first`)
+        this.pushLog(`${this.nameOf(ev.first)} rolls lowest — drafts first`)
         this.showStartRoll()
         break
       case 'epochStart':
@@ -564,7 +564,7 @@ class GameUI {
     this.scheduleNext()
   }
 
-  // The opening die-roll splash: each player rolls; highest plays first.
+  // The opening die-roll splash: each player rolls; the LOWEST drafts first.
   private showStartRoll(): void {
     const r = this.pendingRoll
     if (!r) return
@@ -583,9 +583,9 @@ class GameUI {
     const el = this.root.querySelector('#start-roll') as HTMLElement
     el.innerHTML =
       `<div class="evt-box intro-box roll-box">` +
-      `<div class="intro-epoch">Opening Roll<span>highest die plays first</span></div>` +
+      `<div class="intro-epoch">Opening Roll<span>lowest die drafts first</span></div>` +
       `<div class="roll-dice">${dice}</div>` +
-      `<p class="intro-sub"><b>${esc(this.nameOf(r.first))}</b> plays first</p>` +
+      `<p class="intro-sub"><b>${esc(this.nameOf(r.first))}</b> drafts first</p>` +
       `<div class="evt-actions"><button id="roll-begin" class="primary">Begin ▶</button></div>` +
       `</div>`
     el.classList.remove('hidden')

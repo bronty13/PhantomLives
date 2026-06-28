@@ -190,6 +190,7 @@ export class Game {
   private readonly empiresByEpoch: Map<EpochId, EmpireCard[]>
   private readonly bots: Map<PlayerId, Bot>
   private readonly prevEmpireOrder = new Map<PlayerId, number>()
+  private readonly strengthPoints = new Map<PlayerId, number>() // cumulative Empire Strength drafted
   private readonly startRolls = new Map<PlayerId, number>() // opening die roll → epoch-1 order
   private _areaSizes: Map<string, number> | null = null
 
@@ -267,13 +268,13 @@ export class Game {
    * `.next(landId)` (or `.next(undefined)` to stop placing). `run()` drains it.
    */
   *play(): Generator<GameEvent, GameResult, PlayInput> {
-    // Opening roll: each player rolls a die; highest goes first (ties → seating).
-    // Breaks the epoch-1 all-tied draw order so it isn't always seat order.
+    // Opening roll: each player rolls a die; the LOWEST total drafts first in Epoch I
+    // (the original's catch-up at the very start). Ties → seating.
     for (const p of this.state.players) this.startRolls.set(p.id, this.state.rng.rollDie())
     const first = [...this.state.players].sort((a, b) => {
       const ra = this.startRolls.get(a.id)!
       const rb = this.startRolls.get(b.id)!
-      return rb - ra || this.state.players.indexOf(a) - this.state.players.indexOf(b)
+      return ra - rb || this.state.players.indexOf(a) - this.state.players.indexOf(b)
     })[0].id
     yield {
       type: 'startRoll',
@@ -298,6 +299,7 @@ export class Game {
         if (!empire) continue
         yield* this.playEmpireTurnGen(pid, empire)
         this.prevEmpireOrder.set(pid, empire.order)
+        this.strengthPoints.set(pid, (this.strengthPoints.get(pid) ?? 0) + empire.strength)
       }
       yield { type: 'epochEnd', epoch }
     }
@@ -606,13 +608,17 @@ export class Game {
     return [...this.state.players]
       .map((p, i) => ({ p, i }))
       .sort((a, b) => {
-        if (a.p.vp !== b.p.vp) return a.p.vp - b.p.vp
+        // fewest cumulative Empire Strength drafts first (catch-up); …
+        const sa = this.strengthPoints.get(a.p.id) ?? 0
+        const sb = this.strengthPoints.get(b.p.id) ?? 0
+        if (sa !== sb) return sa - sb
+        if (a.p.vp !== b.p.vp) return b.p.vp - a.p.vp // … ties → highest VP first; …
         const ao = this.prevEmpireOrder.get(a.p.id) ?? 0
         const bo = this.prevEmpireOrder.get(b.p.id) ?? 0
-        if (ao !== bo) return ao - bo
+        if (ao !== bo) return ao - bo // … then lowest prior-epoch card number; …
         const ra = this.startRolls.get(a.p.id) ?? 0
         const rb = this.startRolls.get(b.p.id) ?? 0
-        if (ra !== rb) return rb - ra // higher opening roll drafts first
+        if (ra !== rb) return ra - rb // … then the LOWEST opening roll (epoch 1).
         return a.i - b.i
       })
       .map((x) => x.p.id)

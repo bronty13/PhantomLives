@@ -2,6 +2,19 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.28.0] — 2026-06-27
+
+Fidelity pass, slice 2 of 5 — draft order.
+
+### Changed
+- **Draft order now follows the original's allocation sequence.** Epoch I draws in
+  order of the opening roll, **lowest first** (was highest). Epochs II–VII draw in
+  **catch-up order by cumulative Empire Strength** — the player who has commanded the
+  fewest/weakest empires so far drafts first — with ties broken by **highest VP**, then
+  **lowest prior-epoch card number** (was: ordered by VP alone). New cumulative
+  `strengthPoints` tracker. The opening-roll splash + rulebook updated to match;
+  tournament ladder firmed to 65.0 / 74.6 / 80.8%.
+
 ## [0.27.0] — 2026-06-27
 
 Fidelity pass, slice 1 of 5 — scoring tiers + monument placement.

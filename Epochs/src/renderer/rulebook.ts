@@ -51,9 +51,11 @@ export const RULEBOOK: RuleSection[] = [
     id: 'epoch',
     title: 'Starting an Epoch — Roll & Draft',
     body: `
-      <p>At the very start of the game, every player rolls a die; <b>highest goes
-      first</b>. Thereafter, each epoch the <b>weakest player drafts first</b> (lowest
-      score) — a catch-up mechanism that hands the trailing player the first pick.</p>
+      <p>At the very start of the game, every player rolls a die; the <b>lowest roll
+      drafts first</b> in Epoch I. Thereafter, the draft runs in <b>catch-up order</b> —
+      the player who has commanded the <b>fewest empires so far</b> (least cumulative
+      Strength) drafts first; ties go to the higher score, then to whoever played
+      earliest last epoch.</p>
       <p><b>Keep or Pass.</b> When it is your turn to draft you are dealt a
       <b>random empire</b> face-down. You may <b>Keep</b> it, or <b>Pass</b> (gift) it
       to any player who has no empire yet — then you draw again. Passing a weak empire
