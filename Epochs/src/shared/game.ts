@@ -13,7 +13,7 @@
 //  - Fort assaults use combat.ts::resolveAssault's documented interpretation.
 
 import { Board } from './board'
-import type { Bot, BotView, EventChoice, EventView, FrontierKind, FrontierOption } from './bot'
+import type { Bot, BotView, DraftView, EventChoice, EventView, FrontierKind, FrontierOption } from './bot'
 import { oddsForContext, resolveAssault, type CombatContext, type CombatResult } from './combat'
 import { makeEventDeck } from './data/events'
 import { MINOR_EMPIRES } from './data/minorEmpires'
@@ -553,15 +553,15 @@ export class Game {
       .map((x) => x.p.id)
   }
 
-  /** Keep/Pass draft (catch-up order): each drafter is dealt the strongest empire
-   *  left and may KEEP it or PASS (gift) it to a player who has none yet — then draws
-   *  again. Human seats decide via `awaitDraft`; bots keep. Surplus players (fewer
-   *  empires than players) sit out — run()'s `if (!empire) continue` handles it. */
+  /** Keep/Pass draft (catch-up order): each drafter draws a RANDOM empire (face-down)
+   *  and may KEEP it or PASS (gift) it to a player who has none yet — then draws again.
+   *  Human seats decide via `awaitDraft`; bots via `chooseDraft`. Surplus players
+   *  (fewer empires than players) sit out — run()'s `if (!empire) continue` handles it. */
   private *draftGen(
     epoch: EpochId,
     order: PlayerId[],
   ): Generator<GameEvent, Map<PlayerId, EmpireCard>, PlayInput> {
-    const pool = [...(this.empiresByEpoch.get(epoch) ?? [])].sort((a, b) => b.strength - a.strength)
+    const pool = shuffle([...(this.empiresByEpoch.get(epoch) ?? [])], this.state.rng)
     const assign = new Map<PlayerId, EmpireCard>()
     for (const pid of order) {
       while (!assign.has(pid) && pool.length > 0) {
@@ -583,7 +583,15 @@ export class Game {
             canPassTo,
           }) as DraftChoice
         } else {
-          choice = this.botDraftChoice()
+          const view: DraftView = {
+            epoch,
+            player: pid,
+            standings: this.state.players.map((p) => ({ id: p.id, vp: p.vp })),
+            drawn: top,
+            remaining: pool,
+            canPassTo,
+          }
+          choice = this.bots.get(pid)?.chooseDraft?.(view) ?? { keep: true }
         }
         // Pass only if a valid empire-less recipient was named; otherwise keep.
         if ('passTo' in choice && canPassTo.includes(choice.passTo)) {
@@ -594,12 +602,6 @@ export class Game {
       }
     }
     return assign
-  }
-
-  /** v1 bot draft policy: keep the empire dealt (catch-up order already gives the
-   *  weakest player the strongest empire — gifting is reserved for human strategy). */
-  private botDraftChoice(): DraftChoice {
-    return { keep: true }
   }
 
   private setupEmpire(pid: PlayerId, empire: EmpireCard): void {

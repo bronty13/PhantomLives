@@ -60,12 +60,27 @@ export interface EventChoice {
   lesserTarget?: LandId
 }
 
+/** A drafter's view when dealt a (random) empire in the Keep/Pass draft. */
+export interface DraftView {
+  epoch: EpochId
+  player: PlayerId
+  standings: readonly { id: PlayerId; vp: number }[]
+  drawn: EmpireCard // the empire just drawn
+  remaining: readonly EmpireCard[] // empires still in the pool (incl. the drawn one)
+  canPassTo: readonly PlayerId[] // empire-less players who could receive a pass
+}
+
+/** Keep the drawn empire, or gift it to an empire-less player. */
+export type DraftDecision = { keep: true } | { passTo: PlayerId }
+
 export interface Bot {
   readonly name: string
   /** Choose a frontier land to expand into, or null to stop expanding. */
   chooseExpansion(view: BotView, frontier: FrontierOption[]): LandId | null
   /** Optionally play events before the turn (default: play none). */
   chooseEvents?(view: EventView, hand: EventHand): EventChoice
+  /** Keep/Pass draft decision (default: keep). */
+  chooseDraft?(view: DraftView): DraftDecision
 }
 
 export class GreedyStubBot implements Bot {

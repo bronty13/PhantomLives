@@ -2,6 +2,20 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.20.0] — 2026-06-27
+
+### Changed
+- **The draft now deals a RANDOM empire face-down** (shuffled pool) instead of the
+  strongest remaining — so the Keep/Pass decision is a real gamble, as on the
+  cardboard. You draw an empire, then keep or pass it.
+- **Bots draft strategically.** New `chooseDraft` bot policy (with a `DraftView`):
+  keep a strong or capital-bearing empire, but **gift a weak, capital-less one to the
+  current leader** (deny them — they'd otherwise draw something stronger), then draw
+  again. Replaces the v1 "bots always keep".
+  - Side effect: the random draw + strategic drafting **widened the AI difficulty
+    ladder** (a stronger player makes more of a randomly-dealt empire) — hard > medium
+    > easy is now 61.7 / 66.3 / 72.9% (was 53.8 / 60.8 / 72.5).
+
 ## [0.19.0] — 2026-06-27
 
 ### Added

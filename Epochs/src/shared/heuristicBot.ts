@@ -17,7 +17,7 @@
 //  - RISK: enemy attacks are folded by closed-form (win/tie/loss) odds and must
 //    beat the best safe placement (opportunity cost).
 
-import type { Bot, BotView, EventChoice, EventView, FrontierOption } from './bot'
+import type { Bot, BotView, DraftDecision, DraftView, EventChoice, EventView, FrontierOption } from './bot'
 import { combatOdds, winProb } from './combat'
 import { areaValue } from './data/areaValues'
 import { scoreArea } from './scoring'
@@ -131,6 +131,22 @@ export class HeuristicBot implements Bot {
     const base = opts.difficulty ? difficultyWeights(opts.difficulty) : DEFAULT_WEIGHTS
     this.w = { ...base, ...(opts.weights ?? {}) }
     this.name = opts.name ?? `Heuristic-${opts.difficulty ?? 'default'}`
+  }
+
+  /**
+   * Draft policy: keep a decent empire; gift a weak, capital-less one to the
+   * strongest rival who still has none (deny them — they'd otherwise draw something
+   * stronger), then draw again. Capitals and at/above-average strength are kept.
+   */
+  chooseDraft(view: DraftView): DraftDecision {
+    const { drawn, remaining, canPassTo, standings, player } = view
+    if (canPassTo.length === 0) return { keep: true } // no one to gift it to
+    const avg = remaining.reduce((s, e) => s + e.strength, 0) / Math.max(1, remaining.length)
+    if (drawn.hasCapital || drawn.strength >= avg) return { keep: true }
+    const vp = (p: PlayerId): number => standings.find((s) => s.id === p)?.vp ?? 0
+    const target = [...canPassTo].sort((a, b) => vp(b) - vp(a) || (a < b ? -1 : 1))[0]
+    void player
+    return { passTo: target }
   }
 
   /**

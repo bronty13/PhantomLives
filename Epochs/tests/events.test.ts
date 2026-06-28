@@ -169,6 +169,20 @@ describe('Minor Empires', () => {
 })
 
 describe('Keep/Pass draft', () => {
+  it('the bot keeps a strong/capital empire but gifts a weak one to the leader', () => {
+    const bot = new HeuristicBot({ name: 'B', difficulty: 'hard' })
+    const mk = (strength: number, hasCapital: boolean) => ({
+      id: 'x', name: 'X', epoch: 1 as const, order: 1, strength, startLand: 'x', navigation: { seas: [] }, hasCapital,
+    })
+    const remaining = [mk(2, false), mk(3, false), mk(4, false), mk(5, true)] // avg 3.5
+    const standings = [{ id: 'P1', vp: 0 }, { id: 'P2', vp: 10 }, { id: 'P3', vp: 3 }]
+    const base = { epoch: 1 as const, player: 'P1', standings, remaining, canPassTo: ['P2', 'P3'] }
+    expect(bot.chooseDraft!({ ...base, drawn: mk(5, false) })).toEqual({ keep: true }) // strong
+    expect(bot.chooseDraft!({ ...base, drawn: mk(1, true) })).toEqual({ keep: true }) // capital
+    expect(bot.chooseDraft!({ ...base, drawn: mk(2, false) })).toEqual({ passTo: 'P2' }) // weak → leader
+    expect(bot.chooseDraft!({ ...base, drawn: mk(2, false), canPassTo: [] })).toEqual({ keep: true }) // no one
+  })
+
   it('passing a drawn empire gives it to the chosen empire-less player (not the passer)', () => {
     for (let seed = 1; seed <= 12; seed++) {
       const players: PlayerConfig[] = [{ id: 'P1', name: 'P1', isHuman: true }, ...hardBots(['P2', 'P3', 'P4'])]

@@ -51,9 +51,10 @@ describe('AI strength (seat-averaged headless tournaments)', () => {
     // handicap (easy 0.70 / medium 0.38 / hard 0.0) — random moves are cheap when
     // positions have many near-equal options, so easy must be made genuinely weak
     // for the difference to be felt (and to clear the disaster-event variance).
-    // Observed 53.8 / 60.8 / 72.5%.
-    expect(hVsM).toBeGreaterThan(0.51)
-    expect(mVsE).toBeGreaterThan(0.56)
+    // The random face-down draft widened the gap further (a stronger player makes
+    // more of a randomly-dealt empire). Observed 61.7 / 66.3 / 72.9%.
+    expect(hVsM).toBeGreaterThan(0.55)
+    expect(mVsE).toBeGreaterThan(0.6)
     expect(hVsE).toBeGreaterThan(0.68)
   })
 })
