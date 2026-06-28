@@ -34,9 +34,20 @@ import type {
   SeaId,
 } from './types'
 import { areaValue } from './data/areaValues'
+import { isOcean } from './data/seas'
 
 const TOTAL_MONUMENTS = 36
 const MAX_ARMIES = 3 // no more than three armies may occupy a Land (original rule)
+// Naval combat uses the plain dice model — no terrain, fort, or amphibious modifiers.
+const NAVAL_CTX: CombatContext = {
+  attackerBonus: false,
+  attackerKeptBonus: 0,
+  attackerWinsTies: false,
+  difficultTerrain: false,
+  strait: false,
+  amphibious: false,
+  fort: false,
+}
 
 export interface PlayerConfig {
   id: PlayerId
@@ -126,6 +137,7 @@ export type GameEvent =
   | { type: 'minorEmpire'; player: PlayerId; empire: string; land: LandId }
   | { type: 'foundKingdom'; player: PlayerId; land: LandId }
   | { type: 'fleet'; player: PlayerId; sea: SeaId }
+  | { type: 'navalCombat'; player: PlayerId; sea: SeaId; won: boolean }
   | {
       type: 'awaitPlacement'
       player: PlayerId
@@ -375,9 +387,28 @@ export class Game {
     if (navSeas.length > 0 && empire.strength >= 2) {
       const sea = this.bestFleetSea(navSeas, this.currentLands(pid))
       if (sea) {
-        this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch })
-        fleetsBought = 1
-        yield { type: 'fleet', player: pid, sea }
+        fleetsBought = 1 // the Strength is spent whether or not the landing succeeds
+        const enemyFleets = isOcean(sea)
+          ? 0 // open oceans: all players' fleets coexist, no combat
+          : this.state.fleets.filter((f) => f.sea === sea && f.owner !== pid).length
+        if (enemyFleets > 0) {
+          // naval combat (enclosed seas): the entering fleet must beat each enemy fleet;
+          // it is repelled the first round it loses (same dice as land, no terrain/fort).
+          let defenders = enemyFleets
+          while (defenders > 0) {
+            const res = resolveAssault(this.state.rng, NAVAL_CTX)
+            if (res.outcome === 'attacker') {
+              this.removeOneEnemyFleet(sea, pid)
+              defenders -= 1
+            } else break
+          }
+          const won = defenders === 0
+          if (won) this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch })
+          yield { type: 'navalCombat', player: pid, sea, won }
+        } else if (this.state.fleets.filter((f) => f.sea === sea).length < 2) {
+          this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch }) // ≤2 per body
+          yield { type: 'fleet', player: pid, sea }
+        }
       }
     }
     let remaining = empire.strength - 1 - fleetsBought + effects.bonusArmies // setup placed 1 army
@@ -923,6 +954,12 @@ export class Game {
   /** Does `pid` have a fleet in `sea`? (Fleets persist across epochs.) */
   private playerHasFleetIn(sea: SeaId, pid: PlayerId): boolean {
     return this.state.fleets.some((f) => f.sea === sea && f.owner === pid)
+  }
+
+  /** Sink one fleet in `sea` that is not `pid`'s (a naval-combat loss for the defender). */
+  private removeOneEnemyFleet(sea: SeaId, pid: PlayerId): void {
+    const i = this.state.fleets.findIndex((f) => f.sea === sea && f.owner !== pid)
+    if (i >= 0) this.state.fleets.splice(i, 1)
   }
 
   /** Lands `pid` holds with a current-epoch army. */

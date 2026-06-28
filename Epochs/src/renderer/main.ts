@@ -338,6 +338,13 @@ class GameUI {
       case 'fleet':
         this.pushLog(`⛵ ${this.nameOf(ev.player)} launched a fleet in the ${this.seaName(ev.sea)}`)
         break
+      case 'navalCombat':
+        this.pushLog(
+          ev.won
+            ? `⚓ ${this.nameOf(ev.player)} won a sea battle in the ${this.seaName(ev.sea)}`
+            : `⚓ ${this.nameOf(ev.player)} was repulsed at sea in the ${this.seaName(ev.sea)}`,
+        )
+        break
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
         this.startLoop()

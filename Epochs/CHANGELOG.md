@@ -2,6 +2,19 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.31.0] — 2026-06-27
+
+Fidelity pass, slice 4 — fleets (chunk 2 of 4: naval combat + sea/ocean).
+
+### Added
+- **Sea vs Ocean.** The five great **oceans** (Atlantic, Pacific, Indian, Arctic,
+  Southern) are open water — any number of players' fleets coexist there, no combat.
+  The other 24 **enclosed seas** host **naval combat**: a fleet entering a sea that
+  holds an enemy fleet must fight for it (same dice as land — attacker 2 / defender 1,
+  ties reroll, no terrain/fort), so an enclosed sea ends up controlled by one player.
+  New `src/shared/data/seas.ts` classification, `navalCombat` event + ⚓ log line.
+- Sets up the next chunk: **sea scoring** (+1 per enclosed sea you control).
+
 ## [0.30.0] — 2026-06-27
 
 Fidelity pass, slice 4 of 5 — fleets (chunk 1 of 4: fleets gate navigation).

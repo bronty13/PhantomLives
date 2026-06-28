@@ -4,6 +4,7 @@ import { WORLD_MAP_DATA } from '../src/shared/data/board'
 import { WORLD_EMPIRES } from '../src/shared/data/empires'
 import { describeEffect, makeEventDeck } from '../src/shared/data/events'
 import { MINOR_EMPIRES } from '../src/shared/data/minorEmpires'
+import { OCEANS, isOcean } from '../src/shared/data/seas'
 import type { EventEffect } from '../src/shared/types'
 import { Game, type GameEvent, type PlayerConfig } from '../src/shared/game'
 import { HeuristicBot } from '../src/shared/heuristicBot'
@@ -214,6 +215,33 @@ describe('Keep/Pass draft', () => {
       return
     }
     throw new Error('no seed in 1..12 let P1 pass to P2')
+  })
+})
+
+describe('naval combat (seas) vs coexistence (oceans)', () => {
+  it('classifies the 5 great oceans; everything else is a sea', () => {
+    expect(OCEANS.size).toBe(5)
+    expect(isOcean('atlantic')).toBe(true)
+    expect(isOcean('pacific')).toBe(true)
+    expect(isOcean('mediterranean')).toBe(false)
+    expect(isOcean('aegean_sea')).toBe(false)
+  })
+
+  it('battles happen only in enclosed seas, and an enclosed sea ends up single-owner', () => {
+    for (let seed = 1; seed <= 25; seed++) {
+      const game = worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))
+      for (const e of drive(game)) {
+        if (e.type === 'navalCombat') expect(isOcean(e.sea)).toBe(false) // combat is sea-only
+      }
+      const ownersBySea = new Map<string, Set<string>>()
+      for (const f of game.state.fleets) {
+        if (isOcean(f.sea)) continue // oceans may hold many owners
+        const s = ownersBySea.get(f.sea) ?? new Set<string>()
+        s.add(f.owner)
+        ownersBySea.set(f.sea, s)
+      }
+      for (const [, owners] of ownersBySea) expect(owners.size).toBeLessThanOrEqual(1)
+    }
   })
 })
 

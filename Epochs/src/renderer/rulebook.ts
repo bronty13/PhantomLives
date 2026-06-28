@@ -195,6 +195,12 @@ export const RULEBOOK: RuleSection[] = [
       empire's armies can land on <i>any</i> coast of that sea. This is the only way to
       the <b>overseas continents</b> — the Americas, Australasia and sub-Saharan Africa,
       which no land route touches.</p>
+      <p>The waters come in two kinds. <b>Enclosed seas</b> (the Mediterranean, North
+      Sea, Red Sea, and the like) host <b>naval combat</b> — a fleet entering one that
+      already holds an enemy fleet must fight for it (same dice as a land battle), so a
+      sea ends up controlled by a single player. The five <b>open oceans</b> (Atlantic,
+      Pacific, Indian, Arctic, Southern) are free water: any number of players' fleets
+      may share them, with no combat.</p>
       <p>The naval events extend this: <b>Ship Building</b> and <b>Naval Supremacy</b>
       let you sail <i>every</i> sea for a turn, and the sea-raid disasters
       (<b>Pirates</b>, <b>Storm at Sea</b>) strike coastal foes.</p>`,
