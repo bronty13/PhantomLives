@@ -16,8 +16,13 @@
 >   wins, ties reroll**. That is exactly `combat.ts` (attacker-2-keep-high / defender-1 /
 >   reroll). An extract agent misread it as "army-count-additive" and the synthesis
 >   ranked the misread #1. **Do not change the combat dice model.** (Verified 2026-06-28.)
-> - The **sample game (pages 7–12)** is the real oracle — building its replay test
->   empirically settles combat/scoring disputes like this one.
+> - The **sample game (pages 7–12)** is now encoded as `tests/sample-game.test.ts` (15
+>   assertions, all passing). It **empirically confirms** the disputed subsystems against
+>   the book: the scripted-dice combat `[6,1,5 · 6,6,6]+fort` reproduces the book's
+>   tie→reroll→defender-wins outcome; all three printed base values match our table; and
+>   every per-turn VP tally (Zeus 5, Apollo 5, Hera 7, Persia 22) reproduces under our
+>   scoring. So **combat, the VP table, and scoring arithmetic are proven faithful** —
+>   the audit's combat/scoring "divergences" in those areas are misreads.
 >
 > ⚠️ **Read critically.** Some "divergences" are the audit's own extraction misreads (e.g. combat-dice model, draft-order key) and must be re-checked against the source pages before any code change. Others are deliberate simplifications (no physical VP track, open draft). The value is the *coverage* — every clause now has a row.
 
