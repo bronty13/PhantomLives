@@ -10,6 +10,12 @@
     "src/preload/**/*",
     "src/shared/**/*",
     "tests/**/*",
+    // heatBg.test.ts imports this pure, DOM-free formatter from the renderer
+    // tree. Because this is a `composite` project, every file the tests pull in
+    // must be explicitly listed or tsc fails with TS6307 — so list the one
+    // renderer helper the suite reaches into (NOT the whole renderer tree, which
+    // needs the DOM lib + vite types the web project provides).
+    "src/renderer/src/features/common/format.ts",
     "electron.vite.config.ts"
   ]
 }
