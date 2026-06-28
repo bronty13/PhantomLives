@@ -24,6 +24,7 @@ import { RULEBOOK } from './rulebook'
 import { describeEffect } from '../shared/data/events'
 import type { EmpireCard, EpochId, EventCard, Land, PlayerId } from '../shared/types'
 import { drawMap, type PlaceableEntry } from './map'
+import { Sound } from './sound'
 import { drawFx, fxDone, type Fx } from './anim'
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
@@ -277,6 +278,7 @@ class GameUI {
       case 'startRoll':
         this.pendingRoll = { rolls: ev.rolls, first: ev.first }
         this.pushLog(`${this.nameOf(ev.first)} rolls lowest — drafts first`)
+        Sound.roll()
         this.showStartRoll()
         break
       case 'epochStart':
@@ -349,6 +351,7 @@ class GameUI {
         break
       case 'fleet':
         this.pushLog(`⛵ ${this.nameOf(ev.player)} launched a fleet in the ${this.seaName(ev.sea)}`)
+        Sound.fleet()
         break
       case 'navalCombat':
         this.pushLog(
@@ -356,9 +359,11 @@ class GameUI {
             ? `⚓ ${this.nameOf(ev.player)} won a sea battle in the ${this.seaName(ev.sea)}`
             : `⚓ ${this.nameOf(ev.player)} was repulsed at sea in the ${this.seaName(ev.sea)}`,
         )
+        Sound.clash()
         break
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
+        Sound.place()
         this.startLoop()
         break
       case 'awaitPlacement':
@@ -376,8 +381,11 @@ class GameUI {
           this.fx.push({ kind: 'clash', land: ev.land, color, start: now, dur: 380, text })
           const verb = ev.outcome === 'attacker' ? 'WON' : 'REPELLED'
           this.pushLog(`${this.nameOf(ev.player)} attacked ${this.landName(ev.land)} — ${verb}`)
+          Sound.clash()
+          if (ev.outcome === 'attacker') Sound.conquer()
         } else {
           this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
+          Sound.place()
         }
         this.startLoop()
         this.attackOdds = null
@@ -396,6 +404,7 @@ class GameUI {
         if (bd.structureVp > 0) bits.push(`+${bd.structureVp} structures`)
         if (bd.seaVp > 0) bits.push(`+${bd.seaVp} seas`)
         this.pushLog(`${this.nameOf(ev.player)} scored +${ev.gained} → ${ev.total}${bits.length ? ' — ' + bits.join(', ') : ''}`)
+        if (ev.gained > 0) Sound.score()
         if (ev.gained > 0) {
           let sx = 0
           let sy = 0
@@ -435,6 +444,7 @@ class GameUI {
     const win = result.standings[0]
     this.status = `Game over — ${this.nameOf(win.id)} wins (${win.vp} VP)`
     this.pushLog(`=== ${this.nameOf(win.id)} wins with ${win.vp} VP ===`)
+    Sound.victory()
     this.render()
     this.renderGameOver(result)
   }
@@ -975,6 +985,11 @@ class GameUI {
     q<HTMLButtonElement>('#help-btn').onclick = () => this.showHelp()
     q<HTMLButtonElement>('#help-close').onclick = () => this.hideHelp()
     q<HTMLButtonElement>('#rulebook-btn').onclick = () => this.openRulebook()
+    const muteBtn = q<HTMLButtonElement>('#mute-btn')
+    muteBtn.textContent = Sound.muted ? '🔇' : '🔊'
+    muteBtn.onclick = () => {
+      muteBtn.textContent = Sound.toggle() ? '🔇' : '🔊'
+    }
     q<HTMLButtonElement>('#rb-close').onclick = () => this.closeRulebook()
     q<HTMLButtonElement>('#rb-tab-rules').onclick = () => this.setRbTab('rules')
     q<HTMLButtonElement>('#rb-tab-classic').onclick = () => this.setRbTab('classic')
@@ -1048,7 +1063,7 @@ const TEMPLATE = `
 <div class="app">
   <header class="topbar">
     <h1>Epochs</h1>
-    <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button></div>
+    <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button><button id="mute-btn" class="help-btn">🔊</button></div>
   </header>
   <div class="body">
     <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="buy-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>

@@ -2,6 +2,18 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.38.0] — 2026-06-28
+
+Polish, slice B — sound.
+
+### Added
+- **Procedural sound effects** via WebAudio — no audio files; every SFX is synthesized
+  from a few oscillator/noise blips with short envelopes (`src/renderer/sound.ts`).
+  Wired to play: army placement, combat clash + conquer, scoring chime, fleet launch /
+  sea battle, the opening die roll, and a victory fanfare at game end.
+- **Mute toggle** (🔊/🔇) in the HUD, persisted in `localStorage`. The AudioContext is
+  lazy and resumes on the first click (autoplay policy).
+
 ## [0.37.0] — 2026-06-28
 
 Polish, slice A — a proper end-game summary.
