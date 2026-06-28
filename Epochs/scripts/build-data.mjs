@@ -108,7 +108,7 @@ for (const start of nb) {
 // Overseas Areas (the Americas) are an island landmass — reachable only by sea, so
 // they're EXPECTED to be a separate component until navigation/fleets land. Only
 // warn if the OLD-WORLD mainland itself splits (a real bug).
-const OVERSEAS = new Set(['north_america', 'south_america'])
+const OVERSEAS = new Set(['north_america', 'south_america', 'australia', 'africa'])
 const compAreas = new Map()
 for (const t of terrs) {
   if (t.barren) continue

@@ -91,8 +91,8 @@ export function difficultyWeights(d: Difficulty): HeuristicWeights {
     // Pure random-move handicap — monotonic by construction. (The old `easy`
     // overlay added timidity/opponent-blindness, but "timid" plays SAFE and
     // scored ~even with medium; plain extra noise is a cleaner, ordered weakening.)
-    easy: { randomMoveProb: 0.42 },
-    medium: { randomMoveProb: 0.2 },
+    easy: { randomMoveProb: 0.5 },
+    medium: { randomMoveProb: 0.28 },
     hard: { randomMoveProb: 0.0 },
   }
   return { ...DEFAULT_WEIGHTS, ...overlays[d] }

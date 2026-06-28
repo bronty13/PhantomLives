@@ -2,6 +2,27 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.16.1] — 2026-06-27
+
+### Fixed
+- **Expansion adjacency is now the board's TRUE land borders.** Replaced the
+  position-derived (Delaunay) adjacency — which couldn't see water and kept
+  inventing cross-sea/cross-terrain borders — with the **actual drawn borders read
+  off the board** (a 16-reader workflow listing which province lines physically
+  touch, ≥2 votes per edge). 184 real land borders. No more Europe→western-China,
+  Spain→Caribbean, or island teleports — expansion offers only genuinely-bordering
+  provinces.
+  - Short straits added for near-shore islands (Crete↔Greece, Britain↔Gaul/Ireland,
+    Japan, Sumatra, Ceylon, Madagascar) so island-homeland empires can play; one
+    reader-gapped real border restored (Arabia↔Palestine, verified on the board).
+  - The **Americas, Australasia, and sub-Saharan Africa are correctly separate
+    overseas landmasses** — sealed by ocean or the impassable Sahara, reachable by
+    sea once navigation lands. The generator/tests treat these as expected; only an
+    Old-World mainland split warns.
+- **AI difficulty handicap widened** (easy 0.50 / medium 0.28 / hard 0.0) for the
+  new geography. Hard >> easy is clear (~61%); adjacent tiers sit within sample
+  noise (the test now asserts monotonic direction + a clear endpoint margin).
+
 ## [0.16.0] — 2026-06-27
 
 Event system, slice 3 — combat & build boons + an AI difficulty re-tune.

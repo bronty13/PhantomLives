@@ -60,7 +60,7 @@ describe('world map — structure', () => {
 
     // The Americas are reachable only by sea (navigation TBD), so they're an
     // expected separate component. Assert the OLD-WORLD mainland is fully connected.
-    const OVERSEAS = new Set(['north_america', 'south_america'])
+    const OVERSEAS = new Set(['north_america', 'south_america', 'australia', 'africa'])
     const byId = new Map(WORLD_LANDS.map((l) => [l.id, l]))
     const onMainland = (id: LandId): boolean => {
       const l = byId.get(id)!
