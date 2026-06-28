@@ -24,6 +24,15 @@
 >   scoring. So **combat, the VP table, and scoring arithmetic are proven faithful** —
 >   the audit's combat/scoring "divergences" in those areas are misreads.
 >
+> ### Fixes applied from this audit
+> - ✅ **G1 — turn order by Empire Card #** (v0.43.0): turns now sort by `EmpireCard.order`,
+>   not draft order (confirmed by sample step 2). Draft order itself (lowest Strength
+>   first) was already correct.
+> - ✅ **Sumeria §3.11 — capital added** (v0.43.0): the neutral seed now places an
+>   owner-less Capital on Lower Tigris (flips to the conqueror's City when taken).
+> - ✅ **G2 / G3 / G4 — debunked** by `tests/sample-game.test.ts` (combat model, fort = +1,
+>   no capital defensive bonus all match the book's worked combat).
+>
 > ⚠️ **Read critically.** Some "divergences" are the audit's own extraction misreads (e.g. combat-dice model, draft-order key) and must be re-checked against the source pages before any code change. Others are deliberate simplifications (no physical VP track, open draft). The value is the *coverage* — every clause now has a row.
 
 ---

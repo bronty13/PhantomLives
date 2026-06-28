@@ -46,9 +46,9 @@ export const RULEBOOK: RuleSection[] = [
         across it to reach <i>any</i> land on that sea — this is how the Americas,
         Australasia and sub-Saharan Africa are reached at all.</li>
       </ul>
-      <p>Before the first epoch, four <b>neutral Sumerian armies</b> are seeded around
-      <b>Lower Tigris</b> — a starting obstacle that belongs to no one and must be
-      conquered like any defender.</p>`,
+      <p>Before the first epoch, a <b>neutral Sumerian capital</b> and four armies are
+      seeded around <b>Lower Tigris</b> — a starting obstacle that belongs to no one and
+      must be conquered like any defender. Take the capital and it becomes your city.</p>`,
   },
   {
     id: 'epoch',

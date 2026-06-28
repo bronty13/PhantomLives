@@ -259,6 +259,28 @@ describe('per-unit placement (army / fleet / fort in one expansion loop)', () =>
   })
 })
 
+describe('turn order within an epoch follows Empire Card # (§3.3)', () => {
+  it('plays empires in ascending card-number order each epoch, not draft order', () => {
+    const orderOf = new Map(WORLD_EMPIRES.map((e) => [e.name, e.order]))
+    for (const seed of [1, 4, 9]) {
+      const game = worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))
+      const it = game.play()
+      let step = it.next()
+      let lastOrder = -1
+      while (!step.done) {
+        const ev = step.value
+        if (ev.type === 'epochStart') lastOrder = -1
+        else if (ev.type === 'turnStart') {
+          const ord = orderOf.get(ev.empire) ?? 0
+          expect(ord).toBeGreaterThanOrEqual(lastOrder) // non-decreasing within the epoch
+          lastOrder = ord
+        }
+        step = it.next()
+      }
+    }
+  })
+})
+
 describe('interactive monument placement (within the forced tier)', () => {
   it('puts a monument on the human-chosen eligible land', () => {
     let sawChoice = false
@@ -384,7 +406,7 @@ describe('army stacking (up to 3 per land)', () => {
 })
 
 describe('Sumeria neutral seed', () => {
-  it('seeds 4 neutral (owner-less) armies from Lower Tigris before Epoch I', () => {
+  it('seeds 4 neutral armies + a neutral Capital from Lower Tigris before Epoch I (§3.11)', () => {
     const game = worldGame(1, hardBots(['P1', 'P2', 'P3', 'P4']))
     const it = game.play()
     let step = it.next()
@@ -392,8 +414,11 @@ describe('Sumeria neutral seed', () => {
     const neutral = game.state.pieces.filter((p) => p.kind === 'army' && p.owner === null)
     expect(neutral).toHaveLength(4)
     expect(neutral.some((p) => p.land === 'lower_tigris')).toBe(true)
-    // neutral armies score for nobody (owner null is skipped in scoring)
-    expect(neutral.every((p) => p.owner === null)).toBe(true)
+    expect(neutral.every((p) => p.owner === null)).toBe(true) // score for nobody
+    // §3.11: a Sumerian Capital sits on Lower Tigris, also owner-less (scores for no one
+    // until taken, when it flips to the conqueror's City).
+    const cap = game.state.pieces.find((p) => p.kind === 'capital' && p.owner === null)
+    expect(cap?.land).toBe('lower_tigris')
   })
 })
 

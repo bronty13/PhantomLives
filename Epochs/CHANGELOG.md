@@ -2,6 +2,24 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.43.0] — 2026-06-28
+
+Two confirmed fixes from the clause-level rule audit.
+
+### Fixed
+- **Turn order within an epoch now follows Empire Card # (§3.3), not draft order.**
+  Empires play in their printed chronological order (Card 1 first), as the sample game
+  spells out ("Egypt is Card 1 so Zeus goes first"). We had reused the *draw* order for
+  turns; now `turnOrder` sorts by the assigned `EmpireCard.order`. (The draft/allocation
+  order — lowest Strength first — is unchanged and correct per §3.1.)
+- **The neutral Sumerian seed now includes its Capital (§3.11).** The low roller's
+  Sumerians are placed with an owner-less **capital** on Lower Tigris plus four armies;
+  it scores for no one but, when conquered, flips to the taker's City — an authentic
+  prize for clearing the cradle. (Defending/retreating is already handled by the
+  deterministic engine; "scores for no one" was already true via owner `null`.)
+
+Tournament steady (70.0 / 71.7 / 84.2%). 137 tests pass.
+
 ## [0.42.0] — 2026-06-28
 
 Interactive Monument placement (within the forced tier).

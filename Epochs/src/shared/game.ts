@@ -329,9 +329,13 @@ export class Game {
           .filter((pid) => assignment.has(pid))
           .map((pid) => ({ player: pid, empire: assignment.get(pid)!.name })),
       }
-      for (const pid of order) {
-        const empire = assignment.get(pid)
-        if (!empire) continue
+      // Turn order within the epoch is by Empire Card # (§3.3 / sample step 2) — the
+      // chronological order printed on each card — NOT the draft/draw order.
+      const turnOrder = order
+        .filter((pid) => assignment.has(pid))
+        .sort((a, b) => assignment.get(a)!.order - assignment.get(b)!.order)
+      for (const pid of turnOrder) {
+        const empire = assignment.get(pid)!
         yield* this.playEmpireTurnGen(pid, empire)
         this.prevEmpireOrder.set(pid, empire.order)
         this.strengthPoints.set(pid, (this.strengthPoints.get(pid) ?? 0) + empire.strength)
@@ -778,6 +782,9 @@ export class Game {
   private seedSumeria(): void {
     const start: LandId = 'lower_tigris'
     if (!this.board.land(start)) return
+    // The Sumerian capital (Ur) sits on the start land — owner-less like the armies, so
+    // it scores for no one, but when conquered it flips to the taker's City (§3.11).
+    this.addPiece({ land: start, kind: 'capital', owner: null, epochColor: 1 })
     const placed = new Set<LandId>()
     const queue: LandId[] = [start]
     while (placed.size < 4 && queue.length) {
