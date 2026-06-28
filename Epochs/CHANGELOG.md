@@ -2,6 +2,17 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.26.0] — 2026-06-27
+
+### Added
+- **Sample Game** in the Rulebook — an original 8-beat walkthrough (Red/Blue/Green/Gold)
+  demonstrating Epochs' actual rules end-to-end: the opening roll, a keep/pass draft,
+  an Egyptian expansion + scoring breakdown, a Minoan sea-borne landing with combat,
+  and a glimpse of Epoch-V ocean travel. Our own scenario, not a copy of the original.
+- **`scripts/rulebook-to-md.mjs`** — generates a Markdown copy of the in-app Rulebook
+  (own-words rules + sample game) from `rulebook.ts` (single source of truth, so the
+  app view and an exported note can't drift). Default output `~/Downloads/Epochs/`.
+
 ## [0.25.0] — 2026-06-27
 
 ### Added

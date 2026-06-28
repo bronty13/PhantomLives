@@ -200,4 +200,57 @@ export const RULEBOOK: RuleSection[] = [
       who read the <b>VP Table</b> best — pushing into the regions about to peak and
       leaving works behind that score for the rest of history.</p>`,
   },
+  {
+    id: 'sample',
+    title: 'A Sample Game',
+    body: `
+      <p>An original walkthrough of a few turns of <b>Epochs</b> — four players
+      (<b>Red</b>, <b>Blue</b>, <b>Green</b>, <b>Gold</b>) — to show the rules in motion.</p>
+
+      <p><b>1 · The opening roll.</b> Everyone rolls a die. Gold rolls a 6, the highest,
+      so Gold will draft first in Epoch I.</p>
+
+      <p><b>2 · Keep or Pass.</b> Gold is dealt a random empire face-down — <i>Egypt</i>
+      (strength 5, a capital, sails the Mediterranean and Red Sea). A prize; Gold
+      <b>keeps</b> it. Blue draws the <i>Minoans</i> — strong, but marooned on Crete with
+      no land neighbours — and rather than open the game stuck on an island, Blue
+      <b>passes</b> them to Red (who has no empire yet) and draws again, keeping
+      <i>Akkad</i>. Green keeps <i>Sumeria</i>; Red is left holding the Minoans.</p>
+
+      <p><b>3 · Gold's turn — Egypt.</b> Gold sets up the capital (Memphis) and first army
+      on the homeland, the <b>Nile Delta</b>. With strength 5, four more armies follow:
+      down the Nile into <b>Nubia</b> and <b>Upper Nile</b>, west into <b>Libya</b>, and a
+      second army held in the Nile Delta to guard the capital — all four lands lie in
+      <b>North Africa</b>, with no rival present.</p>
+
+      <p><b>4 · Build &amp; score.</b> Egypt holds only one resource land (Nubia) — short
+      of the two needed for a Monument — so none is built. Gold scores <b>5</b>:
+      <i>Control of North Africa</i> (≥3 lands, no rival → base 1 <b>×3 = 3</b>) plus the
+      <i>capital</i> (<b>2</b>). The log reads <code>+5 — North Africa ×3 (3), +2
+      structures</code>.</p>
+
+      <p><b>5 · Red's turn — the Minoans by sea.</b> Stuck on Crete (strength 3, navigates
+      the Mediterranean), Red leans on the water. Capital + army on Crete, then —
+      because the Minoans navigate the Med — Red <b>sea-reaches</b> any Mediterranean
+      coast, landing armies in <b>Morea</b> and the <b>Levant</b>. The Levant is held by
+      Green's Sumerians, so it's a fight; and because Red is landing from the sea, the
+      defender gets the <b>amphibious</b> edge. Red rolls a 5, Green a 4 — Red takes the
+      Levant.</p>
+
+      <p><b>6 · Reading the breakdown.</b> Crete sits in Southern Europe, which is worth
+      <b>0</b> in Epoch I — so it scores nothing yet. But the Levant gives Red
+      <i>Presence in the Middle East</i> (base 2 → <b>2</b>), plus the <i>capital</i>
+      (<b>2</b>): <code>+4 — Middle East (2), +2 structures</code>. The live <b>You</b>
+      column in the VP Table shows Red at ● presence in the Middle East.</p>
+
+      <p><b>7 · Later — Epoch V, the oceans open.</b> By Epoch V the valuable Areas have
+      shifted and the New World begins to score. Blue, now holding a seafaring empire,
+      plays <b>Ship Building</b> to sail <i>every</i> sea this turn, crosses the
+      <b>Atlantic</b>, and plants a city in <b>North America</b> — a work that will score
+      for Blue in every remaining epoch.</p>
+
+      <p><b>8 · The reckoning.</b> After Epoch VII is scored, the totals are compared. The
+      winner isn't whoever conquered the most — it's whoever read the shifting VP Table
+      best and left the most Monuments and cities paying out behind them.</p>`,
+  },
 ]
