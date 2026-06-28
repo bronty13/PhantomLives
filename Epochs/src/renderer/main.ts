@@ -695,6 +695,7 @@ class GameUI {
     drawMap(this.ctx, this.rect, {
       lands,
       pieces: this.game.state.pieces,
+      fleets: this.game.state.fleets,
       playerOrder: this.playerOrder,
       currentEpoch: this.currentEpoch,
       activePlayer: this.activePlayer,

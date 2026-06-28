@@ -20,6 +20,7 @@ export interface PlaceableEntry {
 export interface MapRenderState {
   lands: Land[]
   pieces: readonly BoardPiece[]
+  fleets?: readonly { sea: string; owner: PlayerId }[]
   playerOrder: PlayerId[]
   currentEpoch: EpochId
   activePlayer?: PlayerId | null
@@ -219,6 +220,52 @@ export function drawMap(ctx: CanvasRenderingContext2D, rect: MapRect, st: MapRen
       ctx.lineWidth = 2.5
       ctx.stroke()
       ctx.setLineDash([])
+    }
+  }
+
+  // ── fleets: a small hull marker at each Sea's centroid (over the water) ────
+  if (st.fleets && st.fleets.length) {
+    const seaPos = new Map<string, { x: number; y: number; n: number }>()
+    for (const l of lands) {
+      const pl = projectLand(l, rect)
+      if (!pl) continue
+      for (const sea of l.seaBorders) {
+        const s = seaPos.get(sea) ?? { x: 0, y: 0, n: 0 }
+        s.x += pl.x
+        s.y += pl.y
+        s.n++
+        seaPos.set(sea, s)
+      }
+    }
+    const bySea = new Map<string, { owner: PlayerId; n: number }>()
+    for (const f of st.fleets) {
+      const c = bySea.get(f.sea) ?? { owner: f.owner, n: 0 }
+      c.n++
+      bySea.set(f.sea, c)
+    }
+    const fr = R * 0.85
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    for (const [sea, c] of bySea) {
+      const s = seaPos.get(sea)
+      if (!s || s.n === 0) continue
+      const x = s.x / s.n
+      const y = s.y / s.n
+      ctx.beginPath()
+      ctx.moveTo(x - fr, y - fr * 0.45)
+      ctx.lineTo(x + fr, y - fr * 0.45)
+      ctx.lineTo(x, y + fr)
+      ctx.closePath()
+      ctx.fillStyle = colorOf(c.owner)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+      ctx.lineWidth = 1.3
+      ctx.stroke()
+      if (c.n > 1) {
+        ctx.fillStyle = '#fff'
+        ctx.font = `${Math.round(fr * 0.95)}px ui-sans-serif, system-ui`
+        ctx.fillText(String(c.n), x, y + fr * 0.25)
+      }
     }
   }
 

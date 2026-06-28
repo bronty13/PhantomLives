@@ -2,6 +2,18 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.33.0] — 2026-06-28
+
+Fidelity pass, slice 4 — fleets (chunk 4a: fleets on the map).
+
+### Added
+- **Fleets are now drawn on the board** — a small hull marker in the owner's colour at
+  each sea's centroid (averaged from its coastal lands), with a count badge when a sea
+  holds more than one. The naval game is finally visible. `MapRenderState.fleets`
+  threaded from `state.fleets`.
+- Remaining for fleets (chunk 4b): **bought forts** + the interactive **buy/place UI**
+  (choose your armies/fleets/forts split and place fleets yourself).
+
 ## [0.32.0] — 2026-06-27
 
 Fidelity pass, slice 4 — fleets (chunk 3 of 4: sea scoring).
