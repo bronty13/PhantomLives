@@ -80,6 +80,37 @@ import Foundation
         #expect(MonitoredHost.remote(id: "r", displayName: "R", user: "u", host: "h").sshTarget == "u@h")
     }
 
+    // MARK: Quick-connect URLs (SSH / SMB / VNC)
+
+    @Test func connectURLsForRemoteHost() {
+        let h = MonitoredHost.remote(id: "r", displayName: "R", user: "bronty", host: "10.0.0.77")
+        #expect(h.sshURLString == "ssh://bronty@10.0.0.77")
+        #expect(h.smbURLString == "smb://bronty@10.0.0.77")
+        #expect(h.vncURLString == "vnc://bronty@10.0.0.77")
+    }
+
+    @Test func sshURLIncludesNonStandardPortOnly() {
+        #expect(MonitoredHost.remote(id: "r", displayName: "R", user: "u", host: "h", port: 2222)
+                    .sshURLString == "ssh://u@h:2222")
+        #expect(MonitoredHost.remote(id: "r", displayName: "R", user: "u", host: "h")  // 22
+                    .sshURLString == "ssh://u@h")
+        // SMB/VNC don't carry the SSH port
+        #expect(MonitoredHost.remote(id: "r", displayName: "R", user: "u", host: "h", port: 2222)
+                    .smbURLString == "smb://u@h")
+    }
+
+    @Test func connectURLsOmitEmptyUser() {
+        let h = MonitoredHost.remote(id: "r", displayName: "R", user: "", host: "host.local")
+        #expect(h.sshURLString == "ssh://host.local")
+        #expect(h.smbURLString == "smb://host.local")
+    }
+
+    @Test func localHostHasNoConnectURLs() {
+        #expect(MonitoredHost.local.sshURLString == nil)
+        #expect(MonitoredHost.local.smbURLString == nil)
+        #expect(MonitoredHost.local.vncURLString == nil)
+    }
+
     // MARK: HostStore
 
     @Test func storeNormalizationKeepsOneLocalFirst() {

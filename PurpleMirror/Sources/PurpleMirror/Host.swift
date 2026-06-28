@@ -38,4 +38,26 @@ struct MonitoredHost: Codable, Equatable, Identifiable {
 
     /// `user@host` (or just `host` if no user) for the ssh destination.
     var sshTarget: String { sshUser.isEmpty ? sshHost : "\(sshUser)@\(sshHost)" }
+
+    // MARK: Quick-connect URLs (macOS scheme handlers — nil for the local Mac, which is "here")
+
+    private var userPrefix: String { sshUser.isEmpty ? "" : "\(sshUser)@" }
+
+    /// `ssh://user@host[:port]` — Terminal is the registered handler, so this opens an SSH session.
+    var sshURLString: String? {
+        guard !isLocal, !sshHost.isEmpty else { return nil }
+        return "ssh://\(userPrefix)\(sshHost)" + (port != 22 ? ":\(port)" : "")
+    }
+
+    /// `smb://user@host` — Finder opens file sharing (prompts for share + credentials).
+    var smbURLString: String? {
+        guard !isLocal, !sshHost.isEmpty else { return nil }
+        return "smb://\(userPrefix)\(sshHost)"
+    }
+
+    /// `vnc://user@host` — opens Screen Sharing (the remote needs Screen Sharing/Remote Management on).
+    var vncURLString: String? {
+        guard !isLocal, !sshHost.isEmpty else { return nil }
+        return "vnc://\(userPrefix)\(sshHost)"
+    }
 }

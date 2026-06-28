@@ -4,6 +4,13 @@ All notable changes to PurpleMirror are documented here.
 
 ## Unreleased
 
+- **Per-host quick-connect shortcuts.** Each remote host in Settings ▸ Hosts now has three buttons —
+  **SSH** (`terminal`, opens a Terminal session via `ssh://`), **SMB** (`folder`, opens file sharing
+  in Finder via `smb://`), and **Screen Sharing** (`display`, opens VNC via `vnc://`) — built from the
+  host's user/host/port and routed through the system scheme handlers. The local Mac is excluded (it's
+  "here"); SMB/VNC need File Sharing / Screen Sharing enabled on the remote. New `MonitoredHost`
+  computed URLs (`sshURLString`/`smbURLString`/`vncURLString`) + 4 tests.
+
 - **Fleet config — any node meshes with every other.** Instead of adding remote hosts one-by-one
   per machine, define the set of Macs once in a `fleet.json` placed on each node; every node
   identifies *itself* (by a `node-id` file, falling back to ComputerName) and turns the rest into

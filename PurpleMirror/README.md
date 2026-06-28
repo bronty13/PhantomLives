@@ -92,6 +92,10 @@ grouped by host (e.g. "Runner · Photos").
   jobs (not dropped), and is retried with **backoff** (every tick when healthy → ~once a minute
   when down) so it never burns a connect-timeout on each refresh. Per-host concurrent refresh
   means a slow host can't stall the others.
+- **Quick-connect shortcuts:** each remote host row in Settings ▸ Hosts has buttons to **SSH**
+  (opens Terminal via `ssh://`), **SMB** (opens file sharing in Finder via `smb://`), and **Screen
+  Sharing** (opens VNC via `vnc://`). SMB/VNC require File Sharing / Screen Sharing enabled on the
+  remote Mac.
 - Everything is additive — a default install with only the local Mac behaves exactly as before.
 
 ### Fleet (mesh) — every node sees every other

@@ -5,6 +5,7 @@ import SwiftUI
 /// ones. Monitoring + Run Now work for remote jobs now; schedule editing is a later phase.
 struct HostsSettingsView: View {
     @ObservedObject var model: JobsModel
+    @Environment(\.openURL) private var openURL
 
     @State private var newName = ""
     @State private var newUser = ""
@@ -41,6 +42,13 @@ struct HostsSettingsView: View {
                         }
                         Spacer()
                         if !host.isLocal {
+                            // Quick-connect: SSH (Terminal), SMB (Finder), Screen Sharing (VNC)
+                            HStack(spacing: 1) {
+                                connectButton("terminal", host.sshURLString, "SSH to \(host.displayName) (Terminal)")
+                                connectButton("folder", host.smbURLString, "Open file sharing (SMB) on \(host.displayName)")
+                                connectButton("display", host.vncURLString, "Screen Sharing (VNC) to \(host.displayName)")
+                            }
+                            .foregroundStyle(.secondary)
                             if testing.contains(host.id) {
                                 ProgressView().controlSize(.small)
                             } else {
@@ -80,6 +88,8 @@ struct HostsSettingsView: View {
             Section {
                 Text("The remote Mac must have **Remote Login** enabled (System Settings ▸ General ▸ Sharing) and this Mac's SSH public key in its `~/.ssh/authorized_keys`. Connections are key-only — a missing key fails fast rather than prompting. Monitoring and **Run Now** work for remote jobs; schedule editing is local-only for now.")
                     .font(.caption).foregroundStyle(.secondary)
+                Text("Per-host shortcuts: \(Image(systemName: "terminal")) SSH (Terminal) · \(Image(systemName: "folder")) file sharing (SMB, needs **File Sharing** on the remote) · \(Image(systemName: "display")) Screen Sharing (VNC, needs **Screen Sharing** / Remote Management on the remote).")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -87,6 +97,20 @@ struct HostsSettingsView: View {
 
     private var canAdd: Bool {
         !newName.trimmed.isEmpty && !newUser.trimmed.isEmpty && !newHost.trimmed.isEmpty
+    }
+
+    // MARK: Connect shortcuts
+
+    @ViewBuilder
+    private func connectButton(_ symbol: String, _ urlString: String?, _ help: String) -> some View {
+        Button {
+            if let s = urlString, let url = URL(string: s) { openURL(url) }
+        } label: {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .disabled(urlString == nil)
     }
 
     // MARK: Actions
