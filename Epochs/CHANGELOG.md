@@ -2,6 +2,16 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.37.0] — 2026-06-28
+
+Polish, slice A — a proper end-game summary.
+
+### Changed
+- **The game-over screen is now a real summary** (parchment): a winner banner, the
+  full standings ranked with proportional **VP bars**, and per-player **highlights** —
+  lands held 🗺, works (capitals/cities/monuments) ⛬, and controlled seas ⚓ — tallied
+  from the final board. Replaces the bare name/VP list. Play Again as before.
+
 ## [0.36.0] — 2026-06-28
 
 The last two rules-additions from the audit — retreating + the neutral Sumerians.

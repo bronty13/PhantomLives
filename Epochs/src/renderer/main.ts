@@ -919,24 +919,51 @@ class GameUI {
 
   private renderGameOver(result: GameResult): void {
     const el = this.root.querySelector('#gameover') as HTMLElement
+    // tally each player's empire at the final board state
+    type Stat = { lands: Set<string>; works: number }
+    const stats = new Map<string, Stat>()
+    const stat = (id: string): Stat => {
+      let s = stats.get(id)
+      if (!s) {
+        s = { lands: new Set(), works: 0 }
+        stats.set(id, s)
+      }
+      return s
+    }
+    for (const p of this.game.state.pieces) {
+      if (p.owner == null) continue
+      const s = stat(p.owner)
+      if (p.kind === 'army') s.lands.add(p.land)
+      else if (p.kind === 'capital' || p.kind === 'city' || p.kind === 'monument') s.works++
+    }
+    const seas = new Map<string, number>()
+    for (const f of this.game.state.fleets) if (!isOcean(f.sea)) seas.set(f.owner, (seas.get(f.owner) ?? 0) + 1)
+
+    const maxVp = Math.max(1, ...result.standings.map((s) => s.vp))
     const rows = result.standings
       .map((s, rank) => {
         const i = this.playerOrder.indexOf(s.id)
+        const st = stats.get(s.id) ?? { lands: new Set(), works: 0 }
+        const col = playerColor(i)
         return (
           `<div class="go-row${rank === 0 ? ' winner' : ''}">` +
-          `<span class="dot" style="background:${playerColor(i)}"></span>` +
+          `<span class="go-rank">${rank + 1}</span>` +
+          `<span class="dot" style="background:${col}"></span>` +
           `<span class="go-name">${rank === 0 ? '👑 ' : ''}${esc(s.name)}</span>` +
-          `<span class="go-vp">${s.vp}</span></div>`
+          `<span class="go-bar"><span class="go-fill" style="width:${Math.round((s.vp / maxVp) * 100)}%;background:${col}"></span></span>` +
+          `<span class="go-vp">${s.vp}</span>` +
+          `<span class="go-meta">${st.lands.size}🗺 · ${st.works}⛬ · ${seas.get(s.id) ?? 0}⚓</span></div>`
         )
       })
       .join('')
     el.innerHTML =
-      `<div class="evt-box"><h3>Game over — ${esc(this.nameOf(result.winner))} wins</h3>` +
+      `<div class="evt-box intro-box go-box"><div class="intro-epoch">Game Over<span>after seven epochs</span></div>` +
+      `<p class="go-winner">👑 <b>${esc(this.nameOf(result.winner))}</b> wins with ${result.standings[0].vp} VP</p>` +
       `<div class="go-list">${rows}</div>` +
-      `<div class="muted">Most Victory Points after Epoch VII.</div>` +
-      `<div class="evt-actions"><button id="go-again" class="primary">Play Again</button></div></div>`
+      `<div class="go-legend">🗺 lands · ⛬ works · ⚓ seas</div>` +
+      `<div class="evt-actions"><button id="go-again" class="primary">Play Again ▶</button></div></div>`
     el.classList.remove('hidden')
-    ;(el.querySelector('#go-again') as HTMLButtonElement).onclick = () => {
+    ;(el.querySelector('#go-again') as HTMLButtonElement).onclick = (): void => {
       el.classList.add('hidden')
       this.newGame()
     }
