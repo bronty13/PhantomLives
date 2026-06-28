@@ -35,6 +35,22 @@ const lands = WORLD_MAP_DATA.lands
 const LAND_BY_ID = new Map<string, Land>(lands.map((l) => [l.id, l]))
 const AREA_SIZE = new Map<string, number>() // non-barren land count per Area (Control tier)
 for (const l of lands) if (!l.barren && l.area) AREA_SIZE.set(l.area, (AREA_SIZE.get(l.area) ?? 0) + 1)
+// Normalized centroid of each Sea (avg of its coastal lands) — anchors naval fx/markers.
+const SEA_POS = new Map<string, { nx: number; ny: number }>()
+{
+  const acc = new Map<string, { x: number; y: number; n: number }>()
+  for (const l of lands) {
+    if (l.x == null || l.y == null) continue
+    for (const s of l.seaBorders) {
+      const a = acc.get(s) ?? { x: 0, y: 0, n: 0 }
+      a.x += l.x
+      a.y += l.y
+      a.n++
+      acc.set(s, a)
+    }
+  }
+  for (const [s, a] of acc) if (a.n) SEA_POS.set(s, { nx: a.x / a.n, ny: a.y / a.n })
+}
 // The board scan (art/board-crop.jpg → public/board.jpg) is the map. Land
 // coordinates are normalized fractions of THIS image, so the view rect is framed
 // to the image's aspect ratio (letterboxed) and projectLand maps straight onto it.
@@ -349,18 +365,30 @@ class GameUI {
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 320 })
         this.startLoop()
         break
-      case 'fleet':
+      case 'fleet': {
         this.pushLog(`⛵ ${this.nameOf(ev.player)} launched a fleet in the ${this.seaName(ev.sea)}`)
         Sound.fleet()
+        const sp = SEA_POS.get(ev.sea)
+        if (sp) {
+          this.fx.push({ kind: 'ripple', nx: sp.nx, ny: sp.ny, color: this.colorOf(ev.player), start: now, dur: 560 })
+          this.startLoop()
+        }
         break
-      case 'navalCombat':
+      }
+      case 'navalCombat': {
         this.pushLog(
           ev.won
             ? `⚓ ${this.nameOf(ev.player)} won a sea battle in the ${this.seaName(ev.sea)}`
             : `⚓ ${this.nameOf(ev.player)} was repulsed at sea in the ${this.seaName(ev.sea)}`,
         )
         Sound.clash()
+        const sp = SEA_POS.get(ev.sea)
+        if (sp) {
+          this.fx.push({ kind: 'ripple', nx: sp.nx, ny: sp.ny, color: ev.won ? '#7cfc9a' : '#e15554', start: now, dur: 620 })
+          this.startLoop()
+        }
         break
+      }
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
         Sound.place()

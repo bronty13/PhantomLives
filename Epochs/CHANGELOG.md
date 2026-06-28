@@ -2,6 +2,16 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.39.0] — 2026-06-28
+
+Polish, slice C — naval animation. **Polish pass complete.**
+
+### Added
+- **Naval effects on the map.** Launching a fleet or fighting a sea battle now draws an
+  expanding **ripple** at the sea's centroid (owner-coloured for a launch; green/red for
+  a won/lost battle) — the naval layer, previously log-and-beep only, now animates. New
+  `ripple` fx kind + a `SEA_POS` centroid map; reuses the existing rAF effects layer.
+
 ## [0.38.0] — 2026-06-28
 
 Polish, slice B — sound.

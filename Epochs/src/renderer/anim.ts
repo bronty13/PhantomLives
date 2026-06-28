@@ -6,9 +6,9 @@ import { project, projectLand, type MapRect } from '../shared/mapProjection'
 import type { Land } from '../shared/types'
 
 export interface Fx {
-  kind: 'spawn' | 'clash' | 'score'
+  kind: 'spawn' | 'clash' | 'score' | 'ripple'
   land?: string // anchor by land id (spawn / clash)
-  nx?: number // anchor by normalized point (score), 0..1
+  nx?: number // anchor by normalized point (score / ripple), 0..1
   ny?: number
   color: string
   start: number
@@ -39,6 +39,23 @@ export function drawFx(
     ctx.globalAlpha = 1 - t
     ctx.fillStyle = fx.color
     ctx.fillText(fx.text ?? '', p.x, p.y - 14 - t * 24)
+    ctx.globalAlpha = 1
+    return
+  }
+
+  if (fx.kind === 'ripple') {
+    if (fx.nx == null || fx.ny == null) return
+    const p = project(fx.nx, fx.ny, rect)
+    for (let i = 0; i < 2; i++) {
+      const tt = Math.min(1, t + i * 0.25)
+      const r = 3 + easeOut(tt) * 20
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
+      ctx.strokeStyle = fx.color
+      ctx.globalAlpha = (1 - tt) * 0.7
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
     ctx.globalAlpha = 1
     return
   }
