@@ -27,10 +27,13 @@ import type {
   EventCard,
   EventEffect,
   EventHand,
+  FleetPiece,
   LandId,
   PieceKind,
   PlayerId,
+  SeaId,
 } from './types'
+import { areaValue } from './data/areaValues'
 
 const TOTAL_MONUMENTS = 36
 const MAX_ARMIES = 3 // no more than three armies may occupy a Land (original rule)
@@ -85,6 +88,7 @@ export interface GameState {
   epoch: EpochId
   players: PlayerState[]
   pieces: BoardPiece[]
+  fleets: FleetPiece[]
   monumentsBuilt: number
   rng: Rng
   log: string[]
@@ -121,6 +125,7 @@ export type GameEvent =
   | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
   | { type: 'minorEmpire'; player: PlayerId; empire: string; land: LandId }
   | { type: 'foundKingdom'; player: PlayerId; land: LandId }
+  | { type: 'fleet'; player: PlayerId; sea: SeaId }
   | {
       type: 'awaitPlacement'
       player: PlayerId
@@ -233,6 +238,7 @@ export class Game {
         hand: { greater: [], lesser: [] },
       })),
       pieces: [],
+      fleets: [],
       monumentsBuilt: 0,
       rng,
       log: [],
@@ -360,7 +366,21 @@ export class Game {
     const bot = this.bots.get(pid)
     const isHuman = this.humanSeats.has(pid)
     if (!bot && !isHuman) return
-    let remaining = empire.strength - 1 + effects.bonusArmies // first army placed at setup
+
+    // Fleets: a navigation empire must build & use ≥1 fleet. Deploy one into its best
+    // navigable sea (bordering a land it holds), spending one Strength point — armies
+    // can now only land overseas via a Sea the player has a fleet in (or Ship Building).
+    let fleetsBought = 0
+    const navSeas = 'all' in empire.navigation ? this.board.seas : empire.navigation.seas
+    if (navSeas.length > 0 && empire.strength >= 2) {
+      const sea = this.bestFleetSea(navSeas, this.currentLands(pid))
+      if (sea) {
+        this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch })
+        fleetsBought = 1
+        yield { type: 'fleet', player: pid, sea }
+      }
+    }
+    let remaining = empire.strength - 1 - fleetsBought + effects.bonusArmies // setup placed 1 army
     while (remaining > 0) {
       const frontier = this.computeFrontier(pid, empire, effects.navigateAll)
       if (frontier.length === 0) break
@@ -741,6 +761,8 @@ export class Game {
     const nav = empire.navigation
     const navSeas = navigateAll || 'all' in nav ? this.board.seas : nav.seas
     for (const sea of navSeas) {
+      // sea-reach requires a fleet in that Sea (Ship Building / Naval Supremacy bypass it)
+      if (!navigateAll && !this.playerHasFleetIn(sea, pid)) continue
       for (const l of this.board.landsOnSea(sea)) {
         if (!this.board.isBarren(l)) reachable.add(l)
       }
@@ -896,6 +918,41 @@ export class Game {
 
   private armyOn(land: LandId): BoardPiece | undefined {
     return this.state.pieces.find((p) => p.land === land && p.kind === 'army')
+  }
+
+  /** Does `pid` have a fleet in `sea`? (Fleets persist across epochs.) */
+  private playerHasFleetIn(sea: SeaId, pid: PlayerId): boolean {
+    return this.state.fleets.some((f) => f.sea === sea && f.owner === pid)
+  }
+
+  /** Lands `pid` holds with a current-epoch army. */
+  private currentLands(pid: PlayerId): Set<LandId> {
+    const out = new Set<LandId>()
+    for (const p of this.state.pieces) {
+      if (p.owner === pid && p.kind === 'army' && p.epochColor === this.state.epoch) out.add(p.land)
+    }
+    return out
+  }
+
+  /** Best navigable sea to deploy a fleet into: one that borders a land the empire
+   *  already holds, valued by the (mostly overseas) non-barren coast it would unlock. */
+  private bestFleetSea(navSeas: SeaId[], occupied: Set<LandId>): SeaId | null {
+    let best: SeaId | null = null
+    let bestVal = -1
+    for (const sea of navSeas) {
+      const coast = this.board.landsOnSea(sea)
+      if (!coast.some((l) => occupied.has(l))) continue // must touch an occupied land
+      let val = 0
+      for (const l of coast) {
+        const land = this.board.land(l)
+        if (land && !land.barren && !occupied.has(l)) val += areaValue(land.area ?? '', this.state.epoch) + 1
+      }
+      if (val > bestVal) {
+        bestVal = val
+        best = sea
+      }
+    }
+    return best
   }
 
   /** Number of armies stacked on a land (0–3). */

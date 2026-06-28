@@ -189,10 +189,11 @@ export const RULEBOOK: RuleSection[] = [
     id: 'seas',
     title: 'Seas & Navigation',
     body: `
-      <p>The <b>29 seas</b> are travel lanes, not scored regions. An empire's
-      <b>navigation</b> lists which seas it may sail; from any coast it holds, it can
-      reach <i>every</i> land on a navigable sea. This is the only way to the
-      <b>overseas continents</b> — the Americas, Australasia and sub-Saharan Africa,
+      <p>An empire's <b>navigation</b> lists which seas it may sail. To actually sail
+      one it must <b>launch a fleet</b> there (spending one of its Strength points — a
+      navigation empire always builds at least one). Once a fleet sits in a sea, the
+      empire's armies can land on <i>any</i> coast of that sea. This is the only way to
+      the <b>overseas continents</b> — the Americas, Australasia and sub-Saharan Africa,
       which no land route touches.</p>
       <p>The naval events extend this: <b>Ship Building</b> and <b>Naval Supremacy</b>
       let you sail <i>every</i> sea for a turn, and the sea-raid disasters

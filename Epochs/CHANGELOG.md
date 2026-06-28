@@ -2,6 +2,21 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.30.0] — 2026-06-27
+
+Fidelity pass, slice 4 of 5 — fleets (chunk 1 of 4: fleets gate navigation).
+
+### Changed
+- **Navigation now requires a fleet.** Sea-reach (landing armies overseas) is no
+  longer innate — an empire must have a **fleet in that sea**. A navigation empire
+  auto-deploys one fleet into its most useful navigable sea (one bordering a land it
+  holds, valued by the coast it unlocks), **spending one Strength point** (so it
+  places one fewer army). Ship Building / Naval Supremacy still bypass the fleet
+  requirement (sail every sea). New `FleetPiece` + `state.fleets`, `fleet` event, and
+  a ⛵ launch log line; fleets persist across epochs (they belong to the player).
+- Fleet buy/placement is engine-managed for now; the interactive buy/place UI, naval
+  combat, sea/ocean distinction, sea scoring, and bought forts are the next chunks.
+
 ## [0.29.0] — 2026-06-27
 
 Fidelity pass, slice 3 of 5 — three armies per land.

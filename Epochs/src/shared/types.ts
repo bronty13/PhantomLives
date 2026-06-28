@@ -124,6 +124,15 @@ export interface BoardPiece {
   epochColor: EpochId
 }
 
+/** A fleet occupies a Sea (not a Land). Up to two fleets may share a Sea; a fleet
+ *  lets the owning empire's armies land on any coast of that Sea, and (for true Seas)
+ *  scores +1 at controlling it. Fleets belong to the player across empires. */
+export interface FleetPiece {
+  sea: SeaId
+  owner: PlayerId
+  epochColor: EpochId
+}
+
 /** Victory-point value of each structure when controlled (SPEC §8.3). */
 export const STRUCTURE_VP: Record<StructureKind, number> = {
   capital: 2,

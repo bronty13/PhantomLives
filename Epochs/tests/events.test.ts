@@ -217,6 +217,20 @@ describe('Keep/Pass draft', () => {
   })
 })
 
+describe('fleets — navigation requires a deployed fleet', () => {
+  it('a navigation empire deploys a fleet, and the player accrues fleets', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const game = worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))
+      if (drive(game).some((e) => e.type === 'fleet')) {
+        expect(game.state.fleets.length).toBeGreaterThan(0)
+        expect(game.state.fleets.every((f) => typeof f.sea === 'string' && f.owner)).toBe(true)
+        return
+      }
+    }
+    throw new Error('no fleet deployed across 20 seeds — navigation empires should build one')
+  })
+})
+
 describe('seas — overseas reach', () => {
   const OVERSEAS = new Set(['north_america', 'south_america', 'australia', 'africa'])
   const byId = new Map(WORLD_MAP_DATA.lands.map((l) => [l.id, l]))

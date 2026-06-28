@@ -335,6 +335,9 @@ class GameUI {
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 320 })
         this.startLoop()
         break
+      case 'fleet':
+        this.pushLog(`⛵ ${this.nameOf(ev.player)} launched a fleet in the ${this.seaName(ev.sea)}`)
+        break
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
         this.startLoop()
@@ -921,6 +924,9 @@ class GameUI {
   }
   private landName(land: string): string {
     return LAND_BY_ID.get(land)?.name ?? land
+  }
+  private seaName(sea: string): string {
+    return sea.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   }
   private pushLog(s: string): void {
     this.log.push(s)
