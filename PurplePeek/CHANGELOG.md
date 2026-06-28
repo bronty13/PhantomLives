@@ -3,6 +3,17 @@
 All notable changes to PurplePeek are documented here. Versions are git-derived
 (the build number is the commit count); **1.0 is the first feature-complete release**.
 
+## Unreleased
+
+- **Reuses PeekServer's thumbnail cache.** `ThumbnailService` now checks PeekServer's persistent
+  on-disk thumbnail cache (`~/Library/Caches/PeekServer/thumbs`, keyed by `sha1(file_path)[:16]`,
+  identical to PeekServer) before generating via QuickLook. Since both index the same files at the
+  same paths, a thumbnail PeekServer already warmed loads instantly from the local SSD instead of
+  re-reading the original off slow/remote storage (the REDONE archive) — so the grid is fast for
+  warmed items. Falls back to QuickLook on a miss (and only used when the request fits within
+  PeekServer's 512px thumbs), so it degrades cleanly where that cache is absent. +2 tests guard the
+  cross-tool key contract.
+
 ## [1.0] — 2026-06-16
 
 First feature-complete release — scan → browse / preview → decide → import to Photos
