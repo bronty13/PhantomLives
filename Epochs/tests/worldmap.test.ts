@@ -81,11 +81,13 @@ describe('world map — structure', () => {
 })
 
 describe('world empires', () => {
-  it('has 49 empires, exactly 7 per epoch', () => {
-    expect(WORLD_EMPIRES).toHaveLength(49)
-    for (let e = 1; e <= 7; e++) {
+  it('has 48 empires — 6 in Epoch I (Sumeria is the neutral seed), 7 thereafter', () => {
+    expect(WORLD_EMPIRES).toHaveLength(48)
+    expect(WORLD_EMPIRES.filter((c) => c.epoch === 1)).toHaveLength(6)
+    for (let e = 2; e <= 7; e++) {
       expect(WORLD_EMPIRES.filter((c) => c.epoch === e)).toHaveLength(7)
     }
+    expect(WORLD_EMPIRES.some((c) => c.name === 'Sumeria')).toBe(false)
   })
 
   it('every empire starts on a real, non-barren land and sails valid seas', () => {

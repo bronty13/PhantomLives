@@ -45,7 +45,10 @@ export const RULEBOOK: RuleSection[] = [
         <li><b>Seas</b> connect coasts. An empire that can navigate a sea may sail
         across it to reach <i>any</i> land on that sea — this is how the Americas,
         Australasia and sub-Saharan Africa are reached at all.</li>
-      </ul>`,
+      </ul>
+      <p>Before the first epoch, four <b>neutral Sumerian armies</b> are seeded around
+      <b>Lower Tigris</b> — a starting obstacle that belongs to no one and must be
+      conquered like any defender.</p>`,
   },
   {
     id: 'epoch',
@@ -98,7 +101,10 @@ export const RULEBOOK: RuleSection[] = [
       entered or crossed.</p>
       <p>You may <b>stack up to three armies</b> on a single land — reinforcing a
       holding makes it far harder to take. (No more than three armies may occupy any
-      land.)</p>`,
+      land.)</p>
+      <p><b>Retreating.</b> When a new empire sets up on a homeland that's already
+      occupied, the sitting armies don't fight — they <b>retreat</b> to an adjacent land
+      held by their own side (never overseas). Any that have nowhere to go are lost.</p>`,
   },
   {
     id: 'combat',

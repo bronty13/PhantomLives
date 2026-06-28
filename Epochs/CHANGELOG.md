@@ -2,6 +2,23 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.36.0] — 2026-06-28
+
+The last two rules-additions from the audit — retreating + the neutral Sumerians.
+
+### Added
+- **Retreating.** When a new empire's Start Land is occupied, the sitting armies no
+  longer simply vanish — they **retreat** (one at a time) to an adjacent land holding
+  the same owner's same-colour army with room (≤3, never overseas); any with nowhere to
+  go are eliminated. `retreatFromStart` replaces the blunt delete in `setupEmpire`.
+- **Neutral Sumerian seed.** Four **owner-less Sumerian armies** are seeded out from
+  **Lower Tigris** before Epoch I — a starting obstacle that scores for no one and must
+  be conquered like any defender. **Sumeria is no longer a draftable empire** (the
+  roster is now 48 — 6 in Epoch I, 7 thereafter — matching the original's 48 cards).
+  `seedSumeria` runs after the opening roll.
+- Rulebook (Board + Expansion) + the empire-count test updated. Tournament 69.2 /
+  72.1 / 84.2%; 120 tests pass.
+
 ## [0.35.0] — 2026-06-28
 
 Fidelity pass, slice 5 of 5 — events as 9 colour-piles. **Fidelity arc complete.**

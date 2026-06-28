@@ -4,7 +4,6 @@
 import type { EmpireCard } from '../types'
 
 export const WORLD_EMPIRES: EmpireCard[] = [
-  { id: "e1_sumeria", name: "Sumeria", epoch: 1, order: 1, strength: 4, startLand: "lower_tigris", navigation: { seas: [] }, hasCapital: true },
   { id: "e1_egypt", name: "Egypt", epoch: 1, order: 2, strength: 5, startLand: "nile_delta", navigation: { seas: ["red_sea","mediterranean"] }, hasCapital: true },
   { id: "e1_minoans", name: "Minoans", epoch: 1, order: 3, strength: 4, startLand: "crete", navigation: { seas: ["aegean_sea","mediterranean"] }, hasCapital: true },
   { id: "e1_indus_valley", name: "Indus Valley", epoch: 1, order: 4, strength: 4, startLand: "upper_indus", navigation: { seas: [] }, hasCapital: true },

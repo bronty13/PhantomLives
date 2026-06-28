@@ -314,6 +314,7 @@ export class Game {
       rolls: this.state.players.map((p) => ({ player: p.id, roll: this.startRolls.get(p.id)! })),
       first,
     }
+    this.seedSumeria() // neutral Sumerian obstacle, before Epoch I
 
     for (const epoch of EPOCHS) {
       this.state.epoch = epoch
@@ -721,15 +722,55 @@ export class Game {
     return assign
   }
 
+  /** Seed the neutral Sumerians: four white armies spreading out from Lower Tigris at
+   *  game start (the original's pre-game obstacle). Owner `null` → they score for no
+   *  one and must be conquered like any defender. */
+  private seedSumeria(): void {
+    const start: LandId = 'lower_tigris'
+    if (!this.board.land(start)) return
+    const placed = new Set<LandId>()
+    const queue: LandId[] = [start]
+    while (placed.size < 4 && queue.length) {
+      const land = queue.shift()!
+      if (placed.has(land) || this.board.isBarren(land) || !this.board.land(land) || this.armyOn(land)) continue
+      this.addPiece({ land, kind: 'army', owner: null, epochColor: 1 })
+      placed.add(land)
+      for (const nb of this.board.neighbors(land)) if (!placed.has(nb)) queue.push(nb)
+    }
+  }
+
   private setupEmpire(pid: PlayerId, empire: EmpireCard): void {
     const start = empire.startLand
-    this.removeArmyOn(start)
+    this.retreatFromStart(start) // an occupying army RETREATS (it isn't simply destroyed)
     this.removeFortOn(start)
     this.onOccupy(start, pid, empire) // sack/pillage + transfer any structures
     if (empire.hasCapital) {
       this.addPiece({ land: start, kind: 'capital', owner: pid, epochColor: this.state.epoch })
     }
     this.addPiece({ land: start, kind: 'army', owner: pid, epochColor: this.state.epoch })
+  }
+
+  /** When a new empire's Start Land is occupied, its armies don't fight — they retreat
+   *  (one at a time) to an adjacent Land holding the same owner's same-colour army with
+   *  room (≤3, never overseas). Any army with nowhere to go is eliminated. (Original rule.) */
+  private retreatFromStart(start: LandId): void {
+    const army = this.armyOn(start)
+    if (!army) return
+    const { owner, epochColor } = army
+    let count = this.armiesOn(start)
+    while (count > 0) {
+      const dest = this.board.neighbors(start).find(
+        (nb) =>
+          !this.board.isBarren(nb) &&
+          this.armiesOn(nb) < MAX_ARMIES &&
+          this.state.pieces.some(
+            (p) => p.land === nb && p.kind === 'army' && p.owner === owner && p.epochColor === epochColor,
+          ),
+      )
+      this.removeOneArmyOn(start)
+      if (dest) this.addPiece({ land: dest, kind: 'army', owner, epochColor }) // else eliminated
+      count--
+    }
   }
 
   private buildMonuments(pid: PlayerId): void {

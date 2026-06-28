@@ -2,16 +2,6 @@
   "empires": [
     {
       "epoch": 1,
-      "order": 1,
-      "name": "Sumeria",
-      "homelandArea": "middle_east",
-      "homelandTerritory": "Lower Tigris",
-      "strength": 4,
-      "hasCapital": true,
-      "navigationSeas": "none"
-    },
-    {
-      "epoch": 1,
       "order": 2,
       "name": "Egypt",
       "homelandArea": "north_africa",

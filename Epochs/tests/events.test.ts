@@ -342,6 +342,20 @@ describe('army stacking (up to 3 per land)', () => {
   })
 })
 
+describe('Sumeria neutral seed', () => {
+  it('seeds 4 neutral (owner-less) armies from Lower Tigris before Epoch I', () => {
+    const game = worldGame(1, hardBots(['P1', 'P2', 'P3', 'P4']))
+    const it = game.play()
+    let step = it.next()
+    while (!step.done && step.value.type !== 'epochStart') step = it.next()
+    const neutral = game.state.pieces.filter((p) => p.kind === 'army' && p.owner === null)
+    expect(neutral).toHaveLength(4)
+    expect(neutral.some((p) => p.land === 'lower_tigris')).toBe(true)
+    // neutral armies score for nobody (owner null is skipped in scoring)
+    expect(neutral.every((p) => p.owner === null)).toBe(true)
+  })
+})
+
 describe('Kingdoms + Barbarians', () => {
   it('a played Kingdom raises a fortified city (city + fort) on a held land', () => {
     for (let seed = 1; seed <= 60; seed++) {
