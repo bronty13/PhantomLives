@@ -262,6 +262,10 @@ class GameUI {
         this.startLoop()
         break
       }
+      case 'minorEmpire':
+        this.status = `${this.nameOf(ev.player)}'s Minor Empire — the ${ev.empire} rise in ${this.landName(ev.land)}`
+        this.pushLog(`🏛 ${this.nameOf(ev.player)} summons a Minor Empire: ${ev.empire} (${this.landName(ev.land)})`)
+        break
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
         this.startLoop()

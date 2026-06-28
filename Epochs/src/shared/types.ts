@@ -71,7 +71,7 @@ export type EventEffect =
   | { kind: 'weaponry' } // +1 to each attacker die this turn
   | { kind: 'fanaticism' } // attacker wins all ties this turn
   | { kind: 'reallocation'; armies: number } // fleets → extra ground armies
-  | { kind: 'minor_empire'; armies: number } // a small extra force (simplified)
+  | { kind: 'minor_empire' } // summon this epoch's Minor Empire: a second empire-turn
   | { kind: 'siegecraft' } // forts have no effect vs your attacks this turn
   | { kind: 'surprise_attack' } // void difficult-terrain / amphibious defence this turn
   | { kind: 'extra_armies'; armies: number; needsCapital: boolean } // Pop Explosion / Civil Service

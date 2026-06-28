@@ -16,6 +16,7 @@ import { Board } from './board'
 import type { Bot, BotView, EventChoice, EventView, FrontierKind, FrontierOption } from './bot'
 import { oddsForContext, resolveAssault, type CombatContext, type CombatResult } from './combat'
 import { makeEventDeck } from './data/events'
+import { MINOR_EMPIRES } from './data/minorEmpires'
 import { scoreEmpireTurn } from './scoring'
 import { makeRng, type Rng } from './rng'
 import { EPOCHS, effectNeedsTarget } from './types'
@@ -56,7 +57,18 @@ export interface TurnEffects {
   bonusArmies: number // Reallocation/Minor Empire/Pop Explosion/Civil Service → extra armies
   ignoreForts: boolean // Siegecraft → forts give no defence vs your attacks
   ignoreTerrain: boolean // Surprise Attack → void difficult-terrain/amphibious defence
+  minorEmpire: EmpireCard | null // Minor Empire → a second empire-turn before your main one
 }
+
+const emptyTurnEffects = (): TurnEffects => ({
+  attackerBonus: false,
+  attackerKeptBonus: 0,
+  attackerWinsTies: false,
+  bonusArmies: 0,
+  ignoreForts: false,
+  ignoreTerrain: false,
+  minorEmpire: null,
+})
 
 /** What the driver may pass back into `play()` when resuming a yield. */
 export type PlayInput = LandId | EventChoice | undefined
@@ -92,6 +104,7 @@ export type GameEvent =
   | { type: 'eventsPlayed'; player: PlayerId; played: string[] }
   | { type: 'disaster'; player: PlayerId; card: string; land: LandId; effect: string }
   | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
+  | { type: 'minorEmpire'; player: PlayerId; empire: string; land: LandId }
   | {
       type: 'awaitPlacement'
       player: PlayerId
@@ -272,6 +285,15 @@ export class Game {
   ): Generator<GameEvent, void, PlayInput> {
     yield { type: 'turnStart', player: pid, empire: empire.name, epoch: this.state.epoch }
     const effects = yield* this.eventPhase(pid, empire)
+    // Minor Empire: a full SECOND empire-turn before the main one — its own setup +
+    // expansion (no event buffs). Its armies are yours, so they count at scoring.
+    if (effects.minorEmpire) {
+      const minor = effects.minorEmpire
+      yield { type: 'minorEmpire', player: pid, empire: minor.name, land: minor.startLand }
+      this.setupEmpire(pid, minor)
+      yield { type: 'setup', player: pid, land: minor.startLand, empire: minor.name }
+      yield* this.expandGen(pid, minor, emptyTurnEffects())
+    }
     this.setupEmpire(pid, empire)
     yield { type: 'setup', player: pid, land: empire.startLand, empire: empire.name }
     yield* this.expandGen(pid, empire, effects)
@@ -342,14 +364,7 @@ export class Game {
     pid: PlayerId,
     empire: EmpireCard,
   ): Generator<GameEvent, TurnEffects, PlayInput> {
-    const effects: TurnEffects = {
-      attackerBonus: false,
-      attackerKeptBonus: 0,
-      attackerWinsTies: false,
-      bonusArmies: 0,
-      ignoreForts: false,
-      ignoreTerrain: false,
-    }
+    const effects = emptyTurnEffects()
     const player = this.player(pid)
     if (player.hand.greater.length === 0 && player.hand.lesser.length === 0) return effects
 
@@ -498,8 +513,10 @@ export class Game {
         effects.ignoreTerrain = true // void difficult-terrain/amphibious defence
         break
       case 'reallocation':
-      case 'minor_empire':
         effects.bonusArmies += card.effect.armies
+        break
+      case 'minor_empire':
+        effects.minorEmpire = MINOR_EMPIRES[this.state.epoch] // summoned before the main turn
         break
       case 'extra_armies':
         if (!card.effect.needsCapital || empire.hasCapital) effects.bonusArmies += card.effect.armies

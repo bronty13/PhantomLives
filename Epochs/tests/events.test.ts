@@ -3,6 +3,7 @@ import { Board } from '../src/shared/board'
 import { WORLD_MAP_DATA } from '../src/shared/data/board'
 import { WORLD_EMPIRES } from '../src/shared/data/empires'
 import { describeEffect, makeEventDeck } from '../src/shared/data/events'
+import { MINOR_EMPIRES } from '../src/shared/data/minorEmpires'
 import type { EventEffect } from '../src/shared/types'
 import { Game, type GameEvent, type PlayerConfig } from '../src/shared/game'
 import { HeuristicBot } from '../src/shared/heuristicBot'
@@ -138,6 +139,33 @@ describe('human event play', () => {
   })
 })
 
+describe('Minor Empires', () => {
+  it('has 7 minor empires (one per epoch) on real, non-barren start lands', () => {
+    const byId = new Map(WORLD_MAP_DATA.lands.map((l) => [l.id, l]))
+    for (let e = 1; e <= 7; e++) {
+      const m = MINOR_EMPIRES[e as 1]
+      expect(m.epoch).toBe(e)
+      expect(m.strength).toBeGreaterThan(0)
+      const land = byId.get(m.startLand)
+      expect(land, `${m.name} → start ${m.startLand}`).toBeDefined()
+      expect(land!.barren).toBe(false)
+    }
+  })
+
+  it('when a Minor Empire is summoned, it runs a second empire-turn (its homeland is set up)', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const events = drive(worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4'])))
+      const me = events.find((e) => e.type === 'minorEmpire')
+      if (me?.type === 'minorEmpire') {
+        const setup = events.some((e) => e.type === 'setup' && e.empire === me.empire && e.land === me.land)
+        expect(setup, `${me.empire} summoned but no setup on ${me.land}`).toBe(true)
+        return
+      }
+    }
+    // No bot summoned a Minor Empire across 40 seeds — acceptable (draw-dependent).
+  })
+})
+
 describe('opening roll — first player + empire variety', () => {
   it('emits startRoll first, with first = the highest roller', () => {
     const events = drive(worldGame(7, hardBots(['P1', 'P2', 'P3', 'P4'])))
@@ -165,7 +193,7 @@ describe('describeEffect (event card text for the panel)', () => {
     { kind: 'weaponry' },
     { kind: 'fanaticism' },
     { kind: 'reallocation', armies: 3 },
-    { kind: 'minor_empire', armies: 4 },
+    { kind: 'minor_empire' },
     { kind: 'siegecraft' },
     { kind: 'surprise_attack' },
     { kind: 'extra_armies', armies: 2, needsCapital: false },

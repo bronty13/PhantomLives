@@ -2,6 +2,22 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.18.0] — 2026-06-27
+
+The marquee event — **true Minor Empires**: a second empire-turn.
+
+### Added
+- **Minor Empires.** Playing the Minor-Empire event now summons that epoch's minor
+  dynasty — Hittites (I), Phoenicia (II), Mayans (III), Anglo-Saxons (IV), Fujiwara
+  (V), Safavids (VI), Japan (VII) — which runs a *full second empire-turn before your
+  main one*: it sets up on its own homeland (with a capital where it has one) and
+  expands its own strength, fighting where required. Its armies are yours, so they
+  count at scoring — a genuine second front. New `src/shared/data/minorEmpires.ts`
+  (7 cards as `EmpireCard`s) reused through the existing `setupEmpire`/`expandGen`,
+  so the human places the minor dynasty interactively (AI auto-resolves). New
+  `minorEmpire` engine event + UI announcement.
+  - Replaces the old `minor_empire` placeholder (which just gave bonus armies).
+
 ## [0.17.1] — 2026-06-27
 
 ### Fixed

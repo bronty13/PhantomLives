@@ -21,7 +21,7 @@ export function describeEffect(e: EventEffect): { text: string; timing: 'during'
     case 'reallocation':
       return { text: `Call up the fleets — raise ${e.armies} extra ground armies this turn.`, timing: 'during' }
     case 'minor_empire':
-      return { text: `A minor people rallies to you — ${e.armies} extra armies this turn.`, timing: 'during' }
+      return { text: "Summon this epoch's Minor Empire — a second dynasty that builds and expands for you before your main turn (and scores).", timing: 'during' }
     case 'siegecraft':
       return { text: 'Enemy forts give no defence against your attacks this turn.', timing: 'during' }
     case 'surprise_attack':
@@ -88,7 +88,7 @@ export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
     greater.push(card(`g_realloc_${i}`, 'greater', n, { kind: 'reallocation', armies: 3 })),
   )
   MINOR_EMPIRE.forEach((n, i) =>
-    greater.push(card(`g_minor_${i}`, 'greater', n, { kind: 'minor_empire', armies: 4 })),
+    greater.push(card(`g_minor_${i}`, 'greater', n, { kind: 'minor_empire' })),
   )
   SIEGECRAFT.forEach((n, i) => greater.push(card(`g_siege_${i}`, 'greater', n, { kind: 'siegecraft' })))
   SURPRISE.forEach((n, i) => greater.push(card(`g_surprise_${i}`, 'greater', n, { kind: 'surprise_attack' })))
