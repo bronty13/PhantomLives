@@ -2,6 +2,18 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.32.0] — 2026-06-27
+
+Fidelity pass, slice 4 — fleets (chunk 3 of 4: sea scoring).
+
+### Added
+- **Sea scoring.** You now score **+1 VP for each enclosed sea you control** with a
+  fleet (the five open oceans don't score). Folded into `scoreBreakdown` as a new
+  `seaVp` line (so the number and its explanation still agree), shown in the score log
+  (`+N seas`) and counted in the VP-table "You" column. Rulebook Scoring updated.
+- Only chunk 4 remains for fleets: bought forts + the interactive buy/place UI + map
+  fleets.
+
 ## [0.31.0] — 2026-06-27
 
 Fidelity pass, slice 4 — fleets (chunk 2 of 4: naval combat + sea/ocean).

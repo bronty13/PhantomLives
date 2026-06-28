@@ -132,6 +132,14 @@ describe('scoreAllAreasForPlayer + scoreEmpireTurn (integration)', () => {
     expect(scoreAllAreasForPlayer(contested, fixtureAreaOf, areas, 1, 'P1', areaSize)).toBe(5)
   })
 
+  it('adds +1 per controlled enclosed sea (oceans excluded)', () => {
+    const bd = scoreBreakdown(board, fixtureAreaOf, areas, 1, 'P1', areaSize, 2)
+    expect(bd.seaVp).toBe(2)
+    expect(bd.total).toBe(bd.areaVp + bd.structureVp + 2)
+    // and scoreEmpireTurn includes it
+    expect(scoreEmpireTurn(board, fixtureAreaOf, areas, 1, 'P1', areaSize, 2)).toBe(bd.total)
+  })
+
   it('scoreBreakdown decomposes the score into per-Area tiers + structures', () => {
     const bd = scoreBreakdown(board, fixtureAreaOf, areas, 1, 'P1', areaSize)
     expect(bd.total).toBe(scoreEmpireTurn(board, fixtureAreaOf, areas, 1, 'P1', areaSize)) // 7

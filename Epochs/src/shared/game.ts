@@ -362,6 +362,7 @@ export class Game {
       this.state.epoch,
       pid,
       this.areaSize,
+      this.controlledSeas(pid),
     )
     const gained = breakdown.total
     this.player(pid).vp += gained
@@ -960,6 +961,13 @@ export class Game {
   private removeOneEnemyFleet(sea: SeaId, pid: PlayerId): void {
     const i = this.state.fleets.findIndex((f) => f.sea === sea && f.owner !== pid)
     if (i >= 0) this.state.fleets.splice(i, 1)
+  }
+
+  /** Distinct enclosed Seas `pid` controls with a fleet (each scores +1; oceans don't). */
+  private controlledSeas(pid: PlayerId): number {
+    const seas = new Set<SeaId>()
+    for (const f of this.state.fleets) if (f.owner === pid && !isOcean(f.sea)) seas.add(f.sea)
+    return seas.size
   }
 
   /** Lands `pid` holds with a current-epoch army. */

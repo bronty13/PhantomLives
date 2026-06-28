@@ -182,6 +182,8 @@ export const RULEBOOK: RuleSection[] = [
       The live <b>You</b> column in the VP Table shows your current tier in every Area.</p>
       <p><b>2 · Structures.</b> Add up your capitals (2), cities (1) and monuments (1),
       everywhere on the board.</p>
+      <p><b>3 · Seas.</b> Add <b>+1 for each enclosed sea you control</b> with a fleet
+      (the open oceans don't score).</p>
       <p>A <b>Marauder</b> (a capital-less empire) instead earns <b>+1 point each time it
       razes an enemy structure</b> — its compensation for having no capital of its own.</p>`,
   },

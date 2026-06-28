@@ -126,6 +126,7 @@ export interface ScoreBreakdown {
   structures: { capital: number; city: number; monument: number }
   structureVp: number
   areaVp: number
+  seaVp: number // +1 per enclosed Sea the player controls with a fleet (oceans don't score)
   total: number
 }
 
@@ -136,6 +137,7 @@ export function scoreBreakdown(
   epoch: EpochId,
   player: PlayerId,
   areaSize: (area: AreaId) => number,
+  controlledSeas = 0,
 ): ScoreBreakdown {
   const areaScores: AreaScore[] = []
   let areaVp = 0
@@ -165,12 +167,14 @@ export function scoreBreakdown(
   const structureVp =
     capital * STRUCTURE_VP.capital + city * STRUCTURE_VP.city + monument * STRUCTURE_VP.monument
 
+  const seaVp = controlledSeas // +1 per controlled enclosed Sea
   return {
     areas: areaScores,
     structures: { capital, city, monument },
     structureVp,
     areaVp,
-    total: areaVp + structureVp,
+    seaVp,
+    total: areaVp + structureVp + seaVp,
   }
 }
 
@@ -182,6 +186,7 @@ export function scoreEmpireTurn(
   epoch: EpochId,
   player: PlayerId,
   areaSize: (area: AreaId) => number,
+  controlledSeas = 0,
 ): number {
-  return scoreBreakdown(pieces, areaOf, areas, epoch, player, areaSize).total
+  return scoreBreakdown(pieces, areaOf, areas, epoch, player, areaSize, controlledSeas).total
 }
