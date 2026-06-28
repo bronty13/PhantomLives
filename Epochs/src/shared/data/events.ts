@@ -77,52 +77,63 @@ const FANATICISM = ['Fanaticism', 'Holy War', 'Zealotry', 'Martyrdom']
 const REALLOCATION = ['Mobilization', 'Mass Levy', 'Conscription', 'Grand Army']
 const MINOR_EMPIRE = ['Allied Tribes', 'Mercenary Host', 'Client Kingdom', 'Vassal State']
 const SIEGECRAFT = ['Siegecraft', 'Sapper Corps', 'Siege Towers']
-const SURPRISE = ['Surprise Attack', 'Ambush', 'Forced March']
-const POP_EXPLOSION = ['Population Boom', 'Fertile Years', 'Settlers']
+const SURPRISE = ['Surprise Attack', 'Ambush', 'Forced March', 'Night Raid']
+const POP_EXPLOSION = ['Population Boom', 'Fertile Years', 'Settlers', 'Good Harvest']
 const CIVIL_SERVICE = ['Civil Service', 'Bureaucracy', 'Imperial Administration']
 const KINGDOMS = ['Rising Kingdom', 'Vassal Realm', 'Petty Kingdom']
 const SHIP_BUILDING = ['Ship Building', 'Shipyards', 'Naval Yards']
 const NAVAL_SUPREMACY = ['Naval Supremacy', 'Command of the Sea', 'Thalassocracy']
 
-// Targeted disasters (Lesser, aimed at an enemy Land before a turn): [name, effect, count].
-const DISASTERS: Array<[string, EventEffect, number]> = [
-  ['Great Flood', { kind: 'disaster_structure', terrain: 'coastal' }, 2],
-  ['Volcano', { kind: 'disaster_structure', terrain: 'mountain' }, 4],
-  ['Great Fire', { kind: 'disaster_structure', terrain: 'any' }, 6],
-  ['Plague', { kind: 'plague' }, 6],
-  ['Pestilence', { kind: 'pestilence' }, 4],
-  ['Famine', { kind: 'famine' }, 4],
-  ['Barbarians', { kind: 'barbarians' }, 4],
-  ['Pirates', { kind: 'pirates' }, 4],
-  ['Storm at Sea', { kind: 'storm_at_sea' }, 3],
-]
+/**
+ * The event deck as **9 colour-piles of 7 cards** (SPEC §11 / original): seven boon
+ * piles (Greater) and two disaster piles (Lesser). At setup one card is dealt from
+ * EACH pile to every player, so a hand is one card of each of the nine kinds. Names
+ * are our own flavour; the effects are the (uncopyrightable) mechanics.
+ */
+export function makeEventDeck(): EventCard[][] {
+  let id = 0
+  const g = (name: string, effect: EventEffect): EventCard => card(`e${id++}`, 'greater', name, effect)
+  const l = (name: string, effect: EventEffect): EventCard => card(`e${id++}`, 'lesser', name, effect)
+  const n = (count: number, name: string, effect: EventEffect, mk: typeof g): EventCard[] =>
+    Array.from({ length: count }, () => mk(name, effect))
 
-export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
-  const greater: EventCard[] = []
-  LEADERS.forEach((n, i) => greater.push(card(`g_leader_${i}`, 'greater', n, { kind: 'leader' })))
-  WEAPONRY.forEach((n, i) => greater.push(card(`g_weapon_${i}`, 'greater', n, { kind: 'weaponry' })))
-  FANATICISM.forEach((n, i) => greater.push(card(`g_fanatic_${i}`, 'greater', n, { kind: 'fanaticism' })))
-  REALLOCATION.forEach((n, i) =>
-    greater.push(card(`g_realloc_${i}`, 'greater', n, { kind: 'reallocation', armies: 3 })),
-  )
-  MINOR_EMPIRE.forEach((n, i) =>
-    greater.push(card(`g_minor_${i}`, 'greater', n, { kind: 'minor_empire' })),
-  )
-  SIEGECRAFT.forEach((n, i) => greater.push(card(`g_siege_${i}`, 'greater', n, { kind: 'siegecraft' })))
-  SURPRISE.forEach((n, i) => greater.push(card(`g_surprise_${i}`, 'greater', n, { kind: 'surprise_attack' })))
-  POP_EXPLOSION.forEach((n, i) =>
-    greater.push(card(`g_pop_${i}`, 'greater', n, { kind: 'extra_armies', armies: 2, needsCapital: false })),
-  )
-  CIVIL_SERVICE.forEach((n, i) =>
-    greater.push(card(`g_civil_${i}`, 'greater', n, { kind: 'extra_armies', armies: 2, needsCapital: true })),
-  )
-  KINGDOMS.forEach((n, i) => greater.push(card(`g_kingdom_${i}`, 'greater', n, { kind: 'found_kingdom' })))
-  SHIP_BUILDING.forEach((n, i) => greater.push(card(`g_ship_${i}`, 'greater', n, { kind: 'ship_building' })))
-  NAVAL_SUPREMACY.forEach((n, i) => greater.push(card(`g_naval_${i}`, 'greater', n, { kind: 'naval_supremacy' })))
-  const lesser: EventCard[] = []
-  let di = 0
-  for (const [name, effect, count] of DISASTERS) {
-    for (let k = 0; k < count; k++) lesser.push(card(`l_dis_${di++}`, 'lesser', name, effect))
-  }
-  return { greater, lesser }
+  return [
+    // ── seven Greater (boon) piles ──
+    LEADERS.slice(0, 7).map((name) => g(name, { kind: 'leader' })),
+    WEAPONRY.map((name) => g(name, { kind: 'weaponry' })),
+    [
+      ...FANATICISM.map((name) => g(name, { kind: 'fanaticism' })),
+      ...SIEGECRAFT.map((name) => g(name, { kind: 'siegecraft' })),
+    ], // Holy War
+    [
+      ...SURPRISE.map((name) => g(name, { kind: 'surprise_attack' })),
+      ...NAVAL_SUPREMACY.map((name) => g(name, { kind: 'naval_supremacy' })),
+    ], // Cunning
+    [
+      ...SHIP_BUILDING.map((name) => g(name, { kind: 'ship_building' })),
+      ...REALLOCATION.map((name) => g(name, { kind: 'reallocation', armies: 3 })),
+    ], // Seafaring
+    [
+      ...POP_EXPLOSION.map((name) => g(name, { kind: 'extra_armies', armies: 2, needsCapital: false })),
+      ...KINGDOMS.map((name) => g(name, { kind: 'found_kingdom' })),
+    ], // Migration
+    [
+      ...CIVIL_SERVICE.map((name) => g(name, { kind: 'extra_armies', armies: 2, needsCapital: true })),
+      ...MINOR_EMPIRE.map((name) => g(name, { kind: 'minor_empire' })),
+    ], // Statecraft
+    // ── two Lesser (disaster) piles ──
+    [
+      ...n(2, 'Great Flood', { kind: 'disaster_structure', terrain: 'coastal' }, l),
+      ...n(2, 'Volcano', { kind: 'disaster_structure', terrain: 'mountain' }, l),
+      ...n(3, 'Great Fire', { kind: 'disaster_structure', terrain: 'any' }, l),
+    ], // Cataclysm
+    [
+      ...n(2, 'Plague', { kind: 'plague' }, l),
+      l('Pestilence', { kind: 'pestilence' }),
+      l('Famine', { kind: 'famine' }),
+      l('Barbarians', { kind: 'barbarians' }),
+      l('Pirates', { kind: 'pirates' }),
+      l('Storm at Sea', { kind: 'storm_at_sea' }),
+    ], // Pestilence
+  ]
 }

@@ -125,8 +125,11 @@ export const RULEBOOK: RuleSection[] = [
     id: 'events',
     title: 'Events',
     body: `
-      <p>Each epoch you hold a small hand of <b>Greater</b> and <b>Lesser</b> cards.
-      You may play <b>one of each</b> per turn. They fall into families:</p>
+      <p>At the start of the game the events are sorted into <b>nine themed piles</b>,
+      and you're dealt <b>one card from each</b> — so your hand holds one event of every
+      kind (seven <b>Greater</b> boons and two <b>Lesser</b> disasters) to last the whole
+      game. You may play <b>one Greater and one Lesser</b> per turn. They fall into
+      families:</p>
       <ul>
         <li><b>Combat boons</b> (Leader, Weaponry, Fanaticism, Siegecraft, Surprise
         Attack) — strengthen your attacks this turn.</li>

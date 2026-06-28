@@ -270,17 +270,19 @@ export class Game {
     this.dealEvents(rng)
   }
 
-  /** Deal each player a fixed hand of 3 Greater + 7 Lesser events (SPEC §11). */
+  /** Deal one card from EACH of the 9 colour-piles to every player (SPEC §11 /
+   *  original): a hand is one card of each kind — 7 Greater (boons) + 2 Lesser
+   *  (disasters). Each pile holds 7, enough for up to 7 players; the rest are boxed. */
   private dealEvents(rng: Rng): void {
-    const deck = makeEventDeck()
-    const greater = shuffle(deck.greater, rng)
-    const lesser = shuffle(deck.lesser, rng)
-    let gi = 0
-    let li = 0
-    for (const p of this.state.players) {
-      p.hand = { greater: greater.slice(gi, gi + 3), lesser: lesser.slice(li, li + 2) }
-      gi += 3
-      li += 2
+    const piles = makeEventDeck().map((pile) => shuffle(pile, rng))
+    for (const p of this.state.players) p.hand = { greater: [], lesser: [] }
+    for (const pile of piles) {
+      this.state.players.forEach((p, i) => {
+        const c = pile[i]
+        if (!c) return
+        if (c.class === 'greater') p.hand.greater.push(c)
+        else p.hand.lesser.push(c)
+      })
     }
   }
 

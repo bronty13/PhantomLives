@@ -27,10 +27,13 @@ function drive(game: Game): GameEvent[] {
 }
 
 describe('event deck', () => {
-  const deck = makeEventDeck()
-  it('has enough Greater (>= 18) + Lesser disasters (>= 12) for 6 players', () => {
-    expect(deck.greater.length).toBeGreaterThanOrEqual(18)
-    expect(deck.lesser.length).toBeGreaterThanOrEqual(12)
+  const piles = makeEventDeck()
+  const greater = piles.flat().filter((c) => c.class === 'greater')
+  const lesser = piles.flat().filter((c) => c.class === 'lesser')
+  it('is 9 colour-piles of 7 cards (63 total)', () => {
+    expect(piles).toHaveLength(9)
+    for (const pile of piles) expect(pile).toHaveLength(7)
+    expect(piles.flat()).toHaveLength(63)
   })
   it('Greater are the implemented boon kinds; Lesser are targeted disasters', () => {
     const greaterKinds = [
@@ -38,22 +41,22 @@ describe('event deck', () => {
       'siegecraft', 'surprise_attack', 'extra_armies', 'found_kingdom',
       'ship_building', 'naval_supremacy',
     ]
-    for (const c of deck.greater) {
+    for (const c of greater) {
       expect(greaterKinds).toContain(c.effect.kind)
     }
     const lesserKinds = ['disaster_structure', 'plague', 'pestilence', 'famine', 'barbarians', 'pirates', 'storm_at_sea']
-    for (const c of deck.lesser) {
+    for (const c of lesser) {
       expect(lesserKinds).toContain(c.effect.kind)
     }
   })
 })
 
 describe('dealing hands', () => {
-  it('gives each player 3 Greater + 2 Lesser disasters, no shared cards (SPEC §11)', () => {
+  it('deals one card from each of the 9 piles → 7 Greater + 2 Lesser per player, no shared cards', () => {
     const game = worldGame(1, hardBots(['P1', 'P2', 'P3', 'P4']))
     const seen = new Set<string>()
     for (const p of game.state.players) {
-      expect(p.hand.greater).toHaveLength(3)
+      expect(p.hand.greater).toHaveLength(7)
       expect(p.hand.lesser).toHaveLength(2)
       for (const c of [...p.hand.greater, ...p.hand.lesser]) {
         expect(seen.has(c.id), `duplicate card ${c.id}`).toBe(false)
@@ -457,7 +460,7 @@ describe('describeEffect (event card text for the panel)', () => {
 
 describe('event deck — the new Greater boons are present', () => {
   it('includes siegecraft, surprise_attack, and both extra_armies variants', () => {
-    const { greater } = makeEventDeck()
+    const greater = makeEventDeck().flat().filter((c) => c.class === 'greater')
     const kinds = new Set(greater.map((c) => c.effect.kind))
     for (const k of ['siegecraft', 'surprise_attack', 'extra_armies']) expect(kinds.has(k as never)).toBe(true)
     const capGated = greater.filter((c) => c.effect.kind === 'extra_armies' && c.effect.needsCapital)

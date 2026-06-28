@@ -2,6 +2,22 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.35.0] — 2026-06-28
+
+Fidelity pass, slice 5 of 5 — events as 9 colour-piles. **Fidelity arc complete.**
+
+### Changed
+- **The event deck is now nine themed piles of seven cards** (seven Greater boon
+  piles + two Lesser disaster piles, 63 cards). At setup each player is dealt **one
+  card from every pile** — a hand of one event of each kind (7 Greater + 2 Lesser) to
+  last the whole game — instead of a random 3-Greater/2-Lesser hand. `makeEventDeck`
+  returns `EventCard[][]`; `dealEvents` deals one per pile per player. Rulebook Events
+  section updated.
+
+This completes the five-slice fidelity pass against the original rules: scoring tiers,
+draft order, three-armies-per-land, the full naval game (fleets), and now the event
+deck structure. Tournament ladder stable at 70.0 / 69.2 / 84.2%.
+
 ## [0.34.0] — 2026-06-28
 
 Fidelity pass, slice 4 — fleets (chunk 4b: interactive buy + bought forts). **Fleets complete.**
