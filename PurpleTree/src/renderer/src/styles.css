@@ -143,6 +143,34 @@ button:disabled {
   text-align: left;
 }
 
+/* Right-click context menu (folder tree). Positioned at the cursor in
+   viewport coordinates, so it's fixed, not absolute. */
+.ctx-menu {
+  position: fixed;
+  min-width: 184px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(76, 29, 149, 0.25);
+}
+.ctx-item {
+  color: var(--ink);
+  background: #fff;
+  border: none;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ctx-item:hover {
+  background: var(--panel);
+}
+
 .body {
   flex: 1;
   display: flex;

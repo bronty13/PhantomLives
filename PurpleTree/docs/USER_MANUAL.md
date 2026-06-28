@@ -36,6 +36,20 @@ After a scan you land in **Explorer**:
 
 To delete: tick the checkboxes in the detail list and click **Delete…**.
 
+**Refresh a folder.** After you add, delete, or move files, you don't have to
+re-scan from scratch — refresh just the part that changed:
+
+- The **⟳ button** in the top bar re-scans the **folder you currently have
+  selected**.
+- **Right-click any folder** in the tree and choose **⟳ Refresh this folder**
+  (the same menu also has **📍 Reveal in Finder**).
+
+Purple Tree re-reads only that folder and updates its sizes in place; the rest of
+the scan and your current view stay exactly where they were, and the folder you
+had selected stays selected. (Refreshing the top-level folder re-scans the whole
+tree.) You'll see the usual **Scanning…** progress, and **Cancel** works — if you
+cancel or the refresh fails, your previous results are kept.
+
 **Size heat shading.** Each row in the detail list is tinted with a color whose
 intensity reflects how large that item is relative to the biggest item in the
 list — the top item is always the richest color, giving you instant visual

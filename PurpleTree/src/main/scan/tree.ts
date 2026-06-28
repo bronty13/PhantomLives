@@ -15,6 +15,7 @@ import {
   FLAG_DIR,
   FLAG_SYMLINK,
   FLAG_PERM_DENIED,
+  FLAG_CROSSED_MOUNT,
   FLAG_HARDLINK_DUP,
   type NodeRow,
   type SortSpec,
@@ -361,6 +362,76 @@ export class Tree {
     return chain.map((c) => this.row(c));
   }
 
+  /**
+   * Resolve an absolute path to its node id, or -1 if it's not in this tree.
+   * Walks down from the root segment by segment (O(depth × branching)) rather
+   * than reconstructing every node's path — used to re-anchor the renderer's
+   * focus after a refresh renumbers node ids.
+   */
+  findByPath(absPath: string): number {
+    const trim = (p: string): string =>
+      p.length > 1 && p.endsWith(this.sep) ? p.slice(0, -1) : p;
+    const target = trim(absPath);
+    const base = trim(this.rootPath);
+    if (target === base) return 0;
+    if (!target.startsWith(base + this.sep)) return -1;
+    const segs = target
+      .slice(base.length + this.sep.length)
+      .split(this.sep)
+      .filter((s) => s.length > 0);
+    let cur = 0;
+    for (const seg of segs) {
+      let found = -1;
+      let c = this.firstChild[cur];
+      while (c !== -1) {
+        if (this.name(c) === seg) {
+          found = c;
+          break;
+        }
+        c = this.nextSibling[c];
+      }
+      if (found === -1) return -1;
+      cur = found;
+    }
+    return cur;
+  }
+
+  /**
+   * Recompute the summary counters from the live node set. The crawl-time stats
+   * don't survive a subtree splice (a refresh re-scans only one folder), so a
+   * refreshed tree re-derives totals from its flags + root rollups instead.
+   */
+  recountStats(): {
+    totalBytes: number;
+    totalFiles: number;
+    totalDirs: number;
+    permDeniedCount: number;
+    mountSkippedCount: number;
+    symlinkCount: number;
+  } {
+    let totalDirs = 0;
+    let permDeniedCount = 0;
+    let mountSkippedCount = 0;
+    let symlinkCount = 0;
+    for (let i = 0; i < this.nodeCount; i++) {
+      const f = this.flags[i];
+      if (f & FLAG_DIR) totalDirs++;
+      if (f & FLAG_PERM_DENIED) permDeniedCount++;
+      if (f & FLAG_CROSSED_MOUNT) mountSkippedCount++;
+      if (f & FLAG_SYMLINK) symlinkCount++;
+    }
+    return {
+      // Logical bytes, to match the worker's byte counter (the topbar's size
+      // comes from the metric-aware root row, not this field).
+      totalBytes: this.aggSize[0] ?? 0,
+      totalFiles: this.fileCount[0] ?? 0,
+      totalDirs,
+      permDeniedCount,
+      mountSkippedCount,
+      symlinkCount
+    };
+  }
+
   /** Top-N files (not dirs) matching a filter, largest first. */
   getTopFiles(n: number, filter?: FileFilter): NodeRow[] {
     const minBytes = filter?.minBytes ?? 0;
@@ -427,4 +498,113 @@ export class Tree {
     ids.sort((a, b) => this.aggOf(b) - this.aggOf(a));
     return ids.slice(0, limit).map((i) => this.row(i));
   }
+}
+
+/** Read-only typed-array views + a name decoder over a SerializedTree's buffers. */
+function rawView(t: SerializedTree): {
+  parentIdx: Int32Array;
+  firstChild: Int32Array;
+  nextSibling: Int32Array;
+  selfSize: Float64Array;
+  selfAlloc: Float64Array;
+  mtimeMs: Float64Array;
+  atimeMs: Float64Array;
+  flags: Uint8Array;
+  name: (id: number) => string;
+  childrenOf: (id: number) => number[];
+} {
+  const firstChild = new Int32Array(t.firstChild);
+  const nextSibling = new Int32Array(t.nextSibling);
+  const nameBytes = new Uint8Array(t.nameBytes);
+  const nameOffsets = new Uint32Array(t.nameOffsets);
+  const dec = new TextDecoder();
+  return {
+    parentIdx: new Int32Array(t.parentIdx),
+    firstChild,
+    nextSibling,
+    selfSize: new Float64Array(t.selfSize),
+    selfAlloc: new Float64Array(t.selfAlloc),
+    mtimeMs: new Float64Array(t.mtimeMs),
+    atimeMs: new Float64Array(t.atimeMs),
+    flags: new Uint8Array(t.flags),
+    name: (id) => dec.decode(nameBytes.subarray(nameOffsets[id], nameOffsets[id + 1])),
+    childrenOf: (id) => {
+      const out: number[] = [];
+      let c = firstChild[id];
+      while (c !== -1) {
+        out.push(c);
+        c = nextSibling[c];
+      }
+      return out;
+    }
+  };
+}
+
+/**
+ * Splice a freshly-scanned subtree into a serialized tree, replacing the stale
+ * subtree rooted at `targetId`. Returns a brand-new SerializedTree (node ids are
+ * renumbered) with aggregates re-rolled by `finalize()`.
+ *
+ * `sub` is a standalone scan rooted at the target folder's path (its node 0 is
+ * the folder itself). When `targetId <= 0` the whole tree is being refreshed, so
+ * `sub` already *is* the new tree and is returned unchanged.
+ *
+ * Both the old tree and the grafted subtree are walked with an explicit stack
+ * DFS; because a node is emitted only after its parent (and children are pushed
+ * only after the parent is emitted), the `parentId < childId` invariant the
+ * aggregation loop relies on is preserved.
+ */
+export function spliceSubtree(
+  old: SerializedTree,
+  targetId: number,
+  sub: SerializedTree
+): SerializedTree {
+  if (targetId <= 0) return sub;
+
+  const o = rawView(old);
+  const s = rawView(sub);
+  const builder = new TreeBuilder(old.rootPath, old.sep);
+  const targetParent = o.parentIdx[targetId];
+  const targetName = o.name(targetId);
+  const map = new Int32Array(old.nodeCount).fill(-1);
+
+  // Graft the fresh subtree under `newParent`, renaming its root (which carries
+  // the full path as its name) back to the folder's basename in the old tree.
+  const graft = (newParent: number): void => {
+    const smap = new Int32Array(sub.nodeCount).fill(-1);
+    const stack = [0];
+    while (stack.length) {
+      const sid = stack.pop()!;
+      smap[sid] = builder.addNode({
+        parent: sid === 0 ? newParent : smap[s.parentIdx[sid]],
+        name: sid === 0 ? targetName : s.name(sid),
+        selfSize: s.selfSize[sid],
+        allocSize: s.selfAlloc[sid],
+        mtimeMs: s.mtimeMs[sid],
+        atimeMs: s.atimeMs[sid],
+        flags: s.flags[sid]
+      });
+      for (const c of s.childrenOf(sid)) stack.push(c);
+    }
+  };
+
+  const stack = [0];
+  while (stack.length) {
+    const oid = stack.pop()!;
+    if (oid === targetId) {
+      graft(map[targetParent]); // skip the stale subtree's old children entirely
+      continue;
+    }
+    map[oid] = builder.addNode({
+      parent: oid === 0 ? -1 : map[o.parentIdx[oid]],
+      name: oid === 0 ? old.rootPath : o.name(oid),
+      selfSize: o.selfSize[oid],
+      allocSize: o.selfAlloc[oid],
+      mtimeMs: o.mtimeMs[oid],
+      atimeMs: o.atimeMs[oid],
+      flags: o.flags[oid]
+    });
+    for (const c of o.childrenOf(oid)) stack.push(c);
+  }
+  return builder.finalize();
 }

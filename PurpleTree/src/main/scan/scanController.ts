@@ -20,7 +20,7 @@ import type {
   ArcNode,
   SizeMetric
 } from '../../shared/types';
-import { Tree } from './tree';
+import { Tree, spliceSubtree } from './tree';
 import { computeTreemap } from './treemap';
 import { computeSunburst } from './sunburst';
 import { writeSnapshot, readSnapshot, listSnapshots } from './snapshot';
@@ -164,6 +164,95 @@ export function startScan(rootPath: string, opts: ScanOptions): string {
 /** Cancel a running scan (cooperative flag, then hard terminate if needed). */
 export function cancelScan(scanId: string): void {
   cancelOp(scanId, 'purpletree:scan-cancelled', scanId);
+}
+
+/**
+ * Re-scan a single folder and splice the fresh result back into the live tree,
+ * keeping the surrounding tree and the `scanId` intact. `nodeId` 0 refreshes the
+ * whole scan (the fresh crawl replaces the tree wholesale); any other id
+ * refreshes just that folder's subtree.
+ *
+ * Reuses the scan-progress / -complete / -error / -cancelled channels so the
+ * renderer's existing scan UI applies unchanged. Returns false if the scanId is
+ * unknown (e.g. a loaded snapshot that was since dropped).
+ */
+export function refreshFolder(scanId: string, nodeId: number, opts: ScanOptions): boolean {
+  const tree = trees.get(scanId);
+  const oldSer = serialized.get(scanId);
+  if (!tree || !oldSer) return false;
+  const targetPath = tree.path(nodeId);
+
+  const { worker, cancel, sab } = spawn();
+  const startMs = Date.now();
+  active.set(scanId, { worker, cancel });
+
+  worker.on('message', (evt: ScanEvent) => {
+    switch (evt.type) {
+      case 'progress':
+        sender('purpletree:scan-progress', evt.progress);
+        break;
+      case 'done': {
+        // A cancel may land after the worker already finished its (partial)
+        // crawl — discard it and leave the existing tree untouched.
+        if (Atomics.load(cancel, 0) !== 0) {
+          clearOp(scanId);
+          void worker.terminate();
+          sender('purpletree:scan-cancelled', { scanId });
+          break;
+        }
+        const mergedSer = spliceSubtree(oldSer, nodeId, evt.tree);
+        const merged = new Tree(mergedSer);
+        merged.setMetric(activeMetric);
+        trees.set(scanId, merged);
+        serialized.set(scanId, mergedSer);
+        const rc = merged.recountStats();
+        const s: ScanStats = {
+          scanId,
+          rootPath: merged.rootPath,
+          totalBytes: rc.totalBytes,
+          totalFiles: rc.totalFiles,
+          totalDirs: rc.totalDirs,
+          permDeniedCount: rc.permDeniedCount,
+          mountSkippedCount: rc.mountSkippedCount,
+          symlinkCount: rc.symlinkCount,
+          durationMs: Date.now() - startMs,
+          partial: false
+        };
+        stats.set(scanId, s);
+        sender('purpletree:scan-complete', s);
+        clearOp(scanId);
+        void worker.terminate();
+        break;
+      }
+      case 'error':
+        sender('purpletree:scan-error', { scanId, message: evt.message });
+        clearOp(scanId);
+        void worker.terminate();
+        break;
+    }
+  });
+  worker.on('error', (err) => {
+    sender('purpletree:scan-error', { scanId, message: err.message });
+    clearOp(scanId);
+  });
+  worker.on('exit', (code) => {
+    if (active.has(scanId)) {
+      sender('purpletree:scan-error', {
+        scanId,
+        message: `Refresh stopped unexpectedly (worker exit ${code}).`
+      });
+      clearOp(scanId);
+    }
+  });
+
+  worker.postMessage({ type: 'start', scanId, rootPath: targetPath, opts, cancelFlag: sab });
+  return true;
+}
+
+/** Resolve an absolute path to a node id in a live scan (0 if not found). */
+export function findNodeByPath(scanId: string, path: string): number {
+  const id = trees.get(scanId)?.findByPath(path) ?? -1;
+  return id < 0 ? 0 : id;
 }
 
 /** Kick off duplicate detection over a completed scan's files. */

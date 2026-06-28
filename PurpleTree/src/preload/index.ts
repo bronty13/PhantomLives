@@ -51,6 +51,10 @@ const api = {
   startScan: (rootPath: string, opts: ScanOptions): Promise<string> =>
     ipcRenderer.invoke('purpletree:scan-start', rootPath, opts),
   cancelScan: (scanId: string): Promise<void> => ipcRenderer.invoke('purpletree:scan-cancel', scanId),
+  refreshFolder: (scanId: string, nodeId: number, opts: ScanOptions): Promise<boolean> =>
+    ipcRenderer.invoke('purpletree:refresh-folder', scanId, nodeId, opts),
+  findNode: (scanId: string, path: string): Promise<number> =>
+    ipcRenderer.invoke('purpletree:find-node', scanId, path),
 
   getChildren: (
     scanId: string,

@@ -228,6 +228,14 @@ function registerIpc(): void {
     return controller.startScan(rootPath, opts);
   });
   ipcMain.handle('purpletree:scan-cancel', (_e, scanId: string) => controller.cancelScan(scanId));
+  ipcMain.handle(
+    'purpletree:refresh-folder',
+    (_e, scanId: string, nodeId: number, opts: ScanOptions) =>
+      controller.refreshFolder(scanId, nodeId, opts)
+  );
+  ipcMain.handle('purpletree:find-node', (_e, scanId: string, path: string) =>
+    controller.findNodeByPath(scanId, path)
+  );
 
   ipcMain.handle(
     'purpletree:get-children',

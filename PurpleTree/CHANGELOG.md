@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.0] - 2026-06-28
+
+- **Refresh a folder without re-scanning everything.** Two new ways to pull in
+  fresh sizes after you've added, deleted, or moved files:
+  - A **⟳ refresh button** in the top bar (shown once a scan is ready) re-scans
+    the **currently selected folder** in place.
+  - **Right-click any folder** in the Explorer tree for a context menu with
+    **⟳ Refresh this folder** and **📍 Reveal in Finder**.
+
+  A refresh re-crawls only that one folder and splices the fresh result back
+  into the existing tree — the rest of the scan, your selection, and the
+  surrounding view all stay put (your selected folder stays selected even though
+  the underlying node ids are rebuilt). Refreshing the scan root re-scans the
+  whole tree. The normal "Scanning…" progress and Cancel apply; a cancelled or
+  failed refresh leaves the previous tree untouched.
+
 ## [1.5.0] - 2026-06-04
 
 - **Size heat shading.** Every row in the Explorer detail list and Large & Old

@@ -43,6 +43,10 @@ export default function App(): JSX.Element {
   const scanIdRef = useRef<string | null>(null);
   const scanStartRef = useRef<number>(0);
   const rateSampleRef = useRef<{ t: number; files: number } | null>(null);
+  // While a folder refresh is in flight, remember it's a refresh (not a fresh
+  // scan) and which folder path to re-select once node ids are renumbered.
+  const refreshingRef = useRef(false);
+  const refreshPathRef = useRef<string | null>(null);
 
   const metric = prefs?.sizeMetric ?? 'alloc';
   const toggleMetric = async (): Promise<void> => {
@@ -80,6 +84,31 @@ export default function App(): JSX.Element {
     if (dir) await startScanOf(dir);
   }, [startScanOf]);
 
+  // Re-scan a single folder in place (toolbar = the focused folder; right-click
+  // = any folder). The surrounding tree and scanId survive; only the target
+  // subtree is replaced. Keeps the currently-focused folder selected afterward
+  // by remembering its path (node ids change when the tree is rebuilt).
+  const refreshFolder = useCallback(
+    async (nodeId: number) => {
+      const sid = scanIdRef.current;
+      if (!sid) return;
+      const opts = (await api.prefsGet()).scanOptions;
+      const crumbs = await api.getBreadcrumb(sid, focusId);
+      refreshPathRef.current = crumbs.length ? crumbs[crumbs.length - 1].path : null;
+      refreshingRef.current = true;
+      scanStartRef.current = Date.now();
+      rateSampleRef.current = null;
+      setProgress(null);
+      setRate(0);
+      setElapsedMs(0);
+      setCancelling(false);
+      setView('explorer');
+      setStatus('scanning');
+      await api.refreshFolder(sid, nodeId, opts);
+    },
+    [focusId]
+  );
+
   useEffect(() => {
     loadPrefs();
     // Debug: auto-start a scan when launched with PT_AUTOSCAN (no-op normally).
@@ -102,22 +131,44 @@ export default function App(): JSX.Element {
       if (s.scanId !== scanIdRef.current) return;
       setCancelling(false);
       setStats(s);
-      void api.getRoot(s.scanId).then((r) => {
+      const wasRefresh = refreshingRef.current;
+      const keepPath = refreshPathRef.current;
+      refreshingRef.current = false;
+      refreshPathRef.current = null;
+      void api.getRoot(s.scanId).then(async (r) => {
         setRoot(r);
-        setFocusId(0);
+        // A refresh renumbers node ids — re-anchor focus to the same path.
+        setFocusId(wasRefresh && keepPath ? await api.findNode(s.scanId, keepPath) : 0);
+        setRefreshKey((k) => k + 1);
         setStatus('ready');
+        if (wasRefresh) setToast('Folder refreshed.');
       });
     });
     const offErr = api.onScanError((e) => {
-      if (e.scanId === scanIdRef.current) {
-        setCancelling(false);
-        setStatus('error');
-        setToast(`Scan failed: ${e.message}`);
+      if (e.scanId !== scanIdRef.current) return;
+      setCancelling(false);
+      if (refreshingRef.current) {
+        // A failed refresh leaves the existing tree intact — stay on it.
+        refreshingRef.current = false;
+        refreshPathRef.current = null;
+        setStatus('ready');
+        setToast(`Refresh failed: ${e.message}`);
+        return;
       }
+      setStatus('error');
+      setToast(`Scan failed: ${e.message}`);
     });
     const offCancelled = api.onScanCancelled((e) => {
       if (e.scanId !== scanIdRef.current) return;
       setCancelling(false);
+      if (refreshingRef.current) {
+        // A cancelled refresh keeps the existing tree untouched.
+        refreshingRef.current = false;
+        refreshPathRef.current = null;
+        setStatus('ready');
+        setToast('Refresh cancelled.');
+        return;
+      }
       scanIdRef.current = null;
       setStatus('empty');
       setToast('Scan cancelled.');
@@ -199,6 +250,15 @@ export default function App(): JSX.Element {
           <span className="root-label" title={root.path}>
             {root.path}
           </span>
+        )}
+        {status === 'ready' && (
+          <button
+            className="icon-btn"
+            title="Refresh the selected folder"
+            onClick={() => void refreshFolder(focusId)}
+          >
+            ⟳
+          </button>
         )}
         <div className="spacer" />
         {status === 'ready' && root && (
@@ -334,7 +394,13 @@ export default function App(): JSX.Element {
               <Breadcrumb scanId={scanId} focusId={focusId} onNavigate={setFocusId} />
               <div className="explorer-body">
                 <div className="explorer-tree">
-                  <FolderTree scanId={scanId} root={root} focusId={focusId} onSelect={setFocusId} />
+                  <FolderTree
+                    scanId={scanId}
+                    root={root}
+                    focusId={focusId}
+                    onSelect={setFocusId}
+                    onRefresh={(id) => void refreshFolder(id)}
+                  />
                 </div>
                 <div className="explorer-right">
                   <div className="viz-bar">

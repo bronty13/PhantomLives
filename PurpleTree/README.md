@@ -11,6 +11,10 @@ utility — a TreeSize / WinDirStat / DaisyDisk equivalent. Built with Electron
   down, breadcrumb to navigate back.
 - **Sortable detail list** of the current folder (size / name / files / date),
   with select-and-delete.
+- **In-place folder refresh** — a ⟳ top-bar button (re-scans the selected
+  folder) and a tree right-click menu (refresh any folder). Re-crawls just that
+  subtree and splices it back into the live scan, preserving the surrounding
+  tree and selection.
 - **Duplicate finder** — size → partial-hash → full-hash (xxhash), with
   select-and-trash.
 - **Large & old files** — filtered view (≥ N MB and/or not opened in N months).

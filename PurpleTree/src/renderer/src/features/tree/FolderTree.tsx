@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import type { NodeRow } from '../../../../shared/types';
 import { formatBytes } from '../common/format';
 
@@ -12,9 +12,10 @@ interface NodeProps {
   depth: number;
   focusId: number;
   onSelect: (id: number) => void;
+  onContext: (e: MouseEvent, node: NodeRow) => void;
 }
 
-function TreeNode({ scanId, node, depth, focusId, onSelect }: NodeProps): JSX.Element {
+function TreeNode({ scanId, node, depth, focusId, onSelect, onContext }: NodeProps): JSX.Element {
   const [open, setOpen] = useState(depth === 0);
   const [kids, setKids] = useState<NodeRow[] | null>(null);
 
@@ -36,6 +37,7 @@ function TreeNode({ scanId, node, depth, focusId, onSelect }: NodeProps): JSX.El
         className={`tree-row${node.id === focusId ? ' selected' : ''}`}
         style={{ paddingLeft: depth * 14 + 4 }}
         onClick={() => onSelect(node.id)}
+        onContextMenu={(e) => onContext(e, node)}
       >
         <button
           className={`tree-twisty${expandable ? '' : ' hidden'}`}
@@ -62,6 +64,7 @@ function TreeNode({ scanId, node, depth, focusId, onSelect }: NodeProps): JSX.El
               depth={depth + 1}
               focusId={focusId}
               onSelect={onSelect}
+              onContext={onContext}
             />
           ))}
         </div>
@@ -75,12 +78,78 @@ interface Props {
   root: NodeRow;
   focusId: number;
   onSelect: (id: number) => void;
+  onRefresh: (id: number) => void;
 }
 
-export default function FolderTree({ scanId, root, focusId, onSelect }: Props): JSX.Element {
+interface CtxMenu {
+  x: number;
+  y: number;
+  id: number;
+  path: string;
+}
+
+export default function FolderTree({ scanId, root, focusId, onSelect, onRefresh }: Props): JSX.Element {
+  const [menu, setMenu] = useState<CtxMenu | null>(null);
+
+  // Dismiss the context menu on any click, scroll, or Escape.
+  useEffect(() => {
+    if (!menu) return;
+    const close = (): void => setMenu(null);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMenu(null);
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+
+  const openContext = (e: MouseEvent, node: NodeRow): void => {
+    e.preventDefault();
+    if (!node.isDir) return; // only folders can be refreshed
+    setMenu({ x: e.clientX, y: e.clientY, id: node.id, path: node.path });
+  };
+
   return (
     <div className="folder-tree">
-      <TreeNode scanId={scanId} node={root} depth={0} focusId={focusId} onSelect={onSelect} />
+      <TreeNode
+        scanId={scanId}
+        node={root}
+        depth={0}
+        focusId={focusId}
+        onSelect={onSelect}
+        onContext={openContext}
+      />
+      {menu && (
+        <div
+          className="ctx-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="ctx-item"
+            onClick={() => {
+              onRefresh(menu.id);
+              setMenu(null);
+            }}
+          >
+            ⟳ Refresh this folder
+          </button>
+          <button
+            className="ctx-item"
+            onClick={() => {
+              void api.reveal(menu.path);
+              setMenu(null);
+            }}
+          >
+            📍 Reveal in Finder
+          </button>
+        </div>
+      )}
     </div>
   );
 }
