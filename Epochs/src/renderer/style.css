@@ -149,6 +149,12 @@ input[type=range] { flex: 1; }
 .vpt td.an { text-align: left; white-space: nowrap; padding-left: 12px; font-weight: 500; }
 .vpt td.an span:last-child { vertical-align: middle; }
 .vpt .sw { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 9px; vertical-align: middle; box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
+.vpt caption { caption-side: top; padding: 2px 4px 10px; color: var(--muted); font-size: 11px; letter-spacing: 0.3px; }
+.vpt th.you, .vpt td.you { border-left: 2px solid var(--accent); font-weight: 700; white-space: nowrap; }
+.vpt td.you { color: #6b7280; }
+.vpt td.you.presence { color: #9aa7b4; }
+.vpt td.you.dominance { color: #7fd1a0; }
+.vpt td.you.control { color: var(--accent); }
 .vpt tbody tr:hover td { background: rgba(179, 136, 255, 0.07); }
 .vpt tbody tr:hover td.cur { background: #332650; }
 

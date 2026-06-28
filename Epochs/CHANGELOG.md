@@ -2,6 +2,28 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.24.0] — 2026-06-27
+
+Scoring depth — see *where* your points come from.
+
+### Added
+- **Score breakdown.** Scoring now produces a transparent `ScoreBreakdown` — every
+  Area you have presence in (with its tier: presence ×1 / dominance ×2 / control ×3
+  and the VP it yields), your structure tally (capitals ×2, cities ×1, monuments ×1),
+  and the total. `scoreEmpireTurn` is now derived from it, so the number and its
+  explanation can never disagree.
+- **Score log line.** Each score reads e.g. `P1 scored +9 → 9 — Middle East ×3 (6),
+  India (2), +1 structures` instead of an opaque `+9`.
+- **Live "You" column in the VP Table.** When you're playing, the value table shows
+  your current tier + VP in every Area this epoch (★ control / ◆ dominance / ●
+  presence) — an at-a-glance read of where you're winning and where to push.
+
+### Notes
+- Audited the rest of SPEC §9: monuments/cities/capitals persist across epochs and
+  keep scoring (armies fade by epoch-colour); forts correctly score 0; the Marauder
+  raze-bonus is authentic and was kept (not removed — it's the capital-less empire's
+  compensation, SPEC §5).
+
 ## [0.23.0] — 2026-06-27
 
 The four naval events — now that seas work.

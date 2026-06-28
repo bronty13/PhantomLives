@@ -6,6 +6,7 @@ import {
   armiesByPlayerInArea,
   scoreAllAreasForPlayer,
   scoreArea,
+  scoreBreakdown,
   scoreEmpireTurn,
   scoreStructuresForPlayer,
 } from '../src/shared/scoring'
@@ -122,5 +123,18 @@ describe('scoreAllAreasForPlayer + scoreEmpireTurn (integration)', () => {
     // Middle East: P1 has 3, P2 has 1 → dominance ×2 of base 2 = 4; N.Africa presence 1
     const areaVp = scoreAllAreasForPlayer(contested, fixtureAreaOf, areas, 1, 'P1')
     expect(areaVp).toBe(5)
+  })
+
+  it('scoreBreakdown decomposes the score into per-Area tiers + structures', () => {
+    const bd = scoreBreakdown(board, fixtureAreaOf, areas, 1, 'P1')
+    expect(bd.total).toBe(scoreEmpireTurn(board, fixtureAreaOf, areas, 1, 'P1')) // 9
+    expect(bd.areaVp + bd.structureVp).toBe(bd.total)
+    expect(bd.structureVp).toBe(2)
+    expect(bd.structures).toEqual({ capital: 1, city: 0, monument: 0 })
+    // best-scoring Area first: Middle East control (6), then North Africa presence (1)
+    expect(bd.areas.map((a) => [a.area, a.tier, a.vp])).toEqual([
+      ['middle_east', 'control', 6],
+      ['north_africa', 'presence', 1],
+    ])
   })
 })

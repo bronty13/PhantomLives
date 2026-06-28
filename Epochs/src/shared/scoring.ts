@@ -99,6 +99,70 @@ export function scoreStructuresForPlayer(
   return vp
 }
 
+/** One Area's contribution to a player's score this epoch. */
+export interface AreaScore {
+  area: AreaId
+  tier: Tier
+  base: number
+  own: number
+  vp: number
+}
+
+/** A transparent breakdown of an empire-turn score (SPEC §9) — every Area the player
+ *  has presence in (with its tier), the structure tally, and the total. The Marauder
+ *  raze-bonus is scored separately at raze time, so it isn't part of this. */
+export interface ScoreBreakdown {
+  areas: AreaScore[] // only Areas where the player has ≥1 army, best-scoring first
+  structures: { capital: number; city: number; monument: number }
+  structureVp: number
+  areaVp: number
+  total: number
+}
+
+export function scoreBreakdown(
+  pieces: BoardPiece[],
+  areaOf: (land: LandId) => AreaId | null,
+  areas: AreaId[],
+  epoch: EpochId,
+  player: PlayerId,
+): ScoreBreakdown {
+  const areaScores: AreaScore[] = []
+  let areaVp = 0
+  for (const area of areas) {
+    const counts = armiesByPlayerInArea(pieces, areaOf, area)
+    const own = counts.get(player) ?? 0
+    if (own === 0) continue
+    const rivals: number[] = []
+    for (const [id, c] of counts) if (id !== player) rivals.push(c)
+    const tier = areaTier(own, rivals)
+    const base = areaValue(area, epoch)
+    const vp = base * TIER_MULTIPLIER[tier]
+    areaScores.push({ area, tier, base, own, vp })
+    areaVp += vp
+  }
+  areaScores.sort((a, b) => b.vp - a.vp)
+
+  let capital = 0
+  let city = 0
+  let monument = 0
+  for (const p of pieces) {
+    if (p.owner !== player) continue
+    if (p.kind === 'capital') capital++
+    else if (p.kind === 'city') city++
+    else if (p.kind === 'monument') monument++
+  }
+  const structureVp =
+    capital * STRUCTURE_VP.capital + city * STRUCTURE_VP.city + monument * STRUCTURE_VP.monument
+
+  return {
+    areas: areaScores,
+    structures: { capital, city, monument },
+    structureVp,
+    areaVp,
+    total: areaVp + structureVp,
+  }
+}
+
 /** Full empire-turn score: area control + structures (SPEC §9). */
 export function scoreEmpireTurn(
   pieces: BoardPiece[],
@@ -107,8 +171,5 @@ export function scoreEmpireTurn(
   epoch: EpochId,
   player: PlayerId,
 ): number {
-  return (
-    scoreAllAreasForPlayer(pieces, areaOf, areas, epoch, player) +
-    scoreStructuresForPlayer(pieces, player)
-  )
+  return scoreBreakdown(pieces, areaOf, areas, epoch, player).total
 }

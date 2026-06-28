@@ -17,6 +17,8 @@ import { nearestLand, type MapRect } from '../shared/mapProjection'
 import { areaColor, playerColor } from '../shared/palette'
 import { areaControl, placementInfo } from '../shared/boardInsight'
 import { AREA_NAMES, AREA_VALUES } from '../shared/data/areaValues'
+import { scoreBreakdown } from '../shared/scoring'
+import type { AreaId } from '../shared/types'
 import { describeEffect } from '../shared/data/events'
 import type { EmpireCard, EpochId, EventCard, Land, PlayerId } from '../shared/types'
 import { drawMap, type PlaceableEntry } from './map'
@@ -323,7 +325,13 @@ class GameUI {
         break
       }
       case 'score': {
-        this.pushLog(`${this.nameOf(ev.player)} scored +${ev.gained} → ${ev.total}`)
+        const bd = ev.breakdown
+        const bits = bd.areas
+          .filter((a) => a.vp > 0)
+          .slice(0, 4)
+          .map((a) => `${AREA_NAMES[a.area] ?? a.area}${a.tier === 'control' ? ' ×3' : a.tier === 'dominance' ? ' ×2' : ''} (${a.vp})`)
+        if (bd.structureVp > 0) bits.push(`+${bd.structureVp} structures`)
+        this.pushLog(`${this.nameOf(ev.player)} scored +${ev.gained} → ${ev.total}${bits.length ? ' — ' + bits.join(', ') : ''}`)
         if (ev.gained > 0) {
           let sx = 0
           let sy = 0
@@ -736,8 +744,20 @@ class GameUI {
     const el = this.root.querySelector('#vptable')
     if (!el) return
     const epochs = [1, 2, 3, 4, 5, 6, 7] as const
-    let html = '<table class="vpt"><thead><tr><th></th>'
+    // The human's live tier + VP in each Area this epoch — scoring "depth" at a glance.
+    const mine = new Map<string, { tier: string; vp: number }>()
+    const humanId = this.opts.humanSeat ? `P${this.opts.humanSeat}` : null
+    if (humanId && this.game) {
+      const areaOf = (l: string): AreaId | null => (LAND_BY_ID.get(l)?.area as AreaId) ?? null
+      const bd = scoreBreakdown(this.game.state.pieces, areaOf, Object.keys(AREA_VALUES) as AreaId[], this.currentEpoch, humanId)
+      for (const a of bd.areas) mine.set(a.area, { tier: a.tier, vp: a.vp })
+    }
+    const glyph = (t?: string): string => (t === 'control' ? '★' : t === 'dominance' ? '◆' : t === 'presence' ? '●' : '')
+    let html = '<table class="vpt">'
+    if (humanId) html += '<caption>★ control ×3 · ◆ dominance ×2 · ● presence ×1 — your standing this epoch</caption>'
+    html += '<thead><tr><th></th>'
     for (const e of epochs) html += `<th class="${e === this.currentEpoch ? 'cur' : ''}">${ROMAN[e]}</th>`
+    if (humanId) html += '<th class="you">You</th>'
     html += '</tr></thead><tbody>'
     for (const id of Object.keys(AREA_VALUES)) {
       const vals = AREA_VALUES[id]
@@ -745,6 +765,10 @@ class GameUI {
       for (const e of epochs) {
         const v = vals[e - 1]
         html += `<td class="${e === this.currentEpoch ? 'cur' : ''}${v ? '' : ' z'}">${v || '·'}</td>`
+      }
+      if (humanId) {
+        const m = mine.get(id)
+        html += `<td class="you ${m?.tier ?? ''}">${m ? `${glyph(m.tier)} ${m.vp}` : '·'}</td>`
       }
       html += '</tr>'
     }

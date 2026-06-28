@@ -17,7 +17,7 @@ import type { Bot, BotView, DraftView, EventChoice, EventView, FrontierKind, Fro
 import { oddsForContext, resolveAssault, type CombatContext, type CombatResult } from './combat'
 import { makeEventDeck } from './data/events'
 import { MINOR_EMPIRES } from './data/minorEmpires'
-import { scoreEmpireTurn } from './scoring'
+import { type ScoreBreakdown, scoreBreakdown } from './scoring'
 import { makeRng, type Rng } from './rng'
 import { EPOCHS, effectNeedsTarget } from './types'
 import type {
@@ -128,7 +128,7 @@ export type GameEvent =
       remaining: number
     }
   | { type: 'placement'; player: PlayerId; land: LandId; kind: FrontierKind; outcome?: CombatResult }
-  | { type: 'score'; player: PlayerId; gained: number; total: number }
+  | { type: 'score'; player: PlayerId; gained: number; total: number; breakdown: ScoreBreakdown }
   | { type: 'turnEnd'; player: PlayerId }
   | { type: 'epochEnd'; epoch: EpochId }
   | { type: 'gameEnd'; result: GameResult }
@@ -322,16 +322,17 @@ export class Game {
       }
     }
     this.buildMonuments(pid)
-    const gained = scoreEmpireTurn(
+    const breakdown = scoreBreakdown(
       this.state.pieces,
       this.board.areaOfFn,
       this.board.areaIds,
       this.state.epoch,
       pid,
     )
+    const gained = breakdown.total
     this.player(pid).vp += gained
     this.log(`E${this.state.epoch} ${pid} (${empire.name}) +${gained} → ${this.player(pid).vp}`)
-    yield { type: 'score', player: pid, gained, total: this.player(pid).vp }
+    yield { type: 'score', player: pid, gained, total: this.player(pid).vp, breakdown }
     yield { type: 'turnEnd', player: pid }
   }
 
