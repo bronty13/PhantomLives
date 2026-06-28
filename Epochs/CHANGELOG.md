@@ -2,6 +2,19 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.47.0] — 2026-06-28
+
+UX — placement panel off the map + a live turn narration.
+
+### Fixed / Added
+- **The placement panel no longer covers the board.** It moved from a floating overlay
+  at the bottom-centre of the map into the **sidebar**, so the whole map (and its
+  placeable-land highlights) stays visible while you choose Army / Fleet / Fort and click.
+- **"Now playing" turn summary.** A sidebar box narrates the active player's turn as it
+  happens — events played, units placed, lands **taken** (green) vs **repelled** (red),
+  fleets/forts/monuments, and the score — so AI turns are legible at a glance instead of
+  squinting at the log. Accumulated from the turn's game-events; resets each turn.
+
 ## [0.46.0] — 2026-06-28
 
 Roster corrected against the authoritative empire cards (card-audit workflow).

@@ -81,6 +81,12 @@ class GameUI {
   private pendingDraft: Extract<GameEvent, { type: 'awaitDraft' }> | null = null
   private placeMode: 'army' | 'fleet' | 'fort' = 'army' // which unit the human is placing
   private pendingMonument: Extract<GameEvent, { type: 'awaitMonument' }> | null = null
+  // A live narration of the active player's turn (so AI turns are legible at a glance).
+  private turnSummary: {
+    actor: string; color: string; empire: string; events: string[]; armies: number
+    took: string[]; repelled: string[]; fleets: number; naval: string[]
+    forts: number; monuments: number; kingdoms: number; minor: string; score: string
+  } | null = null
   private pendingIntro: { player: PlayerId; empire: string; epoch: EpochId } | null = null
   private pendingRoll: { rolls: { player: PlayerId; roll: number }[]; first: PlayerId } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
@@ -235,6 +241,8 @@ class GameUI {
     this.pendingRoll = null
     this.pendingDraft = null
     this.pendingMonument = null
+    this.turnSummary = null
+    ;(this.root.querySelector('#turn-summary') as HTMLElement | null)?.classList.add('hidden')
     this.eventSel = {}
     this.hideEventPanel()
     ;(this.root.querySelector('#epoch-intro') as HTMLElement | null)?.classList.add('hidden')
@@ -290,6 +298,7 @@ class GameUI {
 
   private handle(ev: GameEvent): void {
     const now = performance.now()
+    this.updateTurnSummary(ev)
     switch (ev.type) {
       case 'startRoll':
         this.pendingRoll = { rolls: ev.rolls, first: ev.first }
@@ -825,6 +834,66 @@ class GameUI {
     ;(this.root.querySelector('#place-panel') as HTMLElement | null)?.classList.add('hidden')
   }
 
+  /** Accumulate the active player's actions this turn into a legible narration. */
+  private updateTurnSummary(ev: GameEvent): void {
+    const s = this.turnSummary
+    switch (ev.type) {
+      case 'turnStart': {
+        const i = this.playerOrder.indexOf(ev.player)
+        this.turnSummary = {
+          actor: this.nameOf(ev.player), color: playerColor(i), empire: ev.empire,
+          events: [], armies: 0, took: [], repelled: [], fleets: 0, naval: [],
+          forts: 0, monuments: 0, kingdoms: 0, minor: '', score: '',
+        }
+        break
+      }
+      case 'minorEmpire': if (s) s.minor = ev.empire; break
+      case 'eventsPlayed': if (s && ev.played.length) s.events.push(...ev.played); break
+      case 'placement':
+        if (!s) break
+        if (ev.outcome === 'attacker') s.took.push(this.landName(ev.land))
+        else if (ev.outcome === 'defender') s.repelled.push(this.landName(ev.land))
+        else s.armies++
+        break
+      case 'fleet': if (s) s.fleets++; break
+      case 'navalCombat': if (s) s.naval.push(`${ev.won ? 'won' : 'lost'} ${this.seaName(ev.sea)}`); break
+      case 'fortBuilt': if (s) s.forts++; break
+      case 'monumentBuilt': if (s) s.monuments++; break
+      case 'foundKingdom': if (s) s.kingdoms++; break
+      case 'score': if (s) s.score = `+${ev.gained} → ${ev.total}`; break
+      default: return // nothing to add → no re-render
+    }
+    this.renderTurnSummary()
+  }
+
+  private renderTurnSummary(): void {
+    const el = this.root.querySelector('#turn-summary') as HTMLElement | null
+    if (!el) return
+    const s = this.turnSummary
+    if (!s) {
+      el.classList.add('hidden')
+      return
+    }
+    const lines: string[] = []
+    const plural = (n: number, one: string, many = one + 's'): string => `${n} ${n === 1 ? one : many}`
+    if (s.minor) lines.push(`<div class="ts-line">➕ summoned ${esc(s.minor)}</div>`)
+    if (s.events.length) lines.push(`<div class="ts-line">🎴 ${esc(s.events.join(', '))}</div>`)
+    if (s.fleets) lines.push(`<div class="ts-line">⛵ launched ${plural(s.fleets, 'fleet')}</div>`)
+    if (s.naval.length) lines.push(`<div class="ts-line">⚓ ${esc(s.naval.join(', '))}</div>`)
+    if (s.armies) lines.push(`<div class="ts-line">⚔ placed ${plural(s.armies, 'army', 'armies')}</div>`)
+    if (s.took.length) lines.push(`<div class="ts-line ts-win">🏴 took ${esc(s.took.join(', '))}</div>`)
+    if (s.repelled.length) lines.push(`<div class="ts-line ts-loss">✖ repelled at ${esc(s.repelled.join(', '))}</div>`)
+    if (s.forts) lines.push(`<div class="ts-line">🛡 built ${plural(s.forts, 'fort')}</div>`)
+    if (s.kingdoms) lines.push(`<div class="ts-line">👑 founded a kingdom</div>`)
+    if (s.monuments) lines.push(`<div class="ts-line">🏛 raised ${plural(s.monuments, 'monument')}</div>`)
+    if (s.score) lines.push(`<div class="ts-line ts-score">📊 scored ${esc(s.score)}</div>`)
+    el.innerHTML =
+      `<div class="ts-head"><span class="dot" style="background:${s.color}"></span>` +
+      `<b>${esc(s.actor)}</b> — ${esc(s.empire)}</div>` +
+      (lines.join('') || `<div class="ts-line muted">taking their turn…</div>`)
+    el.classList.remove('hidden')
+  }
+
   /** A monument the human earned: pick which land of the forced tier gets it. */
   private showMonumentPanel(): void {
     const ev = this.pendingMonument
@@ -1169,7 +1238,7 @@ const TEMPLATE = `
     <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button><button id="mute-btn" class="help-btn">🔊</button></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="place-panel" class="place-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
       <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Rulebook</h3><div class="rb-tabs"><button id="rb-tab-rules" class="rb-tab on">Rules</button><button id="rb-tab-classic" class="rb-tab">Classic scans</button></div><button id="rb-close">Close</button></div><div class="rb-body"><div class="rb-rules"><nav class="rb-nav"></nav><div class="rb-content"></div></div><div class="rb-pages hidden"></div></div></div></div>
       <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">
@@ -1202,6 +1271,8 @@ const TEMPLATE = `
     </div>
     <aside class="sidebar">
       <div class="status" id="status"></div>
+      <div id="place-panel" class="place-panel hidden"></div>
+      <div id="turn-summary" class="turn-summary hidden"></div>
       <section>
         <h2>Standings</h2>
         <div id="scoreboard"></div>
