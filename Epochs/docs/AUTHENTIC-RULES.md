@@ -309,7 +309,16 @@ inferred — verify.
 - **Fortresses:** built for **2 Strength** by flipping a fort; **+1 to defender AND
   wins all ties**; Engineering / Empires-Fortify can upgrade a fort to a fortress.
 
-## 14. What Epochs must change (prioritized)
+## 14. What Epochs must change (prioritized) — ✅ RESOLVED (v0.27–v0.36)
+
+> **Status (2026-06-28): essentially all done.** The items below were carried out
+> across the fidelity pass (CHANGELOG v0.27–v0.36; see `../HANDOFF.md`). P0 (coins +
+> pre-eminence removed; events as 9 colour-piles; combat ties/dice); P1 (48-empire
+> roster, Epoch I = 6 + neutral Sumeria seed, Keep/Pass draft, Strength-rank draw
+> order, land-based scoring tiers — dominance ≥3 / control = all lands); P2
+> (bought forts, monuments by resource pairs, **Sea = +1 VP / Oceans = 0**, optional
+> ocean combat, the 8 Barren Lands); P3 (VP staircase + the 7 Minor Empires). **Two
+> deliberate deviations + minor TODOs are noted inline below.**
 
 - **P0 Remove non-edition mechanics:** coins (Lesser=coins deck, `spendCoinsOnForts`),
   pre-eminence (markers, pool, end-of-epoch draw, reveal scoring), the "no two
@@ -328,12 +337,18 @@ inferred — verify.
   **strength-rank draw order**.
 - **P1 Fix area scoring** to count **Lands** (Presence ≥1 / Domination ≥3 + most /
   Control = all Lands), once per Area per Epoch, same-colour empires combine.
-- **P2** Forts/fortresses, Monuments-by-resource-pairs (A/B/C priority), the **port
-  rule**, **Sea = 1 VP**, Oceans = 0, optional ocean combat, **Caspian no-fleets**, the
-  **8 Barren Lands**, reconcile water bodies (3 Oceans + 10 Seas; remove invented ones).
-- **P2** Remove the invented Marauder "+1 VP per razed structure" bonus.
-- **P3** Re-verify the full VP staircase (done — read directly) and the 7 Minor-Empire
-  cards; add optional-rule toggles.
+- ✅ **P2** Forts (now a **bought unit** + Kingdoms event), Monuments-by-resource-pairs
+  (Capital→City→Resource priority), **Sea = +1 VP / Oceans = 0**, optional ocean combat,
+  the **8 Barren Lands**. ⚠ *Minor TODO:* the explicit **port rule** and **Caspian
+  no-fleets** are not special-cased; and we ship **29 water bodies (5 oceans + 24
+  seas)** rather than the doc's 3-oceans-+-10-seas target — functional, but a coarser
+  reconciliation than planned.
+- ❌ **P2 Marauder bonus — NOT removed (kept by design).** On re-reading the rulebook
+  this "+1 VP per razed structure" is **authentic**, not invented (it's the capital-less
+  empire's stated compensation, Sample-Game p.1). It's implemented in
+  `game.ts::onOccupy` and the AI values it. Revisit only as a house-rule toggle.
+- ✅ **P3** VP staircase (read directly) and the 7 Minor-Empire cards done. *Remaining
+  optional:* rule toggles.
 
 ## 15. Open re-verification
 
