@@ -74,15 +74,12 @@ export const RULEBOOK: RuleSection[] = [
         <li><b>Minor Empire</b> — if you played one, it takes a full mini-turn first.</li>
         <li><b>Set up</b> — place your capital (if any) and first army on your homeland,
         clearing whatever army or fort stood there.</li>
-        <li><b>Buy units</b> — spend your empire's remaining <b>strength</b> on any mix
-        of <b>armies, fleets, and forts</b> (each costs one). Building a fleet is
-        <b>optional</b> — do it only when you want to cross a sea this turn. (You can buy
-        only as many fleets as there are seas to place them in.)</li>
-        <li><b>Place &amp; expand</b> — you place each unit yourself: <b>fleets</b> first
-        (pick a sea to sail into — and fight an enemy fleet there if one holds it), then
-        your <b>armies</b> one at a time into reachable lands, then your <b>forts</b> on
-        any land you hold.</li>
-        <li><b>Build</b> — raise Monuments from your resource lands.</li>
+        <li><b>Expand</b> — place your <b>strength</b> in units, <b>one at a time</b>, each
+        as your choice of: an <b>army</b> into a reachable land (fighting where needed), a
+        <b>fleet</b> into a sea you can reach (battling an enemy fleet there), or a
+        <b>fort</b> on a land you already hold. Fleets are optional — build one only to
+        cross a sea. Use the <b>Army / Fleet / Fort</b> toggle, then click your target.</li>
+        <li><b>Build</b> — Monuments rise automatically from your resource lands.</li>
         <li><b>Score</b> — total your Areas and structures, and add it to your VP.</li>
       </ol>`,
   },

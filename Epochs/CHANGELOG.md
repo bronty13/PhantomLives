@@ -2,6 +2,24 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.41.0] — 2026-06-28
+
+Faithful per-unit placement (directions §4) — the buy phase is gone.
+
+### Changed
+- **No more upfront "buy" step.** You now place your Strength in units **one at a time
+  during expansion**, each a live choice — matching §4 exactly. A docked
+  **`[⚔ Army] [⚓ Fleet] [🛡 Fort]`** toggle picks what the next unit is; then you click a
+  land (army/fort) or a sea (fleet). Modes with no legal target are disabled; **Done
+  placing** ends your turn early.
+- Engine: one unified expansion loop; `awaitPlacement` now carries `frontier` + `seas` +
+  `fortLands`; `PlayInput` gains a `PlaceUnit` (`{unit:'fleet'|'fort', id}`) — a bare
+  `LandId` still means "army here". Removed `awaitBuy` / `chooseBuy` and the separate
+  fleet/fort placement passes. Bot still builds one fleet then armies (ladder steady at
+  69.6 / 72.5 / 87.5%).
+- Monuments remain automatic (fixed Capital→City→Resource priority — no choice to make).
+  Rulebook turn section rewritten. 120 tests pass.
+
 ## [0.40.1] — 2026-06-28
 
 Rules fix — building a fleet is optional (not required).

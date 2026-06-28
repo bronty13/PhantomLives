@@ -221,35 +221,8 @@ describe('Keep/Pass draft', () => {
   })
 })
 
-describe('interactive buy (fleets + forts)', () => {
-  it('a human who buys a fort gets one placed on a held land', () => {
-    for (let seed = 1; seed <= 10; seed++) {
-      const players: PlayerConfig[] = [{ id: 'P1', name: 'P1', isHuman: true }, ...hardBots(['P2', 'P3'])]
-      const game = worldGame(seed, players)
-      const it = game.play()
-      let step = it.next()
-      let boughtAFort = false
-      while (!step.done) {
-        const ev = step.value
-        if (ev.type === 'awaitBuy') {
-          if (ev.maxForts > 0) boughtAFort = true
-          step = it.next({ fleets: ev.maxFleets > 0 ? 1 : 0, forts: Math.min(1, ev.maxForts) })
-        } else if (ev.type === 'awaitDraft') {
-          step = it.next({ keep: true })
-        } else if (ev.type === 'awaitPlacement') {
-          step = it.next(ev.frontier[0]?.land)
-        } else {
-          step = it.next()
-        }
-      }
-      if (boughtAFort && game.state.pieces.some((p) => p.kind === 'fort' && p.owner === 'P1')) return
-    }
-    throw new Error('buying a fort never put one on the board')
-  })
-})
-
-describe('interactive fleet + fort placement', () => {
-  it('places the human-chosen fleet sea and fort land exactly where picked', () => {
+describe('per-unit placement (army / fleet / fort in one expansion loop)', () => {
+  it('lets a human place a fleet into a chosen sea and a fort on a chosen land', () => {
     let sawFleet = false
     let sawFort = false
     for (let seed = 1; seed <= 12 && !(sawFleet && sawFort); seed++) {
@@ -259,27 +232,30 @@ describe('interactive fleet + fort placement', () => {
       let step = it.next()
       while (!step.done) {
         const ev = step.value
-        if (ev.type === 'awaitBuy') {
-          step = it.next({ fleets: ev.maxFleets > 0 ? 1 : 0, forts: Math.min(1, ev.maxForts) })
-        } else if (ev.type === 'awaitFleetPlacement') {
-          const sea = ev.seas[ev.seas.length - 1].sea // pick a SPECIFIC option, not the default
-          step = it.next(sea)
-          if (game.state.fleets.some((f) => f.owner === 'P1' && f.sea === sea)) sawFleet = true
-        } else if (ev.type === 'awaitFortPlacement') {
-          const land = ev.lands[ev.lands.length - 1]
-          step = it.next(land)
-          if (game.state.pieces.some((p) => p.kind === 'fort' && p.owner === 'P1' && p.land === land)) sawFort = true
-        } else if (ev.type === 'awaitDraft') {
+        if (ev.type === 'awaitDraft') {
           step = it.next({ keep: true })
         } else if (ev.type === 'awaitPlacement') {
-          step = it.next(ev.frontier[0]?.land)
+          // Exercise a fleet first, then a fort, otherwise an army.
+          if (!sawFleet && ev.seas.length > 0) {
+            const sea = ev.seas[ev.seas.length - 1].sea
+            step = it.next({ unit: 'fleet', id: sea })
+            if (game.state.fleets.some((f) => f.owner === 'P1' && f.sea === sea)) sawFleet = true
+          } else if (!sawFort && ev.fortLands.length > 0) {
+            const land = ev.fortLands[ev.fortLands.length - 1]
+            step = it.next({ unit: 'fort', id: land })
+            if (game.state.pieces.some((p) => p.kind === 'fort' && p.owner === 'P1' && p.land === land)) sawFort = true
+          } else if (ev.frontier.length > 0) {
+            step = it.next(ev.frontier[0].land)
+          } else {
+            step = it.next(undefined) // nothing left to place
+          }
         } else {
           step = it.next()
         }
       }
     }
-    expect(sawFleet, 'a chosen sea received the bought fleet').toBe(true)
-    expect(sawFort, 'a chosen land received the bought fort').toBe(true)
+    expect(sawFleet, 'a chosen sea received a placed fleet').toBe(true)
+    expect(sawFort, 'a chosen land received a placed fort').toBe(true)
   })
 })
 

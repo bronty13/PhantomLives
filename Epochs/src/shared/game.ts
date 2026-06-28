@@ -92,11 +92,12 @@ const emptyTurnEffects = (): TurnEffects => ({
 /** Keep the drawn empire, or pass (gift) it to an empire-less player. */
 export type DraftChoice = { keep: true } | { passTo: PlayerId }
 
-/** How to spend Strength: this many fleets + forts; the rest become armies. */
-export type BuyChoice = { fleets: number; forts: number }
+/** Placing one Strength unit as a fleet (into a sea) or a fort (on a held land);
+ *  a plain `LandId` string still means "place an army on this land". */
+export type PlaceUnit = { unit: 'fleet' | 'fort'; id: string }
 
 /** What the driver may pass back into `play()` when resuming a yield. */
-export type PlayInput = LandId | EventChoice | DraftChoice | BuyChoice | undefined
+export type PlayInput = LandId | PlaceUnit | EventChoice | DraftChoice | undefined
 
 export interface GameState {
   epoch: EpochId
@@ -134,15 +135,6 @@ export type GameEvent =
       empire: { name: string; strength: number; startLand: LandId; hasCapital: boolean; navigates: boolean }
       canPassTo: PlayerId[]
     }
-  | {
-      type: 'awaitBuy'
-      player: PlayerId
-      empire: string
-      /** Strength available to spend on fleets/forts (the rest become armies). */
-      budget: number
-      maxFleets: number
-      maxForts: number
-    }
   | { type: 'eventsPlayed'; player: PlayerId; played: string[] }
   | { type: 'disaster'; player: PlayerId; card: string; land: LandId; effect: string }
   | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
@@ -151,15 +143,16 @@ export type GameEvent =
   | { type: 'fleet'; player: PlayerId; sea: SeaId }
   | { type: 'navalCombat'; player: PlayerId; sea: SeaId; won: boolean }
   | { type: 'fortBuilt'; player: PlayerId; land: LandId }
-  /** Human seat: pick a sea to deploy a bought fleet into (`battle` = an enemy fleet is there). */
-  | { type: 'awaitFleetPlacement'; player: PlayerId; empire: string; seas: { sea: SeaId; battle: boolean }[] }
-  /** Human seat: pick one of your lands to build a bought fort on. */
-  | { type: 'awaitFortPlacement'; player: PlayerId; empire: string; lands: LandId[] }
   | {
+      /** Human seat: place one Strength unit. Resume with a `LandId` (army), or a
+       *  `PlaceUnit` for a fleet (a sea from `seas`) / fort (a land from `fortLands`),
+       *  or `undefined` to stop placing. */
       type: 'awaitPlacement'
       player: PlayerId
       empire: string
-      frontier: FrontierOption[]
+      frontier: FrontierOption[] // lands an army may be placed/march into
+      seas: { sea: SeaId; battle: boolean }[] // seas a fleet may sail into
+      fortLands: LandId[] // held lands a fort may be built on
       remaining: number
     }
   | { type: 'placement'; player: PlayerId; land: LandId; kind: FrontierKind; outcome?: CombatResult }
@@ -400,29 +393,44 @@ export class Game {
     const isHuman = this.humanSeats.has(pid)
     if (!bot && !isHuman) return
 
-    // ── Buy units: split Strength across fleets / forts / armies ──────────────
-    // (The setup army already cost 1.) The human chooses; the bot keeps it simple
-    // (one fleet if it navigates — the rule's minimum — and the rest armies).
+    // ── Expansion: place each Strength unit one at a time (§4) ────────────────
+    // No upfront "buy" — every unit is a live choice of an army (into a land), a fleet
+    // (into a sea), or a fort (on a land you hold). The setup army already cost 1.
     const navigates = 'all' in empire.navigation || empire.navigation.seas.length > 0
-    const budget = Math.max(0, empire.strength - 1)
-    const buy = yield* this.chooseBuy(pid, empire, navigates, budget)
-    // Fleets first (they open sea-reach for the army placement that follows)…
-    for (let i = 0; i < buy.fleets; i++) yield* this.placeOneFleet(pid, empire)
-    let remaining = budget - buy.fleets - buy.forts + effects.bonusArmies
+    const hasFort = (l: LandId): boolean =>
+      this.state.pieces.some((p) => p.land === l && p.kind === 'fort')
+    let remaining = Math.max(0, empire.strength - 1) + effects.bonusArmies
+    let botFleets = 0
     while (remaining > 0) {
       const frontier = this.computeFrontier(pid, empire, effects.navigateAll)
-      if (frontier.length === 0) break
-      let targetId: LandId | undefined
+      const seas = navigates || effects.navigateAll ? this.placeableSeas(pid, empire) : []
+      const fortLands = [...this.currentLands(pid)].filter((l) => !hasFort(l))
+      if (frontier.length === 0 && seas.length === 0 && fortLands.length === 0) break
+
       if (isHuman) {
-        targetId = (yield {
+        const input = yield {
           type: 'awaitPlacement',
           player: pid,
           empire: empire.name,
           frontier,
+          seas,
+          fortLands,
           remaining,
-        }) as LandId | undefined
-        if (targetId == null) break // human chose to stop placing
+        }
+        if (input == null) break // human chose to stop placing
+        const placed = yield* this.resolveHumanPlacement(pid, empire, input, frontier, effects)
+        if (!placed) break // invalid choice — stop placing
       } else {
+        // Bot: build one fleet first if it can navigate (a strategy), then armies; no forts.
+        if (navigates && botFleets < 1 && seas.length > 0) {
+          const navSeas = 'all' in empire.navigation ? this.board.seas : empire.navigation.seas
+          const sea = this.bestFleetSea(navSeas, this.currentLands(pid)) ?? seas[0].sea
+          yield* this.deployFleetAt(pid, sea)
+          botFleets++
+          remaining--
+          continue
+        }
+        if (frontier.length === 0) break
         // Rebuild the view each iteration: state.pieces is reassigned on every
         // mutation, so a captured snapshot would go stale.
         const view: BotView = {
@@ -436,17 +444,49 @@ export class Game {
           seed: this.seed,
           armiesRemaining: remaining,
         }
-        targetId = bot!.chooseExpansion(view, frontier) ?? undefined
+        const targetId = bot!.chooseExpansion(view, frontier) ?? undefined
         if (targetId == null) break
+        const opt = frontier.find((f) => f.land === targetId)
+        if (!opt) break
+        const outcome = this.resolveExpansion(pid, empire, opt, effects)
+        yield { type: 'placement', player: pid, land: opt.land, kind: opt.kind, outcome }
       }
-      const opt = frontier.find((f) => f.land === targetId)
-      if (!opt) break // invalid choice — stop placing
-      const outcome = this.resolveExpansion(pid, empire, opt, effects)
-      yield { type: 'placement', player: pid, land: opt.land, kind: opt.kind, outcome }
       remaining--
     }
-    // …forts last, so they can fortify any land the empire ended up holding.
-    for (let i = 0; i < buy.forts; i++) yield* this.placeOneFort(pid, empire)
+  }
+
+  /** Resolve one human placement: a `LandId` → army; `{unit:'fleet',id}` → fleet into
+   *  that sea; `{unit:'fort',id}` → fort on that held land. Returns false if invalid. */
+  private *resolveHumanPlacement(
+    pid: PlayerId,
+    empire: EmpireCard,
+    input: PlayInput,
+    frontier: FrontierOption[],
+    effects: TurnEffects,
+  ): Generator<GameEvent, boolean, PlayInput> {
+    if (typeof input === 'string') {
+      const opt = frontier.find((f) => f.land === input)
+      if (!opt) return false
+      const outcome = this.resolveExpansion(pid, empire, opt, effects)
+      yield { type: 'placement', player: pid, land: opt.land, kind: opt.kind, outcome }
+      return true
+    }
+    if (input && typeof input === 'object' && 'unit' in input) {
+      if (input.unit === 'fleet') {
+        const before = this.state.fleets.length
+        yield* this.deployFleetAt(pid, input.id)
+        return this.state.fleets.length !== before || true // a battle may not net a fleet; still a spent unit
+      }
+      if (input.unit === 'fort') {
+        const held = this.currentLands(pid).has(input.id)
+        const fortless = !this.state.pieces.some((p) => p.land === input.id && p.kind === 'fort')
+        if (!held || !fortless) return false
+        this.addPiece({ land: input.id, kind: 'fort', owner: pid, epochColor: this.state.epoch })
+        yield { type: 'fortBuilt', player: pid, land: input.id }
+        return true
+      }
+    }
+    return false
   }
 
   // ── event phase ───────────────────────────────────────────────────────────
@@ -1008,39 +1048,6 @@ export class Game {
     return seas.size
   }
 
-  /** Decide the fleet/fort split. The human chooses via `awaitBuy`; the bot builds one
-   *  fleet if it navigates (the rule's minimum) and no forts. */
-  private *chooseBuy(
-    pid: PlayerId,
-    empire: EmpireCard,
-    navigates: boolean,
-    budget: number,
-  ): Generator<GameEvent, BuyChoice, PlayInput> {
-    if (budget <= 0) return { fleets: 0, forts: 0 }
-    // Cap fleets at what can actually be PLACED — navigable seas reachable from the
-    // empire's homeland — so you can never buy a fleet with nowhere to go.
-    const maxFleets = navigates ? Math.min(budget, this.placeableSeas(pid, empire).length) : 0
-    const maxForts = budget
-    if (this.humanSeats.has(pid)) {
-      const choice = (yield {
-        type: 'awaitBuy',
-        player: pid,
-        empire: empire.name,
-        budget,
-        maxFleets,
-        maxForts,
-      }) as BuyChoice | undefined
-      // Building a fleet is OPTIONAL (the rules never force one — navigation is an
-      // ability, used only if you choose to cross a sea this turn).
-      const fleets = Math.max(0, Math.min(maxFleets, choice?.fleets ?? 0))
-      const forts = Math.max(0, Math.min(maxForts - fleets, choice?.forts ?? 0))
-      return { fleets, forts: Math.min(forts, budget - fleets) }
-    }
-    // The bot builds one fleet when it can navigate — a strategic choice, not a rule.
-    return { fleets: navigates && maxFleets >= 1 ? 1 : 0, forts: 0 }
-  }
-
-  /** Deploy one fleet into the empire's best navigable sea (with naval combat). */
   /** Seas a fleet may be deployed into now: navigable, bordering a land the empire
    *  holds, and either with room (<2 fleets) or holding an enemy fleet to battle. */
   private placeableSeas(pid: PlayerId, empire: EmpireCard): { sea: SeaId; battle: boolean }[] {
@@ -1055,27 +1062,6 @@ export class Game {
       else if (total < 2) out.push({ sea, battle: false })
     }
     return out
-  }
-
-  /** Deploy one bought fleet — the human picks the sea (battling an enemy fleet there
-   *  if present); the bot takes the highest-value reachable sea. */
-  private *placeOneFleet(pid: PlayerId, empire: EmpireCard): Generator<GameEvent, void, PlayInput> {
-    const opts = this.placeableSeas(pid, empire)
-    if (opts.length === 0) return // nowhere to place — the fleet is forfeit
-    let sea: SeaId
-    if (this.humanSeats.has(pid)) {
-      const pick = (yield {
-        type: 'awaitFleetPlacement',
-        player: pid,
-        empire: empire.name,
-        seas: opts,
-      }) as SeaId | undefined
-      sea = pick && opts.some((o) => o.sea === pick) ? pick : opts[0].sea
-    } else {
-      const navSeas = 'all' in empire.navigation ? this.board.seas : empire.navigation.seas
-      sea = this.bestFleetSea(navSeas, this.currentLands(pid)) ?? opts[0].sea
-    }
-    yield* this.deployFleetAt(pid, sea)
   }
 
   /** Resolve a fleet arriving in a specific sea — naval combat if an enemy holds it. */
@@ -1099,41 +1085,6 @@ export class Game {
       this.state.fleets.push({ sea, owner: pid, epochColor: this.state.epoch }) // ≤2 per body
       yield { type: 'fleet', player: pid, sea }
     }
-  }
-
-  /** Place one bought fort — the human picks the land; the bot takes its seat, else
-   *  its highest-value holding. */
-  private *placeOneFort(pid: PlayerId, empire: EmpireCard): Generator<GameEvent, void, PlayInput> {
-    const hasFort = (l: LandId): boolean =>
-      this.state.pieces.some((p) => p.land === l && p.kind === 'fort')
-    const lands = [...this.currentLands(pid)].filter((l) => !hasFort(l))
-    if (lands.length === 0) return // nowhere to fortify — forfeit
-    let land: LandId
-    if (this.humanSeats.has(pid)) {
-      const pick = (yield {
-        type: 'awaitFortPlacement',
-        player: pid,
-        empire: empire.name,
-        lands,
-      }) as LandId | undefined
-      land = pick && lands.includes(pick) ? pick : this.bestFortLand(pid, lands)
-    } else {
-      land = this.bestFortLand(pid, lands)
-    }
-    this.addPiece({ land, kind: 'fort', owner: pid, epochColor: this.state.epoch })
-    yield { type: 'fortBuilt', player: pid, land }
-  }
-
-  private bestFortLand(pid: PlayerId, lands: LandId[]): LandId {
-    const capLand = this.state.pieces.find((p) => p.owner === pid && p.kind === 'capital')?.land
-    if (capLand && lands.includes(capLand)) return capLand
-    return lands
-      .slice()
-      .sort(
-        (a, b) =>
-          areaValue(this.board.land(b)?.area ?? '', this.state.epoch) -
-          areaValue(this.board.land(a)?.area ?? '', this.state.epoch),
-      )[0]
   }
 
   /** Lands `pid` holds with a current-epoch army. */
