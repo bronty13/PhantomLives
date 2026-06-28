@@ -5,6 +5,9 @@
   "dbPath": "~/Library/Application Support/PeekServer/peekserver.sqlite",
   "thumbCache": "~/Library/Caches/PeekServer/thumbs",
   "thumbSize": 512,
+  "_auth": "Set authUser + authPasswordSHA256 (sha256 of the password) to require Basic Auth. Both empty = open. Generate a hash: python3 -c 'import hashlib,getpass;print(hashlib.sha256(getpass.getpass().encode()).hexdigest())'",
+  "authUser": "",
+  "authPasswordSHA256": "",
   "roots": [
     { "path": "/Volumes/REDONE/PurpleAttic/NEW PHOTOS TO REVIEW", "label": "My Photos — To Review", "kind": "photos" },
     { "path": "/Volumes/REDONE/Rachel Archive/Photos/NEW PHOTOS TO REVIEW", "label": "Rachel — Photos", "kind": "photos" },

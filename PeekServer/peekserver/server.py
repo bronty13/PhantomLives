@@ -17,7 +17,7 @@ import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import __version__, db, importer, media, migrate, scan
+from . import __version__, auth, db, importer, media, migrate, scan
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 _CFG = {}
@@ -74,8 +74,22 @@ class Handler(BaseHTTPRequestHandler):
     def _notfound(self):
         self._json({"error": "not found"}, 404)
 
+    def _authorized(self) -> bool:
+        if auth.check_basic(self.headers.get("Authorization", ""),
+                            _CFG.get("authUser", ""), _CFG.get("authPasswordSHA256", "")):
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="PeekServer"')
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", "13")
+        self.end_headers()
+        self.wfile.write(b"Auth required")
+        return False
+
     # ---- GET ----
     def do_GET(self):
+        if not self._authorized():
+            return
         u = urllib.parse.urlparse(self.path)
         path, q = u.path, urllib.parse.parse_qs(u.query)
         if path == "/" or path == "/index.html":
@@ -103,6 +117,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- POST ----
     def do_POST(self):
+        if not self._authorized():
+            return
         u = urllib.parse.urlparse(self.path)
         if u.path == "/api/scan":
             background_scan()

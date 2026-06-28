@@ -14,6 +14,9 @@ DEFAULTS = {
     "thumbCache": "~/Library/Caches/PeekServer/thumbs",
     "thumbSize": 512,                        # max thumbnail dimension (px)
     "roots": [],                             # [{path,label,kind}]
+    # --- Basic Auth (both empty = open). Password stored only as a SHA-256 hash. ---
+    "authUser": "",
+    "authPasswordSHA256": "",
     # --- Phase 2: keep→Photos import worker (runs on the host with the Photos library) ---
     "osxphotosBin": "osxphotos",             # PATH or absolute; delegates the PhotoKit import
     "exiftoolBin": "exiftool",               # used to embed XMP:Rating for favorites

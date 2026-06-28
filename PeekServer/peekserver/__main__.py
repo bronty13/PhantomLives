@@ -47,22 +47,36 @@ def main():
 
 
 def warm(cfg):
-    """Scan every root, then generate every thumbnail — the one-time cold-cache warm-up."""
+    """Scan every root, then generate every thumbnail concurrently — the one-time cold-cache pass.
+    Parallel workers overlap the slow per-file reads (sips/qlmanage are subprocesses), which is the
+    whole point on a slow drive: serial generation is what makes first-browse 'unusably slow'."""
+    from concurrent.futures import ThreadPoolExecutor
     print("scanning:", scan.scan_all(cfg["roots"]))
-    done = 0
+    items = []
     for root in cfg["roots"]:
         off = 0
         while True:
-            _, items = db.list_media(root=root["path"], decision="all", offset=off, limit=500)
-            if not items:
+            _, batch = db.list_media(root=root["path"], decision="all", offset=off, limit=500)
+            if not batch:
                 break
-            for it in items:
-                dst = media.thumb_path(cfg["thumbCache"], it["id"])
-                if media.ensure_thumb(it["file_path"], dst, it["file_type"], cfg["thumbSize"]):
-                    done += 1
-            off += len(items)
-            print(f"  {root['label']}: {off} processed ({done} thumbs cached)")
-    print(f"✅ warm complete: {done} thumbnails cached")
+            items += batch
+            off += len(batch)
+    total = len(items)
+    print(f"warming {total} thumbnails ({cfg.get('warmWorkers', 6)} workers)…")
+    cache, size = cfg["thumbCache"], cfg["thumbSize"]
+
+    def one(it):
+        return media.ensure_thumb(it["file_path"], media.thumb_path(cache, it["id"]),
+                                  it["file_type"], size)
+
+    done = 0
+    with ThreadPoolExecutor(max_workers=cfg.get("warmWorkers", 6)) as ex:
+        for i, ok in enumerate(ex.map(one, items), 1):
+            if ok:
+                done += 1
+            if i % 250 == 0 or i == total:
+                print(f"  {i}/{total} processed ({done} cached)")
+    print(f"✅ warm complete: {done}/{total} thumbnails cached")
 
 
 if __name__ == "__main__":

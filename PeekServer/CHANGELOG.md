@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — Auth + fast browsing
+
+- **HTTP Basic Auth** (`auth.py`) gates every request, so the service isn't open on the LAN. The
+  password is stored only as a **SHA-256 hash** in the local (gitignored) config; comparison is
+  constant-time. Both `authUser`/`authPasswordSHA256` empty = open (back-compat). Set them in
+  `config.json` (a hash one-liner is in `config.example.json`).
+- **Parallel thumbnail warm** — `--warm` now generates thumbnails with a worker pool
+  (`warmWorkers`, default 6) instead of serially, overlapping the slow per-file reads. This is the
+  fix for "unusably slow" first-browse on a slow/remote drive: warm once, then browsing reads tiny
+  cached thumbs instead of the big originals. (10 auth/warm-related additions; 19 tests total.)
+
 ## 0.2.0 — Phase 2 (keep→Photos import + migration + warm-up)
 
 - **Import worker** (`importer.py`) — the keep→Photos pipeline, delegating to proven tools on the

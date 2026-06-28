@@ -35,6 +35,14 @@ cp config.example.json config.json   # then edit "roots"
 | `thumbCache` | where generated thumbnails are cached |
 | `thumbSize` | max thumbnail dimension (px) |
 | `roots` | `[{path,label,kind}]` — the review folders to serve |
+| `authUser` / `authPasswordSHA256` | Basic Auth (both empty = open). Store only the SHA-256 hash. |
+
+**Auth.** The service gates every request with HTTP Basic Auth when `authUser` + `authPasswordSHA256`
+are set (the plaintext password is never stored). Generate a hash:
+`python3 -c 'import hashlib,getpass;print(hashlib.sha256(getpass.getpass().encode()).hexdigest())'`
+
+**Warm the cache first** (especially on slow/remote storage): `./run.sh --warm` pre-generates all
+thumbnails with a worker pool, so the first browse reads tiny cached thumbs, not the big originals.
 
 ## Review UI
 
