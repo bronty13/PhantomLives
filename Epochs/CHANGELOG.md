@@ -2,6 +2,22 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.23.0] — 2026-06-27
+
+The four naval events — now that seas work.
+
+### Added
+- **Ship Building** (Greater boon) — launch a fleet: sail **every sea this turn**,
+  reaching any coast in the world (sets `navigateAll`, which `computeFrontier` honours).
+- **Naval Supremacy** (Greater boon) — rule the waves: sail every sea *and* your
+  sea-borne landings ignore terrain/amphibious defence (navigateAll + ignoreTerrain).
+- **Pirates** (Lesser disaster) — corsairs raid a **coastal** enemy land: pillage its
+  structure and its army rolls 2 dice (a 1 routs it).
+- **Storm at Sea** (Lesser disaster) — a storm batters a **coastal** enemy land: its
+  army rolls 4 dice; a 1 wrecks it.
+  Both coastal disasters reuse the disaster machinery with a sea-border target filter;
+  the bot favours naval boons by role and aims the raids at coastal structures.
+
 ## [0.22.0] — 2026-06-27
 
 Seas are live — the dormant naval system is activated.

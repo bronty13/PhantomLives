@@ -35,12 +35,14 @@ describe('event deck', () => {
     const greaterKinds = [
       'leader', 'weaponry', 'fanaticism', 'reallocation', 'minor_empire',
       'siegecraft', 'surprise_attack', 'extra_armies', 'found_kingdom',
+      'ship_building', 'naval_supremacy',
     ]
     for (const c of deck.greater) {
       expect(greaterKinds).toContain(c.effect.kind)
     }
+    const lesserKinds = ['disaster_structure', 'plague', 'pestilence', 'famine', 'barbarians', 'pirates', 'storm_at_sea']
     for (const c of deck.lesser) {
-      expect(['disaster_structure', 'plague', 'pestilence', 'famine', 'barbarians']).toContain(c.effect.kind)
+      expect(lesserKinds).toContain(c.effect.kind)
     }
   })
 })
@@ -274,6 +276,20 @@ describe('Kingdoms + Barbarians', () => {
       if (struck > 0) return
     }
   })
+
+  it('Pirates / Storm at Sea only strike coastal enemy lands', () => {
+    const byId = new Map(WORLD_MAP_DATA.lands.map((l) => [l.id, l]))
+    let struck = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const e of drive(worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4'])))) {
+        if (e.type === 'disaster' && (e.effect === 'pirates' || e.effect === 'storm_at_sea')) {
+          struck++
+          expect((byId.get(e.land)?.seaBorders.length ?? 0) > 0, `${e.land} is not coastal`).toBe(true)
+        }
+      }
+      if (struck > 0) return
+    }
+  })
 })
 
 describe('opening roll — first player + empire variety', () => {
@@ -314,6 +330,10 @@ describe('describeEffect (event card text for the panel)', () => {
     { kind: 'famine' },
     { kind: 'found_kingdom' },
     { kind: 'barbarians' },
+    { kind: 'ship_building' },
+    { kind: 'naval_supremacy' },
+    { kind: 'pirates' },
+    { kind: 'storm_at_sea' },
   ]
   it('gives non-empty text + a valid timing for every effect kind', () => {
     for (const e of kinds) {

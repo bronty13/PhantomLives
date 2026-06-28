@@ -167,7 +167,8 @@ export class HeuristicBot implements Bot {
             c.effect.kind === 'weaponry' ||
             c.effect.kind === 'fanaticism' ||
             c.effect.kind === 'siegecraft' ||
-            c.effect.kind === 'surprise_attack',
+            c.effect.kind === 'surprise_attack' ||
+            c.effect.kind === 'naval_supremacy',
         )
         choice.greater = (combat ?? hand.greater[0]).id
       } else if (s <= 4 && view.epoch >= 2) {
@@ -176,7 +177,8 @@ export class HeuristicBot implements Bot {
             c.effect.kind === 'reallocation' ||
             c.effect.kind === 'minor_empire' ||
             c.effect.kind === 'extra_armies' ||
-            c.effect.kind === 'found_kingdom',
+            c.effect.kind === 'found_kingdom' ||
+            c.effect.kind === 'ship_building',
         )
         if (armies) choice.greater = armies.id
       }
@@ -236,6 +238,13 @@ export class HeuristicBot implements Bot {
         // only enemy lands bordering a barren one are legal; value the sack (structures + rout)
         if (!view.board.neighbors(p.land).some((nb) => view.board.land(nb)?.barren)) continue
         const struct = view.pieces.filter((q) => q.land === p.land && q.kind !== 'army').length
+        score = 1 + struct * 2 + areaValue(land.area ?? '', view.epoch) * 0.5
+      } else if (effect.kind === 'pirates' || effect.kind === 'storm_at_sea') {
+        if (p.kind !== 'army' || land.seaBorders.length === 0) continue // coastal only
+        const struct =
+          effect.kind === 'pirates'
+            ? view.pieces.filter((q) => q.land === p.land && q.kind !== 'army').length
+            : 0
         score = 1 + struct * 2 + areaValue(land.area ?? '', view.epoch) * 0.5
       }
       if (score > bestScore) {

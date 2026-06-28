@@ -59,6 +59,7 @@ export interface TurnEffects {
   ignoreTerrain: boolean // Surprise Attack → void difficult-terrain/amphibious defence
   minorEmpire: EmpireCard | null // Minor Empire → a second empire-turn before your main one
   foundKingdom: boolean // Kingdoms → raise a fortified city on one of your lands after expanding
+  navigateAll: boolean // Ship Building / Naval Supremacy → sail every sea this turn
 }
 
 const emptyTurnEffects = (): TurnEffects => ({
@@ -70,6 +71,7 @@ const emptyTurnEffects = (): TurnEffects => ({
   ignoreTerrain: false,
   minorEmpire: null,
   foundKingdom: false,
+  navigateAll: false,
 })
 
 /** Keep the drawn empire, or pass (gift) it to an empire-less player. */
@@ -343,7 +345,7 @@ export class Game {
     if (!bot && !isHuman) return
     let remaining = empire.strength - 1 + effects.bonusArmies // first army placed at setup
     while (remaining > 0) {
-      const frontier = this.computeFrontier(pid, empire)
+      const frontier = this.computeFrontier(pid, empire, effects.navigateAll)
       if (frontier.length === 0) break
       let targetId: LandId | undefined
       if (isHuman) {
@@ -495,6 +497,17 @@ export class Game {
         return [] // structure razed
       })
       this.rollPlague(land, 3)
+    } else if (effect.kind === 'pirates') {
+      // Coastal raid: pillage the structure AND the army rolls 2 dice (a 1 routs it).
+      this.state.pieces = this.state.pieces.flatMap((p) => {
+        if (p.land !== land || p.kind === 'army') return [p]
+        if (p.kind === 'capital') return [{ ...p, kind: 'city' as PieceKind }]
+        return [] // structure razed
+      })
+      this.rollPlague(land, 2)
+    } else if (effect.kind === 'storm_at_sea') {
+      // A storm wrecks the coastal force: its army rolls 4 dice (a 1 sinks it).
+      this.rollPlague(land, 4)
     }
     void pid
   }
@@ -525,6 +538,9 @@ export class Game {
         // Erupts from the wastes: only enemy lands that border a barren Land.
         if (p.kind !== 'army') continue
         if (this.board.neighbors(p.land).some((nb) => this.board.land(nb)?.barren)) out.add(p.land)
+      } else if (effect.kind === 'pirates' || effect.kind === 'storm_at_sea') {
+        // From the sea: only coastal enemy lands (those bordering a sea).
+        if (p.kind === 'army' && land.seaBorders.length > 0) out.add(p.land)
       }
     }
     return [...out]
@@ -558,6 +574,13 @@ export class Game {
         break
       case 'found_kingdom':
         effects.foundKingdom = true // a fortified city rises after the expansion phase
+        break
+      case 'ship_building':
+        effects.navigateAll = true // sail every sea this turn
+        break
+      case 'naval_supremacy':
+        effects.navigateAll = true // sail every sea …
+        effects.ignoreTerrain = true // … and your sea-borne landings ignore terrain/amphibious
         break
     }
   }
@@ -673,7 +696,7 @@ export class Game {
   }
 
   // ── expansion mechanics ───────────────────────────────────────────────────
-  private computeFrontier(pid: PlayerId, empire: EmpireCard): FrontierOption[] {
+  private computeFrontier(pid: PlayerId, empire: EmpireCard, navigateAll = false): FrontierOption[] {
     const epoch = this.state.epoch
     const occupied = new Set<LandId>()
     for (const p of this.state.pieces) {
@@ -690,7 +713,7 @@ export class Game {
       }
     }
     const nav = empire.navigation
-    const navSeas = 'all' in nav ? this.board.seas : nav.seas
+    const navSeas = navigateAll || 'all' in nav ? this.board.seas : nav.seas
     for (const sea of navSeas) {
       for (const l of this.board.landsOnSea(sea)) {
         if (!this.board.isBarren(l)) reachable.add(l)

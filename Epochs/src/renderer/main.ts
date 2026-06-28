@@ -273,7 +273,11 @@ class GameUI {
               ? 'famine'
               : ev.effect === 'barbarians'
                 ? 'sacked'
-                : 'razed'
+                : ev.effect === 'pirates'
+                  ? 'raided'
+                  : ev.effect === 'storm_at_sea'
+                    ? 'wrecked'
+                    : 'razed'
         this.pushLog(`☄ ${ev.card} struck ${this.landName(ev.land)} — ${what}`)
         this.fx.push({ kind: 'clash', land: ev.land, color: '#e8801c', start: now, dur: 560, text: ev.card })
         this.startLoop()

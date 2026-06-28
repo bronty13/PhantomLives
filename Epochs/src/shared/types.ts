@@ -76,12 +76,16 @@ export type EventEffect =
   | { kind: 'surprise_attack' } // void difficult-terrain / amphibious defence this turn
   | { kind: 'extra_armies'; armies: number; needsCapital: boolean } // Pop Explosion / Civil Service
   | { kind: 'found_kingdom' } // Kingdoms: raise a fortified city (city + fort) on one of your lands
+  | { kind: 'ship_building' } // navigate ALL seas this turn (reach any coast)
+  | { kind: 'naval_supremacy' } // navigate all seas AND your sea-borne landings ignore terrain
   // ── targeted disasters (played BEFORE turn, aimed at an enemy Land) ──
   | { kind: 'disaster_structure'; terrain: DisasterTerrain } // Flood/Volcano/Fire: wreck structures
   | { kind: 'plague' } // the target Land's army rolls 4 dice; a '1' eliminates it
   | { kind: 'pestilence' } // target army rolls 3 dice; each adjacent enemy army rolls 2 — '1' kills
   | { kind: 'famine' } // every enemy army in the target's Area rolls 2 dice; a '1' kills
   | { kind: 'barbarians' } // a raid from the wastes: sack an enemy Land bordering a barren one
+  | { kind: 'pirates' } // raid a COASTAL enemy Land: raze its structure + its army rolls 2 dice
+  | { kind: 'storm_at_sea' } // a COASTAL enemy Land's army rolls 4 dice; a '1' wrecks it
 
 /** True for effects that must be aimed at a target Land. */
 export function effectNeedsTarget(e: EventEffect): boolean {
@@ -90,7 +94,9 @@ export function effectNeedsTarget(e: EventEffect): boolean {
     e.kind === 'plague' ||
     e.kind === 'pestilence' ||
     e.kind === 'famine' ||
-    e.kind === 'barbarians'
+    e.kind === 'barbarians' ||
+    e.kind === 'pirates' ||
+    e.kind === 'storm_at_sea'
   )
 }
 
