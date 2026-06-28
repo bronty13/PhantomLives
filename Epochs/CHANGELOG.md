@@ -2,6 +2,25 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.40.0] — 2026-06-28
+
+Fix — interactive fleet & fort placement (the deferred half of the buy phase).
+
+### Fixed
+- **You now place bought fleets and forts yourself.** Previously the buy was
+  interactive but placement was auto, so you couldn't choose seas/lands, couldn't
+  attack an enemy fleet's sea, and could over-buy fleets that silently went nowhere.
+  Now: a **Place a Fleet** panel lists the reachable seas (⚔-marked where an enemy
+  fleet waits — pick it to battle for the sea), and a **Build a Fort** panel lists your
+  holdings. Fleets are placed before expansion (opening sea-reach), forts after.
+- **Buy cap corrected** — you can only buy as many fleets as there are seas to place
+  them in (`maxFleets` = reachable navigable seas), so no purchase is ever wasted.
+
+### Added
+- Engine: `awaitFleetPlacement` / `awaitFortPlacement` suspension points + `fortBuilt`
+  event; `placeableSeas` / `placeOneFleet` / `deployFleetAt` / `placeOneFort`. Bots
+  auto-pick (best sea / seat). New test asserts the chosen sea & land receive the unit.
+
 ## [0.39.0] — 2026-06-28
 
 Polish, slice C — naval animation. **Polish pass complete.**

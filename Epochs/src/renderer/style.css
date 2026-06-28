@@ -260,6 +260,18 @@ input[type=range] { flex: 1; }
 .buy-note { margin: 8px 26px 0; font-size: 12px; color: #7a6238; text-align: center; }
 .buy-box .evt-actions { padding: 10px 26px 0; justify-content: center; }
 
+/* fleet/fort placement — a parchment list of choices */
+.pick-box { width: min(420px, 92%); padding: 0 0 18px; }
+.pick-hint { margin: 14px 24px 8px; font-size: 12px; color: #6a4f24; text-align: center; }
+.pick-list { display: flex; flex-direction: column; gap: 7px; margin: 0 24px; max-height: 320px; overflow-y: auto; }
+.pick-btn { display: block; width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid #c8a23a;
+  background: #efe3c2; color: #2c2012; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer;
+  transition: background 0.12s, transform 0.06s; }
+.pick-btn:hover { background: #f3e6b8; }
+.pick-btn:active { transform: translateY(1px); }
+.pick-btn.battle { border-color: #b8472f; color: #7a2414; background: #f0d9c8; }
+.pick-btn.battle:hover { background: #f4ccb4; }
+
 /* event panel — parchment event cards (reuses the intro-box parchment base) */
 .evt-box-wide { width: min(640px, 94%); padding: 0 0 18px; }
 .evt-box-wide .evt-body { padding: 16px 22px 4px; max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }

@@ -81,6 +81,8 @@ class GameUI {
   private pendingDraft: Extract<GameEvent, { type: 'awaitDraft' }> | null = null
   private pendingBuy: Extract<GameEvent, { type: 'awaitBuy' }> | null = null
   private buySel = { fleets: 0, forts: 0 }
+  private pendingFleet: Extract<GameEvent, { type: 'awaitFleetPlacement' }> | null = null
+  private pendingFort: Extract<GameEvent, { type: 'awaitFortPlacement' }> | null = null
   private pendingIntro: { player: PlayerId; empire: string; epoch: EpochId } | null = null
   private pendingRoll: { rolls: { player: PlayerId; roll: number }[]; first: PlayerId } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
@@ -235,12 +237,16 @@ class GameUI {
     this.pendingRoll = null
     this.pendingDraft = null
     this.pendingBuy = null
+    this.pendingFleet = null
+    this.pendingFort = null
     this.eventSel = {}
     this.hideEventPanel()
     ;(this.root.querySelector('#epoch-intro') as HTMLElement | null)?.classList.add('hidden')
     ;(this.root.querySelector('#start-roll') as HTMLElement | null)?.classList.add('hidden')
     ;(this.root.querySelector('#draft-panel') as HTMLElement | null)?.classList.add('hidden')
     ;(this.root.querySelector('#buy-panel') as HTMLElement | null)?.classList.add('hidden')
+    ;(this.root.querySelector('#fleet-panel') as HTMLElement | null)?.classList.add('hidden')
+    ;(this.root.querySelector('#fort-panel') as HTMLElement | null)?.classList.add('hidden')
     if (this.rafId != null) cancelAnimationFrame(this.rafId)
     this.rafId = null
     this.fx = []
@@ -278,6 +284,8 @@ class GameUI {
       !this.pendingRoll &&
       !this.pendingDraft &&
       !this.pendingBuy &&
+      !this.pendingFleet &&
+      !this.pendingFort &&
       !this.over &&
       !this.helpOpen
     ) {
@@ -320,6 +328,16 @@ class GameUI {
         this.buySel = { fleets: ev.maxFleets > 0 ? 1 : 0, forts: 0 } // default to the required fleet
         this.status = `${ev.empire}: buy your units (${ev.budget} Strength to spend)`
         this.showBuyPanel()
+        break
+      case 'awaitFleetPlacement':
+        this.pendingFleet = ev
+        this.status = `${ev.empire}: place a fleet — pick a sea`
+        this.showFleetPanel()
+        break
+      case 'awaitFortPlacement':
+        this.pendingFort = ev
+        this.status = `${ev.empire}: build a fort — pick a land`
+        this.showFortPanel()
         break
       case 'awaitEvents':
         this.pendingEvents = ev
@@ -390,6 +408,12 @@ class GameUI {
         break
       }
       case 'setup':
+        this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
+        Sound.place()
+        this.startLoop()
+        break
+      case 'fortBuilt':
+        this.pushLog(`🛡 ${this.nameOf(ev.player)} built a fort at ${this.landName(ev.land)}`)
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
         Sound.place()
         this.startLoop()
@@ -564,7 +588,7 @@ class GameUI {
    * timer, so this is a no-op there.)
    */
   private drainToInteractive(): void {
-    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll && !this.pendingDraft && !this.pendingBuy) {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll && !this.pendingDraft && !this.pendingBuy && !this.pendingFleet && !this.pendingFort) {
       this.advance()
     }
   }
@@ -759,6 +783,60 @@ class GameUI {
       .join(' + ')
     if (bits) this.pushLog(`You built ${bits}`)
     this.advance(choice)
+  }
+
+  private showFleetPanel(): void {
+    const ev = this.pendingFleet
+    if (!ev) return
+    const el = this.root.querySelector('#fleet-panel') as HTMLElement
+    const btns = ev.seas
+      .map(
+        (s) =>
+          `<button class="pick-btn${s.battle ? ' battle' : ''}" data-sea="${esc(s.sea)}">` +
+          `${s.battle ? '⚔ ' : '⚓ '}${esc(this.seaName(s.sea))}${s.battle ? ' — battle' : ''}</button>`,
+      )
+      .join('')
+    el.innerHTML =
+      `<div class="evt-box intro-box pick-box"><div class="intro-epoch">Place a Fleet<span>${esc(ev.empire)}</span></div>` +
+      `<p class="pick-hint">Choose a sea to sail into. ⚔ marks an enemy fleet you'll battle for it.</p>` +
+      `<div class="pick-list">${btns}</div></div>`
+    el.classList.remove('hidden')
+    el.querySelectorAll<HTMLButtonElement>('.pick-btn').forEach((b) => {
+      b.onclick = (): void => this.resolveFleet(b.dataset.sea ?? '')
+    })
+  }
+
+  private resolveFleet(sea: string): void {
+    if (!this.pendingFleet) return
+    this.pendingFleet = null
+    ;(this.root.querySelector('#fleet-panel') as HTMLElement).classList.add('hidden')
+    this.advance(sea)
+    this.drainToInteractive()
+  }
+
+  private showFortPanel(): void {
+    const ev = this.pendingFort
+    if (!ev) return
+    const el = this.root.querySelector('#fort-panel') as HTMLElement
+    const btns = ev.lands
+      .map((l) => `<button class="pick-btn" data-land="${esc(l)}">🛡 ${esc(this.landName(l))}</button>`)
+      .join('')
+    el.innerHTML =
+      `<div class="evt-box intro-box pick-box"><div class="intro-epoch">Build a Fort<span>${esc(ev.empire)}</span></div>` +
+      `<p class="pick-hint">Choose one of your lands to fortify (+1 to its defence).</p>` +
+      `<div class="pick-list">${btns}</div></div>`
+    el.classList.remove('hidden')
+    el.querySelectorAll<HTMLButtonElement>('.pick-btn').forEach((b) => {
+      b.onclick = (): void => this.resolveFort(b.dataset.land ?? '')
+    })
+  }
+
+  private resolveFort(land: string): void {
+    if (!this.pendingFort) return
+    this.pendingFort = null
+    ;(this.root.querySelector('#fort-panel') as HTMLElement).classList.add('hidden')
+    this.advance(land)
+    this.drainToInteractive()
   }
 
   private toCanvas(e: MouseEvent): { px: number; py: number } {
@@ -1094,7 +1172,7 @@ const TEMPLATE = `
     <div class="hud"><span id="epoch">Epoch I / VII</span><button id="vpt-btn" class="help-btn">📊 Scoring Table</button><button id="help-btn" class="help-btn">? How to play</button><button id="rulebook-btn" class="help-btn">📖 Rulebook</button><button id="mute-btn" class="help-btn">🔊</button></div>
   </header>
   <div class="body">
-    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="buy-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
+    <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="buy-panel" class="event-panel hidden"></div><div id="fleet-panel" class="event-panel hidden"></div><div id="fort-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
       <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Rulebook</h3><div class="rb-tabs"><button id="rb-tab-rules" class="rb-tab on">Rules</button><button id="rb-tab-classic" class="rb-tab">Classic scans</button></div><button id="rb-close">Close</button></div><div class="rb-body"><div class="rb-rules"><nav class="rb-nav"></nav><div class="rb-content"></div></div><div class="rb-pages hidden"></div></div></div></div>
       <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">

@@ -76,9 +76,12 @@ export const RULEBOOK: RuleSection[] = [
         clearing whatever army or fort stood there.</li>
         <li><b>Buy units</b> — spend your empire's remaining <b>strength</b> on any mix
         of <b>armies, fleets, and forts</b> (each costs one). A navigation empire must
-        build at least one fleet.</li>
-        <li><b>Expand</b> — place your armies one at a time into reachable lands,
-        fighting where needed; fleets sail into seas, forts fortify your lands.</li>
+        build at least one fleet. (You can only buy as many fleets as there are seas to
+        place them in.)</li>
+        <li><b>Place &amp; expand</b> — you place each unit yourself: <b>fleets</b> first
+        (pick a sea to sail into — and fight an enemy fleet there if one holds it), then
+        your <b>armies</b> one at a time into reachable lands, then your <b>forts</b> on
+        any land you hold.</li>
         <li><b>Build</b> — raise Monuments from your resource lands.</li>
         <li><b>Score</b> — total your Areas and structures, and add it to your VP.</li>
       </ol>`,

@@ -248,6 +248,41 @@ describe('interactive buy (fleets + forts)', () => {
   })
 })
 
+describe('interactive fleet + fort placement', () => {
+  it('places the human-chosen fleet sea and fort land exactly where picked', () => {
+    let sawFleet = false
+    let sawFort = false
+    for (let seed = 1; seed <= 12 && !(sawFleet && sawFort); seed++) {
+      const players: PlayerConfig[] = [{ id: 'P1', name: 'P1', isHuman: true }, ...hardBots(['P2', 'P3'])]
+      const game = worldGame(seed, players)
+      const it = game.play()
+      let step = it.next()
+      while (!step.done) {
+        const ev = step.value
+        if (ev.type === 'awaitBuy') {
+          step = it.next({ fleets: ev.maxFleets > 0 ? 1 : 0, forts: Math.min(1, ev.maxForts) })
+        } else if (ev.type === 'awaitFleetPlacement') {
+          const sea = ev.seas[ev.seas.length - 1].sea // pick a SPECIFIC option, not the default
+          step = it.next(sea)
+          if (game.state.fleets.some((f) => f.owner === 'P1' && f.sea === sea)) sawFleet = true
+        } else if (ev.type === 'awaitFortPlacement') {
+          const land = ev.lands[ev.lands.length - 1]
+          step = it.next(land)
+          if (game.state.pieces.some((p) => p.kind === 'fort' && p.owner === 'P1' && p.land === land)) sawFort = true
+        } else if (ev.type === 'awaitDraft') {
+          step = it.next({ keep: true })
+        } else if (ev.type === 'awaitPlacement') {
+          step = it.next(ev.frontier[0]?.land)
+        } else {
+          step = it.next()
+        }
+      }
+    }
+    expect(sawFleet, 'a chosen sea received the bought fleet').toBe(true)
+    expect(sawFort, 'a chosen land received the bought fort').toBe(true)
+  })
+})
+
 describe('naval combat (seas) vs coexistence (oceans)', () => {
   it('classifies the 5 great oceans; everything else is a sea', () => {
     expect(OCEANS.size).toBe(5)
