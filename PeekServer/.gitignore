@@ -1,0 +1,9 @@
+# Machine-specific config (may carry local paths) — commit config.example.json instead
+config.json
+# Runtime data / caches
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PeekServer — Review</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="bar">
+    <span class="brand">PeekServer</span>
+    <select id="rootSel" title="Review folder"></select>
+    <nav id="filters"></nav>
+    <span class="spacer"></span>
+    <span id="status" class="status"></span>
+    <button id="scanBtn" title="Rescan folders">⟳ Scan</button>
+  </header>
+
+  <main id="grid" tabindex="0" aria-label="Media grid"></main>
+
+  <!-- detail / full-preview overlay -->
+  <div id="overlay" class="hidden" aria-hidden="true">
+    <div id="viewer"></div>
+    <aside id="meta">
+      <div id="metaName" class="metaName"></div>
+      <div class="decisionRow">
+        <button data-act="keep"  class="dKeep">Keep <kbd>K</kbd></button>
+        <button data-act="skip"  class="dSkip">Skip <kbd>X</kbd></button>
+        <button data-act="fav"   class="dFav">★ Favorite <kbd>F</kbd></button>
+      </div>
+      <label>Title<input id="fTitle" type="text" placeholder="title"></label>
+      <label>Caption<textarea id="fCaption" rows="3" placeholder="caption"></textarea></label>
+      <label>Keywords<input id="fKeywords" type="text" placeholder="comma, separated"></label>
+      <label>Albums<input id="fAlbums" type="text" placeholder="comma, separated"></label>
+      <div class="metaHint">
+        <kbd>←</kbd>/<kbd>→</kbd> prev/next · <kbd>U</kbd> undecide · <kbd>Esc</kbd> close
+      </div>
+    </aside>
+    <button id="closeOverlay" title="Close (Esc)">✕</button>
+  </div>
+
+  <footer id="help">
+    <kbd>↑↓←→</kbd> move · <kbd>K</kbd> keep · <kbd>X</kbd> skip · <kbd>F</kbd> favorite ·
+    <kbd>U</kbd> undecide · <kbd>↵</kbd> open · <kbd>Esc</kbd> close
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

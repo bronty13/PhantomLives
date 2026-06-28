@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy to config.json (gitignored) and edit. 'roots' are the NEW…TO REVIEW trees to serve. bind 0.0.0.0 makes it reachable from any Mac/iPad on the LAN.",
+  "port": 8788,
+  "bind": "0.0.0.0",
+  "dbPath": "~/Library/Application Support/PeekServer/peekserver.sqlite",
+  "thumbCache": "~/Library/Caches/PeekServer/thumbs",
+  "thumbSize": 512,
+  "roots": [
+    { "path": "/Volumes/REDONE/PurpleAttic/NEW PHOTOS TO REVIEW", "label": "My Photos — To Review", "kind": "photos" },
+    { "path": "/Volumes/REDONE/Rachel Archive/Photos/NEW PHOTOS TO REVIEW", "label": "Rachel — Photos", "kind": "photos" },
+    { "path": "/Volumes/REDONE/Rachel Archive/Messages/NEW MESSAGES MEDIA TO REVIEW", "label": "Rachel — Messages Media", "kind": "messages" }
+  ]
+}
