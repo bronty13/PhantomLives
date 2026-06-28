@@ -81,13 +81,16 @@ describe('world map — structure', () => {
 })
 
 describe('world empires', () => {
-  it('has 48 empires — 6 in Epoch I (Sumeria is the neutral seed), 7 thereafter', () => {
-    expect(WORLD_EMPIRES).toHaveLength(48)
+  it('has 49 empires — 6 in Epoch I (Sumeria is neutral), 7 each after, 8 in Epoch VI (Aztec + Inca)', () => {
+    expect(WORLD_EMPIRES).toHaveLength(49)
     expect(WORLD_EMPIRES.filter((c) => c.epoch === 1)).toHaveLength(6)
-    for (let e = 2; e <= 7; e++) {
+    for (const e of [2, 3, 4, 5, 7]) {
       expect(WORLD_EMPIRES.filter((c) => c.epoch === e)).toHaveLength(7)
     }
+    // Epoch VI carries 8: Aztec and Inca share the New-World card on the board.
+    expect(WORLD_EMPIRES.filter((c) => c.epoch === 6)).toHaveLength(8)
     expect(WORLD_EMPIRES.some((c) => c.name === 'Sumeria')).toBe(false)
+    expect(WORLD_EMPIRES.some((c) => c.name === 'Inca')).toBe(true)
   })
 
   it('every empire starts on a real, non-barren land and sails valid seas', () => {

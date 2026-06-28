@@ -2,7 +2,7 @@
   "empires": [
     {
       "epoch": 1,
-      "order": 2,
+      "order": 1,
       "name": "Egypt",
       "homelandArea": "north_africa",
       "homelandTerritory": "Nile Delta",
@@ -12,7 +12,7 @@
     },
     {
       "epoch": 1,
-      "order": 3,
+      "order": 2,
       "name": "Minoans",
       "homelandArea": "southern_europe",
       "homelandTerritory": "Crete",
@@ -22,10 +22,20 @@
     },
     {
       "epoch": 1,
-      "order": 4,
+      "order": 3,
       "name": "Indus Valley",
       "homelandArea": "india",
-      "homelandTerritory": "Upper Indus",
+      "homelandTerritory": "Lower Indus",
+      "strength": 4,
+      "hasCapital": true,
+      "navigationSeas": "none"
+    },
+    {
+      "epoch": 1,
+      "order": 4,
+      "name": "Babylonia",
+      "homelandArea": "middle_east",
+      "homelandTerritory": "Middle Tigris",
       "strength": 4,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -33,16 +43,6 @@
     {
       "epoch": 1,
       "order": 5,
-      "name": "Babylonia",
-      "homelandArea": "middle_east",
-      "homelandTerritory": "Upper Tigris",
-      "strength": 4,
-      "hasCapital": true,
-      "navigationSeas": "none"
-    },
-    {
-      "epoch": 1,
-      "order": 6,
       "name": "Shang Dynasty",
       "homelandArea": "china",
       "homelandTerritory": "Yellow River",
@@ -52,7 +52,7 @@
     },
     {
       "epoch": 1,
-      "order": 7,
+      "order": 6,
       "name": "Aryans",
       "homelandArea": "eurasia",
       "homelandTerritory": "Turanian Plain",
@@ -62,7 +62,7 @@
     },
     {
       "epoch": 2,
-      "order": 1,
+      "order": 4,
       "name": "Greek City States",
       "homelandArea": "southern_europe",
       "homelandTerritory": "Morea",
@@ -75,7 +75,7 @@
       "order": 2,
       "name": "Chou",
       "homelandArea": "china",
-      "homelandTerritory": "Yellow River",
+      "homelandTerritory": "Wei River",
       "strength": 6,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -85,14 +85,14 @@
       "order": 3,
       "name": "Vedic City States",
       "homelandArea": "india",
-      "homelandTerritory": "Ganges Valley",
+      "homelandTerritory": "Upper Indus",
       "strength": 6,
       "hasCapital": true,
       "navigationSeas": "none"
     },
     {
       "epoch": 2,
-      "order": 4,
+      "order": 1,
       "name": "Assyria",
       "homelandArea": "middle_east",
       "homelandTerritory": "Upper Tigris",
@@ -105,7 +105,7 @@
       "order": 5,
       "name": "Scythians",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Western Steppe",
+      "homelandTerritory": "Caucasus",
       "strength": 7,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -118,7 +118,7 @@
       "homelandTerritory": "Libya",
       "strength": 8,
       "hasCapital": true,
-      "navigationSeas": "mediterranean, atlantic"
+      "navigationSeas": "mediterranean"
     },
     {
       "epoch": 2,
@@ -128,14 +128,14 @@
       "homelandTerritory": "Persian Plateau",
       "strength": 15,
       "hasCapital": true,
-      "navigationSeas": "persian_gulf, mediterranean, aegean_sea"
+      "navigationSeas": "black_sea, mediterranean, red_sea"
     },
     {
       "epoch": 3,
       "order": 1,
       "name": "Celts",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Western Gaul",
+      "homelandTerritory": "Central Europe",
       "strength": 8,
       "hasCapital": false,
       "navigationSeas": "none"
@@ -145,17 +145,17 @@
       "order": 2,
       "name": "Macedonia",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Morea",
+      "homelandTerritory": "Pindus",
       "strength": 15,
       "hasCapital": true,
-      "navigationSeas": "aegean_sea, mediterranean"
+      "navigationSeas": "red_sea, mediterranean, aegean_sea"
     },
     {
       "epoch": 3,
       "order": 3,
       "name": "Maurya",
       "homelandArea": "india",
-      "homelandTerritory": "Ganges Valley",
+      "homelandTerritory": "Ganges Delta",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "none"
@@ -165,10 +165,10 @@
       "order": 4,
       "name": "Han",
       "homelandArea": "china",
-      "homelandTerritory": "Yellow River",
+      "homelandTerritory": "Great Plain of China",
       "strength": 12,
       "hasCapital": true,
-      "navigationSeas": "none"
+      "navigationSeas": "sea_of_japan, south_china_sea"
     },
     {
       "epoch": 3,
@@ -185,24 +185,24 @@
       "order": 6,
       "name": "Romans",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Northern Apennines",
+      "homelandTerritory": "Southern Apennines",
       "strength": 25,
       "hasCapital": true,
-      "navigationSeas": "mediterranean"
+      "navigationSeas": "red_sea, north_sea, mediterranean"
     },
     {
       "epoch": 3,
       "order": 7,
       "name": "Sassanids",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Persian Plateau",
+      "homelandTerritory": "Zagros",
       "strength": 9,
       "hasCapital": true,
-      "navigationSeas": "persian_gulf"
+      "navigationSeas": "none"
     },
     {
       "epoch": 4,
-      "order": 1,
+      "order": 4,
       "name": "Byzantines",
       "homelandArea": "southern_europe",
       "homelandTerritory": "Balkans",
@@ -225,17 +225,17 @@
       "order": 3,
       "name": "Huns",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Eastern Steppe",
+      "homelandTerritory": "Western Steppe",
       "strength": 14,
       "hasCapital": false,
       "navigationSeas": "none"
     },
     {
       "epoch": 4,
-      "order": 4,
+      "order": 1,
       "name": "Guptas",
       "homelandArea": "india",
-      "homelandTerritory": "Ganges Valley",
+      "homelandTerritory": "Eastern Deccan",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "bay_of_bengal"
@@ -245,7 +245,7 @@
       "order": 5,
       "name": "T'ang Dynasty",
       "homelandArea": "china",
-      "homelandTerritory": "Yellow River",
+      "homelandTerritory": "Yangtze Kiang",
       "strength": 11,
       "hasCapital": true,
       "navigationSeas": "sea_of_japan, south_china_sea"
@@ -275,7 +275,7 @@
       "order": 1,
       "name": "Franks",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Western Gaul",
+      "homelandTerritory": "Northern Gaul",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "mediterranean"
@@ -305,7 +305,7 @@
       "order": 4,
       "name": "Chola",
       "homelandArea": "india",
-      "homelandTerritory": "Western Deccan",
+      "homelandTerritory": "Eastern Ghats",
       "strength": 8,
       "hasCapital": true,
       "navigationSeas": "bay_of_bengal"
@@ -345,7 +345,7 @@
       "order": 1,
       "name": "Ming Dynasty",
       "homelandArea": "china",
-      "homelandTerritory": "Si-Kiang",
+      "homelandTerritory": "Chekiang",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "sea_of_japan, south_china_sea"
@@ -366,7 +366,7 @@
       "name": "Aztec",
       "homelandArea": "north_america",
       "homelandTerritory": "Mexican Valley",
-      "strength": 4,
+      "strength": 2,
       "hasCapital": true,
       "navigationSeas": "none"
     },
@@ -375,7 +375,7 @@
       "order": 4,
       "name": "Ottoman Turks",
       "homelandArea": "middle_east",
-      "homelandTerritory": "Eastern Anatolia",
+      "homelandTerritory": "Western Anatolia",
       "strength": 15,
       "hasCapital": true,
       "navigationSeas": "red_sea, black_sea, mediterranean"
@@ -385,7 +385,7 @@
       "order": 5,
       "name": "Portugal",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Southern Iberia",
+      "homelandTerritory": "Western Iberia",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean"
@@ -395,7 +395,7 @@
       "order": 6,
       "name": "Spain",
       "homelandArea": "southern_europe",
-      "homelandTerritory": "Southern Iberia",
+      "homelandTerritory": "Pyrenees",
       "strength": 15,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean"
@@ -415,7 +415,7 @@
       "order": 1,
       "name": "Russia",
       "homelandArea": "eurasia",
-      "homelandTerritory": "Western Steppe",
+      "homelandTerritory": "North European Plain",
       "strength": 12,
       "hasCapital": true,
       "navigationSeas": "north_sea, black_sea, sea_of_japan"
@@ -465,7 +465,7 @@
       "order": 6,
       "name": "United States",
       "homelandArea": "north_america",
-      "homelandTerritory": "Great Lakes",
+      "homelandTerritory": "Appalachia",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "caribbean"
@@ -475,10 +475,20 @@
       "order": 7,
       "name": "Germany",
       "homelandArea": "northern_europe",
-      "homelandTerritory": "Central Europe",
+      "homelandTerritory": "Baltic-Seaboard",
       "strength": 10,
       "hasCapital": true,
       "navigationSeas": "atlantic, indian_ocean, pacific"
+    },
+    {
+      "epoch": 6,
+      "order": 4,
+      "name": "Inca",
+      "homelandArea": "south_america",
+      "homelandTerritory": "Northern Andes",
+      "strength": 2,
+      "hasCapital": true,
+      "navigationSeas": "none"
     }
   ],
   "geography": {

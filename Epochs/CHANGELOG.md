@@ -2,6 +2,28 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.46.0] — 2026-06-28
+
+Roster corrected against the authoritative empire cards (card-audit workflow).
+
+### Fixed / Added
+- **Inca empire added** (Epoch VI) — it shares the New-World card with the Aztec, which
+  was the only one we had. **Aztec strength 4 → 2** to match. Epoch VI now has 8 empires.
+- **~24 start-lands corrected** to the printed homelands — several had been placed in the
+  wrong region, some colliding with another empire's seat (Babylonia sat in Assyria's
+  Tigris; Sassanids in Persia's plateau). All target territories already existed.
+- **Navigation corrected** to the cards: Han gains its Pacific seas (it had *none*);
+  Romans/Persia/Macedonia gain Red/Black/North seas; Carthaginia's invented Atlantic and
+  the Sassanids' invented Persian Gulf removed.
+- **Turn order (Card #) fixed**: the Epoch-I offset + the Assyria↔Greek (II) and
+  Guptas↔Byzantines (IV) swaps.
+- Deferred (documented in `docs/CARD-AUDIT.md`): the Aztec/Inca shared-card mechanic,
+  Goths' "Danubia" (no territory), and the Aegean sea-model.
+
+The card scans stay in `~/Downloads` (gitignored); only roster numbers reach the repo.
+`build-data.mjs` validates all start-lands + nav seas (no warnings); 138 tests pass;
+tournament steady (72.5 / 75.8 / 85.8%).
+
 ## [0.45.1] — 2026-06-28
 
 Audit edge-case — the Caspian admits no fleets (§7.3). `placeableSeas` now excludes
