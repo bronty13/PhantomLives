@@ -2,6 +2,25 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.29.0] — 2026-06-27
+
+Fidelity pass, slice 3 of 5 — three armies per land.
+
+### Changed
+- **Up to three armies may now stack on a land** (was one). You can <b>reinforce</b>
+  your own holdings (a new `own_reinforce` frontier option) — a stacked land is much
+  harder to take.
+- **Combat against a stack is a multi-round assault.** A single attacking army must
+  win one round per defending army to conquer; it is repelled the first round it
+  loses. A fort adds +1 every round and falls only when the last defender is
+  eliminated. Plague-family disasters now roll per army in the stack.
+- **AI uses conquer odds** (P(round)^defenders) instead of per-round odds, so it
+  doesn't over-attack stacks — which sharpened the difficulty ladder to
+  71.7 / 76.7 / 89.6%. (The bot spreads rather than stacks — good area play — so AI
+  games stay one-per-land; stacking is the human's defensive lever for now.)
+- Map shows a **stack-size badge** (2/3); placement preview shows conquer odds + the
+  stack size. Rulebook updated.
+
 ## [0.28.0] — 2026-06-27
 
 Fidelity pass, slice 2 of 5 — draft order.

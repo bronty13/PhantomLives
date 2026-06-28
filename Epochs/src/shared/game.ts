@@ -33,6 +33,7 @@ import type {
 } from './types'
 
 const TOTAL_MONUMENTS = 36
+const MAX_ARMIES = 3 // no more than three armies may occupy a Land (original rule)
 
 export interface PlayerConfig {
   id: PlayerId
@@ -530,10 +531,13 @@ export class Game {
 
   /** The army on `land` rolls `dice` d6; any '1' eliminates it. */
   private rollPlague(land: LandId, dice: number): void {
-    if (!this.armyOn(land)) return
-    let killed = false
-    for (let i = 0; i < dice; i++) if (this.state.rng.rollDie() === 1) killed = true
-    if (killed) this.removeArmyOn(land)
+    // Each army in the stack rolls `dice` d6; any '1' eliminates THAT army.
+    const armies = this.armiesOn(land)
+    for (let a = 0; a < armies; a++) {
+      let killed = false
+      for (let i = 0; i < dice; i++) if (this.state.rng.rollDie() === 1) killed = true
+      if (killed) this.removeOneArmyOn(land)
+    }
   }
 
   /** Enemy Lands a disaster may legally strike (honours the terrain restriction). */
@@ -726,6 +730,8 @@ export class Game {
     const reachable = new Set<LandId>()
     const landAdjacent = new Set<LandId>()
     for (const land of occupied) {
+      reachable.add(land) // our own holding — reinforce it (if not yet at MAX_ARMIES)
+      landAdjacent.add(land)
       for (const nb of this.board.neighbors(land)) {
         if (this.board.isBarren(nb)) continue
         reachable.add(nb)
@@ -743,19 +749,23 @@ export class Game {
     const options: FrontierOption[] = []
     for (const land of reachable) {
       const army = this.armyOn(land)
-      if (army && army.owner === pid && army.epochColor === epoch) continue // already ours
       const amphibious = !landAdjacent.has(land)
       let kind: FrontierKind
       let odds: FrontierOption['odds']
+      let defenders: number | undefined
       if (!army) {
         kind = 'empty'
+      } else if (army.owner === pid && army.epochColor === epoch) {
+        if (this.armiesOn(land) >= MAX_ARMIES) continue // stack full
+        kind = 'own_reinforce'
       } else if (army.owner === pid) {
         kind = 'own_old' // our older-epoch army → free replace
       } else {
         kind = 'enemy'
-        odds = oddsForContext(this.combatContext(land, amphibious)) // base odds (pre-events)
+        defenders = this.armiesOn(land)
+        odds = oddsForContext(this.combatContext(land, amphibious)) // per-round (pre-events)
       }
-      options.push({ land, kind, amphibious, odds })
+      options.push({ land, kind, amphibious, odds, defenders })
     }
     return options
   }
@@ -797,24 +807,35 @@ export class Game {
       this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch })
       return undefined
     }
+    if (opt.kind === 'own_reinforce') {
+      this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch }) // stack up to MAX_ARMIES
+      return undefined
+    }
     if (opt.kind === 'own_old') {
-      this.removeArmyOn(land)
+      this.removeArmyOn(land) // replace the older-epoch stack with one fresh army
       this.onOccupy(land, pid, empire)
       this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch })
       return undefined
     }
-    // enemy
+    // enemy — a multi-round assault: the placed army must win one round per defending
+    // army; it is repelled on the first round it loses. A fort adds +1 EVERY round and
+    // falls only when the last defender is eliminated (it suffers no losses itself).
     const ctx = this.combatContext(land, opt.amphibious, effects)
-    const res = resolveAssault(this.state.rng, ctx)
-    if (res.fortDestroyed) this.removeFortOn(land) // fort fell with the army
-    if (res.outcome === 'attacker') {
-      this.removeArmyOn(land) // defender removed
-      this.removeFortOn(land) // any surviving fort falls with the land
-      this.onOccupy(land, pid, empire) // sack/pillage + structure transfer
-      this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch })
+    let defenders = this.armiesOn(land)
+    while (defenders > 0) {
+      const res = resolveAssault(this.state.rng, ctx)
+      if (res.outcome === 'attacker') {
+        this.removeOneArmyOn(land) // one defending army falls
+        defenders -= 1
+      } else {
+        return 'defender' // attacking army repelled; the stack (and its fort) hold
+      }
     }
-    // 'defender': attacker army consumed, board unchanged (ties are rerolled)
-    return res.outcome
+    // every defender eliminated → the land is conquered
+    this.removeFortOn(land)
+    this.onOccupy(land, pid, empire) // sack/pillage + structure transfer
+    this.addPiece({ land, kind: 'army', owner: pid, epochColor: epoch })
+    return 'attacker'
   }
 
   /** Apply sack/pillage + structure transfer when `pid` takes `land`. */
@@ -877,6 +898,20 @@ export class Game {
     return this.state.pieces.find((p) => p.land === land && p.kind === 'army')
   }
 
+  /** Number of armies stacked on a land (0–3). */
+  private armiesOn(land: LandId): number {
+    let n = 0
+    for (const p of this.state.pieces) if (p.land === land && p.kind === 'army') n++
+    return n
+  }
+
+  /** Remove ONE army from a land (a single combat / disaster loss). */
+  private removeOneArmyOn(land: LandId): void {
+    const i = this.state.pieces.findIndex((p) => p.land === land && p.kind === 'army')
+    if (i >= 0) this.state.pieces.splice(i, 1)
+  }
+
+  /** Remove EVERY army from a land (setup clears the Start Land). */
   private removeArmyOn(land: LandId): void {
     this.state.pieces = this.state.pieces.filter(
       (p) => !(p.land === land && p.kind === 'army'),

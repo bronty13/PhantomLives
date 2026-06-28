@@ -128,7 +128,7 @@ describe('a full game on the real world map', () => {
         monumentsPerLand.set(p.land, (monumentsPerLand.get(p.land) ?? 0) + 1)
       }
     }
-    for (const [, n] of armiesPerLand) expect(n).toBeLessThanOrEqual(1)
+    for (const [, n] of armiesPerLand) expect(n).toBeLessThanOrEqual(3) // up to 3 armies stack
     for (const [, n] of monumentsPerLand) expect(n).toBeLessThanOrEqual(1)
   })
 

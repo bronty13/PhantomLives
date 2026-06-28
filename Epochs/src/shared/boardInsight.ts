@@ -36,14 +36,21 @@ export function placementInfo(
   odds: CombatOdds | undefined,
   amphibious: boolean,
   ctx: PlacementCtx,
+  defenders = 1,
 ): string[] {
   const lines: string[] = []
   if (kind === 'empty') lines.push('Settle — gain presence')
+  else if (kind === 'own_reinforce') lines.push('Reinforce — stack this holding')
   else if (kind === 'own_old') lines.push('Reclaim your old army')
   else {
     const o = odds ?? { attacker: 0, tie: 0, defender: 1 }
-    const win = winProb(o)
-    lines.push(`Attack: ${pct(win)} win · ${pct(1 - win)} hold`)
+    const round = winProb(o)
+    const conquer = round ** defenders // must win one round per defender
+    if (defenders > 1) {
+      lines.push(`Assault ${defenders} armies: ${pct(conquer)} to conquer (${pct(round)}/round)`)
+    } else {
+      lines.push(`Attack: ${pct(conquer)} win · ${pct(1 - conquer)} hold`)
+    }
     if (amphibious) lines.push('Amphibious — defender rolls 2 dice')
   }
 

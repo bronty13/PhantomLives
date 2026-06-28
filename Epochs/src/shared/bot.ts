@@ -12,7 +12,7 @@ import type { Board } from './board'
 import { areaValue } from './data/areaValues'
 import type { BoardPiece, EmpireCard, EpochId, EventHand, LandId, PlayerId } from './types'
 
-export type FrontierKind = 'empty' | 'own_old' | 'enemy'
+export type FrontierKind = 'empty' | 'own_old' | 'own_reinforce' | 'enemy'
 
 export interface FrontierOption {
   land: LandId
@@ -21,6 +21,9 @@ export interface FrontierOption {
   amphibious: boolean
   /** Single-round combat odds, present only for `enemy` targets. */
   odds?: CombatOdds
+  /** Defending army stack size (1–3), present only for `enemy` targets. A single
+   *  attacking army must win this many rounds in a row to conquer. */
+  defenders?: number
 }
 
 export interface BotView {

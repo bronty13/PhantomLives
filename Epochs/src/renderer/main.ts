@@ -716,13 +716,20 @@ class GameUI {
     const empire = WORLD_EMPIRES.find(
       (e) => e.name === this.pending!.empire && e.epoch === this.currentEpoch,
     )
-    return placementInfo(opt.land, opt.kind, opt.odds, opt.amphibious, {
-      board: this.game.board,
-      pieces: this.game.state.pieces,
-      epoch: this.currentEpoch,
-      player: this.pending.player,
-      empireHasCapital: empire?.hasCapital ?? true,
-    })
+    return placementInfo(
+      opt.land,
+      opt.kind,
+      opt.odds,
+      opt.amphibious,
+      {
+        board: this.game.board,
+        pieces: this.game.state.pieces,
+        epoch: this.currentEpoch,
+        player: this.pending.player,
+        empireHasCapital: empire?.hasCapital ?? true,
+      },
+      opt.defenders ?? 1,
+    )
   }
 
   private renderSidebar(): void {

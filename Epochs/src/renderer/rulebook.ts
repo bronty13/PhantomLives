@@ -92,7 +92,10 @@ export const RULEBOOK: RuleSection[] = [
       </ul>
       <p>Placing into an <b>empty</b> land simply claims it. Placing into an
       <b>enemy</b> land is an attack (see Combat). <b>Barren</b> lands can never be
-      entered or crossed.</p>`,
+      entered or crossed.</p>
+      <p>You may <b>stack up to three armies</b> on a single land — reinforcing a
+      holding makes it far harder to take. (No more than three armies may occupy any
+      land.)</p>`,
   },
   {
     id: 'combat',
@@ -101,6 +104,9 @@ export const RULEBOOK: RuleSection[] = [
       <p>To take a defended land, attacker and defender each roll a die; <b>higher wins</b>,
       and <b>ties are re-rolled</b> until broken. Lose, and your attacking army is spent
       with nothing gained.</p>
+      <p>Against a <b>stack</b>, the assault is multi-round: your attacking army must win
+      <b>one round per defending army</b> to clear the land — it falls the first round it
+      loses (so you may need to commit several armies to take a full stack of three).</p>
       <p>The <b>defender</b> rolls with advantages for terrain and works:</p>
       <ul>
         <li><b>Difficult terrain</b> (mountains, forest) and <b>amphibious</b> landings

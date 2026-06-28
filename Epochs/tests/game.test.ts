@@ -61,7 +61,7 @@ describe('a full headless game', () => {
 })
 
 describe('board invariants hold after a full game', () => {
-  it('never leaves more than one army on a land', () => {
+  it('never stacks more than three armies on a land', () => {
     const game = newGame(3, ['P1', 'P2', 'P3', 'P4'])
     game.run()
     const armies = new Map<string, number>()
@@ -69,7 +69,7 @@ describe('board invariants hold after a full game', () => {
       if (p.kind !== 'army') continue
       armies.set(p.land, (armies.get(p.land) ?? 0) + 1)
     }
-    for (const [, n] of armies) expect(n).toBeLessThanOrEqual(1)
+    for (const [, n] of armies) expect(n).toBeLessThanOrEqual(3)
   })
 
   it('respects the 36-monument cap', () => {

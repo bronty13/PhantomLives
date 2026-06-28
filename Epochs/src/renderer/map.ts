@@ -129,10 +129,13 @@ export function drawMap(ctx: CanvasRenderingContext2D, rect: MapRect, st: MapRen
     return i >= 0 ? playerColor(i) : '#8a8a8a'
   }
   const armyAt = new Map<string, BoardPiece>()
+  const armyCountAt = new Map<string, number>()
   const structs = new Map<string, BoardPiece[]>()
   for (const p of pieces) {
-    if (p.kind === 'army') armyAt.set(p.land, p)
-    else {
+    if (p.kind === 'army') {
+      armyAt.set(p.land, p)
+      armyCountAt.set(p.land, (armyCountAt.get(p.land) ?? 0) + 1)
+    } else {
       const a = structs.get(p.land) ?? []
       a.push(p)
       structs.set(p.land, a)
@@ -175,6 +178,19 @@ export function drawMap(ctx: CanvasRenderingContext2D, rect: MapRect, st: MapRen
       ctx.moveTo(p.x + e, p.y - e)
       ctx.lineTo(p.x - e, p.y + e)
       ctx.stroke()
+      // stack size badge (only when more than one army is stacked)
+      const n = armyCountAt.get(l.id) ?? 1
+      if (n > 1) {
+        const bx = p.x + cs / 2 - 1
+        const by = p.y + cs / 2 - 1
+        ctx.beginPath()
+        ctx.arc(bx, by, cs * 0.26, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(24,16,8,0.92)'
+        ctx.fill()
+        ctx.fillStyle = '#fff'
+        ctx.font = `${Math.round(cs * 0.42)}px ui-sans-serif, system-ui`
+        ctx.fillText(String(n), bx, by + 0.5)
+      }
     }
     const ss = structs.get(l.id)
     if (ss && ss.length) {

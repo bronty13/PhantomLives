@@ -456,9 +456,10 @@ export class HeuristicBot implements Bot {
       const win =
         selfAreaWin + w.selfBias * (selfStruct + monMargin(land, fam)) + maraud + denyStruct + denialWin
 
-      // Ties are rerolled, so the assault is win-or-lose; `p` is the effective
-      // (post-reroll) win probability. Win → `win`; lose → a wasted army.
-      const p = winProb(odds)
+      // A single army must win one round per defender to conquer; it dies on the
+      // first round it loses. So P(conquer) = P(round)^defenders. Win → `win` (the land
+      // flips, land-based); lose → a wasted army.
+      const p = winProb(odds) ** (opt.defenders ?? 1)
       const oppCost = Math.max(w.armyFloor, bestPeaceful)
       let s = p * win - w.riskAversion * (1 - p) * oppCost
       if (p < w.minWinProb) s -= 1e6 // timid skip (low difficulty)

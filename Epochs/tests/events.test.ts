@@ -243,6 +243,33 @@ describe('seas — overseas reach', () => {
   })
 })
 
+describe('army stacking (up to 3 per land)', () => {
+  it('a human who reinforces stacks a land to 2–3 armies, never beyond 3', () => {
+    const players: PlayerConfig[] = [{ id: 'P1', name: 'P1', isHuman: true }, ...hardBots(['P2', 'P3'])]
+    const game = worldGame(3, players)
+    const it = game.play()
+    let step = it.next()
+    while (!step.done) {
+      const ev = step.value
+      if (ev.type === 'awaitPlacement') {
+        const reinforce = ev.frontier.find((f) => f.kind === 'own_reinforce')
+        step = it.next((reinforce ?? ev.frontier[0])?.land)
+      } else if (ev.type === 'awaitDraft') {
+        step = it.next({ keep: true })
+      } else {
+        step = it.next()
+      }
+    }
+    const counts = new Map<string, number>()
+    for (const p of game.state.pieces) {
+      if (p.kind === 'army' && p.owner === 'P1') counts.set(p.land, (counts.get(p.land) ?? 0) + 1)
+    }
+    const maxStack = Math.max(0, ...counts.values())
+    expect(maxStack).toBeGreaterThan(1) // reinforcement stacked a land
+    expect(maxStack).toBeLessThanOrEqual(3) // never beyond the cap
+  })
+})
+
 describe('Kingdoms + Barbarians', () => {
   it('a played Kingdom raises a fortified city (city + fort) on a held land', () => {
     for (let seed = 1; seed <= 60; seed++) {
