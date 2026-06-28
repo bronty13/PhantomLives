@@ -143,6 +143,9 @@ export type GameEvent =
   | { type: 'fleet'; player: PlayerId; sea: SeaId }
   | { type: 'navalCombat'; player: PlayerId; sea: SeaId; won: boolean }
   | { type: 'fortBuilt'; player: PlayerId; land: LandId }
+  | { type: 'monumentBuilt'; player: PlayerId; land: LandId }
+  /** Human seat: choose which land (of the forced tier) gets a Monument. Resume with a `LandId`. */
+  | { type: 'awaitMonument'; player: PlayerId; lands: LandId[] }
   | {
       /** Human seat: place one Strength unit. Resume with a `LandId` (army), or a
        *  `PlaceUnit` for a fleet (a sea from `seas`) / fort (a land from `fortLands`),
@@ -367,7 +370,7 @@ export class Game {
         yield { type: 'foundKingdom', player: pid, land }
       }
     }
-    this.buildMonuments(pid)
+    yield* this.buildMonuments(pid, this.humanSeats.has(pid))
     const breakdown = scoreBreakdown(
       this.state.pieces,
       this.board.areaOfFn,
@@ -820,7 +823,10 @@ export class Game {
     }
   }
 
-  private buildMonuments(pid: PlayerId): void {
+  /** Build one Monument per pair of controlled Resource symbols. The site TIER is
+   *  forced (Capital → City → Resource, §10); within a tier the player picks which land
+   *  (the human via `awaitMonument` when there's a real choice; the bot takes the first). */
+  private *buildMonuments(pid: PlayerId, isHuman: boolean): Generator<GameEvent, void, PlayInput> {
     let resourceLands = 0
     for (const p of this.state.pieces) {
       if (p.owner === pid && p.kind === 'army' && p.epochColor === this.state.epoch) {
@@ -829,10 +835,18 @@ export class Game {
     }
     let toBuild = Math.floor(resourceLands / 2)
     while (toBuild > 0 && this.state.monumentsBuilt < TOTAL_MONUMENTS) {
-      const target = this.monumentPlacement(pid)
-      if (!target) break
+      const sites = this.monumentSites(pid)
+      if (sites.length === 0) break
+      let target: LandId
+      if (isHuman && sites.length > 1) {
+        const pick = yield { type: 'awaitMonument', player: pid, lands: sites }
+        target = typeof pick === 'string' && sites.includes(pick) ? pick : sites[0]
+      } else {
+        target = sites[0] // forced single site, or the bot's pick
+      }
       this.addPiece({ land: target, kind: 'monument', owner: pid, epochColor: this.state.epoch })
       this.state.monumentsBuilt++
+      yield { type: 'monumentBuilt', player: pid, land: target }
       toBuild--
     }
   }
@@ -979,7 +993,10 @@ export class Game {
     }
   }
 
-  private monumentPlacement(pid: PlayerId): LandId | null {
+  /** Eligible Monument sites at the highest available tier (§10): the Capital, else
+   *  all Cities, else all held Resource lands — each without a Monument already. The
+   *  tier is forced; the player chooses among the returned sites. */
+  private monumentSites(pid: PlayerId): LandId[] {
     const controlledLands = (kind: 'capital' | 'city' | 'army'): LandId[] =>
       this.state.pieces
         .filter(
@@ -993,17 +1010,12 @@ export class Game {
     const hasMonument = (land: LandId): boolean =>
       this.state.pieces.some((p) => p.land === land && p.kind === 'monument')
 
-    // Build order: Capital land, then a City land, then a held Resource land (orig).
+    // Tier order: the Capital, then Cities, then held Resource lands (original §10).
     for (const kind of ['capital', 'city'] as const) {
-      const open = controlledLands(kind).find((l) => !hasMonument(l))
-      if (open) return open
+      const open = controlledLands(kind).filter((l) => !hasMonument(l))
+      if (open.length) return open
     }
-    const resourceLand = controlledLands('army').find(
-      (l) => !hasMonument(l) && !!this.board.land(l)?.hasResource,
-    )
-    if (resourceLand) return resourceLand
-    // no eligible land (every capital/city/resource land already has a monument)
-    return null
+    return controlledLands('army').filter((l) => !hasMonument(l) && !!this.board.land(l)?.hasResource)
   }
 
   /** A plain holding (current-epoch army, no city/capital/fort) to raise into a

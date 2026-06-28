@@ -80,6 +80,7 @@ class GameUI {
   private pendingTarget: { card: string; targets: string[] } | null = null
   private pendingDraft: Extract<GameEvent, { type: 'awaitDraft' }> | null = null
   private placeMode: 'army' | 'fleet' | 'fort' = 'army' // which unit the human is placing
+  private pendingMonument: Extract<GameEvent, { type: 'awaitMonument' }> | null = null
   private pendingIntro: { player: PlayerId; empire: string; epoch: EpochId } | null = null
   private pendingRoll: { rolls: { player: PlayerId; roll: number }[]; first: PlayerId } | null = null
   private eventSel: { greater?: string; lesser?: string } = {}
@@ -233,6 +234,7 @@ class GameUI {
     this.pendingIntro = null
     this.pendingRoll = null
     this.pendingDraft = null
+    this.pendingMonument = null
     this.eventSel = {}
     this.hideEventPanel()
     ;(this.root.querySelector('#epoch-intro') as HTMLElement | null)?.classList.add('hidden')
@@ -275,6 +277,7 @@ class GameUI {
       !this.pendingIntro &&
       !this.pendingRoll &&
       !this.pendingDraft &&
+      !this.pendingMonument &&
       !this.over &&
       !this.helpOpen
     ) {
@@ -391,6 +394,19 @@ class GameUI {
         Sound.place()
         this.startLoop()
         break
+      case 'monumentBuilt':
+        this.pushLog(`🏛 ${this.nameOf(ev.player)} raised a monument at ${this.landName(ev.land)}`)
+        this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 320 })
+        Sound.score()
+        this.startLoop()
+        break
+      case 'awaitMonument':
+        this.pendingMonument = ev
+        this.activePlayer = ev.player
+        this.placeable = new Map(ev.lands.map((l) => [l, { kind: 'own_reinforce' as const, amphibious: false }]))
+        this.status = 'Raise a Monument — click a highlighted land.'
+        this.showMonumentPanel()
+        break
       case 'awaitPlacement':
         this.pending = ev
         this.activePlayer = ev.player
@@ -500,6 +516,16 @@ class GameUI {
       }
       return
     }
+    // Placing an earned Monument: click one of the highlighted eligible lands.
+    if (this.pendingMonument) {
+      if (this.placeable?.has(l.id)) {
+        this.pendingMonument = null
+        this.placeable = null
+        this.hidePlacePanel()
+        this.advance(l.id)
+      }
+      return
+    }
     if (!this.pending) return
     if (this.placeable?.has(l.id)) {
       if (this.placeMode === 'fort') {
@@ -569,7 +595,7 @@ class GameUI {
    * timer, so this is a no-op there.)
    */
   private drainToInteractive(): void {
-    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll && !this.pendingDraft) {
+    while (!this.auto && !this.over && !this.pending && !this.pendingEvents && !this.pendingTarget && !this.pendingIntro && !this.pendingRoll && !this.pendingDraft && !this.pendingMonument) {
       this.advance()
     }
   }
@@ -788,6 +814,17 @@ class GameUI {
 
   private hidePlacePanel(): void {
     ;(this.root.querySelector('#place-panel') as HTMLElement | null)?.classList.add('hidden')
+  }
+
+  /** A monument the human earned: pick which land of the forced tier gets it. */
+  private showMonumentPanel(): void {
+    const ev = this.pendingMonument
+    if (!ev) return
+    const el = this.root.querySelector('#place-panel') as HTMLElement
+    el.innerHTML =
+      `<div class="evt-box place-box"><div class="place-head">🏛 Raise a <b>Monument</b></div>` +
+      `<p class="place-hint">Choose which of your highlighted lands to build it on — it scores 1 VP and survives conquest.</p></div>`
+    el.classList.remove('hidden')
   }
 
   private toCanvas(e: MouseEvent): { px: number; py: number } {

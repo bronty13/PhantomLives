@@ -259,6 +259,36 @@ describe('per-unit placement (army / fleet / fort in one expansion loop)', () =>
   })
 })
 
+describe('interactive monument placement (within the forced tier)', () => {
+  it('puts a monument on the human-chosen eligible land', () => {
+    let sawChoice = false
+    for (let seed = 1; seed <= 16 && !sawChoice; seed++) {
+      const players: PlayerConfig[] = [{ id: 'P1', name: 'P1', isHuman: true }, ...hardBots(['P2', 'P3'])]
+      const game = worldGame(seed, players)
+      const it = game.play()
+      let step = it.next()
+      while (!step.done) {
+        const ev = step.value
+        if (ev.type === 'awaitMonument') {
+          expect(ev.lands.length).toBeGreaterThan(1) // only asked when there's a real choice
+          const land = ev.lands[ev.lands.length - 1] // pick a SPECIFIC site, not the default
+          step = it.next(land)
+          if (game.state.pieces.some((p) => p.kind === 'monument' && p.owner === 'P1' && p.land === land)) {
+            sawChoice = true
+          }
+        } else if (ev.type === 'awaitDraft') {
+          step = it.next({ keep: true })
+        } else if (ev.type === 'awaitPlacement') {
+          step = it.next(ev.frontier[0]?.land)
+        } else {
+          step = it.next()
+        }
+      }
+    }
+    expect(sawChoice, 'a human-chosen monument site received the monument').toBe(true)
+  })
+})
+
 describe('naval combat (seas) vs coexistence (oceans)', () => {
   it('classifies the 5 great oceans; everything else is a sea', () => {
     expect(OCEANS.size).toBe(5)

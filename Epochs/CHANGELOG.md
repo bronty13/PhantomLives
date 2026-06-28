@@ -2,6 +2,19 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.42.0] — 2026-06-28
+
+Interactive Monument placement (within the forced tier).
+
+### Changed
+- **You now choose which land your Monument goes on.** The §10 tier is still forced
+  (Capital → City → Resource), but within the active tier — most often *which resource
+  land* — you pick, which is strategically material (a monument scores 1 VP and survives
+  conquest, so where it sits matters). Previously the engine silently took the first
+  eligible site. The human picks via `awaitMonument` (highlighted lands + click) when
+  there's a real choice; a forced single site (e.g., your one Capital) still auto-places.
+  Bot behaviour unchanged (takes the first site). `monumentSites` + `monumentBuilt`.
+
 ## [0.41.0] — 2026-06-28
 
 Faithful per-unit placement (directions §4) — the buy phase is gone.

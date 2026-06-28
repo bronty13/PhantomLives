@@ -79,7 +79,9 @@ export const RULEBOOK: RuleSection[] = [
         <b>fleet</b> into a sea you can reach (battling an enemy fleet there), or a
         <b>fort</b> on a land you already hold. Fleets are optional — build one only to
         cross a sea. Use the <b>Army / Fleet / Fort</b> toggle, then click your target.</li>
-        <li><b>Build</b> — Monuments rise automatically from your resource lands.</li>
+        <li><b>Build</b> — earn one Monument per pair of Resource symbols you hold. The
+        <i>tier</i> is fixed (your Capital first, then a City, then a Resource land), but
+        you <b>choose which land</b> within that tier — click a highlighted site.</li>
         <li><b>Score</b> — total your Areas and structures, and add it to your VP.</li>
       </ol>`,
   },
