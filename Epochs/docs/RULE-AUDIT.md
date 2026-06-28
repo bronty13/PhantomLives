@@ -43,6 +43,18 @@
 >   rulebook states would mean *inventing* abilities, which breaks the fidelity rule.
 >   **Deferred until the empire-card scans exist.** Every fix our 12 pages support is done.
 >
+> - ✅ **Monument rules verified faithful** (the whole `MONUMENT-*` cluster): §9 (read
+>   directly) is *one Monument per pair of resources, sited Capital→City→Resource,
+>   unaffected by conquest, removed only by Events* — exactly our code after G5. The
+>   audit's "Babylonian Monument needs the Babylon capital" (MONUMENT-04/05/11) and its
+>   "must sit on a resource land / one resource per build / transfers on capture" rows
+>   are **extraction misreads** (the audit reused `MONUMENT-01..0x` across sections with
+>   contradictory text). **No Babylon-specific monument exists.** Nothing to implement.
+> - **Special-rules layer — final status (deliberate, low-impact simplifications):**
+>   the **Aztec/Inca shared card** (§9.4 — real, but we model them as two separate
+>   draftable empires); empire-flavoured **Events** (no distinct cards found — folded
+>   into the generic deck). Documented, not bugs.
+>
 > ⚠️ **Read critically.** Some "divergences" are the audit's own extraction misreads (e.g. combat-dice model, draft-order key) and must be re-checked against the source pages before any code change. Others are deliberate simplifications (no physical VP track, open draft). The value is the *coverage* — every clause now has a row.
 
 ---

@@ -15,11 +15,27 @@ with our own map, our own event-card names, and our own prose. The owner's
 for personal use only. **Before every commit, verify no scans are staged**
 (`git diff --staged --name-only | grep -iE 'board\.jpg|board-source|board-crop|rulebook/page|public/rulebook'`).
 
-## Status (v0.36) — rule-complete & faithful
+## Status (v0.46) — source-verified on both axes
 
-A five-slice **fidelity pass** brought the game in line with the original rules, plus
-two follow-ups. Everything below is implemented and tested (**120 tests**, clean
-difficulty ladder ≈ 69 / 72 / 84 %):
+Beyond the original fidelity pass, the game has been audited against **primary source**
+on two axes and corrected: every **rule** against the 12-page rulebook (with the worked
+**sample game** encoded as a regression oracle, `tests/sample-game.test.ts`), and every
+**empire** against its physical card (`docs/CARD-AUDIT.md`). Key outcomes:
+
+- **Per-unit placement** (rulebook §4): no buy phase — each Strength unit is placed one
+  at a time as an army / fleet / fort via a docked mode-toggle (`awaitPlacement` carries
+  `frontier` + `seas` + `fortLands`). Monuments are player-sited within the forced tier.
+- **Audit fixes**: turn order by Empire Card # (not draft order); Sumeria's capital;
+  monuments unaffected by conquest (stay the builder's); fleet **ports** (a fleet without
+  a controlled coastal land is destroyed) + unlimited oceans; the Caspian admits no fleets.
+- **Roster corrected to the cards**: the missing **Inca** restored; ~24 start-lands,
+  navigation, turn order, and Aztec strength fixed against the authoritative cards.
+- **Debunked by the oracle/source** (already faithful — do NOT "fix"): the combat dice
+  model, forts = +1, no capital defensive bonus, the VP table, and the whole monument
+  rule-set. See `docs/RULE-AUDIT.md`'s maintainer notes before acting on any audit lead.
+
+The original five-slice **fidelity pass** is below; everything is tested (**~138 tests**,
+clean difficulty ladder ≈ 72 / 75 / 85 %):
 
 - **Scoring tiers** — presence ×1, **dominance ≥3 lands & most**, **control = every
   land in the area**; +structures (capital 2 / city 1 / monument 1); **+1 per
