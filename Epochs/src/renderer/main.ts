@@ -19,6 +19,7 @@ import { areaControl, placementInfo } from '../shared/boardInsight'
 import { AREA_NAMES, AREA_VALUES } from '../shared/data/areaValues'
 import { scoreBreakdown } from '../shared/scoring'
 import type { AreaId } from '../shared/types'
+import { RULEBOOK } from './rulebook'
 import { describeEffect } from '../shared/data/events'
 import type { EmpireCard, EpochId, EventCard, Land, PlayerId } from '../shared/types'
 import { drawMap, type PlaceableEntry } from './map'
@@ -110,35 +111,73 @@ class GameUI {
     this.scheduleNext()
   }
 
-  // The original scanned rulebook + sample game, bundled into the build (the
-  // owner's own scans). Pages are probed sequentially until one is missing.
+  private rbTab: 'rules' | 'classic' = 'rules'
+
+  // Rulebook: DEFAULT is our own-words Epochs rules (RULEBOOK); the "Classic" tab shows
+  // the owner's own scanned pages, bundled into the local build (git-ignored, never
+  // committed). Pages are probed sequentially until one is missing.
   private openRulebook(): void {
     this.helpOpen = true
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     const el = this.root.querySelector('#rulebook') as HTMLElement
-    const box = el.querySelector('.rb-pages') as HTMLElement
-    if (!box.dataset.loaded) {
-      box.dataset.loaded = '1'
-      const tryPage = (n: number): void => {
-        const img = new Image()
-        img.alt = `Rulebook page ${n}`
-        img.className = 'rb-page'
-        img.onload = (): void => {
-          box.appendChild(img)
-          tryPage(n + 1)
-        }
-        img.onerror = (): void => {
-          if (n === 1) {
-            box.innerHTML =
-              '<p class="muted" style="padding:20px">The original rulebook scans aren’t bundled on this machine. They live in <code>src/renderer/public/rulebook/</code> (git-ignored) and are packaged into the local build.</p>'
-          }
-        }
-        img.src = `rulebook/page-${String(n).padStart(2, '0')}.jpg`
-      }
-      tryPage(1)
+    const nav = el.querySelector('.rb-nav') as HTMLElement
+    if (!nav.dataset.loaded) {
+      nav.dataset.loaded = '1'
+      nav.innerHTML = RULEBOOK.map(
+        (s) => `<button class="rb-navi" data-sec="${s.id}">${esc(s.title)}</button>`,
+      ).join('')
+      nav.querySelectorAll<HTMLButtonElement>('.rb-navi').forEach((b) => {
+        b.onclick = (): void => this.showRuleSection(b.dataset.sec ?? '')
+      })
+      this.showRuleSection(RULEBOOK[0].id)
     }
+    this.loadClassicPages()
+    this.setRbTab(this.rbTab)
     el.classList.remove('hidden')
+  }
+
+  private showRuleSection(id: string): void {
+    const s = RULEBOOK.find((x) => x.id === id)
+    if (!s) return
+    const el = this.root.querySelector('#rulebook') as HTMLElement
+    ;(el.querySelector('.rb-content') as HTMLElement).innerHTML = `<h2>${esc(s.title)}</h2>${s.body}`
+    el.querySelectorAll<HTMLButtonElement>('.rb-navi').forEach((b) =>
+      b.classList.toggle('on', b.dataset.sec === id),
+    )
+    ;(el.querySelector('.rb-content') as HTMLElement).scrollTop = 0
+  }
+
+  private setRbTab(tab: 'rules' | 'classic'): void {
+    this.rbTab = tab
+    const el = this.root.querySelector('#rulebook') as HTMLElement
+    ;(el.querySelector('.rb-rules') as HTMLElement).classList.toggle('hidden', tab !== 'rules')
+    ;(el.querySelector('.rb-pages') as HTMLElement).classList.toggle('hidden', tab !== 'classic')
+    ;(el.querySelector('#rb-tab-rules') as HTMLElement).classList.toggle('on', tab === 'rules')
+    ;(el.querySelector('#rb-tab-classic') as HTMLElement).classList.toggle('on', tab === 'classic')
+  }
+
+  private loadClassicPages(): void {
+    const box = this.root.querySelector('#rulebook .rb-pages') as HTMLElement
+    if (box.dataset.loaded) return
+    box.dataset.loaded = '1'
+    const tryPage = (n: number): void => {
+      const img = new Image()
+      img.alt = `Rulebook page ${n}`
+      img.className = 'rb-page'
+      img.onload = (): void => {
+        box.appendChild(img)
+        tryPage(n + 1)
+      }
+      img.onerror = (): void => {
+        if (n === 1) {
+          box.innerHTML =
+            '<p class="muted" style="padding:20px">The original rulebook scans aren’t bundled on this machine. They live in <code>src/renderer/public/rulebook/</code> (git-ignored) and are packaged into the local build.</p>'
+        }
+      }
+      img.src = `rulebook/page-${String(n).padStart(2, '0')}.jpg`
+    }
+    tryPage(1)
   }
 
   private closeRulebook(): void {
@@ -818,6 +857,8 @@ class GameUI {
     q<HTMLButtonElement>('#help-close').onclick = () => this.hideHelp()
     q<HTMLButtonElement>('#rulebook-btn').onclick = () => this.openRulebook()
     q<HTMLButtonElement>('#rb-close').onclick = () => this.closeRulebook()
+    q<HTMLButtonElement>('#rb-tab-rules').onclick = () => this.setRbTab('rules')
+    q<HTMLButtonElement>('#rb-tab-classic').onclick = () => this.setRbTab('classic')
     q<HTMLButtonElement>('#vpt-btn').onclick = () => this.showVPTable()
     q<HTMLButtonElement>('#vpt-close').onclick = () => this.hideVPTable()
     q<HTMLButtonElement>('#step').onclick = () => {
@@ -889,7 +930,7 @@ const TEMPLATE = `
   </header>
   <div class="body">
     <div class="mapwrap"><canvas id="map"></canvas><div id="event-panel" class="event-panel hidden"></div><div id="start-roll" class="event-panel hidden"></div><div id="draft-panel" class="event-panel hidden"></div><div id="epoch-intro" class="event-panel hidden"></div><div id="gameover" class="event-panel hidden"></div>
-      <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Original Rulebook &amp; Sample Game</h3><button id="rb-close">Close</button></div><div class="rb-pages"></div></div></div>
+      <div id="rulebook" class="event-panel hidden"><div class="evt-box rb-box"><div class="rb-head"><h3>Rulebook</h3><div class="rb-tabs"><button id="rb-tab-rules" class="rb-tab on">Rules</button><button id="rb-tab-classic" class="rb-tab">Classic scans</button></div><button id="rb-close">Close</button></div><div class="rb-body"><div class="rb-rules"><nav class="rb-nav"></nav><div class="rb-content"></div></div><div class="rb-pages hidden"></div></div></div></div>
       <div id="vptable-modal" class="event-panel hidden"><div class="evt-box vpt-box"><div class="rb-head"><h3>Victory Point Table <span class="muted">— base region value by epoch</span></h3><button id="vpt-close">Close</button></div><div id="vptable"></div><div class="vpt-note">Each cell is a region's <b>base (Presence)</b> value in that epoch. <b>Dominance</b> doubles it (×2), <b>Control</b> triples it (×3). The current epoch (<span id="vpt-cur-epoch">I</span>) is highlighted.</div></div></div>
       <div id="help" class="event-panel hidden">
         <div class="evt-box help-box">

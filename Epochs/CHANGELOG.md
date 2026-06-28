@@ -2,6 +2,18 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.25.0] — 2026-06-27
+
+### Added
+- **In-app Rulebook** (📖). A proper rules reference with two tabs:
+  - **Rules** (default) — a faithful, original rendering of *Epochs'* actual rules in
+    our own words (12 sections: Overview, Board, Roll & Draft, Empire-Turn, Expansion,
+    Combat, Events, Minor Empires, Structures, Scoring, Seas, Winning), with a section
+    nav. Written to match what the app implements (which diverges from the original),
+    so it's accurate where a copy of the original would mislead.
+  - **Classic scans** — the owner's own scanned rulebook pages, bundled into the local
+    build (git-ignored, never committed) as a nostalgic reference.
+
 ## [0.24.0] — 2026-06-27
 
 Scoring depth — see *where* your points come from.
