@@ -43,6 +43,10 @@ export function describeEffect(e: EventEffect): { text: string; timing: 'during'
       return { text: 'Strike an enemy land (3 dice) — and it spreads: each adjacent enemy army rolls 2. A 1 kills.', timing: 'before' }
     case 'famine':
       return { text: "Strike an enemy region: every army in that whole Area rolls 2 dice — each 1 starves.", timing: 'before' }
+    case 'found_kingdom':
+      return { text: 'A vassal kingdom rises — raise a fortified city (city + fort) on one of your lands after you expand.', timing: 'during' }
+    case 'barbarians':
+      return { text: 'Barbarians pour from the wastes onto an enemy land bordering a barren region — raze its structure and its army rolls 3 dice (a 1 routs it).', timing: 'before' }
   }
 }
 
@@ -68,6 +72,7 @@ const SIEGECRAFT = ['Siegecraft', 'Sapper Corps', 'Siege Towers']
 const SURPRISE = ['Surprise Attack', 'Ambush', 'Forced March']
 const POP_EXPLOSION = ['Population Boom', 'Fertile Years', 'Settlers']
 const CIVIL_SERVICE = ['Civil Service', 'Bureaucracy', 'Imperial Administration']
+const KINGDOMS = ['Rising Kingdom', 'Vassal Realm', 'Petty Kingdom']
 
 // Targeted disasters (Lesser, aimed at an enemy Land before a turn): [name, effect, count].
 const DISASTERS: Array<[string, EventEffect, number]> = [
@@ -77,6 +82,7 @@ const DISASTERS: Array<[string, EventEffect, number]> = [
   ['Plague', { kind: 'plague' }, 6],
   ['Pestilence', { kind: 'pestilence' }, 4],
   ['Famine', { kind: 'famine' }, 4],
+  ['Barbarians', { kind: 'barbarians' }, 4],
 ]
 
 export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
@@ -98,6 +104,7 @@ export function makeEventDeck(): { greater: EventCard[]; lesser: EventCard[] } {
   CIVIL_SERVICE.forEach((n, i) =>
     greater.push(card(`g_civil_${i}`, 'greater', n, { kind: 'extra_armies', armies: 2, needsCapital: true })),
   )
+  KINGDOMS.forEach((n, i) => greater.push(card(`g_kingdom_${i}`, 'greater', n, { kind: 'found_kingdom' })))
   const lesser: EventCard[] = []
   let di = 0
   for (const [name, effect, count] of DISASTERS) {

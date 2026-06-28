@@ -34,13 +34,13 @@ describe('event deck', () => {
   it('Greater are the implemented boon kinds; Lesser are targeted disasters', () => {
     const greaterKinds = [
       'leader', 'weaponry', 'fanaticism', 'reallocation', 'minor_empire',
-      'siegecraft', 'surprise_attack', 'extra_armies',
+      'siegecraft', 'surprise_attack', 'extra_armies', 'found_kingdom',
     ]
     for (const c of deck.greater) {
       expect(greaterKinds).toContain(c.effect.kind)
     }
     for (const c of deck.lesser) {
-      expect(['disaster_structure', 'plague', 'pestilence', 'famine']).toContain(c.effect.kind)
+      expect(['disaster_structure', 'plague', 'pestilence', 'famine', 'barbarians']).toContain(c.effect.kind)
     }
   })
 })
@@ -215,6 +215,41 @@ describe('Keep/Pass draft', () => {
   })
 })
 
+describe('Kingdoms + Barbarians', () => {
+  it('a played Kingdom raises a fortified city (city + fort) on a held land', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const game = worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4']))
+      const it = game.play()
+      let step = it.next()
+      while (!step.done) {
+        const ev = step.value
+        if (ev.type === 'foundKingdom') {
+          const onLand = game.state.pieces.filter((p) => p.land === ev.land)
+          expect(onLand.some((p) => p.kind === 'city')).toBe(true)
+          expect(onLand.some((p) => p.kind === 'fort')).toBe(true)
+          return
+        }
+        step = it.next()
+      }
+    }
+    // no bot played a Kingdom across 60 seeds — acceptable (draw-dependent)
+  })
+
+  it('Barbarians only strike enemy lands that border a barren Land', () => {
+    const board = new Board(WORLD_MAP_DATA)
+    let struck = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const e of drive(worldGame(seed, hardBots(['P1', 'P2', 'P3', 'P4'])))) {
+        if (e.type === 'disaster' && e.effect === 'barbarians') {
+          struck++
+          expect(board.neighbors(e.land).some((nb) => board.land(nb)?.barren), `${e.land} not by barren`).toBe(true)
+        }
+      }
+      if (struck > 0) return
+    }
+  })
+})
+
 describe('opening roll — first player + empire variety', () => {
   it('emits startRoll first, with first = the highest roller', () => {
     const events = drive(worldGame(7, hardBots(['P1', 'P2', 'P3', 'P4'])))
@@ -251,6 +286,8 @@ describe('describeEffect (event card text for the panel)', () => {
     { kind: 'plague' },
     { kind: 'pestilence' },
     { kind: 'famine' },
+    { kind: 'found_kingdom' },
+    { kind: 'barbarians' },
   ]
   it('gives non-empty text + a valid timing for every effect kind', () => {
     for (const e of kinds) {

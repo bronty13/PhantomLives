@@ -58,6 +58,7 @@ export interface TurnEffects {
   ignoreForts: boolean // Siegecraft → forts give no defence vs your attacks
   ignoreTerrain: boolean // Surprise Attack → void difficult-terrain/amphibious defence
   minorEmpire: EmpireCard | null // Minor Empire → a second empire-turn before your main one
+  foundKingdom: boolean // Kingdoms → raise a fortified city on one of your lands after expanding
 }
 
 const emptyTurnEffects = (): TurnEffects => ({
@@ -68,6 +69,7 @@ const emptyTurnEffects = (): TurnEffects => ({
   ignoreForts: false,
   ignoreTerrain: false,
   minorEmpire: null,
+  foundKingdom: false,
 })
 
 /** Keep the drawn empire, or pass (gift) it to an empire-less player. */
@@ -115,6 +117,7 @@ export type GameEvent =
   | { type: 'disaster'; player: PlayerId; card: string; land: LandId; effect: string }
   | { type: 'setup'; player: PlayerId; land: LandId; empire: string }
   | { type: 'minorEmpire'; player: PlayerId; empire: string; land: LandId }
+  | { type: 'foundKingdom'; player: PlayerId; land: LandId }
   | {
       type: 'awaitPlacement'
       player: PlayerId
@@ -307,6 +310,15 @@ export class Game {
     this.setupEmpire(pid, empire)
     yield { type: 'setup', player: pid, land: empire.startLand, empire: empire.name }
     yield* this.expandGen(pid, empire, effects)
+    // Kingdoms: a fortified city (city + fort) rises on one of your holdings.
+    if (effects.foundKingdom) {
+      const land = this.bestKingdomLand(pid)
+      if (land) {
+        this.addPiece({ land, kind: 'city', owner: pid, epochColor: this.state.epoch })
+        this.addPiece({ land, kind: 'fort', owner: pid, epochColor: this.state.epoch })
+        yield { type: 'foundKingdom', player: pid, land }
+      }
+    }
     this.buildMonuments(pid)
     const gained = scoreEmpireTurn(
       this.state.pieces,
@@ -474,6 +486,15 @@ export class Game {
           }
         }
       }
+    } else if (effect.kind === 'barbarians') {
+      // A raid from the wastes: sack the Land — raze its top structure AND its army
+      // rolls 3 dice (a 1 routs it). The raiders don't stay to hold it.
+      this.state.pieces = this.state.pieces.flatMap((p) => {
+        if (p.land !== land || p.kind === 'army') return [p]
+        if (p.kind === 'capital') return [{ ...p, kind: 'city' as PieceKind }]
+        return [] // structure razed
+      })
+      this.rollPlague(land, 3)
     }
     void pid
   }
@@ -500,6 +521,10 @@ export class Game {
         out.add(p.land)
       } else if (effect.kind === 'plague' || effect.kind === 'pestilence' || effect.kind === 'famine') {
         if (p.kind === 'army') out.add(p.land) // any enemy army is a legal aim point
+      } else if (effect.kind === 'barbarians') {
+        // Erupts from the wastes: only enemy lands that border a barren Land.
+        if (p.kind !== 'army') continue
+        if (this.board.neighbors(p.land).some((nb) => this.board.land(nb)?.barren)) out.add(p.land)
       }
     }
     return [...out]
@@ -530,6 +555,9 @@ export class Game {
         break
       case 'extra_armies':
         if (!card.effect.needsCapital || empire.hasCapital) effects.bonusArmies += card.effect.armies
+        break
+      case 'found_kingdom':
+        effects.foundKingdom = true // a fortified city rises after the expansion phase
         break
     }
   }
@@ -777,6 +805,21 @@ export class Game {
     // every controlled land already carries a monument → unplaceable, so it
     // isn't built (SPEC §8.2 — one monument per land)
     return null
+  }
+
+  /** A plain holding (current-epoch army, no city/capital/fort) to raise into a
+   *  fortified city for the Kingdoms event; null if every holding is already built up. */
+  private bestKingdomLand(pid: PlayerId): LandId | null {
+    const built = (l: LandId): boolean =>
+      this.state.pieces.some(
+        (p) => p.land === l && (p.kind === 'city' || p.kind === 'capital' || p.kind === 'fort'),
+      )
+    return (
+      this.state.pieces
+        .filter((p) => p.kind === 'army' && p.owner === pid && p.epochColor === this.state.epoch && !built(p.land))
+        .map((p) => p.land)
+        .sort()[0] ?? null
+    )
   }
 
   // ── piece helpers ─────────────────────────────────────────────────────────

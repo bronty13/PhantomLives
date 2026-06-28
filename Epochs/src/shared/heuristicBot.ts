@@ -175,7 +175,8 @@ export class HeuristicBot implements Bot {
           (c) =>
             c.effect.kind === 'reallocation' ||
             c.effect.kind === 'minor_empire' ||
-            c.effect.kind === 'extra_armies',
+            c.effect.kind === 'extra_armies' ||
+            c.effect.kind === 'found_kingdom',
         )
         if (armies) choice.greater = armies.id
       }
@@ -230,6 +231,12 @@ export class HeuristicBot implements Bot {
             view.board.land(q.land)?.area === land.area,
         ).length
         score = areaArmies + areaValue(land.area ?? '', view.epoch)
+      } else if (effect.kind === 'barbarians') {
+        if (p.kind !== 'army') continue
+        // only enemy lands bordering a barren one are legal; value the sack (structures + rout)
+        if (!view.board.neighbors(p.land).some((nb) => view.board.land(nb)?.barren)) continue
+        const struct = view.pieces.filter((q) => q.land === p.land && q.kind !== 'army').length
+        score = 1 + struct * 2 + areaValue(land.area ?? '', view.epoch) * 0.5
       }
       if (score > bestScore) {
         bestScore = score

@@ -2,6 +2,22 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.21.0] — 2026-06-27
+
+Event system, slice 5 — two new event families.
+
+### Added
+- **Barbarians** (Lesser disaster) — a raid from the wastes: strike an enemy land
+  that **borders a barren region**, raze its structure *and* its army rolls 3 dice (a
+  1 routs it). The raiders don't hold the land. Reuses the disaster machinery with a
+  barren-adjacency target filter; the bot aims it at structured, barren-bordering
+  enemy lands.
+- **Kingdoms** (Greater boon) — a vassal realm rises: after you expand, **raise a
+  fortified city (city + fort) on one of your plain holdings** (more score, more
+  defence). Weak empires favour it. New `found_kingdom` effect + `foundKingdom` event.
+- Tournament thresholds re-based with headroom (the richer event mix adds variance);
+  ladder stays clean at 58.3 / 63.7 / 67.1%.
+
 ## [0.20.0] — 2026-06-27
 
 ### Changed

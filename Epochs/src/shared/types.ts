@@ -75,11 +75,13 @@ export type EventEffect =
   | { kind: 'siegecraft' } // forts have no effect vs your attacks this turn
   | { kind: 'surprise_attack' } // void difficult-terrain / amphibious defence this turn
   | { kind: 'extra_armies'; armies: number; needsCapital: boolean } // Pop Explosion / Civil Service
+  | { kind: 'found_kingdom' } // Kingdoms: raise a fortified city (city + fort) on one of your lands
   // ── targeted disasters (played BEFORE turn, aimed at an enemy Land) ──
   | { kind: 'disaster_structure'; terrain: DisasterTerrain } // Flood/Volcano/Fire: wreck structures
   | { kind: 'plague' } // the target Land's army rolls 4 dice; a '1' eliminates it
   | { kind: 'pestilence' } // target army rolls 3 dice; each adjacent enemy army rolls 2 — '1' kills
   | { kind: 'famine' } // every enemy army in the target's Area rolls 2 dice; a '1' kills
+  | { kind: 'barbarians' } // a raid from the wastes: sack an enemy Land bordering a barren one
 
 /** True for effects that must be aimed at a target Land. */
 export function effectNeedsTarget(e: EventEffect): boolean {
@@ -87,7 +89,8 @@ export function effectNeedsTarget(e: EventEffect): boolean {
     e.kind === 'disaster_structure' ||
     e.kind === 'plague' ||
     e.kind === 'pestilence' ||
-    e.kind === 'famine'
+    e.kind === 'famine' ||
+    e.kind === 'barbarians'
   )
 }
 

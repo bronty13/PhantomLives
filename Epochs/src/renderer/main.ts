@@ -266,7 +266,14 @@ class GameUI {
         this.status = `${ev.card}: click a target land (highlighted).`
         break
       case 'disaster': {
-        const what = ev.effect === 'plague' ? 'plague' : 'razed'
+        const what =
+          ev.effect === 'plague' || ev.effect === 'pestilence'
+            ? 'plague'
+            : ev.effect === 'famine'
+              ? 'famine'
+              : ev.effect === 'barbarians'
+                ? 'sacked'
+                : 'razed'
         this.pushLog(`☄ ${ev.card} struck ${this.landName(ev.land)} — ${what}`)
         this.fx.push({ kind: 'clash', land: ev.land, color: '#e8801c', start: now, dur: 560, text: ev.card })
         this.startLoop()
@@ -275,6 +282,11 @@ class GameUI {
       case 'minorEmpire':
         this.status = `${this.nameOf(ev.player)}'s Minor Empire — the ${ev.empire} rise in ${this.landName(ev.land)}`
         this.pushLog(`🏛 ${this.nameOf(ev.player)} summons a Minor Empire: ${ev.empire} (${this.landName(ev.land)})`)
+        break
+      case 'foundKingdom':
+        this.pushLog(`🏰 ${this.nameOf(ev.player)} raised a fortified kingdom at ${this.landName(ev.land)}`)
+        this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 320 })
+        this.startLoop()
         break
       case 'setup':
         this.fx.push({ kind: 'spawn', land: ev.land, color: this.colorOf(ev.player), start: now, dur: 260 })
