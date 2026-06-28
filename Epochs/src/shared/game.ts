@@ -1030,11 +1030,13 @@ export class Game {
         maxFleets,
         maxForts,
       }) as BuyChoice | undefined
-      let fleets = Math.max(0, Math.min(maxFleets, choice?.fleets ?? 0))
+      // Building a fleet is OPTIONAL (the rules never force one — navigation is an
+      // ability, used only if you choose to cross a sea this turn).
+      const fleets = Math.max(0, Math.min(maxFleets, choice?.fleets ?? 0))
       const forts = Math.max(0, Math.min(maxForts - fleets, choice?.forts ?? 0))
-      if (navigates && maxFleets >= 1 && fleets === 0 && budget - forts >= 1) fleets = 1 // ≥1 fleet
       return { fleets, forts: Math.min(forts, budget - fleets) }
     }
+    // The bot builds one fleet when it can navigate — a strategic choice, not a rule.
     return { fleets: navigates && maxFleets >= 1 ? 1 : 0, forts: 0 }
   }
 

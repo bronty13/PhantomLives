@@ -2,6 +2,18 @@
 
 All notable changes to Epochs are recorded here.
 
+## [0.40.1] — 2026-06-28
+
+Rules fix — building a fleet is optional (not required).
+
+### Fixed
+- **Navigation no longer forces a fleet purchase.** The directions (§4) place fleets as
+  ordinary units during expansion — navigation is an *ability*, used only when you
+  choose to cross a sea — with **no requirement** to build one. We were forcing
+  navigation empires to buy ≥1 fleet; removed that in the engine, the buy stepper (min
+  is now 0), the default selection (starts at 0), the panel note, and the rulebook. The
+  bot still opts to build one when it can navigate — a strategy, not a rule.
+
 ## [0.40.0] — 2026-06-28
 
 Fix — interactive fleet & fort placement (the deferred half of the buy phase).

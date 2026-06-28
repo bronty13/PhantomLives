@@ -75,9 +75,9 @@ export const RULEBOOK: RuleSection[] = [
         <li><b>Set up</b> — place your capital (if any) and first army on your homeland,
         clearing whatever army or fort stood there.</li>
         <li><b>Buy units</b> — spend your empire's remaining <b>strength</b> on any mix
-        of <b>armies, fleets, and forts</b> (each costs one). A navigation empire must
-        build at least one fleet. (You can only buy as many fleets as there are seas to
-        place them in.)</li>
+        of <b>armies, fleets, and forts</b> (each costs one). Building a fleet is
+        <b>optional</b> — do it only when you want to cross a sea this turn. (You can buy
+        only as many fleets as there are seas to place them in.)</li>
         <li><b>Place &amp; expand</b> — you place each unit yourself: <b>fleets</b> first
         (pick a sea to sail into — and fight an enemy fleet there if one holds it), then
         your <b>armies</b> one at a time into reachable lands, then your <b>forts</b> on

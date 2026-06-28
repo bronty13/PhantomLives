@@ -325,7 +325,7 @@ class GameUI {
         break
       case 'awaitBuy':
         this.pendingBuy = ev
-        this.buySel = { fleets: ev.maxFleets > 0 ? 1 : 0, forts: 0 } // default to the required fleet
+        this.buySel = { fleets: 0, forts: 0 } // fleets are optional — start at none
         this.status = `${ev.empire}: buy your units (${ev.budget} Strength to spend)`
         this.showBuyPanel()
         break
@@ -747,7 +747,7 @@ class GameUI {
       stepper('Forts', 'forts', ev.maxForts, '▮') +
       `<div class="buy-row buy-armies"><span class="buy-label">⚔ Armies</span><span class="buy-n">${armies}</span></div>` +
       `</div>` +
-      (ev.maxFleets > 0 ? `<p class="buy-note">A navigation empire must build at least one fleet.</p>` : '') +
+      (ev.maxFleets > 0 ? `<p class="buy-note">Build a fleet (optional) to cross a sea and reach distant coasts this turn.</p>` : '') +
       `<div class="evt-actions"><button id="buy-confirm" class="primary">Deploy ▶</button></div>` +
       `</div>`
     el.classList.remove('hidden')
@@ -764,12 +764,11 @@ class GameUI {
     const ev = this.pendingBuy
     if (!ev) return
     const max = key === 'fleets' ? ev.maxFleets : ev.maxForts
-    const min = key === 'fleets' && ev.maxFleets > 0 ? 1 : 0 // navigation needs ≥1 fleet
     const other = key === 'fleets' ? this.buySel.forts : this.buySel.fleets
     let v = this.buySel[key] + delta
-    v = Math.max(min, Math.min(max, v))
+    v = Math.max(0, Math.min(max, v)) // fleets are optional — 0 is allowed
     if (v + other > ev.budget) v = ev.budget - other
-    this.buySel[key] = Math.max(min, v)
+    this.buySel[key] = Math.max(0, v)
     this.showBuyPanel()
   }
 
