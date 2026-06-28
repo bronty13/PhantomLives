@@ -34,6 +34,14 @@
 > - ✅ **G6 — fleet ports + unlimited oceans** (v0.45.0): a fleet without a controlled coastal port is destroyed (§5.5); oceans hold unlimited fleets (§7.4). Audit had the direction but mis-stated caps; ocean combat stays optional (coexistence faithful).
 > - ✅ **G2 / G3 / G4 — debunked** by `tests/sample-game.test.ts` (combat model, fort = +1,
 >   no capital defensive bonus all match the book's worked combat).
+> - ✅ **Caspian admits no fleets** (v0.45.1, §7.3).
+> - ⏳ **G7 — empire special abilities: BLOCKED on source material, not effort.** Per-empire
+>   powers (Babylon's conditional Monument, Carthage/Vedic capital protection, Persia's
+>   double-square, etc.) are printed on the **~48 empire cards**, which are NOT among our
+>   scans (we have the 12 rulebook *pages* only; the rulebook mentions just a handful in
+>   passing). A faithful full implementation needs the card scans; going beyond what the
+>   rulebook states would mean *inventing* abilities, which breaks the fidelity rule.
+>   **Deferred until the empire-card scans exist.** Every fix our 12 pages support is done.
 >
 > ⚠️ **Read critically.** Some "divergences" are the audit's own extraction misreads (e.g. combat-dice model, draft-order key) and must be re-checked against the source pages before any code change. Others are deliberate simplifications (no physical VP track, open draft). The value is the *coverage* — every clause now has a row.
 
