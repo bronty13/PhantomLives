@@ -85,6 +85,7 @@ struct ContentView: View {
         case .profile: ProfileSettingsView(store: appState.store)
         case .offsite: OffsiteSettingsView(store: appState.store)
         case .adhoc: AdhocBackupView(store: appState.store)
+        case .adhocFiles: AdhocFilesView(store: appState.store)
         case .backup: BackupSettingsView(store: appState.store)
         case .purge: PurgeSettingsView()
         }

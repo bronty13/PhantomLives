@@ -45,6 +45,11 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
   - Progress parsing from rclone `--use-json-log` stats lines via pure `RcloneParse.progress` →
     `RcloneProgress`, and `RcloneParse.logMessage` for the log tail (3 new tests; suite 200).
   - (CLI `pattic adhoc backup` subcommand still outstanding — GUI upload first.)
+- **Phase 3 — Browse (UI).** New **Ad-hoc Files** sidebar pane: a sortable, searchable `Table` of
+  the encrypted store's contents (name / path / size / modified), served instantly from the local
+  GRDB cache and reconciled with B2 on **Refresh** (`rclone lsjson` → `AdhocCacheStore`
+  upsert+prune). Names are decrypted (rclone lists through the crypt remote). `AdhocFilesModel`
+  view-model owns the cache. Confirms the encrypt→list→decrypt round-trip end to end.
 
 ## [0.22.2] — 2026-06-24
 
