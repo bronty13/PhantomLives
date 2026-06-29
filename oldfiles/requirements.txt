@@ -1,0 +1,5 @@
+# oldfiles runtime dependencies.
+# Only needed for the recoverable `--delete` (Trash) action; listing and
+# `--delete-permanent` are pure stdlib. The script lazily bootstraps a local
+# .venv with this on first `--delete`, and install.sh pre-creates it.
+Send2Trash>=1.8.2
