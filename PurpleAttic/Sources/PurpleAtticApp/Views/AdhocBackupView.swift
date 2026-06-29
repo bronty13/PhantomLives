@@ -31,6 +31,7 @@ struct AdhocBackupView: View {
                     testCard
                     sourcesCard
                     backupCard
+                    syncCard
                 }
             }
             .padding(20)
@@ -333,6 +334,78 @@ struct AdhocBackupView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(model.isBackingUp || !canBackup)
             }
+        }
+    }
+
+    // MARK: - Sync (diff + upload changes)
+
+    private var syncCard: some View {
+        Card(title: "8 · Sync — what's changed since last backup") {
+            if model.isDiffing {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Comparing your sources with B2…").font(.caption).foregroundStyle(.secondary)
+                }
+            } else if let entries = model.diffEntries {
+                let uploads = entries.filter { $0.needsUpload }
+                if uploads.isEmpty {
+                    Label("Up to date — nothing to upload.", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green).font(.callout)
+                } else {
+                    let news = uploads.filter { $0.change == .onlyLocal }.count
+                    let changed = uploads.filter { $0.change == .differ }.count
+                    Text("\(uploads.count) change(s) to upload — \(news) new, \(changed) changed.").font(.callout)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(uploads.prefix(60).enumerated()), id: \.offset) { _, e in
+                                let icon = diffIcon(e.change)
+                                HStack(spacing: 6) {
+                                    Image(systemName: icon.0).foregroundStyle(icon.1)
+                                    Text(e.path).font(.system(.caption, design: .monospaced))
+                                        .lineLimit(1).truncationMode(.middle)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            if uploads.count > 60 {
+                                Text("+ \(uploads.count - 60) more…").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .frame(height: 120).padding(8)
+                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
+                    Button {
+                        if let c = config { store.save(); model.runBackup(config: c) }
+                    } label: { Label("Upload these changes", systemImage: "arrow.up.circle.fill") }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.isBackingUp)
+                }
+            } else {
+                Text("Compare your selected sources against B2 to see exactly what a backup would upload (new + changed files) — without uploading anything.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            if let s = model.diffStatus { Text(s).font(.caption).foregroundStyle(.secondary) }
+            HStack {
+                Spacer()
+                Button {
+                    if let c = config { store.save(); model.checkDiff(config: c) }
+                } label: {
+                    if model.isDiffing { ProgressView().controlSize(.small) }
+                    else { Label("Check for changes", systemImage: "arrow.triangle.2.circlepath") }
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.isDiffing || !canBackup)
+            }
+        }
+    }
+
+    /// SF Symbol + tint for a diff change.
+    private func diffIcon(_ c: DiffEntry.Change) -> (String, Color) {
+        switch c {
+        case .onlyLocal: return ("plus.circle.fill", .green)
+        case .differ:    return ("pencil.circle.fill", .orange)
+        case .onlyRemote: return ("minus.circle", .secondary)
+        case .same:      return ("equal.circle", .secondary)
+        case .error:     return ("exclamationmark.triangle.fill", .red)
         }
     }
 

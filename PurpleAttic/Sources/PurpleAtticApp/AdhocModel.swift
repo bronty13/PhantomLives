@@ -44,6 +44,11 @@ final class AdhocModel: ObservableObject {
     @Published var backupStatus: String? = nil
     @Published var backupLog: [String] = []
 
+    // Diff (what a backup would upload).
+    @Published var isDiffing = false
+    @Published var diffEntries: [DiffEntry]? = nil   // nil = not checked yet
+    @Published var diffStatus: String? = nil
+
     /// rclone must be installed (it drives every ad-hoc operation, including obscuring the passphrase).
     var rcloneAvailable: Bool { Tooling.rclone != nil }
 
@@ -175,6 +180,31 @@ final class AdhocModel: ObservableObject {
                 case .skipped(let r): self.backupStatus = "Skipped — \(r)"
                 case .failed(let d): self.backupStatus = "✗ \(d)"
                 }
+            }
+        }
+    }
+
+    // MARK: - Diff (preview what a backup would upload)
+
+    /// Compare the configured sources against B2 (one-way) and publish the differences. Uploads
+    /// nothing — `runBackup` does the actual additive upload.
+    func checkDiff(config: AdhocBackupConfig) {
+        guard !isDiffing else { return }
+        isDiffing = true
+        diffStatus = nil
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let (entries, outcome) = RcloneService.diff(config: config)
+            var status: String? = nil
+            switch outcome {
+            case .ok(let d): status = d
+            case .skipped(let r): status = "Can't compare — \(r)"
+            case .failed(let d): status = d
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isDiffing = false
+                self.diffEntries = entries
+                self.diffStatus = status
             }
         }
     }

@@ -57,6 +57,11 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
   - **Export report** — CSV / JSON / plain text of the listing to `~/Downloads/PurpleAttic/`,
     revealed in Finder. Rendering is pure/tested (`AdhocReport`).
   - New `AdhocCacheStore.put` (single-row upsert) for reflecting renames; +6 tests (suite 206).
+- **Phase 5 — Diff & sync (UI).** A "Sync — what's changed" card in the Ad-hoc B2 pane: **Check for
+  changes** runs `rclone check --one-way` (via `RcloneService.diff`) and previews exactly what a
+  backup would upload — `+` new and `*` changed files, with counts — **without uploading anything**.
+  **Upload these changes** then runs the additive backup (which sends only those files). Pure UI on
+  the existing engine/parser, so no new tests (suite 206).
 
 ## [0.22.2] — 2026-06-24
 
