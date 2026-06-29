@@ -64,3 +64,36 @@ sorted same day. 💌
 — Molly, your soft little helper 🪙✨
 
 *(v1.33.0, posted 2026-06-14)*
+
+---
+
+# A teeny fix-up 💕 — v1.33.1
+
+Hi again, lovely 💖
+
+Quick little patch! You know how, when you imported a return file from Robert
+for a **▶️ YouTube** bundle, I'd flash a scary yellow **"⚠️ Type mismatch"**
+warning at you — even though everything had *actually imported just fine*? 😣
+
+That was me being silly, not you doing anything wrong. Behind the scenes I file
+your YouTube bundles in the same drawer as Content bundles, and I was comparing
+the wrong two labels — so I'd panic and wave that warning every single time, for
+no real reason. 🙈
+
+**Now it's all calm.** YouTube return files import quietly and cleanly, just
+like your Content and Custom ones — no more false alarm. And don't worry: if a
+return file *ever* truly doesn't match its bundle, I'll still gently tell you.
+I'm just not crying wolf anymore. 🐺💨
+
+> *Will you peek for me?* Next time Robert sends back a **YouTube** bundle, pop
+> over to **🎁 Bundles → 📥 Import Return File**, bring it in, and check that I
+> import it with a happy ✅ and **no** yellow warning. 🎀 (Your already-imported
+> bundles are totally fine — nothing changed for them.)
+
+If anything still feels wonky, yell at me through Robert + Claude Code and I'll
+fix it same day. 💌
+
+xoxo,
+Molly 🪙✨
+
+*(v1.33.1, posted 2026-06-28)*
