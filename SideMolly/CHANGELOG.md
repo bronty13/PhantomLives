@@ -4,6 +4,15 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.4] — 2026-06-29
+
+### Added — Copy button for the title on the Distribute tab
+
+The Distribute tab's posting-info card now shows the bundle's **🏷️ Title** (the
+working override when set, else Molly's original) with a **📋 Copy title** button,
+matching the existing Copy-description button — so Robert can one-click copy the
+title to paste into YouTube/ManyVids alongside the description.
+
 ## [0.28.3] — 2026-06-29
 
 ### Changed — Distribute tab section order

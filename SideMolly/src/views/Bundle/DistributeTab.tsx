@@ -165,8 +165,8 @@ export function DistributeTab({ summary, manifest, refreshSignal }: Props) {
         )}
       </section>
 
-      {/* ─── Description + posting choices ─────────────────────── */}
-      <PostingInfoSection manifest={manifest} />
+      {/* ─── Title + description + posting choices ─────────────── */}
+      <PostingInfoSection manifest={manifest} title={summary.title} />
 
       {/* ─── Preview table ───────────────────────────────────── */}
       <section className="sm-card">
@@ -205,9 +205,11 @@ export function DistributeTab({ summary, manifest, refreshSignal }: Props) {
 // row rendering `manifest.priceCents === 0 ? 'Free' : fmtPrice(...)` — so Sallie
 // sees the price she set in Molly at distribution time. (Today price is only
 // shown for custom bundles, in CustomRunner/DocDrawer.)
-function PostingInfoSection({ manifest }: { manifest: BundleManifest }) {
+function PostingInfoSection({ manifest, title }: { manifest: BundleManifest; title: string }) {
   const [copied, setCopied] = useState(false);
+  const [titleCopied, setTitleCopied] = useState(false);
   const description = manifest.descriptionText?.trim() ?? '';
+  const titleText = title.trim();
   const isAudio = manifest.descriptionMode === 'audio';
   const isYouTube = manifest.bundleType === 'youtube';
 
@@ -218,11 +220,40 @@ function PostingInfoSection({ manifest }: { manifest: BundleManifest }) {
     );
   };
 
+  const copyTitle = () => {
+    navigator.clipboard.writeText(titleText).then(
+      () => { setTitleCopied(true); setTimeout(() => setTitleCopied(false), 1500); },
+      () => {},
+    );
+  };
+
   const yesNo = (b: boolean | null): string =>
     b === null ? '—' : b ? 'Yes' : 'No';
 
   return (
     <section className="sm-card">
+      {/* Title — copyable for pasting alongside the description. */}
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="min-w-0">
+          <div className="font-semibold">🏷️ Title</div>
+          <div
+            className="text-sm mt-0.5 break-words"
+            style={{ color: titleText ? 'rgb(var(--surface-fg))' : 'rgb(var(--surface-muted))' }}
+          >
+            {titleText || '(no title)'}
+          </div>
+        </div>
+        {titleText && (
+          <button
+            type="button"
+            className="sm-button secondary text-xs whitespace-nowrap ml-2"
+            onClick={copyTitle}
+          >
+            {titleCopied ? '✓ Copied' : '📋 Copy title'}
+          </button>
+        )}
+      </div>
+
       <div className="flex items-baseline justify-between mb-1">
         <div className="font-semibold">📝 Description</div>
         {description && (
