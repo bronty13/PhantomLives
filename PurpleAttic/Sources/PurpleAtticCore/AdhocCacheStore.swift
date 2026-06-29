@@ -116,6 +116,11 @@ public final class AdhocCacheStore {
         _ = try dbQueue.write { db in try AdhocFile.deleteOne(db, key: path) }
     }
 
+    /// Upsert a single cached row (e.g. to reflect a rename's new path without a full refresh).
+    public func put(_ file: AdhocFile) throws {
+        try dbQueue.write { db in try file.save(db) }
+    }
+
     /// Drop everything (e.g. when the store is reconfigured/disconnected).
     public func clear() throws {
         _ = try dbQueue.write { db in try AdhocFile.deleteAll(db) }

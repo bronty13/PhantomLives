@@ -50,6 +50,13 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
   GRDB cache and reconciled with B2 on **Refresh** (`rclone lsjson` → `AdhocCacheStore`
   upsert+prune). Names are decrypted (rclone lists through the crypt remote). `AdhocFilesModel`
   view-model owns the cache. Confirms the encrypt→list→decrypt round-trip end to end.
+- **Phase 4 — Manage & report (UI).** In the Ad-hoc Files pane, select a row to:
+  - **Rename** — server-side move (`rclone moveto`, no re-upload); the cache is updated in place.
+  - **Delete** — permanent (`--b2-hard-delete`) behind a **typed-filename confirmation**; the row is
+    removed from the cache locally (no eventual-consistency flicker).
+  - **Export report** — CSV / JSON / plain text of the listing to `~/Downloads/PurpleAttic/`,
+    revealed in Finder. Rendering is pure/tested (`AdhocReport`).
+  - New `AdhocCacheStore.put` (single-row upsert) for reflecting renames; +6 tests (suite 206).
 
 ## [0.22.2] — 2026-06-24
 

@@ -73,6 +73,23 @@ final class AdhocCacheStoreTests: XCTestCase {
         XCTAssertEqual(try store.allFiles().map(\.path), ["b.txt"])
     }
 
+    func testPutUpsertsSingleRow() throws {
+        let store = try AdhocCacheStore(inMemory: true)
+        try store.replaceFromListing([rf("a.txt", 1)], refreshedAt: Date(timeIntervalSince1970: 1000))
+        // Simulate a rename: remove the old path, put the new one (no full re-list).
+        try store.remove(path: "a.txt")
+        let moved = AdhocFile(path: "b.txt", name: "b.txt", size: 1,
+                              modTime: Date(timeIntervalSince1970: 1), isDir: false,
+                              lastSeen: Date(timeIntervalSince1970: 2000))
+        try store.put(moved)
+        XCTAssertEqual(try store.allFiles().map(\.path), ["b.txt"])
+        // A second put with the same path updates in place (upsert, not duplicate).
+        var bigger = moved; bigger.size = 99
+        try store.put(bigger)
+        XCTAssertEqual(try store.count(), 1)
+        XCTAssertEqual(try store.allFiles().first?.size, 99)
+    }
+
     func testSearchIsCaseInsensitiveSubstring() throws {
         let store = try AdhocCacheStore(inMemory: true)
         try store.replaceFromListing([rf("Invoices/2026.pdf", 10), rf("photos/cat.jpg", 20)],
