@@ -194,21 +194,109 @@ pub fn teaser_args(
     a
 }
 
-/// Video bitrate ceiling (kbps) that keeps `dur_sec` under the 100 MB cap,
-/// leaving room for audio. Used as x264 `-maxrate` alongside CRF. Pure.
-pub fn teaser_video_max_kbps(dur_sec: f64, include_audio: bool) -> u32 {
+/// Video bitrate ceiling (kbps) that keeps `dur_sec` of output under a
+/// `budget_bytes` file-size cap, leaving room for ~128 kbps audio. Used as the
+/// x264 `-maxrate` alongside CRF so the encode fills the byte budget without
+/// ever overflowing it (no truncation). `floor_kbps` is the lowest value the
+/// caller will tolerate. Pure.
+///
+/// The 0.95 multiplier is muxing/VBR headroom. The 100 Mbps upper clamp keeps
+/// the value inside x264's 32-bit `-maxrate`/`-bufsize` range (INT_MAX ≈ 2.147
+/// Gbps; `bufsize` is 2×, so the effective ceiling is INT_MAX/2) — without it a
+/// sub-0.37 s clip's astronomically high budget made x264 abort with "maxrate
+/// out of range". CRF + the caller's `-fs` backstop keep the real file size in
+/// check, so 100 Mbps is pure headroom no normal encode approaches.
+pub fn size_budget_video_kbps(
+    budget_bytes: u64,
+    dur_sec: f64,
+    include_audio: bool,
+    floor_kbps: u32,
+) -> u32 {
     let d = dur_sec.max(0.2);
-    // 100 MB * 8 bits * 0.95 headroom, in kbits, over the duration.
-    let total_kbps = (104_857_600.0 * 8.0 * 0.95 / d / 1000.0) as u32;
+    let total_kbps = (budget_bytes as f64 * 8.0 * 0.95 / d / 1000.0) as u32;
     let audio_kbps = if include_audio { 128 } else { 0 };
-    // Cap at 100 Mbps. The 100 MB / duration budget explodes for short clips
-    // (a 0.2 s clip yields ~3.98 Gbps), and x264's `-maxrate`/`-bufsize` take a
-    // 32-bit bits/s value (INT_MAX ≈ 2.147 Gbps) — `bufsize` is 2× this, so the
-    // effective ceiling is INT_MAX/2. Without this, any clip under ~0.37 s made
-    // x264 abort with "maxrate out of range". The cap never bites real quality:
-    // CRF 20 sets the quality target and `-fs 104857600` hard-caps file size, so
-    // 100 Mbps is pure headroom no teaser ever approaches.
-    total_kbps.saturating_sub(audio_kbps).clamp(1000, 100_000)
+    total_kbps.saturating_sub(audio_kbps).clamp(floor_kbps, 100_000)
+}
+
+/// Teaser video bitrate ceiling: the ≤100 MB budget with a 1 Mbps floor.
+/// Thin wrapper over [`size_budget_video_kbps`] (kept for the teaser callers).
+pub fn teaser_video_max_kbps(dur_sec: f64, include_audio: bool) -> u32 {
+    size_budget_video_kbps(104_857_600, dur_sec, include_audio, 1000)
+}
+
+/// Output dims that scale (w,h) DOWN to fit inside (max_w,max_h) preserving
+/// aspect ratio — never upscaling — with even dims (H.264/yuv420p need even
+/// W/H). Pure.
+pub fn fit_within(w: u32, h: u32, max_w: u32, max_h: u32) -> (u32, u32) {
+    let (w, h) = (w.max(1), h.max(1));
+    // Scaling factor, capped at 1.0 so we never enlarge a small source.
+    let s = (max_w as f64 / w as f64)
+        .min(max_h as f64 / h as f64)
+        .min(1.0);
+    (even((w as f64 * s).round() as u32), even((h as f64 * s).round() as u32))
+}
+
+/// Target Full-HD bounding box for the Squish encoder, oriented to match the
+/// source: landscape → 1920×1080, portrait → 1080×1920. Capped at the source's
+/// own size so a clip already ≤ Full-HD is left alone. Pure.
+///
+/// NOTE: `w`/`h` are ffprobe's *coded* dims (rotation-unaware). A clip stored
+/// landscape with a 90° rotation flag is displayed portrait; `shrink_args` pairs
+/// this box with `force_original_aspect_ratio=decrease` so ffmpeg fits the real
+/// (auto-rotated) frame inside it without ever distorting — at worst such a clip
+/// lands a little smaller than its ideal portrait box, never stretched.
+pub fn shrink_box(w: u32, h: u32) -> (u32, u32) {
+    let (max_w, max_h) = if w >= h { (1920, 1080) } else { (1080, 1920) };
+    fit_within(w, h, max_w, max_h)
+}
+
+/// argv for a whole-file "shrink to fit a byte budget" H.264/AAC encode (the
+/// Squish feature). CRF 20 quality, capped by a budget-derived `-maxrate` so the
+/// encode fills the budget without overflowing it (no truncation); `-fs` is a
+/// hard byte backstop that should never trip when the bitrate target holds.
+/// Scales to fit the `box_w`×`box_h` bounding box (aspect-preserving, even dims,
+/// never upscaling) and tone-maps HDR→SDR. Whole file (no `-ss`/`-t`).
+pub fn shrink_args(
+    src: &str,
+    out: &str,
+    box_w: u32,
+    box_h: u32,
+    video_max_kbps: u32,
+    include_audio: bool,
+    is_hdr: bool,
+    fs_backstop_bytes: u64,
+) -> Vec<String> {
+    let mut a = base_args();
+    a.extend(["-i".into(), src.into()]);
+    // `force_original_aspect_ratio=decrease` fits the (auto-rotated) frame inside
+    // the box preserving aspect; `force_divisible_by=2` keeps W/H even for x264.
+    let vf = format!(
+        "{}scale={}:{}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos",
+        tonemap_segment(is_hdr),
+        box_w,
+        box_h,
+    );
+    a.extend(["-vf".into(), vf]);
+    a.extend([
+        "-c:v".into(), "libx264".into(),
+        "-preset".into(), "fast".into(),
+        "-crf".into(), "20".into(),
+        "-maxrate".into(), format!("{video_max_kbps}k"),
+        "-bufsize".into(), format!("{}k", video_max_kbps.saturating_mul(2)),
+        "-pix_fmt".into(), "yuv420p".into(),
+    ]);
+    if include_audio {
+        a.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "128k".into()]);
+    } else {
+        a.push("-an".into());
+    }
+    a.extend([
+        "-map_metadata".into(), "-1".into(),
+        "-movflags".into(), "+faststart".into(),
+        "-fs".into(), fs_backstop_bytes.to_string(),
+    ]);
+    a.push(out.into());
+    a
 }
 
 /// argv for a single-frame JPEG grab.
@@ -396,6 +484,62 @@ mod tests {
         }
         // The cap actually bites for sub-second clips.
         assert_eq!(teaser_video_max_kbps(0.2, true), 100_000);
+    }
+
+    #[test]
+    fn fit_within_downscales_preserves_aspect_no_upscale() {
+        // 4K landscape into a 1920×1080 box → exactly Full-HD.
+        assert_eq!(fit_within(3840, 2160, 1920, 1080), (1920, 1080));
+        // Already smaller than the box → left untouched (never enlarged).
+        assert_eq!(fit_within(1280, 720, 1920, 1080), (1280, 720));
+        // Aspect preserved when only one dim binds; result dims forced even.
+        let (w, h) = fit_within(4000, 3000, 1920, 1080); // 4:3 → height binds
+        assert_eq!(h, 1080);
+        assert_eq!(w, 1440);
+        assert_eq!((w % 2, h % 2), (0, 0));
+    }
+
+    #[test]
+    fn shrink_box_is_orientation_aware_and_capped() {
+        assert_eq!(shrink_box(3840, 2160), (1920, 1080)); // 4K landscape
+        assert_eq!(shrink_box(2160, 3840), (1080, 1920)); // 4K portrait
+        assert_eq!(shrink_box(1080, 1080), (1080, 1080)); // square, already small
+        assert_eq!(shrink_box(1280, 720), (1280, 720));   // sub-HD, untouched
+    }
+
+    #[test]
+    fn size_budget_kbps_fits_budget_and_honors_floor() {
+        // ~0.9 GB over 10 min: well within range, fills the budget.
+        let k = size_budget_video_kbps(920_000_000, 600.0, true, 300);
+        assert!(k > 300 && k < 100_000);
+        // (video + audio) bits must stay under the budget.
+        assert!(((k + 128) as f64) * 1000.0 * 600.0 / 8.0 <= 920_000_000.0);
+        // A very long clip clamps to the (low) shrink floor, not the teaser's.
+        assert_eq!(size_budget_video_kbps(920_000_000, 100_000.0, true, 300), 300);
+        // Teaser wrapper still uses its 1 Mbps floor — unchanged behaviour.
+        assert_eq!(teaser_video_max_kbps(100_000.0, true), 1000);
+    }
+
+    #[test]
+    fn shrink_args_encode_shape() {
+        let with_audio = shrink_args("in.mov", "out.mov", 1920, 1080, 8000, true, false, 990_000_000);
+        let j = with_audio.join(" ");
+        assert!(j.contains("-c:v libx264"));
+        assert!(j.contains("-crf 20"));
+        assert!(j.contains("-maxrate 8000k"));
+        assert!(j.contains("-bufsize 16000k"));
+        assert!(j.contains("scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2"));
+        assert!(j.contains("-movflags +faststart"));
+        assert!(j.contains("-fs 990000000"));
+        assert!(j.contains("-c:a aac"));
+        assert!(!j.contains("-an"));
+        // No-audio variant mutes and omits the audio codec.
+        let muted = shrink_args("in.mov", "out.mov", 1280, 720, 4000, false, false, 990_000_000).join(" ");
+        assert!(muted.contains("-an"));
+        assert!(!muted.contains("-c:a aac"));
+        // HDR source gets the tonemap chain prepended to the scale.
+        let hdr = shrink_args("in.mov", "out.mov", 1920, 1080, 8000, true, true, 990_000_000).join(" ");
+        assert!(hdr.contains("zscale=t=linear") && hdr.contains("tonemap="));
     }
 
     #[test]

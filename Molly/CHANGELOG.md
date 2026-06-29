@@ -4,6 +4,34 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] — 2026-06-29
+
+### Added — 🫧 Squish: shrink a big video small enough to upload (under 1 GB)
+
+A new sidebar tab that re-encodes an oversized clip (e.g. a 4+ GB 4K `.mov`)
+down to a Slack-uploadable size while keeping the most quality the budget
+allows. Pick a video → one button → progress bar → a `<name> (Squished).mov`
+in `~/Downloads/Molly/`.
+
+- **Engine:** reuses the bundled native ffmpeg (no new tooling). New
+  `shrink_video` command in `src-tauri/src/media/commands.rs` probes the
+  source, downscales to a Full-HD box (orientation-aware: 1920×1080 landscape /
+  1080×1920 portrait, never upscaling), and encodes H.264 (CRF 20) + AAC with a
+  budget-derived `-maxrate` so it **fills the byte budget without truncating**.
+  HDR (iPhone 4K) is tone-mapped to SDR.
+- **Targets ~0.92 GB** with a hard `-fs` backstop under 1 GB, so the result
+  clears Slack's limit whether they mean 1 GB (10⁹) or 1 GiB (2³⁰).
+- **Writes straight to a file** and returns only metadata (path + sizes) —
+  never the up-to-1 GB bytes across the IPC boundary, unlike the teaser path.
+- **Rotation-safe:** ffprobe reports coded dims, so the encoder pairs the box
+  with `force_original_aspect_ratio=decrease` — a rotation-flagged portrait clip
+  is fit inside the box without distortion (at worst a little smaller than its
+  ideal portrait size, never stretched).
+- New pure helpers (`fit_within`, `shrink_box`, generalized
+  `size_budget_video_kbps`, `shrink_args`) with unit tests; the existing
+  `teaser_video_max_kbps` is now a thin wrapper (unchanged behaviour). New
+  frontend `formatBytes`/`savingsPercent` util with vitest coverage.
+
 ## [1.33.1] — 2026-06-28
 
 ### Fixed — No more phantom "Type mismatch" warning when importing a YouTube return file

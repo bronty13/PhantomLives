@@ -3,7 +3,7 @@
 //! an optional full-frame caption PNG; Rust runs native ffmpeg from the
 //! ORIGINAL source (input-seeked) and returns the output bytes.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Runtime};
 
@@ -208,6 +208,139 @@ pub async fn grab_frame<R: Runtime>(
     let bin = ffmpeg_path::ffmpeg_bin(&handle);
     engine::run_ffmpeg(&bin, &args, 1.0, 30, |_| {}).await?;
     Ok(Response::new(std::fs::read(&out)?))
+}
+
+// ---------------------------------------------------------------------------
+// Squish — shrink a whole video to fit a byte budget (Slack's 1 GB upload cap).
+// Unlike the teaser, this writes straight to a user-visible file and returns
+// only metadata — never the (up to ~1 GB) bytes over the IPC boundary.
+// ---------------------------------------------------------------------------
+
+/// Target output budget: ~0.92 GB. Deliberately under 1 GB whether Slack means
+/// 1 GB (10⁹) or 1 GiB (2³⁰), with room for muxing overhead.
+const SLACK_TARGET_BYTES: u64 = 920_000_000;
+/// Hard byte backstop passed to ffmpeg `-fs`. The bitrate target keeps the file
+/// well under this; it only ever trips on a pathological mis-estimate, and even
+/// then the result is still uploadable. Kept under 10⁹ for the same reason.
+const SHRINK_FS_BACKSTOP_BYTES: u64 = 990_000_000;
+/// Lowest video bitrate we'll target. Far below the teaser's 1 Mbps floor so a
+/// long clip stays inside the byte budget (a higher floor would overshoot it).
+const SHRINK_MIN_VIDEO_KBPS: u32 = 300;
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShrinkParams {
+    pub absolute_path: String,
+    /// Target output byte budget. `None` → the Slack default (~0.92 GB).
+    pub target_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShrinkResult {
+    pub output_path: String,
+    pub output_bytes: u64,
+    pub input_bytes: u64,
+    pub out_width: u32,
+    pub out_height: u32,
+    pub src_width: u32,
+    pub src_height: u32,
+    pub duration_sec: f64,
+}
+
+/// `~/Downloads/Molly/<stem> (Squished).mov`, de-duplicated with a counter so a
+/// re-shrink never clobbers a previous output.
+fn unique_output(dir: &Path, stem: &str) -> PathBuf {
+    let base = format!("{stem} (Squished)");
+    let first = dir.join(format!("{base}.mov"));
+    if !first.exists() {
+        return first;
+    }
+    for n in 2..1000 {
+        let p = dir.join(format!("{base} {n}.mov"));
+        if !p.exists() {
+            return p;
+        }
+    }
+    // Astronomically unlikely fallthrough; overwrite the last slot.
+    dir.join(format!("{base} 999.mov"))
+}
+
+/// Shrink a whole video to fit under a byte budget (default: Slack's 1 GB),
+/// downscaling to Full-HD and re-encoding H.264/AAC at the highest CRF-capped
+/// quality the budget allows. Writes to `~/Downloads/Molly/` and returns the
+/// path + sizes; streams progress over the per-call Channel.
+#[tauri::command]
+pub async fn shrink_video<R: Runtime>(
+    handle: AppHandle<R>,
+    params: ShrinkParams,
+    on_progress: Channel<Progress>,
+) -> Result<ShrinkResult, MediaError> {
+    let src = Path::new(&params.absolute_path);
+    let input_bytes = std::fs::metadata(src)?.len();
+
+    let info = probe::probe(&handle, &params.absolute_path).await?;
+    if info.duration_sec <= 0.0 || info.width == 0 || info.height == 0 {
+        return Err(MediaError::Probe(
+            "this file doesn't look like a video Molly can shrink".into(),
+        ));
+    }
+
+    let include_audio = info.has_audio;
+    let tonemap = info.is_hdr && ffmpeg_path::supports_zscale(&handle).await;
+    let (box_w, box_h) = filters::shrink_box(info.width, info.height);
+    let budget = params.target_bytes.unwrap_or(SLACK_TARGET_BYTES);
+    let kbps = filters::size_budget_video_kbps(
+        budget,
+        info.duration_sec,
+        include_audio,
+        SHRINK_MIN_VIDEO_KBPS,
+    );
+
+    // Output lives in the standard ~/Downloads/Molly/ folder (created on demand).
+    let dir = crate::fsutil::downloads_subdir("Molly");
+    std::fs::create_dir_all(&dir)?;
+    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+    let out_path = unique_output(&dir, stem);
+    // Encode to a sibling .partial.mov first, then rename on success so a failed
+    // or timed-out run never leaves a half-written file at the nice name.
+    let tmp = out_path.with_extension("partial.mov");
+
+    let bin = ffmpeg_path::ffmpeg_bin(&handle);
+    let args = filters::shrink_args(
+        &params.absolute_path,
+        &tmp.to_string_lossy(),
+        box_w,
+        box_h,
+        kbps,
+        include_audio,
+        tonemap,
+        SHRINK_FS_BACKSTOP_BYTES,
+    );
+    // Generous, duration-scaled timeout: 4K software-decode + re-encode on a weak
+    // Windows laptop can run several× slower than realtime. Floor 20 min, cap 4 h.
+    let timeout = ((info.duration_sec * 15.0).max(1200.0)).min(14_400.0) as u64;
+    let run = engine::run_ffmpeg(&bin, &args, info.duration_sec, timeout, |f| {
+        let _ = on_progress.send(Progress { fraction: f });
+    })
+    .await;
+    if let Err(e) = run {
+        let _ = std::fs::remove_file(&tmp); // tidy up the partial on failure
+        return Err(e);
+    }
+
+    std::fs::rename(&tmp, &out_path)?;
+    let output_bytes = std::fs::metadata(&out_path)?.len();
+    Ok(ShrinkResult {
+        output_path: out_path.to_string_lossy().to_string(),
+        output_bytes,
+        input_bytes,
+        out_width: box_w,
+        out_height: box_h,
+        src_width: info.width,
+        src_height: info.height,
+        duration_sec: info.duration_sec,
+    })
 }
 
 /// Copyable plain-text diagnostics for the bundled video engine. The GIF Studio

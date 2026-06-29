@@ -662,6 +662,30 @@ Then tap **🖼️ Use as Thumbnail** and it drops straight onto the bundle — 
 
 ---
 
+## 🫧 Squish — make a big clip small enough to upload 💕
+
+Ever try to send Robert a clip in Slack and get that grumpy little **"That file is too large… the limit is 1 GB"** message? 😤 Ugh, the *worst*. Your gorgeous 4K videos can be **4 GB or more**, and Slack just won't take them.
+
+So I made you a fix! Find **🫧 Squish** in the sidebar. It's the easiest thing in the whole app:
+
+1. Tap **📁 Pick a video** and choose your big chonky clip.
+2. I'll peek at it and tell you how big it is (*"ooh, that's a chonky 4.2 GB 🫢"*).
+3. Tap **🫧 Squish it under 1 GB!** — and that's it! You're done. Go sip your coffee ☕.
+
+I shrink it down to a lovely **Full-HD** size and squeeze out all the extra megabytes, keeping it **as crisp and pretty as I possibly can** while making sure it lands safely **under 1 GB** so Slack will happily take it. 💖
+
+When I'm finished I'll show you the happy news — *"Squished! 4.2 GB → 0.9 GB 🫧"* — and your new, slimmer clip is waiting in your **Downloads → Molly** folder, named like `YourClip (Squished).mov`. Tap **📂 Show in folder** to pop right to it, then drag it into Slack. 🩷
+
+A few little things to know:
+- **Your original is never touched.** I make a brand-new squished copy and leave your big beautiful original exactly where it was. 💕
+- **Big videos take a few minutes.** A long 4K clip has a *lot* of pixels to tuck in! The progress bar keeps you company the whole time. 🫧
+- **Already under 1 GB?** I'll say so — but you can still squish it smaller if you want a tinier file.
+- It works on your videos right from your computer — nothing ever gets uploaded anywhere. 🔒
+
+> *Try it for me:* pick any video, tap **🫧 Squish it under 1 GB!**, and when it's done, tap **📂 Show in folder** and check that your slimmed clip is there and plays. 🎀
+
+---
+
 ## 📔 Molly's Log — your personal journal
 
 Click **📔 Molly's Log** in the sidebar. This is your private journal — append timestamped notes to yourself about whatever (today's mood, end-of-day reflection, an idea you don't want to forget). Optional file attachment per entry — image, PDF, anything. Stored inside Molly's database, so attachments travel with your auto-backup zips.

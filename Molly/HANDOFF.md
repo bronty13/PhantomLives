@@ -292,13 +292,23 @@ unit-tested), `probe.rs` (ffprobe → dims/duration/HDR/audio), `engine.rs`
 (spawn + `-progress` parse + timeout + stderr tail), `ffmpeg_path.rs`
 (bundled → Settings override → PATH discovery + `supports_zscale`), `temp.rs`
 (job dirs + proxy cache), `commands.rs` (`probe_video`, `make_preview_proxy`,
-`generate_gif`, `generate_teaser_mp4`, `grab_frame`). It input-seeks the
+`generate_gif`, `generate_teaser_mp4`, `grab_frame`, `shrink_video`). It input-seeks the
 original (`-ss` before `-i`), tone-maps HDR→SDR via zscale **only when HDR is
 detected** (degrades if the ffmpeg lacks zimg), and renders the caption as a
 transparent PNG composited via `overlay` (no libfreetype needed — the failure
 SideMolly hit). The preview `<video>` is scrub-only (never canvassed), so it
 uses `convertFileSrc`; undecodable sources get a low-res H.264 proxy
 (`make_preview_proxy`) while output is rendered from the original.
+
+The **🫧 Squish** tab (`src/views/Squish/`, 1.34.0+) shrinks a *whole* video
+under a byte budget (Slack's 1 GB) via the same engine. Two design notes set it
+apart from the GIF/teaser commands: (1) `shrink_video` **writes straight to a
+file** in `~/Downloads/Molly/` and returns only metadata — it must NOT return
+the (up to ~1 GB) bytes over IPC like the teaser does; (2) it computes the
+budget-derived `-maxrate` in Rust (`filters::size_budget_video_kbps`, the
+generalized form of `teaser_video_max_kbps`) and fits a `shrink_box` Full-HD box
+with `force_original_aspect_ratio=decrease` so a rotation-flagged portrait clip
+never distorts.
 
 ffmpeg/ffprobe are **GPL static builds**, CI-downloaded (BtbN win64 / OSXExperts
 arm64), verified (arch + zscale + libx264), shipped via `bundle.resources`

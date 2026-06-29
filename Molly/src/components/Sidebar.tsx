@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { SayingsBanner } from './SayingsBanner';
 
-export type ViewKey = 'home' | 'log' | 'notes' | 'reminders' | 'calendar' | 'clips' | 'c4s' | 'bundles' | 'gifstudio' | 'jobs' | 'customers' | 'helper' | 'promos' | 'social' | 'income' | 'expenses' | 'reports' | 'settings' | 'manual';
+export type ViewKey = 'home' | 'log' | 'notes' | 'reminders' | 'calendar' | 'clips' | 'c4s' | 'bundles' | 'gifstudio' | 'squish' | 'jobs' | 'customers' | 'helper' | 'promos' | 'social' | 'income' | 'expenses' | 'reports' | 'settings' | 'manual';
 
 interface SidebarProps {
   active: ViewKey;
@@ -32,6 +32,7 @@ const NAV: NavItem[] = [
   { key: 'c4s',       label: 'C4S Store', icon: <span>🛍️</span>, hint: 'Live Clips4Sale catalog snapshot' },
   { key: 'bundles',   label: 'Bundles',   icon: <span>🎁</span>, hint: 'Compose delivery bundles for Robert' },
   { key: 'gifstudio', label: 'GIF Studio', icon: <span>🎞️</span>, hint: 'Make an animated GIF from any video' },
+  { key: 'squish',    label: 'Squish',     icon: <span>🫧</span>, hint: 'Shrink a big video small enough to upload (under 1 GB)' },
   { key: 'jobs',      label: 'Jobs',      icon: <span>🌀</span>, hint: 'Background tasks (ATW Repost + future)' },
   { key: 'customers', label: 'Customers', icon: <span>👯‍♀️</span>, hint: 'Customer tracker' },
   { key: 'helper',    label: "Molly Helper", icon: <span>💅</span>, hint: 'Site launcher + reminders' },
