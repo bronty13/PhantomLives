@@ -62,6 +62,13 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
   backup would upload — `+` new and `*` changed files, with counts — **without uploading anything**.
   **Upload these changes** then runs the additive backup (which sends only those files). Pure UI on
   the existing engine/parser, so no new tests (suite 206).
+- **Phase 6 — Polish: CLI, test wrapper, docs.**
+  - `pattic adhoc backup` / `pattic adhoc list` CLI subcommands (reuse the profile + Keychain, no
+    secrets on the command line) for scripting / scheduling the ad-hoc store.
+  - `run-tests.sh` wrapper that points `DEVELOPER_DIR` at Xcode (Command Line Tools ships no
+    XCTest), matching the sibling subprojects.
+  - README + USER_MANUAL (§10) sections: the rclone prerequisite, setup, the only-key warning,
+    backup / sync / browse / manage, and the CLI.
 
 ## [0.22.2] — 2026-06-24
 

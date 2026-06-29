@@ -11,7 +11,7 @@ struct Pattic: ParsableCommand {
         commandName: "pattic",
         abstract: "Archive the macOS Photos library to verified plain-file copies (osxphotos engine).",
         version: "0.1.0",
-        subcommands: [Doctor.self, Init.self, Plan.self, Export.self, Agent.self]
+        subcommands: [Doctor.self, Init.self, Plan.self, Export.self, Agent.self, Adhoc.self]
     )
 }
 

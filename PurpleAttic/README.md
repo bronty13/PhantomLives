@@ -199,13 +199,40 @@ inline *Grant…* / *Settings…* buttons in the Archive pane:
   stage nightly" on, a successful scheduled archive identifies the verified-deletable
   set and stages it for you each night; deletion remains a one-click human action.
 
+## Ad-hoc B2 file store
+
+Separate from the photo off-site above, PurpleAttic can also back up **arbitrary
+files and folders** to a *second, independent* Backblaze B2 account and manage
+them from the app — list, rename, delete, diff, and export reports. Unlike the
+restic off-site (opaque deduplicated packs — ideal for whole-archive snapshots,
+but not browsable per file), this store keeps each file as its own object you can
+see and act on.
+
+- **Client-side encrypted** (`rclone crypt`): file **names and contents** are
+  encrypted on this Mac before upload. In the Backblaze console the names are
+  scrambled; only PurpleAttic (holding your passphrase) shows the real names. The
+  passphrase is the **only** key — lose it and the data is unrecoverable, so setup
+  makes you save a recovery copy.
+- **One-way, additive**: backups `copy` (never a deleting sync), so removing a
+  file locally never removes it from B2. You can still delete individual objects
+  in the UI — a **permanent** B2 delete behind a typed-filename confirmation.
+- **Requires `rclone`** (`brew install rclone`) — resolved at runtime like
+  osxphotos/exiftool/restic; nothing is bundled.
+
+Set it up in the **Ad-hoc B2** tab (bucket + a bucket-scoped application key + an
+encryption passphrase, then Test Connection), choose files to back up, and
+browse/manage them in the **Ad-hoc Files** tab. Scriptable too: `pattic adhoc
+backup` and `pattic adhoc list`. Full walkthrough in
+[USER_MANUAL.md](USER_MANUAL.md) §10.
+
 ## The app
 
 `./build-app.sh` builds, signs (Photos entitlements), installs to
 `/Applications/PurpleAttic.app`, and relaunches. The GUI panes are
 **Dashboard** (the landing pane — end-to-end monitoring: archive health, purge /
 space reclaimed, new items, off-site B2, with charts + drill-down), **Archive**
-(run + live log), **Schedule**, **Settings** (profile editor), **Off-site**,
+(run + live log), **Schedule**, **Settings** (profile editor), **Off-site**, **Ad-hoc B2** (the file-level B2
+store: setup + upload + sync), **Ad-hoc Files** (browse/manage that store),
 **Backup**, and **Purge** (preview + stage/delete + the auto-stage toggle, shipped
 OFF). The `pattic` CLI is bundled inside the app at
 `PurpleAttic.app/Contents/MacOS/pattic`.

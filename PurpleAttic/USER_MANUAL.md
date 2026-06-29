@@ -386,3 +386,49 @@ result included). Manual integrity check any time:
 restic -r 'b2:your-bucket-name:photos' check                       # structure
 restic -r 'b2:your-bucket-name:photos' check --read-data-subset 1/20  # sampled data
 ```
+
+## 10. Ad-hoc B2 file store (separate, file-level)
+
+A *second* Backblaze B2 account — separate from the photo off-site in §9 — for
+backing up **arbitrary files and folders** that you can then browse, rename,
+delete, and diff from the app. (The §9 restic off-site stores the photo archive
+as opaque encrypted packs; this stores each file as its own manageable object.)
+
+It needs **rclone**: `brew install rclone`.
+
+### Set it up (the **Ad-hoc B2** tab — no Terminal)
+
+1. **Create the bucket + key** in the Backblaze console (the tab has an "Open
+   Backblaze B2 console" button): make a private bucket, then an **application key
+   scoped to that bucket** (read + write). Copy the **keyID** and the
+   **applicationKey** (the applicationKey is shown only once).
+2. **Destination** — enter the bucket name (and an optional path prefix), Save.
+3. **Credentials** — paste the keyID + applicationKey, Save to Keychain.
+4. **Encryption passphrase** — generate (or type) one. Files are encrypted before
+   upload (names *and* contents). **This passphrase is the only key — if you lose
+   it, the data is gone.** Save the recovery copy it offers, then Set.
+5. **Test connection** — confirms the bucket is reachable. (Whether the passphrase
+   is right is proven the first time a backup round-trips.)
+
+### Back up, sync, browse, manage
+
+- **Files to back up** → add files/folders → **Back up now** (one-way, additive —
+  removing something locally never deletes it from B2).
+- **Sync — what's changed** → **Check for changes** previews exactly what a backup
+  would upload (new + changed), then **Upload these changes** sends just those.
+- **Ad-hoc Files** tab → browse the decrypted listing (instant, from a local cache;
+  **Refresh** re-lists from B2). Select a row to **Rename** (server-side, no
+  re-upload) or **Delete** (permanent — type the filename to confirm). **Export
+  report** writes a CSV / JSON / text listing to `~/Downloads/PurpleAttic/`.
+
+> In the Backblaze web console the object names look scrambled — that's the
+> client-side encryption working. Only PurpleAttic, with your passphrase, shows
+> the real names.
+
+### Command line (optional)
+
+```sh
+pattic adhoc backup     # upload the configured sources (one-way, additive)
+pattic adhoc list       # list the decrypted contents
+```
+Configure the store in the app first — the CLI reuses the same profile + Keychain.
