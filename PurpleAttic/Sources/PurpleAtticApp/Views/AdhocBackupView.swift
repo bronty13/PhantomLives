@@ -29,6 +29,8 @@ struct AdhocBackupView: View {
                     credentialsCard
                     passphraseCard
                     testCard
+                    sourcesCard
+                    backupCard
                 }
             }
             .padding(20)
@@ -244,6 +246,125 @@ struct AdhocBackupView: View {
                 .disabled(model.isTesting || !(config?.isConfigured ?? false) || !model.presence.b2Id || !model.presence.b2Key)
             }
         }
+    }
+
+    // MARK: - Sources
+
+    private var sourcesCard: some View {
+        Card(title: "6 · Files to back up") {
+            if let c = config, !c.sources.isEmpty {
+                ForEach(c.sources, id: \.self) { src in
+                    HStack(spacing: 8) {
+                        Image(systemName: iconFor(src)).foregroundStyle(.secondary)
+                        Text(src).font(.system(.caption, design: .monospaced))
+                            .lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Button(role: .destructive) { removeSource(src) } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            } else {
+                Text("No files or folders selected yet.").font(.callout).foregroundStyle(.secondary)
+            }
+            HStack {
+                Button { addSources() } label: { Label("Add files or folders…", systemImage: "plus") }
+                    .buttonStyle(.bordered)
+                Spacer()
+            }
+            Text("Each item is uploaded under its own name (a folder keeps its structure). One-way and additive — removing something here never deletes it from B2.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Backup
+
+    private var canBackup: Bool {
+        (config?.isConfigured ?? false) && !(config?.sources.isEmpty ?? true) && model.presence.allReady
+    }
+
+    private var backupCard: some View {
+        Card(title: "7 · Back up") {
+            if model.isBackingUp {
+                if let p = model.backupProgress, let frac = p.fraction {
+                    ProgressView(value: frac) {
+                        Text("\(human(p.bytes)) / \(human(p.totalBytes)) · \(p.transfers)/\(p.totalTransfers) files")
+                            .font(.caption)
+                    }
+                    Text("\(human(Int64(p.speed)))/s").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Starting…").font(.caption).foregroundStyle(.secondary) }
+                }
+            } else if let s = model.backupStatus {
+                Text(s).font(.callout)
+                    .foregroundStyle(s.hasPrefix("✓") ? .green : (s.hasPrefix("✗") ? .red : .secondary))
+            } else {
+                Text("Upload the selected files to your encrypted B2 store.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+
+            if !model.backupLog.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(Array(model.backupLog.suffix(8).enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.system(.caption2, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .frame(height: 90)
+                .padding(8)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
+            }
+
+            if !canBackup && !model.isBackingUp {
+                Text("Add at least one source and finish credentials + passphrase first.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Spacer()
+                Button {
+                    if let c = config { store.save(); model.runBackup(config: c) }
+                } label: {
+                    if model.isBackingUp { ProgressView().controlSize(.small) }
+                    else { Label("Back up now", systemImage: "arrow.up.circle.fill") }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isBackingUp || !canBackup)
+            }
+        }
+    }
+
+    private func addSources() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.title = "Choose files or folders to back up"
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK else { return }
+        var c = store.profile.adhocBackup ?? AdhocBackupConfig()
+        for url in panel.urls where !c.sources.contains(url.path) { c.sources.append(url.path) }
+        store.profile.adhocBackup = c
+        store.save()
+    }
+
+    private func removeSource(_ s: String) {
+        guard var c = store.profile.adhocBackup else { return }
+        c.sources.removeAll { $0 == s }
+        store.profile.adhocBackup = c
+        store.save()
+    }
+
+    private func iconFor(_ path: String) -> String {
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
+        return isDir.boolValue ? "folder" : "doc"
+    }
+
+    private func human(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     // MARK: - Binding helper

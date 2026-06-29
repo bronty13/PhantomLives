@@ -38,6 +38,12 @@ final class AdhocModel: ObservableObject {
         case failed(String)
     }
 
+    // Backup (upload).
+    @Published var isBackingUp = false
+    @Published var backupProgress: RcloneProgress? = nil
+    @Published var backupStatus: String? = nil
+    @Published var backupLog: [String] = []
+
     /// rclone must be installed (it drives every ad-hoc operation, including obscuring the passphrase).
     var rcloneAvailable: Bool { Tooling.rclone != nil }
 
@@ -135,6 +141,40 @@ final class AdhocModel: ObservableObject {
                 self.passphraseMessage = message
                 self.presence = presence
                 completion(ok)
+            }
+        }
+    }
+
+    // MARK: - Backup (upload)
+
+    /// Run a one-way additive upload of the config's sources, streaming rclone's JSON-log lines into
+    /// a live progress bar (`backupProgress`) + a compact message log (`backupLog`).
+    func runBackup(config: AdhocBackupConfig) {
+        guard !isBackingUp else { return }
+        isBackingUp = true
+        backupProgress = nil
+        backupStatus = nil
+        backupLog = []
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let outcome = RcloneService.backup(config: config) { line in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if let p = RcloneParse.progress(line) {
+                        self.backupProgress = p
+                    } else if let m = RcloneParse.logMessage(line) {
+                        self.backupLog.append(m)
+                        if self.backupLog.count > 200 { self.backupLog.removeFirst(self.backupLog.count - 200) }
+                    }
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isBackingUp = false
+                switch outcome {
+                case .ok(let d): self.backupStatus = "✓ \(d)"
+                case .skipped(let r): self.backupStatus = "Skipped — \(r)"
+                case .failed(let d): self.backupStatus = "✗ \(d)"
+                }
             }
         }
     }

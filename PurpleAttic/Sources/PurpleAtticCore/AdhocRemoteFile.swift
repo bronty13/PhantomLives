@@ -52,6 +52,29 @@ public struct DiffEntry: Sendable, Equatable {
     public var needsUpload: Bool { change == .onlyLocal || change == .differ }
 }
 
+/// A point-in-time snapshot of an rclone transfer, parsed from a `--use-json-log --stats` line.
+public struct RcloneProgress: Sendable, Equatable {
+    public var bytes: Int64
+    public var totalBytes: Int64
+    public var transfers: Int
+    public var totalTransfers: Int
+    public var speed: Double          // bytes/sec
+    public var eta: Double?           // seconds remaining, if rclone reported one
+
+    public init(bytes: Int64, totalBytes: Int64, transfers: Int, totalTransfers: Int,
+                speed: Double, eta: Double? = nil) {
+        self.bytes = bytes
+        self.totalBytes = totalBytes
+        self.transfers = transfers
+        self.totalTransfers = totalTransfers
+        self.speed = speed
+        self.eta = eta
+    }
+
+    /// 0…1 by bytes when a total is known (nil before rclone has scanned the size).
+    public var fraction: Double? { totalBytes > 0 ? min(1.0, Double(bytes) / Double(totalBytes)) : nil }
+}
+
 /// Pure parsers for rclone output. Kept free of process/network so they can be unit-tested against
 /// captured fixtures — the same discipline as `ResticService`'s argv/env builders.
 public enum RcloneParse {
@@ -105,6 +128,38 @@ public enum RcloneParse {
             return iso.date(from: String(s[..<dot]) + String(afterDot[tz...]))
         }
         return iso.date(from: String(s[..<dot]) + "Z")
+    }
+
+    /// Parse an rclone `--use-json-log` **stats** line into a `RcloneProgress`. Returns nil for any
+    /// line that isn't a stats object (ordinary log entries, non-JSON), so a caller can fall back to
+    /// `logMessage`.
+    public static func progress(_ line: String) -> RcloneProgress? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let stats = obj["stats"] as? [String: Any] else { return nil }
+        func i(_ k: String) -> Int64 { (stats[k] as? NSNumber)?.int64Value ?? 0 }
+        func d(_ k: String) -> Double { (stats[k] as? NSNumber)?.doubleValue ?? 0 }
+        return RcloneProgress(
+            bytes: i("bytes"), totalBytes: i("totalBytes"),
+            transfers: Int(i("transfers")), totalTransfers: Int(i("totalTransfers")),
+            speed: d("speed"), eta: (stats["eta"] as? NSNumber)?.doubleValue)
+    }
+
+    /// Extract a human-readable message from an rclone log line for the UI log tail: the `msg` of a
+    /// JSON log entry (skipping stats lines, which `progress` handles), or the raw line if it isn't
+    /// JSON (e.g. an op's own "→ backing up …" header). nil for blank/stats-only lines.
+    public static func logMessage(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return trimmed
+        }
+        if obj["stats"] != nil { return nil }
+        return (obj["msg"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Internal DTO mirroring rclone lsjson keys (capitalized to match the JSON exactly).

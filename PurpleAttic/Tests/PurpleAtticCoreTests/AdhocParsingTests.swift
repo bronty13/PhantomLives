@@ -69,6 +69,33 @@ final class AdhocParsingTests: XCTestCase {
         XCTAssertEqual(entries, [DiffEntry(change: .onlyLocal, path: "ok.txt")])
     }
 
+    // MARK: - Transfer progress (--use-json-log stats)
+
+    func testProgressParsesStatsLine() {
+        let line = #"{"level":"notice","msg":"Transferred: ...","stats":{"bytes":1024,"totalBytes":5120,"transfers":1,"totalTransfers":3,"speed":2048.0,"eta":2},"time":"t"}"#
+        let p = RcloneParse.progress(line)
+        XCTAssertNotNil(p)
+        XCTAssertEqual(p?.bytes, 1024)
+        XCTAssertEqual(p?.totalBytes, 5120)
+        XCTAssertEqual(p?.transfers, 1)
+        XCTAssertEqual(p?.totalTransfers, 3)
+        XCTAssertEqual(p?.speed ?? 0, 2048.0, accuracy: 0.001)
+        XCTAssertEqual(p?.fraction ?? 0, 0.2, accuracy: 0.001)
+    }
+
+    func testProgressIgnoresNonStatsLines() {
+        XCTAssertNil(RcloneParse.progress(#"{"level":"info","msg":"Copied (new)"}"#))
+        XCTAssertNil(RcloneParse.progress("not json"))
+        XCTAssertNil(RcloneParse.progress(""))
+    }
+
+    func testLogMessageExtractsMsgOrRawLine() {
+        XCTAssertEqual(RcloneParse.logMessage("→ backing up /x → padhoc:x"), "→ backing up /x → padhoc:x")
+        XCTAssertEqual(RcloneParse.logMessage(#"{"level":"info","msg":"Copied (new)"}"#), "Copied (new)")
+        XCTAssertNil(RcloneParse.logMessage(#"{"level":"notice","stats":{"bytes":1}}"#), "stats lines are surfaced via progress(), not the log")
+        XCTAssertNil(RcloneParse.logMessage("   "))
+    }
+
     // MARK: - RFC3339 with nanoseconds
 
     func testRfc3339ParsesNanosecondAndPlainTimestamps() {

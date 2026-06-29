@@ -37,6 +37,14 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
   - **Clearer connection errors** — rclone's stderr is mapped to an actionable message
     (`RcloneService.friendlyError`): a 401 now reads "B2 rejected the credentials — double-check the
     key ID and application key" instead of a bare exit code. Used by Test Connection and list.
+- **Phase 2 — Backup / upload (UI).** The Ad-hoc B2 pane can now upload:
+  - **Files to back up** — add files and/or folders (`NSOpenPanel`, multi-select), persisted in
+    `AdhocBackupConfig.sources`; each is uploaded under its own name.
+  - **Back up now** — one-way additive upload (`rclone copy`/`copyto`, never `sync --delete`) with a
+    live **progress bar** (bytes / files / speed) and a compact message log.
+  - Progress parsing from rclone `--use-json-log` stats lines via pure `RcloneParse.progress` →
+    `RcloneProgress`, and `RcloneParse.logMessage` for the log tail (3 new tests; suite 200).
+  - (CLI `pattic adhoc backup` subcommand still outstanding — GUI upload first.)
 
 ## [0.22.2] — 2026-06-24
 
