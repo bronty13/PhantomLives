@@ -22,6 +22,18 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
   - `AdhocCacheStore` (new **GRDB** dependency) — local SQLite cache of the listing with an
     upsert+prune refresh, search/size/count queries, and a frozen immutable-migration guard.
   - 26 new tests (rclone env/argv, parsers, GRDB cache) — suite now 194, all green.
+- **Phase 1 — Setup & Connect (UI).** New **Ad-hoc B2** sidebar pane to configure the store
+  without Terminal:
+  - B2 account-creation guidance (bucket + bucket-scoped application key) with a button to open
+    the Backblaze console.
+  - Destination editor (name / bucket / prefix) showing the resulting encrypted remote path.
+  - Credentials entry → Keychain (keyID + applicationKey), with presence indicators.
+  - **Encryption-passphrase recovery gate** (`AdhocPassphraseSheet`): generate a diceware passphrase
+    (reusing `RecoveryPassphrase`) or type your own, force a "saved it" confirmation, optionally
+    write a recovery sheet to `~/Downloads/PurpleAttic/`, then store it obscured in the Keychain.
+    Warns that the passphrase is the only key and that changing it orphans existing data.
+  - Live **Test Connection** (rclone shallow listing) with rclone-missing guidance.
+  - `AdhocModel` view-model (off-main rclone/Keychain ops) mirroring `OffsiteModel`.
 
 ## [0.22.2] — 2026-06-24
 

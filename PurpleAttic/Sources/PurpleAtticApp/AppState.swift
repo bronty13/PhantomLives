@@ -9,6 +9,7 @@ enum Pane: String, CaseIterable, Identifiable {
     case schedule = "Schedule"
     case profile = "Settings"
     case offsite = "Off-site"
+    case adhoc = "Ad-hoc B2"
     case backup = "Backup"
     case purge = "Purge"
     var id: String { rawValue }
@@ -19,6 +20,7 @@ enum Pane: String, CaseIterable, Identifiable {
         case .schedule: return "clock.arrow.2.circlepath"
         case .profile: return "slider.horizontal.3"
         case .offsite: return "lock.icloud"
+        case .adhoc: return "lock.doc"
         case .backup: return "arrow.clockwise.icloud"
         case .purge: return "trash"
         }
