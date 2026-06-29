@@ -133,6 +133,27 @@ final class RcloneServiceTests: XCTestCase {
         XCTAssertEqual(RcloneService.Outcome.skipped(reason: "offline").detail, "skipped — offline")
     }
 
+    // MARK: - Friendly error mapping (rclone stderr → actionable message)
+
+    func testFriendlyErrorMapsAuthFailureToCredentialsHint() {
+        let s = "2026/06/28 22:30:14 CRITICAL: Failed to create file system for \"padhocb2:adhoc-archive\": failed to authorize account: failed to authenticate: Unknown 401  (401 bad_auth_token)"
+        let msg = RcloneService.friendlyError(s)
+        XCTAssertTrue(msg.lowercased().contains("credential"),
+                      "401 / bad_auth_token must map to a credentials hint, got: \(msg)")
+    }
+
+    func testFriendlyErrorMapsBucketNotFound() {
+        XCTAssertTrue(RcloneService.friendlyError("ERROR: bucket not found").lowercased().contains("bucket"))
+    }
+
+    func testFriendlyErrorFallbackStripsTimestampAndLevel() {
+        let s = "2026/01/01 00:00:00 NOTICE: loading\n2026/01/01 00:00:01 CRITICAL: directory not reachable somehow"
+        let msg = RcloneService.friendlyError(s)
+        XCTAssertFalse(msg.contains("CRITICAL"))
+        XCTAssertFalse(msg.contains("2026/01/01"))
+        XCTAssertFalse(msg.isEmpty)
+    }
+
     // MARK: - Config validity + skip-when-unconfigured (no network touched)
 
     func testUnconfiguredConfigIsNotConfigured() {

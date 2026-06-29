@@ -34,6 +34,9 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
     Warns that the passphrase is the only key and that changing it orphans existing data.
   - Live **Test Connection** (rclone shallow listing) with rclone-missing guidance.
   - `AdhocModel` view-model (off-main rclone/Keychain ops) mirroring `OffsiteModel`.
+  - **Clearer connection errors** — rclone's stderr is mapped to an actionable message
+    (`RcloneService.friendlyError`): a 401 now reads "B2 rejected the credentials — double-check the
+    key ID and application key" instead of a bare exit code. Used by Test Connection and list.
 
 ## [0.22.2] — 2026-06-24
 

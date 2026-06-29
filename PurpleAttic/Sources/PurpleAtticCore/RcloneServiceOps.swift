@@ -33,18 +33,46 @@ extension RcloneService {
     /// Verify we can reach the bucket with the stored B2 credentials (a shallow listing). Note this
     /// proves *connectivity*, not crypt-password correctness — a wrong passphrase still "lists"
     /// (yielding garbage names), so Phase 1 adds a canary round-trip on top.
-    public static func testConnection(config: AdhocBackupConfig, onLine: (String) -> Void = { _ in }) -> Outcome {
+    public static func testConnection(config: AdhocBackupConfig) -> Outcome {
         let rclone: String, env: [String: String]
         switch prepared(config) {
         case .failure(let o): return o
         case .success(let p): (rclone, env) = p
         }
-        let args = ["lsjson", cryptPath(), "--max-depth", "1"]
-        guard let r = try? ProcessRunner.run(executable: rclone, arguments: args, environment: env, onLine: onLine) else {
+        // `capture` (not `run`) so we keep rclone's stderr to turn into an actionable message.
+        guard let r = try? ProcessRunner.capture(
+            executable: rclone,
+            arguments: ["lsjson", cryptPath(), "--max-depth", "1"],
+            environment: env) else {
             return .failed("could not launch rclone")
         }
         return r.exitCode == 0 ? .ok(detail: "connected to \(baseRemotePath(config: config))")
-                               : .failed("rclone could not reach the bucket (exit \(r.exitCode))")
+                               : .failed(friendlyError(r.stderr))
+    }
+
+    /// Turn rclone's verbose stderr into a short, actionable message for the UI — so an auth or
+    /// bucket problem reads as "B2 rejected the credentials" rather than "exit 1". Pure/testable.
+    static func friendlyError(_ stderr: String) -> String {
+        let low = stderr.lowercased()
+        if low.contains("bad_auth_token") || low.contains("failed to authorize account")
+            || low.contains("failed to authenticate") || low.contains("(401") || low.contains(" 401 ") {
+            return "B2 rejected the credentials — double-check the key ID and application key (a B2 key ID is ~25 characters)."
+        }
+        if low.contains("403") || low.contains("forbidden") || low.contains("unauthorized") {
+            return "Access denied — the application key may not have access to this bucket."
+        }
+        if low.contains("404") || (low.contains("bucket") && low.contains("not found")) {
+            return "Bucket not found — check the bucket name."
+        }
+        // Fallback: the last CRITICAL / Failed / ERROR line, with rclone's timestamp+level prefix stripped.
+        for line in stderr.split(separator: "\n").reversed() {
+            let s = String(line)
+            if s.contains("CRITICAL") || s.contains("Failed") || s.contains("ERROR") {
+                if let r = s.range(of: ": ") { return String(s[r.upperBound...].prefix(180)) }
+                return String(s.prefix(180))
+            }
+        }
+        return "rclone could not reach the bucket."
     }
 
     /// List the whole store, parsed into `AdhocRemoteFile`s for the cache. Uses `capture` because the
@@ -60,8 +88,7 @@ extension RcloneService {
             return ([], .failed("could not launch rclone"))
         }
         guard r.exitCode == 0 else {
-            let why = r.stderr.split(separator: "\n").last.map(String.init) ?? "rclone lsjson exit \(r.exitCode)"
-            return ([], .failed(why.trimmingCharacters(in: .whitespaces)))
+            return ([], .failed(friendlyError(r.stderr)))
         }
         let files = RcloneParse.lsjson(r.stdout)
         return (files, .ok(detail: "\(files.count) item(s)"))
