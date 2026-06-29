@@ -416,10 +416,13 @@ It needs **rclone**: `brew install rclone`.
   removing something locally never deletes it from B2).
 - **Sync — what's changed** → **Check for changes** previews exactly what a backup
   would upload (new + changed), then **Upload these changes** sends just those.
-- **Ad-hoc Files** tab → browse the decrypted listing (instant, from a local cache;
-  **Refresh** re-lists from B2). Select a row to **Rename** (server-side, no
-  re-upload) or **Delete** (permanent — type the filename to confirm). **Export
-  report** writes a CSV / JSON / text listing to `~/Downloads/PurpleAttic/`.
+- **Ad-hoc Files** tab → browse the decrypted listing as a **folder tree** (instant,
+  from a local cache; **Refresh** re-lists from B2). Expand a folder (e.g. `HOTW`) to
+  traverse its subfolders and files, any number of levels deep; each folder shows its
+  recursive size + item count. Select a **file** row to **Rename** (server-side, no
+  re-upload) or **Delete** (permanent — type the filename to confirm). Typing in the
+  search box flattens to matching files by full path. **Export report** writes a
+  CSV / JSON / text listing to `~/Downloads/PurpleAttic/`.
 
 > In the Backblaze web console the object names look scrambled — that's the
 > client-side encryption working. Only PurpleAttic, with your passphrase, shows

@@ -1,14 +1,14 @@
 import SwiftUI
 import PurpleAtticCore
 
-/// Ad-hoc Files pane — browse (Phase 3) + manage & report (Phase 4). A sortable, searchable `Table`
-/// of the encrypted store's contents, served from the local cache and reconciled with B2 on Refresh.
-/// Select a row to rename (server-side) or permanently delete (typed confirmation); export a report
-/// (CSV / JSON / text) of the listing. Names shown are the *decrypted* names.
+/// Ad-hoc Files pane — browse + manage & report. A **folder-tree** (outline) `Table` of the
+/// encrypted store's contents: folders (derived from the decrypted paths) expand to reveal their
+/// subfolders and files, n levels deep. Served from the local cache, reconciled with B2 on Refresh.
+/// Select a *file* row to rename (server-side) or permanently delete (typed confirmation); export a
+/// report (CSV / JSON / text). Searching flattens to matching files by full path.
 struct AdhocFilesView: View {
     @ObservedObject var store: SettingsStore
     @StateObject private var model = AdhocFilesModel()
-    @State private var sortOrder = [KeyPathComparator(\AdhocFile.path)]
     @State private var showRename = false
     @State private var renameText = ""
     @State private var showDelete = false
@@ -100,26 +100,43 @@ struct AdhocFilesView: View {
         }
     }
 
-    // MARK: - Table
+    // MARK: - Tree table
+
+    /// Outline nodes: empty search → the full folder hierarchy; active search → a flat list of
+    /// matching files (full paths, so a match is locatable regardless of depth).
+    private var nodes: [AdhocNode] {
+        let q = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard q.isEmpty else {
+            return model.files
+                .filter { $0.path.lowercased().contains(q) || $0.name.lowercased().contains(q) }
+                .sorted { $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending }
+                .map { AdhocNode(id: $0.path, name: $0.path, isDir: false, size: max(0, $0.size),
+                                 fileCount: 1, modTime: $0.modTime, file: $0, children: nil) }
+        }
+        return AdhocTree.build(model.files)
+    }
 
     private var table: some View {
-        Table(model.filtered.sorted(using: sortOrder), selection: $model.selection, sortOrder: $sortOrder) {
-            TableColumn("Name", value: \.name) { f in
+        Table(nodes, children: \.children, selection: $model.selection) {
+            TableColumn("Name") { node in
                 HStack(spacing: 6) {
-                    Image(systemName: f.isDir ? "folder" : "doc").foregroundStyle(.secondary)
-                    Text(f.name).lineLimit(1).truncationMode(.middle)
+                    Image(systemName: node.isDir ? "folder.fill" : "doc")
+                        .foregroundStyle(node.isDir ? Color.accentColor : .secondary)
+                    Text(node.name).lineLimit(1).truncationMode(.middle)
                 }
             }
-            TableColumn("Path", value: \.path) { f in
-                Text(f.path).font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            TableColumn("Size") { node in
+                Text(human(node.size)).monospacedDigit()
+                    .foregroundStyle(node.isDir ? .secondary : .primary)
             }
-            TableColumn("Size", value: \.size) { f in
-                Text(f.isDir ? "—" : human(f.size)).monospacedDigit()
-            }
-            TableColumn("Modified", value: \.modTime) { f in
-                Text(f.modTime, format: .dateTime.year().month().day().hour().minute())
-                    .foregroundStyle(.secondary)
+            TableColumn("Items / Modified") { node in
+                if node.isDir {
+                    Text("\(node.fileCount) item\(node.fileCount == 1 ? "" : "s")").foregroundStyle(.secondary)
+                } else if let m = node.modTime {
+                    Text(m, format: .dateTime.year().month().day().hour().minute()).foregroundStyle(.secondary)
+                } else {
+                    Text("—").foregroundStyle(.secondary)
+                }
             }
         }
         .frame(maxHeight: .infinity)

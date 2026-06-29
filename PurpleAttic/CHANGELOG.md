@@ -69,6 +69,11 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
     XCTest), matching the sibling subprojects.
   - README + USER_MANUAL (§10) sections: the rclone prerequisite, setup, the only-key warning,
     backup / sync / browse / manage, and the CLI.
+- **Folder tree in the Ad-hoc Files view.** The browse table is now a **hierarchical outline** —
+  folders (derived from the decrypted paths via the pure `AdhocTree.build`) expand to reveal their
+  subfolders and files, n levels deep, with recursive size + item-count per folder. Selecting a file
+  row still drives Rename / Delete; an active search flattens to matching files by full path. (4 new
+  tests; suite 210.)
 
 ## [0.22.2] — 2026-06-24
 
