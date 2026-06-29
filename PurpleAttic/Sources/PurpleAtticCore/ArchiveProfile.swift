@@ -36,6 +36,12 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
     /// engine loops this list after the local mirror+verify. Empty → no off-site copy.
     public var cloudDestinations: [CloudDestination]
 
+    /// Optional **ad-hoc** Backblaze B2 file store — a *second, separate* B2 account from the photos
+    /// off-site (`cloudDestinations`). Where restic stores opaque deduplicated packs, this is a
+    /// file-level rclone **crypt** remote whose individual objects PurpleAttic can list / rename /
+    /// delete and diff. nil → the feature is unconfigured. (See `AdhocBackupConfig` / `RcloneService`.)
+    public var adhocBackup: AdhocBackupConfig?
+
     /// Folder nested under each physical destination *base* (primary + mirrors) to hold the
     /// archive, so a drive root stays tidy and other content on the drive isn't intermixed.
     /// Default "Photos Archive". Empty string opts out (archive written at the base itself).
@@ -112,6 +118,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         mirrorDestinations: [String] = [],
         cloudVaultPath: String? = nil,
         cloudDestinations: [CloudDestination] = [],
+        adhocBackup: AdhocBackupConfig? = nil,
         keepHEIC: Bool = true,
         keepJPEG: Bool = true,
         directoryTemplate: String = "{created.year}/{created.year}-{created.mm}",
@@ -133,6 +140,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         self.mirrorDestinations = mirrorDestinations
         self.cloudVaultPath = cloudVaultPath
         self.cloudDestinations = cloudDestinations
+        self.adhocBackup = adhocBackup
         self.keepHEIC = keepHEIC
         self.keepJPEG = keepJPEG
         self.directoryTemplate = directoryTemplate
@@ -161,6 +169,7 @@ public struct ArchiveProfile: Codable, Sendable, Identifiable, Equatable {
         mirrorDestinations = try c.decodeIfPresent([String].self, forKey: .mirrorDestinations) ?? []
         cloudVaultPath = try c.decodeIfPresent(String.self, forKey: .cloudVaultPath)
         cloudDestinations = try c.decodeIfPresent([CloudDestination].self, forKey: .cloudDestinations) ?? []
+        adhocBackup = try c.decodeIfPresent(AdhocBackupConfig.self, forKey: .adhocBackup)
         keepHEIC = try c.decodeIfPresent(Bool.self, forKey: .keepHEIC) ?? true
         keepJPEG = try c.decodeIfPresent(Bool.self, forKey: .keepJPEG) ?? true
         directoryTemplate = try c.decodeIfPresent(String.self, forKey: .directoryTemplate)

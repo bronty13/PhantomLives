@@ -26,10 +26,16 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
+        // GRDB backs the local cache of the ad-hoc B2 file listing (browse / report / diff).
+        .package(url: "https://github.com/groue/GRDB.swift", from: "6.0.0"),
     ],
     targets: [
         .target(
             name: "PurpleAtticCore",
+            dependencies: [
+                // Local SQLite cache of the ad-hoc B2 file listing (AdhocCacheStore).
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ],
             path: "Sources/PurpleAtticCore",
             linkerSettings: [
                 // LibraryInspector reads the Photos database via the system SQLite.

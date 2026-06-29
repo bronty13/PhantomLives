@@ -3,6 +3,26 @@
 All notable changes to PurpleAttic are documented here. This project follows
 release-hygiene conventions from the repo root `CLAUDE.md`.
 
+## [Unreleased]
+
+### Added (in progress — Ad-hoc Backblaze B2 file store)
+- **Phase 0 — engine foundation (no UI yet).** Groundwork for a *second, separate* B2 account used
+  for ad-hoc, file-level backups that PurpleAttic can browse / rename / delete / diff — distinct from
+  the restic photo off-site (whose opaque dedup packs can't be managed per file). All non-user-facing
+  so far:
+  - `AdhocBackupConfig` (persisted on `ArchiveProfile.adhocBackup`, resilient decode) — bucket,
+    prefix, sources, Keychain service, permanent-delete flag.
+  - `RcloneService` / `RcloneServiceOps` — drives `rclone` over an **env-defined** B2 + `crypt`
+    remote pair (no on-disk `rclone.conf`; secrets flow Keychain → child env only, `RCLONE_CONFIG`
+    pinned to `/dev/null`). Pure, unit-tested env/argv builders plus skip-not-fail ops
+    (`backup`/`list`/`rename`/`delete`/`diff`/`testConnection`). Client-side encryption (crypt),
+    one-way additive backup (`copy`, never `sync --delete`), permanent deletes (`hard_delete`).
+  - `AdhocRemoteFile` + `RcloneParse` — pure parsers for `rclone lsjson` and `check --combined`
+    (nanosecond-RFC3339 tolerant).
+  - `AdhocCacheStore` (new **GRDB** dependency) — local SQLite cache of the listing with an
+    upsert+prune refresh, search/size/count queries, and a frozen immutable-migration guard.
+  - 26 new tests (rclone env/argv, parsers, GRDB cache) — suite now 194, all green.
+
 ## [0.22.2] — 2026-06-24
 
 ### Fixed
