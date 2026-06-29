@@ -4,6 +4,16 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.3] — 2026-06-29
+
+### Changed — Distribute tab section order
+
+Reordered the sections on a bundle's **Distribute** tab so the **SideMolly
+Summary** card now sits at the top, ahead of the Dropbox destination. New order:
+**📄 SideMolly Summary → 📦 Dropbox destination → 📝 Description → Preview**
+(was Dropbox destination → Description → Summary → Preview). Pure layout change —
+the summary's "regenerate then refresh the Dropbox preview" wiring is unchanged.
+
 ## [0.28.2] — 2026-06-27
 
 ### Fixed — Summary PDF thumbnails no longer get cut off at page breaks

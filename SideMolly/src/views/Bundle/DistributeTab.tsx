@@ -94,6 +94,9 @@ export function DistributeTab({ summary, manifest, refreshSignal }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* ─── SideMolly Summary PDF ──────────────────────────────── */}
+      <SummarySection uid={summary.uid} onGenerated={refresh} />
+
       {/* ─── Destination + actions ─────────────────────────────── */}
       <section className="sm-card">
         <div className="font-semibold mb-1">📦 Dropbox destination</div>
@@ -164,9 +167,6 @@ export function DistributeTab({ summary, manifest, refreshSignal }: Props) {
 
       {/* ─── Description + posting choices ─────────────────────── */}
       <PostingInfoSection manifest={manifest} />
-
-      {/* ─── SideMolly Summary PDF ──────────────────────────────── */}
-      <SummarySection uid={summary.uid} onGenerated={refresh} />
 
       {/* ─── Preview table ───────────────────────────────────── */}
       <section className="sm-card">
