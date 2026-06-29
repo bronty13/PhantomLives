@@ -141,9 +141,11 @@ pub struct ReturnFileImportResult {
     pub total_file_count: i64,
     pub was_duplicate: bool,
     /// Non-null when SideMolly's report.bundleType disagrees with Molly's
-    /// stored type — holds SideMolly's claimed type so the UI can show
-    /// "stored=X · reported=Y". `bundle_type` is always Molly's stored
-    /// (canonical) value.
+    /// effective (kind-aware) type — holds SideMolly's claimed type so the UI
+    /// can show "stored=X · reported=Y". `bundle_type` is always Molly's
+    /// effective type, i.e. COALESCE(bundle_kind, bundle_type), so a YouTube
+    /// bundle reads back as "youtube" (not its "content" storage value) and
+    /// matches SideMolly cleanly.
     pub reported_bundle_type: Option<String>,
 }
 
@@ -404,10 +406,17 @@ pub fn pure_import_return_file(
         return build_result_for(conn, &report.bundle_uid, true);
     }
 
-    // Bundle row must exist (look up by UID from the report).
+    // Bundle row must exist (look up by UID from the report). Read the
+    // *effective* type via COALESCE(bundle_kind, bundle_type) — the same
+    // kind-aware read the rest of the app uses (migration 036). YouTube
+    // bundles store bundle_type='content' + bundle_kind='youtube', so a raw
+    // `bundle_type` read here would falsely disagree with SideMolly's
+    // report.bundleType ("youtube") and flag a phantom mismatch on every
+    // YouTube round-trip.
     let bundle_row: Option<(String, Option<String>, Option<String>)> = conn
         .query_row(
-            "SELECT bundle_type, state, bundle_path FROM bundles WHERE uid = ?1",
+            "SELECT COALESCE(bundle_kind, bundle_type) AS bundle_type, state, bundle_path \
+               FROM bundles WHERE uid = ?1",
             params![&report.bundle_uid],
             |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?)),
         )
@@ -416,7 +425,7 @@ pub fn pure_import_return_file(
         .ok_or_else(|| BundleError::NotFound(format!("bundle {}", report.bundle_uid)))?;
 
     // Soft check on type: if SideMolly's report disagrees with Molly's
-    // stored type, we still import — the report drives writeback semantics
+    // effective type, we still import — the report drives writeback semantics
     // (fansite-vs-content controls whether we touch clips) — but the
     // divergence gets surfaced in the result for Sallie to investigate.
     let type_mismatch = if stored_bundle_type != report.bundle_type {
@@ -647,7 +656,7 @@ fn build_result_for(
 ) -> Result<ReturnFileImportResult, BundleError> {
     let row: (String, Option<String>, Option<String>, Option<String>) = conn
         .query_row(
-            "SELECT bundle_type, completed_at, delete_after, bundle_path
+            "SELECT COALESCE(bundle_kind, bundle_type) AS bundle_type, completed_at, delete_after, bundle_path
                FROM bundles WHERE uid = ?1",
             params![bundle_uid],
             |r| Ok((
@@ -996,8 +1005,12 @@ mod tests {
             include_str!("../migrations/032_drop_content_release_defaults.sql"),
             include_str!("../migrations/033_ui_theme.sql"),
             include_str!("../migrations/034_return_file_import.sql"),
-            // 035–039 aren't needed by these tests; 040 adds bundle_summary_pdf
-            // (depends only on bundles, present since 017/034).
+            // 036 adds the bundle_kind discriminator (YouTube bundles store
+            // bundle_type='content' + bundle_kind='youtube') — needed so the
+            // COALESCE(bundle_kind, bundle_type) reads resolve here.
+            include_str!("../migrations/036_youtube_bundle.sql"),
+            // 035 / 037–039 aren't needed by these tests; 040 adds
+            // bundle_summary_pdf (depends only on bundles, present since 017/034).
             include_str!("../migrations/040_bundle_summary_pdf.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
@@ -1228,6 +1241,29 @@ mod tests {
         let result = pure_import_return_file(&mut conn, "/tmp/u-post.zip", "mismatch", &report, None).unwrap();
         assert_eq!(result.reported_bundle_type.as_deref(), Some("fansite"));
         assert_eq!(result.bundle_type, "content"); // stored is the canonical answer
+        assert_eq!(result.postings.len(), 1);
+    }
+
+    #[test]
+    fn import_youtube_bundle_reports_no_phantom_mismatch() {
+        // Regression: a YouTube bundle is stored as bundle_type='content' +
+        // bundle_kind='youtube' (migration 036). SideMolly's return file
+        // reports bundleType="youtube". The import must read Molly's effective
+        // type (COALESCE(bundle_kind, bundle_type) = "youtube") so the two
+        // agree — NOT flag a "Type mismatch" warning on every YouTube import.
+        let mut conn = fresh_db();
+        seed_published_bundle(&conn, "2026-05-20-0006", "content");
+        conn.execute(
+            "UPDATE bundles SET bundle_kind = 'youtube' WHERE uid = ?1",
+            params!["2026-05-20-0006"],
+        ).unwrap();
+
+        let report = fixture_report("2026-05-20-0006", "youtube");
+        let result = pure_import_return_file(&mut conn, "/tmp/yt-post.zip", "yt", &report, None).unwrap();
+
+        // No phantom mismatch, and the result surfaces the effective type.
+        assert_eq!(result.reported_bundle_type, None);
+        assert_eq!(result.bundle_type, "youtube");
         assert_eq!(result.postings.len(), 1);
     }
 

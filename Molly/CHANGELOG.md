@@ -4,6 +4,29 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.1] — 2026-06-28
+
+### Fixed — No more phantom "Type mismatch" warning when importing a YouTube return file
+
+Importing a SideMolly return file for a **YouTube** bundle always popped a
+scary `⚠️ Type mismatch — Molly has this bundle stored as content, but
+SideMolly's return file says youtube` warning, even though the import had
+actually succeeded.
+
+- **Cause:** YouTube bundles are stored as `bundle_type='content'` +
+  `bundle_kind='youtube'` (migration 036 — the legacy `bundle_type` CHECK
+  predates YouTube). The return-file importer was the one place still reading
+  the raw `bundle_type` column instead of the app's canonical
+  `COALESCE(bundle_kind, bundle_type)` read, so it compared `content` against
+  SideMolly's reported `youtube` and flagged a mismatch on **every** YouTube
+  round-trip.
+- **Fix:** the importer now reads the effective (kind-aware) type in both the
+  mismatch check and the result it returns, so a YouTube bundle reads back as
+  `youtube` and agrees with SideMolly cleanly. Genuine type mismatches (e.g.
+  a content bundle whose report claims fansite) are still surfaced. No schema
+  change, no migration. Added a regression test
+  (`import_youtube_bundle_reports_no_phantom_mismatch`).
+
 ## [1.33.0] — 2026-06-14
 
 ### Added — Import the SideMolly Summary PDF and surface it on the bundle
