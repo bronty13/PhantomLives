@@ -10,7 +10,12 @@ utility — a TreeSize / WinDirStat / DaisyDisk equivalent. Built with Electron
 - **Treemap** visualization — nested rectangles sized by bytes; click to drill
   down, breadcrumb to navigate back.
 - **Sortable detail list** of the current folder (size / name / files / date),
-  with select-and-delete.
+  with select-and-delete **and a right-click menu** (open / reveal / delete) on
+  any file or folder.
+- **Right-click → Delete anywhere in the Explorer** — context menus on both the
+  folder tree (left) and the detail list (right) let you trash any file or
+  folder without ticking a checkbox first. Removed items disappear from both
+  panes at once; the scan root can't be deleted from the tree.
 - **In-place folder refresh** — a ⟳ top-bar button (re-scans the selected
   folder) and a tree right-click menu (refresh any folder). Re-crawls just that
   subtree and splices it back into the live scan, preserving the surrounding

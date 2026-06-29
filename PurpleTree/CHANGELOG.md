@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.7.0] - 2026-06-29
+
+- **Right-click → Delete, anywhere in the Explorer.** You can now delete any
+  file *or* folder straight from a context menu — no need to tick a checkbox
+  first:
+  - **In the detail list (right pane):** right-click any row for **📂 Open
+    folder** (folders only), **📍 Reveal in Finder**, and **🗑 Delete…**.
+  - **In the folder tree (left pane):** the existing context menu gains a
+    **🗑 Delete…** item next to Refresh and Reveal. The scan root itself is
+    intentionally not deletable from here.
+
+  Delete uses the same safety path as before: it moves to the Trash/Recycle Bin
+  by default (recoverable), honors the protected-path guard, and only offers
+  permanent deletion when you've enabled it in Settings. Anything the guard
+  blocks stays visible so you can see why.
+- **Deleted items disappear immediately and stay gone across both panes.**
+  Removals are now applied optimistically from the delete result and shared
+  between the tree and detail list, so deleting a folder in one pane also drops
+  it from the other. A later folder refresh / rescan reconciles sizes.
+- **Fix: the Explorer detail list no longer showed deleted rows again.**
+  Previously, deleting from the detail list re-queried the in-memory tree (which
+  isn't pruned on delete), so the row could reappear until the next full scan.
+  It now hides removed paths immediately, matching the Large & Old Files list.
+
 ## [1.6.0] - 2026-06-28
 
 - **Refresh a folder without re-scanning everything.** Two new ways to pull in

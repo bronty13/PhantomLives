@@ -34,7 +34,19 @@ After a scan you land in **Explorer**:
   **Name** header to widen or narrow that column. Hover a truncated name to see
   the full filename and path in a floating tooltip.
 
-To delete: tick the checkboxes in the detail list and click **Delete…**.
+**To delete** you have two ways:
+
+- **Right-click any file or folder** — in either the folder tree (left) or the
+  detail list (right) — and choose **🗑 Delete…**. The detail-list menu also has
+  **📂 Open folder** / **📍 Reveal in Finder**. This is the quickest way to remove
+  a single item.
+- Or **tick the checkboxes** in the detail list and click **Delete…** to remove
+  several at once.
+
+Either way, the same confirmation dialog appears and items go to the Trash /
+Recycle Bin by default (see **§7 Deleting safely**). Deleted items vanish from
+both the tree and the detail list right away. The scan root itself can't be
+deleted from the tree.
 
 **Refresh a folder.** After you add, delete, or move files, you don't have to
 re-scan from scratch — refresh just the part that changed:
@@ -42,7 +54,7 @@ re-scan from scratch — refresh just the part that changed:
 - The **⟳ button** in the top bar re-scans the **folder you currently have
   selected**.
 - **Right-click any folder** in the tree and choose **⟳ Refresh this folder**
-  (the same menu also has **📍 Reveal in Finder**).
+  (the same menu also has **📍 Reveal in Finder** and **🗑 Delete…**).
 
 Purple Tree re-reads only that folder and updates its sizes in place; the rest of
 the scan and your current view stay exactly where they were, and the folder you

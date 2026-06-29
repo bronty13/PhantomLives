@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { NodeRow, SortKey, SortSpec } from '../../../../shared/types';
+import type { NodeRow, SortKey, SortSpec, DeleteResult } from '../../../../shared/types';
 import { formatBytes, formatDate, formatCount, heatBg } from '../common/format';
 import { useColumnResize } from '../common/useColumnResize';
 import DeleteConfirm from '../delete/DeleteConfirm';
@@ -12,12 +12,17 @@ interface Props {
   focusId: number;
   allowPermanent: boolean;
   heatmapColor: string;
+  /** Paths hidden because they were just trashed/deleted (lifted to App). */
+  removedPaths: Set<string>;
   onDrill: (id: number) => void;
+  /** Report successfully removed paths up to App so every view hides them. */
+  onDeleted: (paths: string[]) => void;
 }
 
 interface Tip { text: string; x: number; y: number }
+interface CtxMenu { x: number; y: number; node: NodeRow }
 
-export default function DetailList({ scanId, focusId, allowPermanent, heatmapColor, onDrill }: Props): JSX.Element {
+export default function DetailList({ scanId, focusId, allowPermanent, heatmapColor, removedPaths, onDrill, onDeleted }: Props): JSX.Element {
   const [rows, setRows] = useState<NodeRow[]>([]);
   const [sort, setSort] = useState<SortSpec>({ key: 'size', dir: 'desc' });
   const [tip, setTip] = useState<Tip | null>(null);
@@ -30,6 +35,7 @@ export default function DetailList({ scanId, focusId, allowPermanent, heatmapCol
   const hideTip = (): void => setTip(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirm, setConfirm] = useState<string[] | null>(null);
+  const [menu, setMenu] = useState<CtxMenu | null>(null);
 
   const reload = useMemo(
     () => () => {
@@ -43,6 +49,23 @@ export default function DetailList({ scanId, focusId, allowPermanent, heatmapCol
 
   useEffect(() => reload(), [reload]);
 
+  // Dismiss the row context menu on any click, scroll, or Escape.
+  useEffect(() => {
+    if (!menu) return;
+    const close = (): void => setMenu(null);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMenu(null);
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+
   const toggleSort = (key: SortKey): void =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
 
@@ -55,12 +78,19 @@ export default function DetailList({ scanId, focusId, allowPermanent, heatmapCol
       return n;
     });
 
-  const selectedPaths = rows.filter((r) => selected.has(r.id)).map((r) => r.path);
+  // Hide rows the user just removed; the in-memory tree still has them.
+  const visibleRows = rows.filter((r) => !removedPaths.has(r.path));
+  const selectedPaths = visibleRows.filter((r) => selected.has(r.id)).map((r) => r.path);
+
+  const openContext = (e: React.MouseEvent, node: NodeRow): void => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, node });
+  };
 
   return (
     <div className="detail-list">
       <div className="detail-actions">
-        <span className="muted">{formatCount(rows.length)} items</span>
+        <span className="muted">{formatCount(visibleRows.length)} items</span>
         <div className="spacer" />
         {selected.size > 0 && (
           <>
@@ -86,8 +116,8 @@ export default function DetailList({ scanId, focusId, allowPermanent, heatmapCol
         </button>
       </div>
       <div className="detail-body">
-        {rows.map((r) => {
-          const maxSize = rows[0]?.aggSize ?? 0;
+        {visibleRows.map((r) => {
+          const maxSize = visibleRows[0]?.aggSize ?? 0;
           const fraction = maxSize > 0 ? r.aggSize / maxSize : 0;
           const pct = fraction * 100;
           const bg = heatBg(fraction, heatmapColor);
@@ -97,6 +127,7 @@ export default function DetailList({ scanId, focusId, allowPermanent, heatmapCol
               className={`detail-row${selected.has(r.id) ? ' selected' : ''}`}
               style={bg ? { backgroundColor: bg } : undefined}
               onDoubleClick={() => (r.isDir ? onDrill(r.id) : void api.reveal(r.path))}
+              onContextMenu={(e) => openContext(e, r)}
             >
               <span className="col-sel">
                 <input
@@ -124,7 +155,7 @@ export default function DetailList({ scanId, focusId, allowPermanent, heatmapCol
             </div>
           );
         })}
-        {rows.length === 0 && <div className="empty-row muted">This folder is empty.</div>}
+        {visibleRows.length === 0 && <div className="empty-row muted">This folder is empty.</div>}
       </div>
       {tip && (
         <div className="path-tooltip" style={{ left: tip.x + 14, top: tip.y + 18 }}>
@@ -133,14 +164,52 @@ export default function DetailList({ scanId, focusId, allowPermanent, heatmapCol
           ))}
         </div>
       )}
+      {menu && (
+        <div
+          className="ctx-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {menu.node.isDir && (
+            <button
+              className="ctx-item"
+              onClick={() => {
+                onDrill(menu.node.id);
+                setMenu(null);
+              }}
+            >
+              📂 Open folder
+            </button>
+          )}
+          <button
+            className="ctx-item"
+            onClick={() => {
+              void api.reveal(menu.node.path);
+              setMenu(null);
+            }}
+          >
+            📍 Reveal in Finder
+          </button>
+          <button
+            className="ctx-item danger"
+            onClick={() => {
+              setConfirm([menu.node.path]);
+              setMenu(null);
+            }}
+          >
+            🗑 Delete…
+          </button>
+        </div>
+      )}
       {confirm && (
         <DeleteConfirm
           paths={confirm}
           allowPermanent={allowPermanent}
           onClose={() => setConfirm(null)}
-          onDone={() => {
+          onDone={(result: DeleteResult) => {
             setConfirm(null);
-            reload();
+            onDeleted(result.removed);
+            setSelected(new Set());
           }}
         />
       )}

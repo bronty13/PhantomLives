@@ -38,6 +38,12 @@ export default function App(): JSX.Element {
   const [toast, setToast] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Paths trashed/deleted since the last (re)scan. The in-memory tree is never
+  // pruned on delete, so getChildren keeps returning removed rows; both the
+  // FolderTree and DetailList hide anything in this set at render. Cleared on
+  // every scan-complete (and snapshot load), so a rescan that legitimately
+  // re-adds a same-path file isn't masked.
+  const [removedPaths, setRemovedPaths] = useState<Set<string>>(new Set());
   const [elapsedMs, setElapsedMs] = useState(0);
   const [rate, setRate] = useState(0);
   const scanIdRef = useRef<string | null>(null);
@@ -109,6 +115,17 @@ export default function App(): JSX.Element {
     [focusId]
   );
 
+  // Record paths the user just trashed/deleted so every view hides them
+  // immediately (the in-memory tree itself isn't pruned until the next scan).
+  const onDeleted = useCallback((paths: string[]) => {
+    if (paths.length === 0) return;
+    setRemovedPaths((prev) => {
+      const next = new Set(prev);
+      for (const p of paths) next.add(p);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     loadPrefs();
     // Debug: auto-start a scan when launched with PT_AUTOSCAN (no-op normally).
@@ -137,6 +154,7 @@ export default function App(): JSX.Element {
       refreshPathRef.current = null;
       void api.getRoot(s.scanId).then(async (r) => {
         setRoot(r);
+        setRemovedPaths(new Set()); // fresh tree from disk — drop optimistic hides
         // A refresh renumbers node ids — re-anchor focus to the same path.
         setFocusId(wasRefresh && keepPath ? await api.findNode(s.scanId, keepPath) : 0);
         setRefreshKey((k) => k + 1);
@@ -215,6 +233,7 @@ export default function App(): JSX.Element {
       setRoot(s.rootRow);
       setStats(s.stats);
       setFocusId(0);
+      setRemovedPaths(new Set());
       setStatus('ready');
       setView('explorer');
     });
@@ -398,8 +417,11 @@ export default function App(): JSX.Element {
                     scanId={scanId}
                     root={root}
                     focusId={focusId}
+                    allowPermanent={allowPermanent}
+                    removed={removedPaths}
                     onSelect={setFocusId}
                     onRefresh={(id) => void refreshFolder(id)}
+                    onDeleted={onDeleted}
                   />
                 </div>
                 <div className="explorer-right">
@@ -432,7 +454,9 @@ export default function App(): JSX.Element {
                     focusId={focusId}
                     allowPermanent={allowPermanent}
                     heatmapColor={heatmapColor}
+                    removedPaths={removedPaths}
                     onDrill={setFocusId}
+                    onDeleted={onDeleted}
                   />
                 </div>
               </div>

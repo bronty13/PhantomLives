@@ -170,6 +170,13 @@ button:disabled {
 .ctx-item:hover {
   background: var(--panel);
 }
+.ctx-item.danger {
+  color: var(--danger);
+}
+.ctx-item.danger:hover {
+  background: var(--danger);
+  color: #fff;
+}
 
 .body {
   flex: 1;

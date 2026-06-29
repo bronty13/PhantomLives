@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import type { NodeRow } from '../../../../shared/types';
+import type { NodeRow, DeleteResult } from '../../../../shared/types';
 import { formatBytes } from '../common/format';
+import DeleteConfirm from '../delete/DeleteConfirm';
 
 const api = window.purpleTree;
 const SORT = { key: 'size', dir: 'desc' } as const;
@@ -11,11 +12,12 @@ interface NodeProps {
   node: NodeRow;
   depth: number;
   focusId: number;
+  removed: Set<string>;
   onSelect: (id: number) => void;
-  onContext: (e: MouseEvent, node: NodeRow) => void;
+  onContext: (e: MouseEvent, node: NodeRow, isRoot: boolean) => void;
 }
 
-function TreeNode({ scanId, node, depth, focusId, onSelect, onContext }: NodeProps): JSX.Element {
+function TreeNode({ scanId, node, depth, focusId, removed, onSelect, onContext }: NodeProps): JSX.Element {
   const [open, setOpen] = useState(depth === 0);
   const [kids, setKids] = useState<NodeRow[] | null>(null);
 
@@ -31,13 +33,16 @@ function TreeNode({ scanId, node, depth, focusId, onSelect, onContext }: NodePro
   }, [open, kids, node.id, node.isDir, scanId]);
 
   const expandable = node.isDir && node.childCount > 0;
+  // Hide children the user just trashed/deleted; filter at render so the
+  // removal shows instantly without refetching (the tree isn't pruned).
+  const visibleKids = kids?.filter((k) => !removed.has(k.path)) ?? null;
   return (
     <div className="tree-node">
       <div
         className={`tree-row${node.id === focusId ? ' selected' : ''}`}
         style={{ paddingLeft: depth * 14 + 4 }}
         onClick={() => onSelect(node.id)}
-        onContextMenu={(e) => onContext(e, node)}
+        onContextMenu={(e) => onContext(e, node, depth === 0)}
       >
         <button
           className={`tree-twisty${expandable ? '' : ' hidden'}`}
@@ -54,15 +59,16 @@ function TreeNode({ scanId, node, depth, focusId, onSelect, onContext }: NodePro
         </span>
         <span className="tree-size">{formatBytes(node.aggSize)}</span>
       </div>
-      {open && kids && (
+      {open && visibleKids && (
         <div className="tree-children">
-          {kids.map((k) => (
+          {visibleKids.map((k) => (
             <TreeNode
               key={k.id}
               scanId={scanId}
               node={k}
               depth={depth + 1}
               focusId={focusId}
+              removed={removed}
               onSelect={onSelect}
               onContext={onContext}
             />
@@ -77,8 +83,11 @@ interface Props {
   scanId: string;
   root: NodeRow;
   focusId: number;
+  allowPermanent: boolean;
+  removed: Set<string>;
   onSelect: (id: number) => void;
   onRefresh: (id: number) => void;
+  onDeleted: (paths: string[]) => void;
 }
 
 interface CtxMenu {
@@ -86,10 +95,12 @@ interface CtxMenu {
   y: number;
   id: number;
   path: string;
+  isRoot: boolean;
 }
 
-export default function FolderTree({ scanId, root, focusId, onSelect, onRefresh }: Props): JSX.Element {
+export default function FolderTree({ scanId, root, focusId, allowPermanent, removed, onSelect, onRefresh, onDeleted }: Props): JSX.Element {
   const [menu, setMenu] = useState<CtxMenu | null>(null);
+  const [confirm, setConfirm] = useState<string[] | null>(null);
 
   // Dismiss the context menu on any click, scroll, or Escape.
   useEffect(() => {
@@ -108,10 +119,10 @@ export default function FolderTree({ scanId, root, focusId, onSelect, onRefresh 
     };
   }, [menu]);
 
-  const openContext = (e: MouseEvent, node: NodeRow): void => {
+  const openContext = (e: MouseEvent, node: NodeRow, isRoot: boolean): void => {
     e.preventDefault();
-    if (!node.isDir) return; // only folders can be refreshed
-    setMenu({ x: e.clientX, y: e.clientY, id: node.id, path: node.path });
+    if (!node.isDir) return; // only folders appear in the tree
+    setMenu({ x: e.clientX, y: e.clientY, id: node.id, path: node.path, isRoot });
   };
 
   return (
@@ -121,6 +132,7 @@ export default function FolderTree({ scanId, root, focusId, onSelect, onRefresh 
         node={root}
         depth={0}
         focusId={focusId}
+        removed={removed}
         onSelect={onSelect}
         onContext={openContext}
       />
@@ -148,7 +160,29 @@ export default function FolderTree({ scanId, root, focusId, onSelect, onRefresh 
           >
             📍 Reveal in Finder
           </button>
+          {!menu.isRoot && (
+            <button
+              className="ctx-item danger"
+              onClick={() => {
+                setConfirm([menu.path]);
+                setMenu(null);
+              }}
+            >
+              🗑 Delete…
+            </button>
+          )}
         </div>
+      )}
+      {confirm && (
+        <DeleteConfirm
+          paths={confirm}
+          allowPermanent={allowPermanent}
+          onClose={() => setConfirm(null)}
+          onDone={(result: DeleteResult) => {
+            setConfirm(null);
+            onDeleted(result.removed);
+          }}
+        />
       )}
     </div>
   );
