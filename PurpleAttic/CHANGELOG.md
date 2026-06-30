@@ -19,6 +19,12 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
 - **`pattic adhoc backup --dry-run`** — previews what would upload (names + sizes only) without
   transferring any file content or writing to B2. A cheap, drive-light way to confirm only the new
   delta remains before a real run (it never reads file contents, so it doesn't stress the source drive).
+- **`pattic adhoc verify`** — the pre-purge safety gate. Runs a one-way `rclone check` of every local
+  source against B2 and **exits non-zero unless every file is confirmed present** (size-matched).
+  Treats "couldn't compare" (`!`) as unsafe, not just missing — you never delete the last local copy
+  of an unknown. Run it (clean) before reclaiming/deleting any local copies. Its `checkArguments` now
+  also passes `--size-only`, matching the backup's comparison so verify can't false-alarm on the
+  modtime-only diffs the backup correctly skips.
 
 ### Added (in progress — Ad-hoc Backblaze B2 file store)
 - **Phase 0 — engine foundation (no UI yet).** Groundwork for a *second, separate* B2 account used

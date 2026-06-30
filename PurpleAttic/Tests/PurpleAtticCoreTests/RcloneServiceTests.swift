@@ -126,6 +126,9 @@ final class RcloneServiceTests: XCTestCase {
         XCTAssertTrue(chk.contains("--one-way"))
         XCTAssertTrue(chk.contains("--combined"))
         XCTAssertTrue(chk.contains("-"))
+        // Must match copyArguments' comparison, or verify false-alarms on modtime-only diffs the
+        // backup skips — and the pre-purge gate would refuse a purge that's actually safe.
+        XCTAssertTrue(chk.contains("--size-only"))
     }
 
     // MARK: - Outcome semantics (skip is NOT a failure)

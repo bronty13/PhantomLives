@@ -180,8 +180,13 @@ public enum RcloneService {
     /// One-way additive diff of a local source against a remote sub-path: reports `+` (upload),
     /// `*` (changed), `=` (same); `--one-way` suppresses remote-only entries. `--combined -` writes
     /// the symbol/path lines to stdout for `RcloneParse.checkCombined`.
+    ///
+    /// `--size-only` to match `copyArguments` exactly: the backup decides what to upload by size, so
+    /// the diff/verify MUST use the same criterion — otherwise it would flag the modtime-only
+    /// mismatches the backup correctly skips as `*` (changed), reporting spurious "not backed up"
+    /// entries and (for the pre-purge `verify` gate) refusing a purge that is actually safe.
     public static func checkArguments(localSource: String, remotePath: String = "") -> [String] {
-        ["check", localSource, cryptPath(remotePath), "--one-way", "--combined", "-"]
+        ["check", localSource, cryptPath(remotePath), "--one-way", "--combined", "-", "--size-only"]
     }
 
     // MARK: - Keychain resolution (impure)
