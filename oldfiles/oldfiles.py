@@ -40,7 +40,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 APP_NAME = "oldfiles"
 # Per the repo's default-output rule: user-visible reports default here.
@@ -308,11 +308,27 @@ def _ensure_send2trash():
 # Deletion
 # ─────────────────────────────────────────────────────────────────────────────
 
-def do_delete(matches, permanent: bool):
-    """Delete matched files. Returns (removed_paths, failures[(path, reason)])."""
+def _on_separate_volume(path: str) -> bool:
+    """True if `path` lives on a different mounted volume than the user's home
+    directory (where ~/.Trash is reliable). macOS Trash on a separate/external
+    volume is slow, its `.Trashes` is usually TCC-protected (so progress is
+    invisible) and it doesn't free space until emptied — so we steer those to
+    --delete-permanent rather than appear to hang. Best-effort: returns False if
+    either path can't be stat'd."""
+    try:
+        return os.stat(path).st_dev != os.stat(os.path.expanduser("~")).st_dev
+    except OSError:
+        return False
+
+
+def do_delete(matches, permanent: bool, progress_every: int = 1000):
+    """Delete matched files. Returns (removed_paths, failures[(path, reason)]).
+    Emits a progress line every `progress_every` files so a long run is never
+    silent (set 0 to disable)."""
     removed, failed = [], []
     send2trash = None if permanent else _ensure_send2trash()
-    for m in matches:
+    total = len(matches)
+    for i, m in enumerate(matches, 1):
         blocked, reason = is_protected(m.path)
         if blocked:
             failed.append((m.path, reason))
@@ -325,6 +341,8 @@ def do_delete(matches, permanent: bool):
             removed.append(m.path)
         except Exception as e:  # noqa: BLE001 — surface any FS error per-file
             failed.append((m.path, str(e)))
+        if progress_every and i % progress_every == 0:
+            info(f"  …{i}/{total} processed ({len(removed)} removed)")
     return removed, failed
 
 
@@ -465,6 +483,18 @@ def main(argv=None) -> int:
     blocked, reason = is_protected(source)
     if blocked:
         die(reason)
+
+    # Trash is unreliable on a separate/external volume: it's slow, its `.Trashes` is
+    # usually TCC-protected (so progress is invisible), and it doesn't free space until
+    # emptied. Refuse rather than appear to hang, and point at --delete-permanent.
+    # (Incident: a 90d Trash purge of an external archive looked "stuck" for minutes
+    # because its .Trashes was unreadable — it was actually trashing, just invisibly.)
+    if args.delete and not args.delete_permanent and _on_separate_volume(source):
+        die("--delete (Trash) isn't reliable on the external/separate volume holding:\n"
+            f"    {source}\n"
+            "  Its Trash is slow, usually unreadable (so progress is invisible), and doesn't\n"
+            "  free space until emptied. Use --delete-permanent to delete and reclaim now.",
+            code=1)
 
     # Resolve the cutoff.
     now = time.time()

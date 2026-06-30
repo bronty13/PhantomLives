@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0] - 2026-06-30
+
+- **Refuse `--delete` (Trash) on a separate/external volume.** macOS Trash on an
+  external drive is slow, its `.Trashes` is usually TCC-protected (so progress is
+  invisible), and it doesn't free space until emptied — a combination that makes a
+  large Trash purge *look* hung while it's actually working. oldfiles now detects
+  this (the source is on a different volume than `~`) and aborts with a clear
+  message pointing at `--delete-permanent`, which deletes and reclaims space
+  directly. (Incident: a 90d Trash purge of an external archive appeared stuck for
+  minutes; it was trashing files invisibly into an unreadable `.Trashes`.)
+- **Progress output during deletion.** `do_delete` now prints a `…N/total processed`
+  line every 1,000 files, so a long delete can never silently look like a hang.
+
 ## [1.0.0] - 2026-06-29
 
 Initial release.

@@ -183,5 +183,45 @@ class TestMainDryRun(_Tree):
             of.main([self.root, "--delete", "--delete-permanent"])
 
 
+class TestExternalVolumeTrashGuard(_Tree):
+    def test_home_is_not_a_separate_volume(self):
+        # The home dir is on the same volume as itself — never flagged.
+        self.assertFalse(of._on_separate_volume(os.path.expanduser("~")))
+
+    def test_delete_trash_on_separate_volume_aborts(self):
+        # Simulate the source being on an external volume: --delete (Trash) must
+        # refuse (SystemExit) and delete nothing, steering to --delete-permanent.
+        orig = of._on_separate_volume
+        of._on_separate_volume = lambda p: True
+        try:
+            with self.assertRaises(SystemExit):
+                of.main([self.root, "--older-than", "0d", "--delete", "-y", "--quiet"])
+        finally:
+            of._on_separate_volume = orig
+        self.assertTrue(os.path.exists(os.path.join(self.root, "a.txt")))
+
+    def test_permanent_delete_on_separate_volume_is_allowed(self):
+        # The guard is Trash-only; --delete-permanent must still work on a "separate" volume.
+        orig = of._on_separate_volume
+        of._on_separate_volume = lambda p: True
+        try:
+            rc = of.main([self.root, "--older-than", "0d", "--delete-permanent", "-y", "--quiet"])
+        finally:
+            of._on_separate_volume = orig
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "a.txt")))
+
+    def test_do_delete_emits_progress(self):
+        # A long run must not be silent: progress fires on the cadence.
+        import io, contextlib
+        files = [of.Match(self._mk(f"p{i}.txt", b"x"), 1, time.time(), "modified")
+                 for i in range(5)]
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            removed, failed = of.do_delete(files, permanent=True, progress_every=2)
+        self.assertEqual(len(removed), 5)
+        self.assertIn("processed", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
