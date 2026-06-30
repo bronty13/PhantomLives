@@ -4,6 +4,22 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.1] — 2026-06-29
+
+### Fixed — Squish icon showed as an empty box (□) on Sallie's Windows
+
+The Squish tab used 🫧 (U+1FAE7 "Bubbles"), an **Emoji 14.0 (Sept 2021)**
+character. Older `Segoe UI Emoji` fonts — including the one on Sallie's
+Windows — have no glyph for it, so it rendered as "tofu" (a blank box) in the
+sidebar, the view header, progress messages, buttons, and the in-app Manual.
+
+Swapped 🫧 → 🗜️ (the "Clamp"/compression emoji, Unicode 7.0 / 2014) everywhere
+Squish appears — sidebar nav, `SquishView`, `USER_MANUAL.md` (rendered in-app),
+`WHATS_NEW_1.34.md`, and `README.md`. 🗜️ is bulletproof on every Windows 10/11
+emoji font and is, conveniently, the literal "compress" glyph. No behavior
+change — purely the icon. (Guideline going forward: Molly targets Sallie's
+Windows, so avoid Emoji 13.0+/2020+ codepoints in user-facing UI.)
+
 ## [1.34.0] — 2026-06-29
 
 ### Added — 🫧 Squish: shrink a big video small enough to upload (under 1 GB)

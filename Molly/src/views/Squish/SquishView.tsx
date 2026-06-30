@@ -5,7 +5,7 @@ import { probeVideo } from '../../data/gifStudio';
 import { shrinkVideo, type ShrinkResult } from '../../data/shrink';
 import { formatBytes, savingsPercent } from '../../lib/fileSize';
 
-// 🫧 Squish — pick a chonky video, and Molly shrinks it small enough to upload
+// 🗜️ Squish — pick a chonky video, and Molly shrinks it small enough to upload
 // to Slack (under 1 GB) while keeping it as pretty as she can. All local; the
 // heavy lifting is the bundled ffmpeg engine via the `shrink_video` command.
 
@@ -33,11 +33,11 @@ function fmtDuration(sec: number): string {
 
 /** Cute commentary that changes as the squish progresses. */
 function squishSaying(fraction: number): string {
-  if (fraction < 0.05) return 'warming up the squish machine… 🫧';
-  if (fraction < 0.3) return 'squishing your clip all small… 🫧';
-  if (fraction < 0.6) return 'squeezing out the extra megabytes… 💪🫧';
+  if (fraction < 0.05) return 'warming up the squish machine… 🗜️';
+  if (fraction < 0.3) return 'squishing your clip all small… 🗜️';
+  if (fraction < 0.6) return 'squeezing out the extra megabytes… 💪🗜️';
   if (fraction < 0.85) return 'smoothing it all pretty… ✨';
-  return 'almost teeny — just a sec! 🫧';
+  return 'almost teeny — just a sec! 🗜️';
 }
 
 export function SquishView() {
@@ -116,7 +116,7 @@ export function SquishView() {
   return (
     <div className="p-8 space-y-5 max-w-3xl">
       <header className="space-y-1">
-        <h2 className="display-font text-2xl font-bold persona-accent">🫧 Squish</h2>
+        <h2 className="display-font text-2xl font-bold persona-accent">🗜️ Squish</h2>
         <p className="opacity-70 text-sm">
           Got a clip that's too big to upload? Drop it here and I'll squish it small
           enough for Slack (under 1&nbsp;GB) while keeping it as gorgeous as I can. 💕
@@ -135,7 +135,7 @@ export function SquishView() {
         >
           {!file ? (
             <>
-              <div className="text-5xl">🎬🫧</div>
+              <div className="text-5xl">🎬🗜️</div>
               <p className="opacity-80">Pick a big video and I'll get to squishing!</p>
               <button type="button" className="pretty-button text-base" onClick={pickFile}>
                 📁 Pick a video
@@ -156,12 +156,12 @@ export function SquishView() {
                 {file.bytes > ONE_GB
                   ? 'Ooh, that’s a chonky one — let’s get you Slack-ready! 💖'
                   : alreadySmall
-                    ? 'This one’s already under 1 GB, but I can still squish it smaller if you like. 🫧'
-                    : 'Let’s squish it! 🫧'}
+                    ? 'This one’s already under 1 GB, but I can still squish it smaller if you like. 🗜️'
+                    : 'Let’s squish it! 🗜️'}
               </p>
               <div className="flex items-center justify-center gap-2 pt-1">
                 <button type="button" className="pretty-button text-base" onClick={runSquish}>
-                  🫧 Squish it under 1 GB!
+                  🗜️ Squish it under 1 GB!
                 </button>
                 <button type="button" className="pretty-button secondary" onClick={pickFile}>
                   Pick a different one
@@ -178,7 +178,7 @@ export function SquishView() {
           className="rounded-3xl p-8 space-y-3"
           style={{ background: 'rgb(var(--persona-secondary) / 0.35)' }}
         >
-          <div className="text-center text-4xl">🫧✨</div>
+          <div className="text-center text-4xl">🗜️✨</div>
           <div className="text-center font-semibold display-font">{squishSaying(progress)}</div>
           <div className="h-4 rounded-full overflow-hidden" style={{ background: 'rgb(var(--persona-primary) / 0.15)' }}>
             <div
@@ -199,7 +199,7 @@ export function SquishView() {
           className="rounded-3xl p-8 space-y-3 text-center"
           style={{ background: 'rgb(var(--persona-secondary) / 0.45)', border: '1px solid rgb(var(--persona-primary) / 0.4)' }}
         >
-          <div className="text-5xl">🎉🫧</div>
+          <div className="text-5xl">🎉🗜️</div>
           <div className="display-font text-xl font-bold persona-accent">Squished!</div>
           <div className="text-lg">
             <span className="opacity-70">{formatBytes(result.inputBytes)}</span>
@@ -216,7 +216,7 @@ export function SquishView() {
               📂 Show in folder
             </button>
             <button type="button" className="pretty-button secondary" onClick={reset}>
-              🫧 Squish another
+              🗜️ Squish another
             </button>
           </div>
         </div>
