@@ -86,10 +86,14 @@ final class RcloneServiceTests: XCTestCase {
     // MARK: - Argument builders
 
     func testCopyAndCopytoArguments() {
+        // `--size-only` is REQUIRED: through a crypt remote rclone can't hash-match against B2, and
+        // modtime is fragile (re-staging a source rewrites mtimes), so without it every file is
+        // re-uploaded as "replaced existing" — re-sending the whole archive each run instead of the
+        // delta. The store is additive/immutable, so size comparison is correct here.
         XCTAssertEqual(RcloneService.copyArguments(source: "/x/Foo", destRemotePath: "Foo"),
-                       ["copy", "/x/Foo", "padhoc:Foo"])
+                       ["copy", "/x/Foo", "padhoc:Foo", "--size-only"])
         XCTAssertEqual(RcloneService.copytoArguments(source: "/x/a.pdf", destRemotePath: "a.pdf"),
-                       ["copyto", "/x/a.pdf", "padhoc:a.pdf"])
+                       ["copyto", "/x/a.pdf", "padhoc:a.pdf", "--size-only"])
     }
 
     func testLsjsonArguments() {

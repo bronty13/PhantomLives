@@ -134,13 +134,24 @@ public enum RcloneService {
 
     /// Copy a **directory's contents** into a remote folder: `rclone copy <dir> padhoc:<dest>` lands
     /// files at `padhoc:<dest>/…`, so passing the source's basename as `dest` preserves the folder.
+    ///
+    /// `--size-only`: compare by size alone, never modtime. Through a **crypt** remote rclone can't
+    /// match B2's hashes (they're hashes of the *encrypted* blob, not the plaintext), so it falls
+    /// back to size+modtime — and modtime is fragile here: re-staging a source onto another drive
+    /// (e.g. moving the Rachel archive to REDONE) rewrites mtimes, so rclone would re-upload every
+    /// file as "replaced existing" and re-send the whole archive each run. These stores are additive
+    /// and **immutable** (photo/message exports are never edited in place; new items are only added),
+    /// so "same name + same size = already uploaded" is correct and makes the backup a true, fast
+    /// incremental. (Wrong for an in-place-editable tree, right for an append-only archive.)
     public static func copyArguments(source: String, destRemotePath: String) -> [String] {
-        ["copy", source, cryptPath(destRemotePath)]
+        ["copy", source, cryptPath(destRemotePath), "--size-only"]
     }
 
     /// Copy a **single file** to an exact remote path: `rclone copyto <file> padhoc:<dest>`.
+    /// `--size-only` for the same reason as `copyArguments` (crypt can't hash-match; modtime is
+    /// fragile; the store is additive/immutable).
     public static func copytoArguments(source: String, destRemotePath: String) -> [String] {
-        ["copyto", source, cryptPath(destRemotePath)]
+        ["copyto", source, cryptPath(destRemotePath), "--size-only"]
     }
 
     /// List the store. `--files-only` keeps the cache to real files (dirs are implied by paths);

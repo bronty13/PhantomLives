@@ -32,9 +32,12 @@ struct AdhocBackup: ParsableCommand {
         abstract: "Upload the configured sources to B2 (one-way, additive, client-side encrypted).")
     @OptionGroup var profileOpt: ProfileOption
 
+    @Flag(name: .long, help: "Preview what would upload (names + sizes only) without transferring any file or writing to B2 — a cheap, drive-light way to confirm only the new delta is left to send.")
+    var dryRun = false
+
     func run() throws {
         let cfg = try loadAdhocConfig(profileOpt)
-        let outcome = RcloneService.backup(config: cfg) { line in
+        let outcome = RcloneService.backup(config: cfg, dryRun: dryRun) { line in
             if let m = RcloneParse.logMessage(line) { print(m) }
         }
         switch outcome {

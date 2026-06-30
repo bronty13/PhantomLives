@@ -96,7 +96,13 @@ extension RcloneService {
 
     /// Back up the store's `sources` one-way and additively (`copy`/`copyto`, never `sync --delete`),
     /// each source preserved under its basename. Local deletions never touch B2.
-    public static func backup(config: AdhocBackupConfig, onLine: (String) -> Void) -> Outcome {
+    ///
+    /// `dryRun` appends `--dry-run`: rclone reports what it WOULD upload (a metadata-only scan of
+    /// names + sizes on both sides) without transferring any file content or writing to B2. Useful
+    /// to *preview* the delta cheaply — and notably light on the source drive, since it never reads
+    /// file contents — before committing to a real run.
+    public static func backup(config: AdhocBackupConfig, dryRun: Bool = false,
+                              onLine: (String) -> Void) -> Outcome {
         let rclone: String, env: [String: String]
         switch prepared(config) {
         case .failure(let o): return o
@@ -113,15 +119,16 @@ extension RcloneService {
             let dest = (src as NSString).lastPathComponent
             let core = isDir.boolValue ? copyArguments(source: src, destRemotePath: dest)
                                        : copytoArguments(source: src, destRemotePath: dest)
-            onLine("→ backing up \(src) → \(cryptPath(dest))")
-            guard let r = try? ProcessRunner.run(executable: rclone, arguments: core + runtimeProgressFlags,
+            let args = core + runtimeProgressFlags + (dryRun ? ["--dry-run"] : [])
+            onLine("→ backing up \(src) → \(cryptPath(dest))\(dryRun ? " (dry-run)" : "")")
+            guard let r = try? ProcessRunner.run(executable: rclone, arguments: args,
                                                  environment: env, onLine: onLine) else {
                 return .failed("could not launch rclone copy for \(src)")
             }
             guard r.exitCode == 0 else { return .failed("rclone copy exit \(r.exitCode) for \(src)") }
             copied += 1
         }
-        return .ok(detail: "backed up \(copied) source(s)")
+        return .ok(detail: "\(dryRun ? "previewed" : "backed up") \(copied) source(s)")
     }
 
     /// Rename/move one object within the store (server-side copy + delete; no re-upload).

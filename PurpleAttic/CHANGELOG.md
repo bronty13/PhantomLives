@@ -5,6 +5,21 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Fixed
+- **Ad-hoc B2 backup re-uploaded the entire archive every run instead of just the delta.** The
+  `rclone copy` into the crypt remote used rclone's default size+modtime comparison; through a crypt
+  remote rclone can't hash-match against B2, and modtime is fragile (re-staging a source onto another
+  drive — e.g. moving the Rachel archive to REDONE — rewrites every mtime), so rclone judged every
+  file "changed" and re-sent it (`Copied (replaced existing)` for all ~83k files / 368 GB each run).
+  `copyArguments`/`copytoArguments` now pass **`--size-only`**, so an additive/immutable export store
+  uploads only genuinely-new files — a true fast incremental. (Correct here because these stores are
+  append-only and never edited in place; would be wrong for an in-place-editable tree.)
+
+### Added
+- **`pattic adhoc backup --dry-run`** — previews what would upload (names + sizes only) without
+  transferring any file content or writing to B2. A cheap, drive-light way to confirm only the new
+  delta remains before a real run (it never reads file contents, so it doesn't stress the source drive).
+
 ### Added (in progress — Ad-hoc Backblaze B2 file store)
 - **Phase 0 — engine foundation (no UI yet).** Groundwork for a *second, separate* B2 account used
   for ad-hoc, file-level backups that PurpleAttic can browse / rename / delete / diff — distinct from
