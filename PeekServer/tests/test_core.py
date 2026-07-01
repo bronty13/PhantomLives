@@ -106,6 +106,35 @@ class CoreTests(unittest.TestCase):
         self.assertGreater(os.path.getsize(dst), 0)
 
 
+class TestVideoProxy(unittest.TestCase):
+    """The pure proxy path + ffmpeg command builder (0.5.0). No ffmpeg needed for these."""
+
+    def test_proxy_path_sharded_mp4(self):
+        p = media.proxy_path("/cache", "abcd1234ef567890")
+        self.assertEqual(p, "/cache/ab/abcd1234ef567890.mp4")
+
+    def test_ffmpeg_args_shape(self):
+        args = media.ffmpeg_proxy_args("ffmpeg", "/in.mov", "/out.mp4", 720, 4000)
+        self.assertEqual(args[0], "ffmpeg")
+        self.assertEqual(args[-1], "/out.mp4")
+        self.assertIn("/in.mov", args)
+        # faststart (instant start) + a hard bitrate cap (fits the pipe) + no upscaling
+        self.assertIn("+faststart", args)
+        self.assertIn("-movflags", args)
+        self.assertIn("4000k", args)                 # maxrate
+        self.assertIn("8000k", args)                 # bufsize = 2× maxrate
+        self.assertTrue(any("min(720,ih)" in a for a in args))
+        self.assertIn("-nostdin", args)              # never block on stdin in a server thread
+
+    def test_ffmpeg_args_honor_params(self):
+        args = media.ffmpeg_proxy_args("/opt/homebrew/bin/ffmpeg", "/a b.mov", "/o.mp4", 480, 2500)
+        self.assertEqual(args[0], "/opt/homebrew/bin/ffmpeg")
+        self.assertIn("/a b.mov", args)              # spaces preserved (no shell)
+        self.assertIn("2500k", args)
+        self.assertIn("5000k", args)
+        self.assertTrue(any("min(480,ih)" in a for a in args))
+
+
 class TestPeriodicScanInterval(unittest.TestCase):
     """The pure interval-resolution used to schedule auto-rescans (0.4.0)."""
 

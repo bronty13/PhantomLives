@@ -35,6 +35,7 @@ cp config.example.json config.json   # then edit "roots"
 | `thumbCache` | where generated thumbnails are cached |
 | `thumbSize` | max thumbnail dimension (px) |
 | `scanIntervalMinutes` | auto-rescan every N min so newly-staged files appear without a manual scan (default 15; `0` = scan only at startup) |
+| `proxyCache` / `ffmpegBin` / `proxyHeight` / `proxyMaxBitrateK` / `warmProxies` | video streaming proxies: each video is transcoded once (`ffmpeg` → 720p faststart, bitrate-capped MP4) and served at `/preview/<id>` for smooth LAN playback. Needs `ffmpeg` (`brew install ffmpeg`); falls back to the original if absent. |
 | `roots` | `[{path,label,kind}]` — the review folders to serve |
 | `authUser` / `authPasswordSHA256` | Basic Auth (both empty = open). Store only the SHA-256 hash. |
 

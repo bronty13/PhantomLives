@@ -15,6 +15,12 @@ DEFAULTS = {
     "thumbSize": 512,                        # max thumbnail dimension (px)
     "scanIntervalMinutes": 15,               # auto-rescan every N min so newly-staged files appear
                                              # without a manual scan (0 = disable, scan only at startup)
+    # --- Video streaming proxies (smooth review playback over LAN; needs ffmpeg) ---
+    "proxyCache": "~/Library/Caches/PeekServer/proxies",  # cached 720p faststart MP4s
+    "ffmpegBin": "ffmpeg",                   # PATH name or absolute path to ffmpeg
+    "proxyHeight": 720,                      # proxy max height (px); never upscaled
+    "proxyMaxBitrateK": 4000,                # hard video-bitrate cap (kbps) so it always fits the pipe
+    "warmProxies": True,                     # background-generate proxies for videos after each scan
     "roots": [],                             # [{path,label,kind}]
     # --- Basic Auth (both empty = open). Password stored only as a SHA-256 hash. ---
     "authUser": "",
@@ -48,9 +54,9 @@ def load() -> dict:
     p = config_path()
     if p.exists():
         cfg.update(json.loads(p.read_text(encoding="utf-8")))
-    for k in ("dbPath", "thumbCache", "keptAudioDir", "stagingDir", "purplePeekDb"):
+    for k in ("dbPath", "thumbCache", "proxyCache", "keptAudioDir", "stagingDir", "purplePeekDb"):
         cfg[k] = _expand(cfg[k])
-    for k in ("osxphotosBin", "exiftoolBin"):           # expand ~ but leave bare PATH names alone
+    for k in ("osxphotosBin", "exiftoolBin", "ffmpegBin"):   # expand ~ but leave bare PATH names alone
         if cfg[k].startswith("~") or cfg[k].startswith("/"):
             cfg[k] = _expand(cfg[k])
     # Normalize roots: expand paths, default label to basename, default kind.

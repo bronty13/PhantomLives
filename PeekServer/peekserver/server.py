@@ -8,6 +8,7 @@ Pure stdlib (ThreadingHTTPServer). Routes:
   GET  /api/item/<id>        → one media record (with keywords/albums)
   GET  /thumb/<id>           → cached JPEG thumbnail (generated on first hit)
   GET  /full/<id>            → the original file (Range-aware, so video plays in-browser)
+  GET  /preview/<id>         → video: a cached 720p faststart proxy (smooth LAN playback); else original
   POST /api/decision         → {id, keep?, is_favorite?, title?, caption?, is_hidden?, keywords?, albums?}
   POST /api/scan             → rescan all roots (background)
 """
@@ -70,6 +71,45 @@ def background_scan():
             print("scan complete:", res)
         finally:
             _scanning.clear()
+        warm_proxies_async()          # get new videos ready to stream
+    threading.Thread(target=work, daemon=True).start()
+
+
+_proxy_warming = threading.Event()
+
+
+def warm_proxies_async():
+    """After a scan, background-generate streaming proxies for any videos lacking one, one at a time
+    (transcoding is CPU-heavy) so review videos play instantly without a first-view transcode stall.
+    Best-effort; a single pass at a time (guarded)."""
+    if not _CFG.get("warmProxies", True) or _proxy_warming.is_set():
+        return
+    _proxy_warming.set()
+    def work():
+        try:
+            cache = _CFG["proxyCache"]
+            ff = _CFG.get("ffmpegBin", "ffmpeg")
+            h, br = _CFG.get("proxyHeight", 720), _CFG.get("proxyMaxBitrateK", 4000)
+            made = 0
+            for root in _CFG.get("roots", []):
+                off = 0
+                while True:
+                    _, batch = db.list_media(root=root["path"], decision="all", offset=off, limit=500)
+                    if not batch:
+                        break
+                    off += len(batch)
+                    for it in batch:
+                        if it["file_type"] != "video":
+                            continue
+                        dst = media.proxy_path(cache, it["id"])
+                        if os.path.exists(dst):
+                            continue
+                        if media.ensure_video_proxy(it["file_path"], dst, ff, h, br):
+                            made += 1
+            if made:
+                print(f"proxy warm: generated {made} video proxies")
+        finally:
+            _proxy_warming.clear()
     threading.Thread(target=work, daemon=True).start()
 
 
@@ -140,6 +180,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_thumb(path.rsplit("/", 1)[-1])
         if path.startswith("/full/"):
             return self._serve_full(path.rsplit("/", 1)[-1])
+        if path.startswith("/preview/"):
+            return self._serve_preview(path.rsplit("/", 1)[-1])
         return self._notfound()
 
     # ---- POST ----
@@ -219,10 +261,25 @@ class Handler(BaseHTTPRequestHandler):
         return self._notfound()  # audio / failed → UI shows a glyph
 
     def _serve_full(self, mid):
+        path, _ = db.path_for(mid)
+        if not path or not os.path.isfile(path):
+            return self._notfound()
+        self._serve_file(path, _ctype(path))
+
+    def _serve_preview(self, mid):
+        """Stream a video via its lightweight 720p faststart proxy (generated + cached on first
+        hit). Non-video (or transcode failure) falls back to the original. Photos never use this."""
         path, ftype = db.path_for(mid)
         if not path or not os.path.isfile(path):
             return self._notfound()
-        ctype = _ctype(path)
+        if ftype == "video":
+            dst = media.proxy_path(_CFG["proxyCache"], mid)
+            if media.ensure_video_proxy(path, dst, _CFG.get("ffmpegBin", "ffmpeg"),
+                                        _CFG.get("proxyHeight", 720), _CFG.get("proxyMaxBitrateK", 4000)):
+                return self._serve_file(dst, "video/mp4")
+        return self._serve_file(path, _ctype(path))   # non-video or transcode failed → original
+
+    def _serve_file(self, path, ctype):
         size = os.path.getsize(path)
         rng = self.headers.get("Range")
         if rng and rng.startswith("bytes="):

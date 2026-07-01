@@ -8,6 +8,7 @@ poster frame). Audio has no thumbnail (the UI shows a glyph).
 import os
 import subprocess
 import tempfile
+import threading
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".gif", ".tiff", ".tif",
              ".bmp", ".webp", ".dng", ".cr2", ".nef", ".arw", ".raf"}
@@ -76,3 +77,73 @@ def _ql_thumb(src: str, dst: str, size: int) -> bool:
             return os.path.exists(dst)
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Video streaming proxies
+#
+# Full-resolution originals (4K, tens of Mbps) don't stream smoothly to a review
+# client over LAN/Wi-Fi: the player stalls fetching the moov index and can't keep
+# up with the bitrate. So — exactly like thumbnails — we transcode each video ONCE
+# to a small, faststart, bitrate-capped 720p H.264 MP4 cached on the server's disk,
+# and serve THAT to the player. moov-at-front = instant start; low bitrate = smooth
+# playback. The full original stays available (via /full) for the actual import.
+# ---------------------------------------------------------------------------
+
+_proxy_locks_guard = threading.Lock()
+_proxy_locks: dict = {}
+
+
+def proxy_path(cache_dir: str, mid: str) -> str:
+    sub = os.path.join(cache_dir, mid[:2])
+    return os.path.join(sub, mid + ".mp4")
+
+
+def ffmpeg_proxy_args(ffmpeg_bin: str, src: str, dst: str, height: int, maxrate_k: int) -> list:
+    """Pure builder for the transcode command (unit-tested). 720p (never upscaled), H.264
+    veryfast/CRF 26 with a hard bitrate cap so it always fits the pipe, AAC audio, moov moved
+    to the front for instant start."""
+    return [
+        ffmpeg_bin, "-y", "-nostdin", "-i", src,
+        "-vf", r"scale=-2:'min(%d,ih)'" % height,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+        "-maxrate", "%dk" % maxrate_k, "-bufsize", "%dk" % (maxrate_k * 2),
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        dst,
+    ]
+
+
+def ensure_video_proxy(src: str, dst: str, ffmpeg_bin: str = "ffmpeg",
+                       height: int = 720, maxrate_k: int = 4000) -> bool:
+    """Generate the streaming proxy at `dst` if missing/stale. Serialized per-destination so
+    concurrent player requests for the same video don't launch duplicate transcodes. Writes to a
+    temp file then atomically renames, so a killed transcode never leaves a half file that looks
+    valid. Returns True if a proxy exists after."""
+    if not os.path.exists(src):
+        return False
+    if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
+        return True
+    with _proxy_locks_guard:
+        lock = _proxy_locks.setdefault(dst, threading.Lock())
+    with lock:
+        # re-check inside the lock — another thread may have just built it
+        if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
+            return True
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        tmp = dst + ".tmp.mp4"
+        try:
+            r = subprocess.run(ffmpeg_proxy_args(ffmpeg_bin, src, tmp, height, maxrate_k),
+                               capture_output=True, timeout=1800)
+            if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+                os.replace(tmp, dst)
+                return True
+            return False
+        except Exception:
+            return False
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass

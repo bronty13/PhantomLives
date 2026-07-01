@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 — Video streaming proxies (smooth review playback)
+
+- **Videos now stream via a cached 720p faststart proxy** instead of the full-resolution original.
+  Full-res clips (4K, tens of Mbps) don't stream smoothly to a review client over LAN/Wi-Fi — the
+  player stalls ~20–30 s fetching the `moov` index and then can't keep up with the bitrate. Like
+  thumbnails, each video is now transcoded **once** (`ffmpeg` → 720p, H.264 veryfast/CRF 26, hard
+  bitrate cap, AAC, `+faststart`) to a disk-cached MP4 and served from a new **`GET /preview/<id>`**
+  endpoint: instant start, smooth playback. The full original stays at `/full` for the actual import.
+- **Warm-ahead:** `--warm` now also generates video proxies, and every scan kicks a throttled
+  background proxy-warm (`warmProxies`, default on) so newly-staged videos are ready to play without
+  a first-view transcode stall. On-demand generation (serialized per file) covers anything not warmed.
+- New config: `proxyCache`, `ffmpegBin`, `proxyHeight` (720), `proxyMaxBitrateK` (4000), `warmProxies`.
+  **Requires `ffmpeg`** (`brew install ffmpeg`); if it's missing or a transcode fails, `/preview`
+  falls back to the original so playback still works (just not accelerated). Pure command builder
+  (`ffmpeg_proxy_args`) + proxy path are unit-tested (26 tests).
+
 ## 0.4.0 — Periodic auto-rescan
 
 - **Auto-rescan on an interval** (`scanIntervalMinutes`, default **15**; `0` disables). Previously

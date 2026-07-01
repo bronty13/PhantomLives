@@ -78,6 +78,22 @@ def warm(cfg):
                 print(f"  {i}/{total} processed ({done} cached)")
     print(f"✅ warm complete: {done}/{total} thumbnails cached")
 
+    # Video streaming proxies (720p faststart) — transcode each video once so review playback is
+    # smooth over the LAN. Serial: ffmpeg already uses many cores, so parallel transcodes just thrash.
+    vids = [it for it in items if it["file_type"] == "video"]
+    if vids:
+        pcache, ff = cfg["proxyCache"], cfg.get("ffmpegBin", "ffmpeg")
+        ph, pbr = cfg.get("proxyHeight", 720), cfg.get("proxyMaxBitrateK", 4000)
+        print(f"generating {len(vids)} video proxies…")
+        pdone = 0
+        for i, it in enumerate(vids, 1):
+            dst = media.proxy_path(pcache, it["id"])
+            if media.ensure_video_proxy(it["file_path"], dst, ff, ph, pbr):
+                pdone += 1
+            if i % 25 == 0 or i == len(vids):
+                print(f"  proxy {i}/{len(vids)} ({pdone} ok)")
+        print(f"✅ proxies: {pdone}/{len(vids)} cached")
+
 
 if __name__ == "__main__":
     main()
