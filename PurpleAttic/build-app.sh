@@ -80,6 +80,10 @@ PLIST
 # Codesign identity: Developer ID if available, else ad-hoc.
 detect_codesign_identity() {
     if [ -n "${CODESIGN_IDENTITY:-}" ]; then echo "$CODESIGN_IDENTITY"; return; fi
+    # Over SSH, adhoc-sign by default: Developer ID codesign needs the login keychain (unreachable
+    # over ssh → errSecInternalComponent), which would break remote build-app.sh. Adhoc needs no
+    # keychain and is fine for dev/local installs (Dev-ID+notarize is release-only). FORCE_DEVID=1 overrides.
+    if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then echo "-"; return; fi
     local devid
     devid=$(security find-identity -v -p codesigning 2>/dev/null \
         | grep -E '"Developer ID Application:' | head -1 \

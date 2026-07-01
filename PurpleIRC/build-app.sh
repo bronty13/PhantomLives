@@ -131,6 +131,10 @@ detect_codesign_identity() {
         return
     fi
     # First valid Developer ID Application certificate, if any.
+    # Over SSH, adhoc-sign by default: Developer ID codesign needs the login keychain (unreachable
+    # over ssh → errSecInternalComponent), which would break remote build-app.sh. Adhoc needs no
+    # keychain and is fine for dev/local installs (Dev-ID+notarize is release-only). FORCE_DEVID=1 overrides.
+    if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then echo "-"; return; fi
     local devid
     devid=$(security find-identity -v -p codesigning 2>/dev/null \
         | grep -E '"Developer ID Application:' \

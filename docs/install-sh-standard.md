@@ -76,3 +76,26 @@ The `rm -rf /Applications/<AppName>.app` + `ditto * /Applications/<AppName>.app`
 ```
 
 Substitute `<AppName>` per subproject. These are scoped per project, so the permissions stay narrow.
+
+## Remote (SSH) builds: adhoc-sign automatically
+
+`build-app.sh` **adhoc-signs when it detects an SSH session** (`SSH_CONNECTION` set), because
+`codesign` with a Developer ID identity needs the login keychain's private key, which an SSH session
+cannot unlock — it fails `errSecInternalComponent` and breaks a remote `build-app.sh`, forcing a
+manual local build. Adhoc signing needs no keychain and is fine for dev/local installs; Developer ID
++ notarization is only required for actual releases (`Scripts/release.sh`, run locally). The guard
+lives in `detect_codesign_identity()`:
+
+```sh
+if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then echo "-"; return; fi
+```
+
+Set `FORCE_DEVID=1` to Dev-ID-sign over SSH anyway (needs the keychain unlocked in that ssh session).
+**New `.app` subprojects must include this guard** so `build-app.sh` works over SSH on any node.
+
+**Companion gotcha — run-at-login agents must NOT use `KeepAlive`.** A launch agent that keeps the app
+alive respawns it instantly when `install.sh` kills the old instance, so the freshness-proof kill loop
+can never swap the binary ("could not terminate running <App>"). Use **`RunAtLoad` only** with
+`/usr/bin/open -a <App>` (not the raw binary), so the app auto-starts at login but doesn't fight
+installs. (Incident 2026-07-01: MB14's PurpleMirror autostart agent had `KeepAlive` + ran the binary
+directly → every remote install failed until it was converted to the open-based RunAtLoad-only form.)
