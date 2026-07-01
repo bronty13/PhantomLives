@@ -306,8 +306,18 @@ final class AppState: ObservableObject {
             return
         }
         Task {
-            do { mediaFiles = try await dataSource.fetchMediaFiles(scanRoot: root) }
-            catch { errorMessage = error.localizedDescription }
+            do {
+                let files = try await dataSource.fetchMediaFiles(scanRoot: root)
+                // Guard against a slow fetch landing after the user switched roots — otherwise a
+                // large/slow root's results could clobber the now-selected root (async race that
+                // only appears once fetches have real network latency).
+                guard selectedRootPath == root else { return }
+                mediaFiles = files
+            } catch {
+                guard selectedRootPath == root else { return }
+                errorMessage = error.localizedDescription
+            }
+            guard selectedRootPath == root else { return }
             rebuildIndex()
             rebuildDuplicateIndex()
             rebuildFolderTree()
