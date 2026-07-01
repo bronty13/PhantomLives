@@ -6,6 +6,7 @@ import AVKit
 /// for audio.
 struct MediaViewerView: View {
     let file: MediaFile
+    @EnvironmentObject private var appState: AppState
     @Environment(\.appTheme) private var theme
     @State private var image: NSImage?
     @State private var loading = false
@@ -18,11 +19,20 @@ struct MediaViewerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
+    /// Video/audio stream URL + headers: PeekServer's `/full/<id>` (Range-aware, auth header) in
+    /// remote mode, else the local file URL.
+    private var streamURL: URL {
+        appState.peekMediaProvider?.fullURL(id: file.id) ?? file.fileURL
+    }
+    private var streamHeaders: [String: String] {
+        appState.peekMediaProvider?.httpHeaders ?? [:]
+    }
+
     @ViewBuilder
     private var content: some View {
         switch file.mediaType {
         case .photo: photoView
-        case .video: VideoPlayerView(url: file.fileURL).id(file.id)
+        case .video: VideoPlayerView(url: streamURL, headers: streamHeaders).id(file.id)
         case .audio: audioView
         }
     }
@@ -47,9 +57,16 @@ struct MediaViewerView: View {
     private func loadImage() async {
         loading = true
         image = nil
-        let url = file.fileURL
-        let loaded = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
-        image = loaded
+        if let provider = appState.peekMediaProvider {
+            // Remote: fetch the original bytes over HTTP (the file isn't on this Mac).
+            var req = URLRequest(url: provider.fullURL(id: file.id))
+            for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
+            let data = try? await URLSession.shared.data(for: req).0
+            image = data.flatMap(NSImage.init(data:))
+        } else {
+            let url = file.fileURL
+            image = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
+        }
         loading = false
     }
 
@@ -66,7 +83,7 @@ struct MediaViewerView: View {
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-            VideoPlayerView(url: file.fileURL)
+            VideoPlayerView(url: streamURL, headers: streamHeaders)
                 .id(file.id)
                 .frame(height: 44)
                 .frame(maxWidth: 420)
@@ -79,12 +96,21 @@ struct MediaViewerView: View {
 /// changes (compared by asset URL) so re-renders don't reset playback.
 struct VideoPlayerView: NSViewRepresentable {
     let url: URL
+    var headers: [String: String] = [:]
+
+    /// Build a player whose asset carries HTTP headers (so PeekServer's Basic-auth `/full` stream
+    /// authenticates). AVFoundation streams it with Range requests for scrubbing.
+    private func makePlayer() -> AVPlayer {
+        if headers.isEmpty { return AVPlayer(url: url) }
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        return AVPlayer(playerItem: AVPlayerItem(asset: asset))
+    }
 
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
         view.controlsStyle = .inline
         view.showsFullScreenToggleButton = true
-        view.player = AVPlayer(url: url)
+        view.player = makePlayer()
         return view
     }
 
@@ -92,7 +118,7 @@ struct VideoPlayerView: NSViewRepresentable {
         let currentURL = (nsView.player?.currentItem?.asset as? AVURLAsset)?.url
         if currentURL != url {
             nsView.player?.pause()
-            nsView.player = AVPlayer(url: url)
+            nsView.player = makePlayer()
         }
     }
 

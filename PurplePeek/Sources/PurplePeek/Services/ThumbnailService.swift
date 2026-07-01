@@ -19,6 +19,11 @@ actor ThumbnailService {
 
     private let cache = NSCache<NSURL, NSImage>()
 
+    /// Set in remote mode: thumbnails are fetched from PeekServer's `/thumb/<id>` instead of
+    /// generated locally (the originals aren't on this Mac). nil ⇒ local QuickLook path.
+    private var remoteProvider: PeekMediaProvider?
+    func setRemoteProvider(_ provider: PeekMediaProvider?) { remoteProvider = provider }
+
     /// PeekServer's on-disk thumbnail cache (sharded by the first 2 chars of the id; 512px JPEGs).
     private let sharedThumbDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Caches/PeekServer/thumbs", isDirectory: true)
@@ -32,6 +37,28 @@ actor ThumbnailService {
     static func sharedThumbID(forPath path: String) -> String {
         let digest = Insecure.SHA1.hash(data: Data(path.utf8))
         return String(digest.map { String(format: "%02x", $0) }.joined().prefix(16))
+    }
+
+    /// Thumbnail for a media file — the entry point cells/panels use. In remote mode it fetches
+    /// PeekServer's cached `/thumb/<id>` JPEG; locally it falls through to the QuickLook path.
+    func thumbnail(for file: MediaFile, size: CGSize, scale: CGFloat = 2.0) async -> NSImage? {
+        if let provider = remoteProvider {
+            return await remoteThumbnail(id: file.id, provider: provider, size: size)
+        }
+        return await thumbnail(for: file.fileURL, size: size, scale: scale)
+    }
+
+    /// Fetch + cache a PeekServer thumbnail by id. Cached under a synthetic `peek://<id>#WxH` key.
+    private func remoteThumbnail(id: String, provider: PeekMediaProvider, size: CGSize) async -> NSImage? {
+        let key = NSURL(string: "peek://\(id)#\(Int(size.width))x\(Int(size.height))")!
+        if let cached = cache.object(forKey: key) { return cached }
+        var req = URLRequest(url: provider.thumbURL(id: id))
+        for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let image = NSImage(data: data) else { return nil }
+        cache.setObject(image, forKey: key)
+        return image
     }
 
     /// Best available thumbnail for `url` at `size` points. Returns nil if the file is gone

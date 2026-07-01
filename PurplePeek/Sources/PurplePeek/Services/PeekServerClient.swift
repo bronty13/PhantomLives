@@ -19,6 +19,18 @@ struct PeekServerConnection: Codable, Equatable {
     }
 }
 
+/// A read-only handle for rendering PeekServer media by id: builds authenticated `/thumb` and
+/// `/full` URLs and carries the HTTP headers to attach (for URLSession fetches and AVURLAsset).
+/// Value type so it's cheap to hand to `ThumbnailService` / `MediaViewerView`.
+struct PeekMediaProvider: Equatable {
+    let baseURL: URL
+    let authHeader: String   // "Basic …", or "" when the server has no auth
+
+    func thumbURL(id: String) -> URL { baseURL.appendingPathComponent("/thumb/\(id)") }
+    func fullURL(id: String) -> URL { baseURL.appendingPathComponent("/full/\(id)") }
+    var httpHeaders: [String: String] { authHeader.isEmpty ? [:] : ["Authorization": authHeader] }
+}
+
 enum PeekServerError: LocalizedError {
     case notConfigured
     case badResponse(Int)
@@ -102,6 +114,35 @@ struct PeekServerClient {
     private var authHeader: String {
         let raw = "\(connection.user):\(password)"
         return "Basic " + Data(raw.utf8).base64EncodedString()
+    }
+
+    /// Handle for rendering media by id (`/thumb`, `/full`) with this client's credentials.
+    var mediaProvider: PeekMediaProvider? {
+        guard let base = connection.baseURL else { return nil }
+        return PeekMediaProvider(baseURL: base, authHeader: connection.user.isEmpty ? "" : authHeader)
+    }
+
+    /// Fetch a cached thumbnail JPEG for `id`. Returns nil on 404 (audio / not-yet-generated).
+    func thumbnailData(id: String) async throws -> Data? {
+        guard let provider = mediaProvider else { throw PeekServerError.notConfigured }
+        var req = URLRequest(url: provider.thumbURL(id: id))
+        for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 404 { return nil }
+        guard code == 200 else { throw PeekServerError.badResponse(code) }
+        return data
+    }
+
+    /// Fetch the full original bytes for `id` (used for photo display + import-pull).
+    func fullData(id: String) async throws -> Data {
+        guard let provider = mediaProvider else { throw PeekServerError.notConfigured }
+        var req = URLRequest(url: provider.fullURL(id: id))
+        for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard code == 200 else { throw PeekServerError.badResponse(code) }
+        return data
     }
 
     private func request(path: String, query: [URLQueryItem] = []) throws -> URLRequest {

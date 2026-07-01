@@ -46,7 +46,7 @@ struct MediaListRow: View {
         .task(id: file.id) {
             guard !didLoad else { return }
             didLoad = true
-            image = await ThumbnailService.shared.thumbnail(for: file.fileURL, size: thumbSize)
+            image = await ThumbnailService.shared.thumbnail(for: file, size: thumbSize)
         }
     }
 

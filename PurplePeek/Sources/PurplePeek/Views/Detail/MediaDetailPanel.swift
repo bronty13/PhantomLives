@@ -275,6 +275,6 @@ struct MediaDetailPanel: View {
         title = loadedTitle
         caption = loadedCaption
         preview = nil
-        preview = await ThumbnailService.shared.thumbnail(for: file.fileURL, size: previewSize)
+        preview = await ThumbnailService.shared.thumbnail(for: file, size: previewSize)
     }
 }

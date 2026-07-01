@@ -161,6 +161,10 @@ final class AppState: ObservableObject {
     private var dataSource: DataSource = DatabaseService.shared
     /// True when connected to a PeekServer (roots/items/decisions are remote).
     var isRemote: Bool { !(dataSource is DatabaseService) }
+    /// The live PeekServer client in remote mode (nil locally) — for media rendering + import-pull.
+    var peekClient: PeekServerClient? { (dataSource as? RemotePeekDataSource)?.client }
+    /// Handle for rendering PeekServer media by id (nil in local mode).
+    var peekMediaProvider: PeekMediaProvider? { peekClient?.mediaProvider }
     private var settingsObserver: AnyCancellable?
 
     /// FSEvents watcher for the selected scan root (auto-rescan). Created lazily; only active
@@ -224,6 +228,9 @@ final class AppState: ObservableObject {
         } else {
             dataSource = db
         }
+        // Thumbnails render from the server (or local QuickLook) depending on mode.
+        let provider = peekMediaProvider
+        Task { await ThumbnailService.shared.setRemoteProvider(provider) }
         // A mode change invalidates the current selection's media set.
         selectedRootPath = nil
         selectedFolderPath = nil
