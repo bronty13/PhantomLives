@@ -12,6 +12,8 @@
   "proxyHeight": 720,
   "proxyMaxBitrateK": 4000,
   "warmProxies": true,
+  "_warmOrder": "Priority for background proxy warming: substrings matched (case-insensitive) against each root's path/label; matches warm first, the rest last. Keeps active/fast roots ahead of slow backlogs.",
+  "warmOrder": ["ROG_AIRY/Rachel", "Rachel Archive/Messages"],
   "_auth": "Set authUser + authPasswordSHA256 (sha256 of the password) to require Basic Auth. Both empty = open. Generate a hash: python3 -c 'import hashlib,getpass;print(hashlib.sha256(getpass.getpass().encode()).hexdigest())'",
   "authUser": "",
   "authPasswordSHA256": "",

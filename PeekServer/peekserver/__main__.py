@@ -53,7 +53,7 @@ def warm(cfg):
     from concurrent.futures import ThreadPoolExecutor
     print("scanning:", scan.scan_all(cfg["roots"]))
     items = []
-    for root in cfg["roots"]:
+    for root in server.ordered_warm_roots(cfg["roots"], cfg.get("warmOrder", [])):
         off = 0
         while True:
             _, batch = db.list_media(root=root["path"], decision="all", offset=off, limit=500)

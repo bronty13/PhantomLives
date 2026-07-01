@@ -135,6 +135,32 @@ class TestVideoProxy(unittest.TestCase):
         self.assertTrue(any("min(480,ih)" in a for a in args))
 
 
+class TestWarmOrder(unittest.TestCase):
+    """warmOrder prioritizes active/fast roots ahead of slow backlogs (0.5.0)."""
+
+    ROOTS = [
+        {"path": "/Volumes/REDONE/PurpleAttic/NEW PHOTOS TO REVIEW", "label": "My Photos — To Review"},
+        {"path": "/Volumes/ROG_AIRY/Rachel NEW PHOTOS TO REVIEW", "label": "Rachel — Photos"},
+        {"path": "/Volumes/REDONE/Rachel Archive/Messages/NEW MESSAGES MEDIA TO REVIEW", "label": "Rachel — Messages Media"},
+    ]
+
+    def test_rachel_first_then_messages_then_rest(self):
+        from peekserver import server
+        order = ["ROG_AIRY/Rachel", "Rachel Archive/Messages"]
+        got = [r["label"] for r in server.ordered_warm_roots(self.ROOTS, order)]
+        self.assertEqual(got, ["Rachel — Photos", "Rachel — Messages Media", "My Photos — To Review"])
+
+    def test_empty_order_keeps_config_order(self):
+        from peekserver import server
+        got = [r["label"] for r in server.ordered_warm_roots(self.ROOTS, [])]
+        self.assertEqual(got, [r["label"] for r in self.ROOTS])
+
+    def test_match_by_label_case_insensitive(self):
+        from peekserver import server
+        got = [r["label"] for r in server.ordered_warm_roots(self.ROOTS, ["rachel — photos"])]
+        self.assertEqual(got[0], "Rachel — Photos")
+
+
 class TestPeriodicScanInterval(unittest.TestCase):
     """The pure interval-resolution used to schedule auto-rescans (0.4.0)."""
 

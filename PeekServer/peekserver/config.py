@@ -21,6 +21,9 @@ DEFAULTS = {
     "proxyHeight": 720,                      # proxy max height (px); never upscaled
     "proxyMaxBitrateK": 4000,                # hard video-bitrate cap (kbps) so it always fits the pipe
     "warmProxies": True,                     # background-generate proxies for videos after each scan
+    "warmOrder": [],                         # priority for warming: list of case-insensitive substrings
+                                             # matched vs each root's path/label; matches warm first,
+                                             # the rest last (keeps active/fast roots ahead of slow backlogs)
     "roots": [],                             # [{path,label,kind}]
     # --- Basic Auth (both empty = open). Password stored only as a SHA-256 hash. ---
     "authUser": "",

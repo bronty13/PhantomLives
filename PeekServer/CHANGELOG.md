@@ -11,7 +11,11 @@
 - **Warm-ahead:** `--warm` now also generates video proxies, and every scan kicks a throttled
   background proxy-warm (`warmProxies`, default on) so newly-staged videos are ready to play without
   a first-view transcode stall. On-demand generation (serialized per file) covers anything not warmed.
-- New config: `proxyCache`, `ffmpegBin`, `proxyHeight` (720), `proxyMaxBitrateK` (4000), `warmProxies`.
+- **Warm order is configurable** (`warmOrder`): a priority list of substrings matched against each
+  root's path/label — matches warm first, the rest last. Keeps the active, fast-drive roots (Rachel's
+  new-items-to-review on the SSD) ahead of a big slow-drive backlog (the "My Photos" root on the SMR
+  REDONE), so review videos get proxies first instead of waiting behind hours of backlog transcoding.
+- New config: `proxyCache`, `ffmpegBin`, `proxyHeight` (720), `proxyMaxBitrateK` (4000), `warmProxies`, `warmOrder`.
   **Requires `ffmpeg`** (`brew install ffmpeg`); if it's missing or a transcode fails, `/preview`
   falls back to the original so playback still works (just not accelerated). Pure command builder
   (`ffmpeg_proxy_args`) + proxy path are unit-tested (26 tests).

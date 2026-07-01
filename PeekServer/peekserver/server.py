@@ -78,10 +78,27 @@ def background_scan():
 _proxy_warming = threading.Event()
 
 
+def ordered_warm_roots(roots: list, warm_order: list) -> list:
+    """Order roots for proxy warming by `warmOrder` — a list of case-insensitive substrings matched
+    against each root's path or label. Roots matching an earlier entry warm first; roots matching no
+    entry keep their original order and warm last. Pure/testable.
+
+    This lets a slow-drive backlog (e.g. the big 'My Photos' root on the SMR REDONE) wait until the
+    active, fast-drive roots (Rachel's new-items-to-review on the SSD) are fully warmed."""
+    def rank(r):
+        hay = (r.get("path", "") + " " + r.get("label", "")).lower()
+        for i, token in enumerate(warm_order):
+            if token and token.lower() in hay:
+                return i
+        return len(warm_order)
+    return [r for _, r in sorted(enumerate(roots), key=lambda t: (rank(t[1]), t[0]))]
+
+
 def warm_proxies_async():
     """After a scan, background-generate streaming proxies for any videos lacking one, one at a time
     (transcoding is CPU-heavy) so review videos play instantly without a first-view transcode stall.
-    Best-effort; a single pass at a time (guarded)."""
+    Roots are warmed in `warmOrder` priority (active/fast roots before slow backlogs). Best-effort;
+    a single pass at a time (guarded)."""
     if not _CFG.get("warmProxies", True) or _proxy_warming.is_set():
         return
     _proxy_warming.set()
@@ -91,7 +108,7 @@ def warm_proxies_async():
             ff = _CFG.get("ffmpegBin", "ffmpeg")
             h, br = _CFG.get("proxyHeight", 720), _CFG.get("proxyMaxBitrateK", 4000)
             made = 0
-            for root in _CFG.get("roots", []):
+            for root in ordered_warm_roots(_CFG.get("roots", []), _CFG.get("warmOrder", [])):
                 off = 0
                 while True:
                     _, batch = db.list_media(root=root["path"], decision="all", offset=off, limit=500)
