@@ -187,10 +187,14 @@ struct SidebarView: View {
             // A plain tappable row (not a Button) so `.onDrag` can claim the press-drag — a
             // Button would swallow the gesture and the drag would never start.
             HStack(spacing: 8) {
-                Image(systemName: "folder.fill").foregroundStyle(theme.accentColor)
+                // Remote (PeekServer) roots get a networked-drive glyph + teal tint so they're
+                // clearly distinct from local folders (folder.fill in the theme accent).
+                Image(systemName: appState.isRemote ? "externaldrive.badge.wifi" : "folder.fill")
+                    .foregroundStyle(appState.isRemote ? Color.teal : theme.accentColor)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(root.displayName).lineLimit(1)
-                    Text("\(root.totalFiles) items").font(.caption2).foregroundStyle(.secondary)
+                    Text(appState.isRemote ? "\(root.totalFiles) items · server" : "\(root.totalFiles) items")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
