@@ -4,6 +4,37 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.0] — 2026-07-01
+
+### Added
+- **Bundle auto-split for Slack.** When a published bundle exceeds Slack's 1 GB
+  per-file limit, Molly byte-splits the ZIP into `<name>.partNNofMM` pieces (each
+  under 1 GB) and removes the whole ZIP. The publish screen tells Sallie to send
+  *all* the pieces to Robert; SideMolly (≥ 0.29.0) stitches them back together
+  and verifies them automatically. Small bundles are unchanged.
+- **Disk-space banner + Recheck** on the 🎁 Bundles and 🗜️ Squish tabs — a cute
+  heads-up when free space is low (🌷 under 3 GB) or critical (🚨 under 1 GB),
+  with a Recheck button to clear it after tidying up.
+- **Per-bundle diagnostics.** Every publish now records a host `[ENVIRONMENT]`
+  snapshot + a `[MEDIA INTEGRITY]` report in `Molly.log`, plus a structured
+  `diagnostics.json` inside the bundle — so if a bundle ever misbehaves there's
+  evidence to read. Also a local app "black box" log (startup env, each
+  publish/squish op with disk-before/after, and any crash backtrace).
+
+### Fixed / Hardened
+- **Squish no longer ships a broken video.** Squish verifies its output (opens,
+  `moov` present, full duration) *before* saving, and refuses — with a clear
+  low-disk message — if the encode came out truncated. Closes the corruption
+  path where a Squish that ran the disk dry produced a `moov`-less file that
+  still looked "done" and got bundled.
+- **Publish blocks corrupt videos.** Every video is checked for playability at
+  publish time; a bundle with an unplayable clip fails the checklist (red ⛔)
+  instead of shipping the bad file. Hashing proved the bytes; this proves it
+  plays.
+- **Operation-aware disk gate.** Squish and Publish refuse to start when there
+  isn't enough free space for the job (both transiently need ~2× their size),
+  with a concrete "need ~X GB, have Y GB" message.
+
 ## [1.34.1] — 2026-06-29
 
 ### Fixed — Squish icon showed as an empty box (□) on Sallie's Windows

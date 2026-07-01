@@ -1,5 +1,7 @@
 //! ffprobe wrapper: source dimensions, duration, HDR flag, audio presence.
 
+use std::path::Path;
+
 use tauri::{AppHandle, Runtime};
 use tokio::process::Command;
 
@@ -85,6 +87,41 @@ pub fn parse_probe(json: &serde_json::Value) -> Result<ProbeResult, MediaError> 
 
     Ok(ProbeResult { width, height, duration_sec, is_hdr, has_audio, codec })
 }
+
+/// Blocking ffprobe for synchronous contexts (the publish-time playability
+/// gate can't `await`). Reuses `parse_probe`. Returns `Err` on a file ffprobe
+/// can't read — e.g. a truncated, `moov`-less video — which is exactly the
+/// signal the gate needs.
+pub fn probe_blocking(ffprobe_bin: &Path, path: &str) -> Result<ProbeResult, MediaError> {
+    let mut cmd = std::process::Command::new(ffprobe_bin);
+    cmd.args([
+        "-v", "error", "-show_streams", "-show_format", "-of", "json", path,
+    ]);
+    no_window_std(&mut cmd); // no console-window flash on Windows
+    let out = cmd
+        .output()
+        .map_err(|e| crate::media::spawn_error(ffprobe_bin, e))?;
+    if !out.status.success() {
+        return Err(MediaError::Probe(
+            String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        ));
+    }
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| MediaError::Probe(format!("parse ffprobe json: {e}")))?;
+    parse_probe(&json)
+}
+
+/// `CREATE_NO_WINDOW` for a std (blocking) Command on Windows — mirrors
+/// `media::no_window`, which only covers the tokio Command.
+#[cfg(windows)]
+fn no_window_std(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn no_window_std(_cmd: &mut std::process::Command) {}
 
 #[cfg(test)]
 mod tests {

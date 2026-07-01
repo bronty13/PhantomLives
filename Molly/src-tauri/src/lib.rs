@@ -24,7 +24,9 @@ mod social_drops;
 mod social_followers;
 mod return_file;
 mod site_credentials;
+mod sysdiag;
 
+use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub fn run() {
@@ -285,6 +287,20 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // Diagnostics "black box": install a panic hook (captures the stack
+            // to app_data/diagnostics.log) and record an app-start environment
+            // snapshot, so a later post-mortem has something to read.
+            if let Ok(dir) = app.path().app_data_dir() {
+                sysdiag::install_panic_hook(dir.clone());
+                let env = sysdiag::collect_env(&app.package_info().version.to_string());
+                sysdiag::blackbox_log(
+                    &dir,
+                    &format!(
+                        "app start — {}",
+                        serde_json::to_string(&env).unwrap_or_default()
+                    ),
+                );
+            }
             let handle = app.handle().clone();
             // Auto-backup-on-launch (CLAUDE.md standard). Never throw; log on failure.
             tauri::async_runtime::spawn(async move {
@@ -326,6 +342,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            sysdiag::disk_status,
             backup::run_backup_now,
             backup::list_backups,
             backup::test_backup,
@@ -795,6 +812,7 @@ mod camel_case_contract {
             outer_sha256: String::new(),
             file_count: 0,
             clip_created: false,
+            parts: vec![],
         })
         .unwrap();
         assert_camel(&v, "BundlePublishResult");

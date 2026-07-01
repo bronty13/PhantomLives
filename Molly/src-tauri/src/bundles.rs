@@ -51,6 +51,10 @@ pub enum BundleError {
     NotFound(String),
     #[error("invalid: {0}")]
     Invalid(String),
+    /// Operation-aware disk preflight failed — not enough free space to compose
+    /// (+ split) the bundle safely. Carries a Sallie-friendly message.
+    #[error("{0}")]
+    LowDisk(String),
     #[error("cannot publish: {count} issue(s)")]
     ValidationFailed { count: usize, issues: Vec<ValidationIssue> },
     #[error("zip: {0}")]
@@ -269,6 +273,10 @@ pub struct BundlePublishResult {
     pub outer_sha256: String,
     pub file_count: usize,
     pub clip_created: bool,
+    /// Empty for a normal bundle. When the bundle exceeded Slack's 1 GB cap it
+    /// was split into these `<name>.partNNofMM` files (and the whole zip
+    /// removed) — the frontend tells Sallie to send ALL of them to Robert.
+    pub parts: Vec<bundle_zip::PartInfo>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2149,6 +2157,51 @@ pub fn delete_bundle_draft<R: Runtime>(
     Ok(())
 }
 
+/// ffprobe every video in the bundle ONCE, returning a per-video integrity
+/// verdict. This single pass feeds both the publish-time playability gate (a
+/// truncated / `moov`-less clip must never reach Robert — a SHA proves the
+/// bytes are consistent, not that the video PLAYS) and the bundle diagnostics
+/// (so the verdict travels with the bundle for later troubleshooting).
+fn collect_video_integrity<R: Runtime>(
+    handle: &AppHandle<R>,
+    files: &[BundleFileInfo],
+) -> Vec<crate::sysdiag::VideoIntegrity> {
+    let ffprobe = crate::media::ffmpeg_path::ffprobe_bin(handle);
+    files
+        .iter()
+        .filter(|f| f.kind == "video")
+        .map(|f| {
+            let size_bytes = f.size_bytes.max(0) as u64;
+            match crate::media::probe::probe_blocking(&ffprobe, &f.absolute_path) {
+                Ok(info) if info.duration_sec > 0.0 => crate::sysdiag::VideoIntegrity {
+                    name: f.original_name.clone(),
+                    ok: true,
+                    duration_sec: info.duration_sec,
+                    codec: info.codec,
+                    size_bytes,
+                    note: String::new(),
+                },
+                Ok(_) => crate::sysdiag::VideoIntegrity {
+                    name: f.original_name.clone(),
+                    ok: false,
+                    duration_sec: 0.0,
+                    codec: String::new(),
+                    size_bytes,
+                    note: "has no readable duration".into(),
+                },
+                Err(e) => crate::sysdiag::VideoIntegrity {
+                    name: f.original_name.clone(),
+                    ok: false,
+                    duration_sec: 0.0,
+                    codec: String::new(),
+                    size_bytes,
+                    note: format!("won't open ({e})"),
+                },
+            }
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub fn publish_bundle<R: Runtime>(
     handle: AppHandle<R>,
@@ -2161,7 +2214,7 @@ pub fn publish_bundle<R: Runtime>(
 
     let prohibited = pure_list_prohibited(&conn)?;
     let today = Local::now().date_naive();
-    let issues = match bundle.summary.bundle_type.as_str() {
+    let mut issues = match bundle.summary.bundle_type.as_str() {
         "content" => validate_content_bundle(&bundle, today, &prohibited),
         "youtube" => validate_youtube_bundle(&bundle, today, &prohibited),
         "custom" => validate_custom_bundle(&bundle, today),
@@ -2172,6 +2225,24 @@ pub fn publish_bundle<R: Runtime>(
             )));
         }
     };
+    // Authoritative anti-corruption gate + diagnostics in one ffprobe pass:
+    // block if any video won't play.
+    let integrity = collect_video_integrity(&handle, &bundle.files);
+    for v in &integrity {
+        if !v.ok {
+            issues.push(ValidationIssue {
+                field_path: "files".into(),
+                message: format!(
+                    "The video “{}” looks corrupted — it {} (often a bad or interrupted \
+                     export, or a Squish that ran low on disk). Re-add or re-squish it \
+                     before publishing. 💗",
+                    v.name, v.note
+                ),
+                severity: Severity::Error,
+                jump_to_field_id: "bundle-files".into(),
+            });
+        }
+    }
     let blocking: Vec<ValidationIssue> = issues
         .iter()
         .filter(|i| i.severity == Severity::Error)
@@ -2184,10 +2255,22 @@ pub fn publish_bundle<R: Runtime>(
         });
     }
 
+    // Operation-aware disk preflight. compose writes the whole outer zip, then
+    // (if it exceeds the Slack cap) the split parts — a transient ~2× peak.
+    // Refuse BEFORE composing rather than half-write a bundle and run the disk
+    // dry (the same low-disk failure mode that truncates Squish output).
+    let est_bytes: u64 = bundle.files.iter().map(|f| f.size_bytes.max(0) as u64).sum();
+    let disk_before = crate::sysdiag::require_space_for(est_bytes).map_err(BundleError::LowDisk)?;
+
     let published_at = iso_now();
     let snapshot = build_snapshot(&conn, &bundle, &app_data, published_at.clone())?;
     let out_dir = settings.resolved_output_dir();
-    let artifact = bundle_zip::compose_bundle(&snapshot, &out_dir)?;
+    let diagnostics = crate::sysdiag::BundleDiagnostics {
+        env: crate::sysdiag::collect_env(&handle.package_info().version.to_string()),
+        videos: integrity,
+    };
+    let artifact =
+        bundle_zip::compose_bundle_with_diagnostics(&snapshot, &out_dir, Some(&diagnostics))?;
     let clip_created = pure_stamp_publish(
         &mut conn,
         &uid,
@@ -2197,6 +2280,25 @@ pub fn publish_bundle<R: Runtime>(
         &bundle,
     )?;
 
+    // Black-box: record the publish op (size, split-part count, disk delta).
+    if let Ok(dd) = app_data_dir(&handle) {
+        let after = crate::sysdiag::downloads_disk_status();
+        crate::sysdiag::blackbox_log(
+            &dd,
+            &format!(
+                "publish OK: uid={} type={} size={}B parts={} disk_before={} disk_after={}",
+                uid,
+                bundle.summary.bundle_type,
+                artifact.size_bytes,
+                artifact.parts.len(),
+                crate::sysdiag::human_gb(disk_before.available_bytes),
+                after
+                    .map(|d| crate::sysdiag::human_gb(d.available_bytes))
+                    .unwrap_or_else(|| "?".into()),
+            ),
+        );
+    }
+
     Ok(BundlePublishResult {
         uid,
         path: artifact.path.to_string_lossy().to_string(),
@@ -2205,6 +2307,7 @@ pub fn publish_bundle<R: Runtime>(
         outer_sha256: artifact.outer_sha256,
         file_count: artifact.file_count,
         clip_created,
+        parts: artifact.parts,
     })
 }
 

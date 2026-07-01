@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use tauri::ipc::{Channel, Response};
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::media::filters::{FilterSpec, Geom};
 use crate::media::{engine, ffmpeg_path, filters, probe, temp, MediaError};
@@ -266,6 +266,36 @@ fn unique_output(dir: &Path, stem: &str) -> PathBuf {
     dir.join(format!("{base} 999.mov"))
 }
 
+/// Post-encode integrity check for a squished file. Fails (with a plain-English
+/// reason) if the file is empty, ffprobe can't open it (a missing `moov` atom =
+/// truncated write — the exact corrupt-Squish signature), it has no readable
+/// duration, or its duration is materially shorter than the source. Tolerance:
+/// `max(1s, 2%)`, one-sided (shorter-than-source is the truncation tell).
+async fn verify_shrunk_output<R: Runtime>(
+    handle: &AppHandle<R>,
+    path: &Path,
+    src_duration_sec: f64,
+) -> Result<(), String> {
+    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    if size == 0 {
+        return Err("the output file is empty".into());
+    }
+    let out = probe::probe(handle, &path.to_string_lossy())
+        .await
+        .map_err(|e| format!("the video wouldn't open ({e})"))?;
+    if out.duration_sec <= 0.0 {
+        return Err("the video has no readable duration".into());
+    }
+    let tol = (src_duration_sec * 0.02).max(1.0);
+    if src_duration_sec - out.duration_sec > tol {
+        return Err(format!(
+            "it's only {:.1}s long but the original is {:.1}s",
+            out.duration_sec, src_duration_sec
+        ));
+    }
+    Ok(())
+}
+
 /// Shrink a whole video to fit under a byte budget (default: Slack's 1 GB),
 /// downscaling to Full-HD and re-encoding H.264/AAC at the highest CRF-capped
 /// quality the budget allows. Writes to `~/Downloads/Molly/` and returns the
@@ -297,6 +327,25 @@ pub async fn shrink_video<R: Runtime>(
         SHRINK_MIN_VIDEO_KBPS,
     );
 
+    // Operation-aware disk preflight. Squish's `+faststart` pass writes a
+    // second copy, so a ~budget-sized output transiently needs ~2× that free.
+    // A shortfall here is the leading suspect for the truncated-`moov`
+    // corruption we've seen (Sallie runs low on disk) — refuse LOUDLY before
+    // encoding rather than produce a broken file.
+    let disk_before = crate::sysdiag::downloads_disk_status();
+    if let Err(msg) = crate::sysdiag::require_space_for(budget) {
+        if let Ok(dd) = handle.path().app_data_dir() {
+            crate::sysdiag::blackbox_log(
+                &dd,
+                &format!(
+                    "squish REFUSED (low disk): src={} budget={budget}B — {msg}",
+                    params.absolute_path
+                ),
+            );
+        }
+        return Err(MediaError::LowDisk(msg));
+    }
+
     // Output lives in the standard ~/Downloads/Molly/ folder (created on demand).
     let dir = crate::fsutil::downloads_subdir("Molly");
     std::fs::create_dir_all(&dir)?;
@@ -326,11 +375,60 @@ pub async fn shrink_video<R: Runtime>(
     .await;
     if let Err(e) = run {
         let _ = std::fs::remove_file(&tmp); // tidy up the partial on failure
+        if let Ok(dd) = handle.path().app_data_dir() {
+            crate::sysdiag::blackbox_log(
+                &dd,
+                &format!("squish FAILED (ffmpeg): src={} — {e}", params.absolute_path),
+            );
+        }
         return Err(e);
+    }
+
+    // Post-encode integrity check — BEFORE promoting the file to its nice name.
+    // Molly historically trusted ffmpeg's exit code, but a truncated/`moov`-less
+    // file (disk filled mid-write, process killed, or the `-fs` cap firing) can
+    // still exit 0 and would then sail straight into a bundle. ffprobe FAILS on
+    // a moov-less file and a truncated one comes up short on duration — either
+    // way we reject it, delete it, and never rename it into place.
+    if let Err(reason) = verify_shrunk_output(&handle, &tmp, info.duration_sec).await {
+        let _ = std::fs::remove_file(&tmp);
+        if let Ok(dd) = handle.path().app_data_dir() {
+            crate::sysdiag::blackbox_log(
+                &dd,
+                &format!(
+                    "squish REJECTED (integrity): src={} — {reason}",
+                    params.absolute_path
+                ),
+            );
+        }
+        return Err(MediaError::Corrupt(format!(
+            "The squished video came out incomplete — {reason}. This is almost \
+             always low disk space; please free some room and re-squish. 💗"
+        )));
     }
 
     std::fs::rename(&tmp, &out_path)?;
     let output_bytes = std::fs::metadata(&out_path)?.len();
+    if let Ok(dd) = handle.path().app_data_dir() {
+        let after = crate::sysdiag::downloads_disk_status();
+        crate::sysdiag::blackbox_log(
+            &dd,
+            &format!(
+                "squish OK: src={} -> {} in={input_bytes}B out={output_bytes}B budget={budget}B \
+                 disk_before={} disk_after={}",
+                params.absolute_path,
+                out_path.display(),
+                disk_before
+                    .as_ref()
+                    .map(|d| crate::sysdiag::human_gb(d.available_bytes))
+                    .unwrap_or_else(|| "?".into()),
+                after
+                    .as_ref()
+                    .map(|d| crate::sysdiag::human_gb(d.available_bytes))
+                    .unwrap_or_else(|| "?".into()),
+            ),
+        );
+    }
     Ok(ShrinkResult {
         output_path: out_path.to_string_lossy().to_string(),
         output_bytes,

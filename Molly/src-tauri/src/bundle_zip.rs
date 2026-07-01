@@ -157,6 +157,19 @@ pub struct BundleSnapshot {
     pub published_at: String,
 }
 
+/// Slack caps uploads at 1 GB per file. When a composed bundle exceeds this,
+/// we byte-split the outer zip into `<name>.partNNofMM` files each ≤ this cap
+/// (with headroom under 1 GB), and SideMolly concatenates + verifies them.
+pub const PART_CAP_BYTES: u64 = 950_000_000;
+
+/// One Slack-sized split part of an oversized bundle.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartInfo {
+    pub name: String,
+    pub bytes: u64,
+}
+
 #[derive(Debug)]
 pub struct BundleArtifact {
     pub path: PathBuf,
@@ -164,6 +177,10 @@ pub struct BundleArtifact {
     pub inner_sha256: String,
     pub outer_sha256: String,
     pub file_count: usize,
+    /// Empty for a normal (≤ cap) bundle. When the bundle exceeded the Slack
+    /// cap, `path`'s whole zip was removed and these `<name>.partNNofMM` files
+    /// are the deliverable — Robert sends ALL of them.
+    pub parts: Vec<PartInfo>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -322,9 +339,26 @@ struct HashesDocument {
 /// Public entry point. Composes the snapshot into a deterministic ZIP
 /// at `<out_dir>/<UID>.zip`. Creates `out_dir` if missing. Caller is
 /// responsible for stamping the DB with the returned artifact info.
+/// No-diagnostics compose. Production publish uses
+/// `compose_bundle_with_diagnostics`; this thin wrapper keeps the simpler
+/// signature for the test suite (and any future non-publish caller).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn compose_bundle(
     snapshot: &BundleSnapshot,
     out_dir: &Path,
+) -> Result<BundleArtifact, BundleError> {
+    compose_bundle_with_diagnostics(snapshot, out_dir, None)
+}
+
+/// Compose the bundle, optionally embedding a diagnostics payload (host env
+/// snapshot + per-video integrity) into `Molly.log` and a `diagnostics.json`
+/// entry — so a bundle that misbehaves later carries evidence to read. The
+/// no-arg `compose_bundle` calls this with `None`, keeping all existing tests
+/// unchanged.
+pub fn compose_bundle_with_diagnostics(
+    snapshot: &BundleSnapshot,
+    out_dir: &Path,
+    diagnostics: Option<&crate::sysdiag::BundleDiagnostics>,
 ) -> Result<BundleArtifact, BundleError> {
     fs::create_dir_all(out_dir)?;
 
@@ -404,12 +438,29 @@ pub fn compose_bundle(
     // build log of this bundle's composition.
     let info_md_bytes = render_info_md(snapshot).into_bytes();
     let info_md_sha = sha256_hex(&info_md_bytes);
-    let molly_log_bytes = render_molly_log(snapshot, &info_md_sha, &media).into_bytes();
+    // When publish supplied a diagnostics payload, append the [ENVIRONMENT] +
+    // [MEDIA INTEGRITY] blocks to Molly.log BEFORE hashing so they travel with
+    // (and are hashed into) the bundle. render_molly_log itself is untouched.
+    let mut molly_log = render_molly_log(snapshot, &info_md_sha, &media);
+    if let Some(diag) = diagnostics {
+        molly_log.push('\n');
+        molly_log.push_str(&crate::sysdiag::render_environment_block(&diag.env));
+        molly_log.push_str(&crate::sysdiag::render_integrity_block(&diag.videos));
+    }
+    let molly_log_bytes = molly_log.into_bytes();
     let molly_log_sha = sha256_hex(&molly_log_bytes);
 
-    let mut planned: Vec<(String, Vec<u8>, String)> = Vec::with_capacity(2 + media.len());
+    let mut planned: Vec<(String, Vec<u8>, String)> = Vec::with_capacity(3 + media.len());
     planned.push(("info.md".to_string(), info_md_bytes, info_md_sha));
     planned.push(("Molly.log".to_string(), molly_log_bytes, molly_log_sha));
+    // Structured diagnostics travel with the bundle (SideMolly stores it as an
+    // 'other' entry). Added right after Molly.log, alongside the build metadata.
+    if let Some(diag) = diagnostics {
+        if let Ok(bytes) = serde_json::to_vec_pretty(diag) {
+            let sha = sha256_hex(&bytes);
+            planned.push(("diagnostics.json".to_string(), bytes, sha));
+        }
+    }
     planned.extend(media);
 
     // ---- Compose inner ZIP into memory so we can hash the bytes directly.
@@ -470,13 +521,63 @@ pub fn compose_bundle(
     // + media). Excludes the outer container.
     let file_count = hashes_doc.files.len();
 
+    // ---- Slack size guard. If the whole bundle exceeds the per-file cap, byte-
+    // split it into <name>.partNNofMM and remove the whole zip. Robert sends the
+    // parts; SideMolly concatenates + verifies via the inner hash chain, so a
+    // wrong/incomplete reassembly simply can't pass — no extra checksum needed.
+    let parts = if size_bytes > PART_CAP_BYTES {
+        let p = split_bytes_into_parts(&out_path, &outer_zip_bytes, PART_CAP_BYTES)?;
+        let _ = fs::remove_file(&out_path);
+        p
+    } else {
+        Vec::new()
+    };
+
     Ok(BundleArtifact {
         path: out_path,
         size_bytes,
         inner_sha256: inner_sha,
         outer_sha256: outer_sha,
         file_count,
+        parts,
     })
+}
+
+/// Byte-split `whole_bytes` into `<whole filename>.partNNofMM` files next to
+/// `whole_path`, each ≤ `part_cap`. Deterministic + ordered; the last part is
+/// the remainder. Each is written via `.tmp` + rename so a partial part never
+/// appears complete to a folder watcher.
+fn split_bytes_into_parts(
+    whole_path: &Path,
+    whole_bytes: &[u8],
+    part_cap: u64,
+) -> Result<Vec<PartInfo>, BundleError> {
+    let cap = part_cap.max(1) as usize;
+    let total = whole_bytes.len();
+    let count = ((total + cap - 1) / cap).max(1);
+    let file_name = whole_path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "bundle.zip".to_string());
+    let dir = whole_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut parts = Vec::with_capacity(count);
+    for i in 0..count {
+        let start = i * cap;
+        let end = ((i + 1) * cap).min(total);
+        let name = format!("{file_name}.part{:02}of{:02}", i + 1, count);
+        let part_path = dir.join(&name);
+        let tmp = dir.join(format!("{name}.tmp"));
+        fs::write(&tmp, &whole_bytes[start..end])?;
+        if part_path.exists() {
+            let _ = fs::remove_file(&part_path);
+        }
+        fs::rename(&tmp, &part_path)?;
+        parts.push(PartInfo {
+            name,
+            bytes: (end - start) as u64,
+        });
+    }
+    Ok(parts)
 }
 
 /// Public utility: SHA-256 a file at `path`, return lowercase hex digest.
@@ -1207,6 +1308,35 @@ mod tests {
     use super::*;
     use std::io::Cursor;
     use std::path::PathBuf;
+
+    #[test]
+    fn split_bytes_into_parts_round_trips() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let whole = dir.path().join("2026-01-01-0001 Foo.zip");
+        // 4000 deterministic bytes; cap 1500 → ceil(4000/1500) = 3 parts.
+        let data: Vec<u8> = (0..4000u32).map(|n| n as u8).collect();
+        let parts = split_bytes_into_parts(&whole, &data, 1500).unwrap();
+
+        assert_eq!(parts.len(), 3, "4000 bytes / 1500 cap = 3 parts");
+        assert_eq!(parts[0].name, "2026-01-01-0001 Foo.zip.part01of03");
+        assert_eq!(parts[2].name, "2026-01-01-0001 Foo.zip.part03of03");
+        assert_eq!(parts[0].bytes, 1500);
+        assert_eq!(parts[2].bytes, 1000, "last part is the remainder");
+        assert_eq!(parts.iter().map(|p| p.bytes).sum::<u64>() as usize, data.len());
+
+        // Concatenating the parts in order reproduces the original bytes — this
+        // is exactly what SideMolly does on reassembly.
+        let mut reassembled = Vec::new();
+        for p in &parts {
+            reassembled.extend(fs::read(dir.path().join(&p.name)).unwrap());
+        }
+        assert_eq!(reassembled, data, "parts concatenate back to the whole");
+
+        // A cap larger than the whole → a single .part01of01.
+        let one = split_bytes_into_parts(&whole, &data, 10_000).unwrap();
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].name, "2026-01-01-0001 Foo.zip.part01of01");
+    }
 
     #[test]
     fn archive_filename_appends_title() {

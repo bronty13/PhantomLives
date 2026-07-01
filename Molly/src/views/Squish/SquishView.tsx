@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { probeVideo } from '../../data/gifStudio';
 import { shrinkVideo, type ShrinkResult } from '../../data/shrink';
 import { formatBytes, savingsPercent } from '../../lib/fileSize';
+import { DiskSpaceBanner } from '../../components/DiskSpaceBanner';
 
 // 🗜️ Squish — pick a chonky video, and Molly shrinks it small enough to upload
 // to Slack (under 1 GB) while keeping it as pretty as she can. All local; the
@@ -123,6 +124,8 @@ export function SquishView() {
           Everything happens right here on your computer — nothing leaves it.
         </p>
       </header>
+
+      <DiskSpaceBanner context="squish" />
 
       {/* Pick / file card */}
       {(stage === 'idle' || stage === 'ready') && (

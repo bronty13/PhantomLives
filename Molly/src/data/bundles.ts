@@ -121,6 +121,11 @@ export interface BundleFieldPatch {
   alsoPostSfwManyvids?: boolean;
 }
 
+export interface BundlePart {
+  name: string;
+  bytes: number;
+}
+
 export interface BundlePublishResult {
   uid: string;
   path: string;
@@ -129,6 +134,25 @@ export interface BundlePublishResult {
   outerSha256: string;
   fileCount: number;
   clipCreated: boolean;
+  /** Empty for a normal bundle. When the bundle exceeded Slack's 1 GB cap it
+   *  was split into these `<name>.partNNofMM` files — send ALL of them. */
+  parts: BundlePart[];
+}
+
+export type DiskTier = 'red' | 'yellow' | 'green';
+
+export interface DiskStatus {
+  path: string;
+  availableBytes: number;
+  totalBytes: number;
+  tier: DiskTier;
+}
+
+/** Free space on the volume holding ~/Downloads (bundles + squish output).
+ *  Powers the cute disk-space banner + its Recheck button. `null` if the
+ *  volume can't be measured. */
+export async function diskStatus(): Promise<DiskStatus | null> {
+  return invoke<DiskStatus | null>('disk_status');
 }
 
 export interface PurgeResult {

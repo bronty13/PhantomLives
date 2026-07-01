@@ -456,6 +456,10 @@ Click **🗂 Grid** at the top of the C4S page to switch to a sortable table. Se
 
 Click **🎁 Bundles** in the sidebar. This is where you compose a delivery package for Robert — everything he needs to post-produce one piece of content, zipped and ready to drop into Slack.
 
+> 💗 **Two little helpers on this page:** if your disk is getting full you'll see a soft 🌷/🚨 disk-space banner (with a **🔄 Recheck** button) — a quick tidy-up keeps bundles building smoothly. And when I check a bundle before publishing, if any video won't play I'll stop and point right at it with a red ⛔, so a broken clip never reaches Robert. 🌸
+>
+> 📦 **Big bundles split themselves.** Slack caps uploads at 1 GB. If a bundle comes out bigger, I automatically cut it into little `.partNNofMM` pieces (each under 1 GB) and show them to you on the finish screen — just send Robert **all** of them (any order). His SideMolly stitches them back together automatically. Small bundles stay one neat file.
+
 There are four flavors — all four publish end-to-end:
 
 - **Content Bundle** — a single piece of content with title, persona, description, categories, files, go-live date, and special instructions.
@@ -681,6 +685,8 @@ A few little things to know:
 - **Big videos take a few minutes.** A long 4K clip has a *lot* of pixels to tuck in! The progress bar keeps you company the whole time. 🗜️
 - **Already under 1 GB?** I'll say so — but you can still squish it smaller if you want a tinier file.
 - It works on your videos right from your computer — nothing ever gets uploaded anywhere. 🔒
+- **I check my own work now.** After squishing, I make sure the new clip actually opens and plays start-to-finish *before* saving it. If something went wrong (almost always low disk space), I tell you and don't leave a broken file behind. 🛟
+- **Low on space?** If your disk is getting full, you'll see a soft 🌷/🚨 banner at the top of the Squish page with a **🔄 Recheck** button. Free up a little room and tap Recheck — squishing needs some elbow room to work safely. 💕
 
 > *Try it for me:* pick any video, tap **🗜️ Squish it under 1 GB!**, and when it's done, tap **📂 Show in folder** and check that your slimmed clip is there and plays. 🎀
 

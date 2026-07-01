@@ -427,6 +427,30 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
               <div className="text-sm mt-1 opacity-80 font-mono break-all">{result.path}</div>
               <div className="text-xs opacity-70 mt-1">{(result.sizeBytes / 1024 / 1024).toFixed(2)} MB · {result.fileCount} files inside</div>
             </div>
+
+            {result.parts.length > 0 && (
+              <div className="bg-pink-50 border border-pink-200 rounded-2xl p-4 space-y-2">
+                <div className="text-base font-semibold persona-accent">
+                  💌 This one was big, so I split it into {result.parts.length} pieces!
+                </div>
+                <p className="text-sm opacity-80">
+                  Slack only takes files up to 1&nbsp;GB, so send{' '}
+                  <strong>all {result.parts.length}</strong> of these to Robert (any order).
+                  His SideMolly stitches them back together automatically. 💕
+                </p>
+                <ul className="text-xs font-mono space-y-1 mt-1">
+                  {result.parts.map((p) => (
+                    <li key={p.name} className="flex justify-between gap-3">
+                      <span className="break-all">{p.name}</span>
+                      <span className="opacity-60 whitespace-nowrap">
+                        {(p.bytes / 1024 / 1024).toFixed(0)} MB
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono">
               <dt className="opacity-60">UID</dt><dd>{result.uid}</dd>
               <dt className="opacity-60">Inner SHA-256</dt><dd className="break-all">{result.innerSha256}</dd>
@@ -438,8 +462,12 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
               </div>
             )}
             <div className="flex gap-2">
-              <button type="button" onClick={() => openBundleArchive(result.path)} className="pretty-button">Open ZIP</button>
-              <button type="button" onClick={() => revealBundlesDir()} className="pretty-button secondary">Reveal in Finder</button>
+              {result.parts.length === 0 && (
+                <button type="button" onClick={() => openBundleArchive(result.path)} className="pretty-button">Open ZIP</button>
+              )}
+              <button type="button" onClick={() => revealBundlesDir()} className="pretty-button secondary">
+                {result.parts.length > 0 ? 'Reveal the pieces in Finder' : 'Reveal in Finder'}
+              </button>
               <button type="button" onClick={onClose} className="pretty-button secondary ml-auto">Back to list</button>
             </div>
           </div>

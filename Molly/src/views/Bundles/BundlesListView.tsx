@@ -18,6 +18,7 @@ import { FanSiteBundleForm } from './FanSiteBundleForm';
 import { YouTubeBundleForm } from './YouTubeBundleForm';
 import { PublishWizard } from './PublishWizard';
 import { ImportReturnFileWizard } from './ImportReturnFileWizard';
+import { DiskSpaceBanner } from '../../components/DiskSpaceBanner';
 
 interface Props {
   active: Persona;
@@ -161,6 +162,8 @@ export function BundlesListView({ active }: Props) {
           Custom and Fan Site.
         </p>
       </header>
+
+      <DiskSpaceBanner context="bundle" />
 
       <div className="flex flex-wrap gap-2">
         <button

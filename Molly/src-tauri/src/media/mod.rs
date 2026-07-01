@@ -38,6 +38,15 @@ pub enum MediaError {
     Ffmpeg { code: i32, stderr: String },
     #[error("timed out after {0}s")]
     Timeout(u64),
+    /// Not enough free disk space to run this op safely (operation-aware
+    /// preflight). Carries a Sallie-friendly, disk-pointed message.
+    #[error("{0}")]
+    LowDisk(String),
+    /// The encoded output failed its post-encode integrity check — truncated,
+    /// missing `moov`, or wrong duration (the corrupt-Squish signature).
+    /// Carries a disk-pointed message.
+    #[error("{0}")]
+    Corrupt(String),
 }
 
 impl serde::Serialize for MediaError {
