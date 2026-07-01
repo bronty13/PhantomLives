@@ -78,12 +78,35 @@ PLIST
     || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$CONTENTS/Info.plist"
 
 # Codesign identity: Developer ID if available, else ad-hoc.
+# A dedicated signing keychain (Dev-ID identity + stored password) lets us Dev-ID-sign even over
+# SSH. Why bother: a stable Dev-ID code identity keeps TCC grants (Full Disk Access, Photos, etc.)
+# across rebuilds — adhoc signing gives a new cdhash every build, silently invalidating those
+# grants and forcing a re-grant. Set up once per headless Mac (see docs/dev-id-signing-airy.md).
+SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-$HOME/Library/Keychains/purple-signing.keychain-db}"
+SIGN_KC_PW_FILE="${SIGN_KC_PW_FILE:-$HOME/.config/purple-signing/keychain-pw}"
+
+# Unlock the dedicated signing keychain if it's set up. Safe no-op otherwise. Returns 0 if unlocked.
+unlock_signing_keychain() {
+    [ -f "$SIGN_KC_PW_FILE" ] && [ -f "$SIGN_KEYCHAIN" ] || return 1
+    security unlock-keychain -p "$(cat "$SIGN_KC_PW_FILE")" "$SIGN_KEYCHAIN" 2>/dev/null
+}
+
 detect_codesign_identity() {
     if [ -n "${CODESIGN_IDENTITY:-}" ]; then echo "$CODESIGN_IDENTITY"; return; fi
-    # Over SSH, adhoc-sign by default: Developer ID codesign needs the login keychain (unreachable
-    # over ssh → errSecInternalComponent), which would break remote build-app.sh. Adhoc needs no
-    # keychain and is fine for dev/local installs (Dev-ID+notarize is release-only). FORCE_DEVID=1 overrides.
-    if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then echo "-"; return; fi
+    # Over SSH the login keychain is unreachable (Dev-ID codesign → errSecInternalComponent), so we
+    # adhoc-sign UNLESS a dedicated signing keychain is set up — then Dev-ID-sign from it (stable
+    # identity → TCC grants survive rebuilds). Adhoc fallback keeps remote builds working anywhere
+    # the keychain isn't set up. FORCE_DEVID=1 also forces the login-keychain path.
+    if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then
+        if unlock_signing_keychain; then
+            local devid
+            devid=$(security find-identity -v -p codesigning "$SIGN_KEYCHAIN" 2>/dev/null \
+                | grep -E '"Developer ID Application:' | head -1 \
+                | sed -E 's/.*"(Developer ID Application:[^"]+)".*/\1/')
+            [ -n "$devid" ] && { echo "$devid"; return; }
+        fi
+        echo "-"; return
+    fi
     local devid
     devid=$(security find-identity -v -p codesigning 2>/dev/null \
         | grep -E '"Developer ID Application:' | head -1 \
@@ -91,6 +114,8 @@ detect_codesign_identity() {
     [ -n "$devid" ] && echo "$devid" || echo "-"
 }
 CODESIGN_ID="$(detect_codesign_identity)"
+# Ensure the keychain is unlocked in THIS shell too (detect ran in a subshell) before codesign.
+[ "$CODESIGN_ID" != "-" ] && [ -n "${SSH_CONNECTION:-}" ] && unlock_signing_keychain || true
 
 # Strip xattrs codesign refuses.
 xattr -cr "$APP_DIR" 2>/dev/null || true
