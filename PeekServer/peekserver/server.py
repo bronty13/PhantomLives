@@ -7,6 +7,7 @@ Pure stdlib (ThreadingHTTPServer). Routes:
   GET  /api/items?root&decision&offset&limit → paginated media + decisions
   GET  /api/item/<id>        → one media record (with keywords/albums)
   GET  /thumb/<id>           → cached JPEG thumbnail (generated on first hit)
+  GET  /display/<id>         → screen-size JPEG for full-window preview (images; generated on first hit)
   GET  /full/<id>            → the original file (Range-aware, so video plays in-browser)
   GET  /preview/<id>         → video: a cached 720p faststart proxy (smooth LAN playback); else original
   POST /api/decision         → {id, keep?, is_favorite?, title?, caption?, is_hidden?, keywords?, albums?}
@@ -279,6 +280,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(rec) if rec else self._notfound()
         if path.startswith("/thumb/"):
             return self._serve_thumb(path.rsplit("/", 1)[-1])
+        if path.startswith("/display/"):
+            return self._serve_display(path.rsplit("/", 1)[-1])
         if path.startswith("/full/"):
             return self._serve_full(path.rsplit("/", 1)[-1])
         if path.startswith("/preview/"):
@@ -366,6 +369,21 @@ class Handler(BaseHTTPRequestHandler):
         if not media.cache_is_fresh(dst, mtime):
             if not media.ensure_thumb(path, dst, ftype, _CFG.get("thumbSize", 512)):
                 return self._notfound()  # audio / failed → UI shows a glyph
+        with open(dst, "rb") as f:
+            return self._bytes(f.read(), "image/jpeg")
+
+    def _serve_display(self, mid):
+        """Screen-size JPEG for the full-window image preview — the middle tier between the 512px
+        thumb (too small) and the multi-MB original (20x the bytes, and HEIC won't decode in
+        non-Safari browsers). Images only; video/audio 404 so clients fall through to /preview
+        or /full. Same cache-trust rule as /thumb: a fresh cached copy never stats the original."""
+        path, ftype, mtime = db.serving_info(mid)
+        if not path:
+            return self._notfound()
+        dst = media.display_path(_CFG["displayCache"], mid)
+        if not media.cache_is_fresh(dst, mtime):
+            if not media.ensure_display(path, dst, ftype, _CFG.get("displaySize", 2048)):
+                return self._notfound()
         with open(dst, "rb") as f:
             return self._bytes(f.read(), "image/jpeg")
 

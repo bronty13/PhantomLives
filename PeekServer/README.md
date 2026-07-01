@@ -58,7 +58,8 @@ A keyboard-driven thumbnail grid (open `/` in a browser):
 ## API
 
 `GET /api/roots` · `GET /api/items?root&decision&offset&limit` · `GET /api/item/<id>` ·
-`GET /thumb/<id>` · `GET /full/<id>` (Range-aware) · `POST /api/decision` · `POST /api/scan`
+`GET /thumb/<id>` · `GET /display/<id>` (screen-size JPEG for image preview) ·
+`GET /full/<id>` (Range-aware) · `POST /api/decision` · `POST /api/scan`
 
 Serving is tuned for many small requests over Wi-Fi: HTTP/1.1 keep-alive, long-lived
 `Cache-Control` on `/thumb`, `ETag` validators on `/full`/`/preview` (so clients revalidate with

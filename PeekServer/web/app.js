@@ -163,11 +163,16 @@ function renderOverlay() {
   const it = S.items[S.sel]; if (!it) return;
   const v = $("#viewer");
   if (it.file_type === "video") {
-    v.innerHTML = `<video src="/full/${it.id}" controls autoplay playsinline></video>`;
+    // /preview = the cached 720p faststart proxy (instant start, smooth over Wi-Fi); the server
+    // transparently serves the original if no proxy exists yet. /full stays for import only.
+    v.innerHTML = `<video src="/preview/${it.id}" controls autoplay playsinline></video>`;
   } else if (it.file_type === "audio") {
     v.innerHTML = `<audio src="/full/${it.id}" controls autoplay></audio>`;
   } else {
-    v.innerHTML = `<img src="/full/${it.id}" alt="${it.file_name}">`;
+    // /display = screen-size JPEG (~20x fewer bytes than the original, and HEIC decodes
+    // everywhere). Fall back to the original for anything /display can't produce.
+    v.innerHTML = `<img src="/display/${it.id}" alt="${it.file_name}"
+                        onerror="this.onerror=null;this.src='/full/${it.id}'">`;
   }
   $("#metaName").textContent = it.file_name;
   $("#fTitle").value = it.title || "";

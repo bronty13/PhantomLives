@@ -13,6 +13,8 @@ DEFAULTS = {
     "dbPath": "~/Library/Application Support/PeekServer/peekserver.sqlite",
     "thumbCache": "~/Library/Caches/PeekServer/thumbs",
     "thumbSize": 512,                        # max thumbnail dimension (px)
+    "displayCache": "~/Library/Caches/PeekServer/display",  # screen-size preview JPEGs (/display)
+    "displaySize": 2048,                     # max display-image dimension (px)
     "scanIntervalMinutes": 15,               # auto-rescan every N min so newly-staged files appear
                                              # without a manual scan (0 = disable, scan only at startup)
     # --- Video streaming proxies (smooth review playback over LAN; needs ffmpeg) ---
@@ -58,7 +60,7 @@ def load() -> dict:
     p = config_path()
     if p.exists():
         cfg.update(json.loads(p.read_text(encoding="utf-8")))
-    for k in ("dbPath", "thumbCache", "proxyCache", "keptAudioDir", "stagingDir", "purplePeekDb"):
+    for k in ("dbPath", "thumbCache", "displayCache", "proxyCache", "keptAudioDir", "stagingDir", "purplePeekDb"):
         cfg[k] = _expand(cfg[k])
     for k in ("osxphotosBin", "exiftoolBin", "ffmpegBin"):   # expand ~ but leave bare PATH names alone
         if cfg[k].startswith("~") or cfg[k].startswith("/"):

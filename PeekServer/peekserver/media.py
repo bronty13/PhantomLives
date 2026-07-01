@@ -40,6 +40,28 @@ def thumb_path(cache_dir: str, mid: str) -> str:
     return os.path.join(sub, mid + ".jpg")
 
 
+def display_path(cache_dir: str, mid: str) -> str:
+    """Cache path for the screen-size display JPEG (same sharding as thumbs)."""
+    sub = os.path.join(cache_dir, mid[:2])
+    return os.path.join(sub, mid + ".jpg")
+
+
+def ensure_display(src: str, dst: str, ftype: str, size: int) -> bool:
+    """Generate the screen-size display JPEG at `dst` if missing/stale (images only — video preview
+    is `/preview`'s job). This is the middle tier the review UI actually wants: a 512px thumb is
+    too small for a full-window preview, and the full original (5-15MB HEIC/RAW) is ~20x more bytes
+    than a ~2048px JPEG carries — plus HEIC won't decode in non-Safari browsers at all. Same
+    generate-once/cache/serve model as thumbnails."""
+    if ftype != "image":
+        return False
+    if not os.path.exists(src):
+        return False
+    if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
+        return True
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    return _sips_thumb(src, dst, size)
+
+
 def iso_to_epoch(iso):
     """Parse the DB's `%Y-%m-%dT%H:%M:%SZ` timestamps to a UTC epoch; None if absent/malformed."""
     try:

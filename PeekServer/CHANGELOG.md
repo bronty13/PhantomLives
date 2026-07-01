@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0 — `/display`: the screen-size image tier
+
+- **New `GET /display/<id>`** — a cached, screen-size (~2048 px, `displaySize`) JPEG for
+  full-window image preview. This fills the gap between the 512 px `/thumb` (too small for a
+  preview pane) and `/full` (a 5–15 MB HEIC/RAW original — ~20× the bytes a preview needs, and
+  HEIC doesn't decode in non-Safari browsers at all). Same model as thumbnails: generated once
+  via `sips`, cached on the server's internal disk (`displayCache`, sharded), served with
+  immutable cache headers, and **cache hits never stat the original** (0.6.0's DB-mtime
+  freshness rule). Images only — video/audio 404 so clients fall through to `/preview`/`/full`.
+- **The web UI now uses the fast tiers it was bypassing**: the overlay plays video from
+  **`/preview`** (the 720p faststart proxy — it was streaming the full-res original) and shows
+  images from **`/display`** with an automatic `/full` fallback. This also fixes HEIC photos
+  rendering as a broken image in Chrome/Firefox.
+- New config: `displayCache` (default `~/Library/Caches/PeekServer/display`), `displaySize`
+  (default 2048). Tests: +4 (display path sharding, image generation, non-image refusal,
+  missing-source) → 55 total.
+
 ## 0.6.0 — Hot-path latency fixes (keep-alive, cache-trusting serving, correct Range)
 
 The audit-driven "server quick wins" release. Measured baseline over Wi-Fi (Vortex → airy):

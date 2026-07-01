@@ -104,6 +104,49 @@ class TestCacheFreshness(unittest.TestCase):
         self.assertTrue(media.cache_is_fresh(self.dst, "garbage"))
 
 
+class TestDisplayTier(unittest.TestCase):
+    """/display: the screen-size JPEG tier between /thumb and /full (0.7.0)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.src = os.path.join(self.tmp, "img.png")
+        _make_png(self.src)
+        self.dst = os.path.join(self.tmp, "display", "ab", "abcd.jpg")
+
+    def test_display_path_sharded_jpg(self):
+        self.assertEqual(media.display_path("/cache", "abcd1234ef567890"),
+                         "/cache/ab/abcd1234ef567890.jpg")
+
+    def test_generates_display_jpeg_for_image(self):
+        self.assertTrue(media.ensure_display(self.src, self.dst, "image", 256))
+        self.assertGreater(os.path.getsize(self.dst), 0)
+
+    def test_non_image_refused(self):
+        # video preview is /preview's job; audio has no visual — clients fall through to /full
+        self.assertFalse(media.ensure_display(self.src, self.dst, "video", 256))
+        self.assertFalse(media.ensure_display(self.src, self.dst, "audio", 256))
+
+    def test_missing_source(self):
+        self.assertFalse(media.ensure_display(os.path.join(self.tmp, "nope.png"), self.dst, "image", 256))
+
+
+def _make_png(path, w=64, h=64):
+    import struct
+    import zlib
+    raw = bytearray()
+    for _ in range(h):
+        raw.append(0)
+        raw += bytes((180, 90, 140)) * w
+    def chunk(t, d):
+        c = t + d
+        return struct.pack(">I", len(d)) + c + struct.pack(">I", zlib.crc32(c) & 0xffffffff)
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n"
+                + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(bytes(raw)))
+                + chunk(b"IEND", b""))
+
+
 class TestSweepStaleArtifacts(unittest.TestCase):
     """Startup sweep of orphaned *.tmp.mp4 / *.src.* transcode leftovers."""
 
