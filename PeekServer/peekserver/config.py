@@ -21,6 +21,7 @@ DEFAULTS = {
     "proxyHeight": 720,                      # proxy max height (px); never upscaled
     "proxyMaxBitrateK": 4000,                # hard video-bitrate cap (kbps) so it always fits the pipe
     "warmProxies": True,                     # background-generate proxies for videos after each scan
+    "warmConcurrency": 3,                    # how many videos to transcode in parallel during warm
     "warmOrder": [],                         # priority for warming: list of case-insensitive substrings
                                              # matched vs each root's path/label; matches warm first,
                                              # the rest last (keeps active/fast roots ahead of slow backlogs)

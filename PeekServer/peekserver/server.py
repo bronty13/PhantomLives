@@ -17,6 +17,7 @@ import os
 import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import __version__, auth, db, importer, media, migrate, scan
@@ -107,7 +108,9 @@ def warm_proxies_async():
             cache = _CFG["proxyCache"]
             ff = _CFG.get("ffmpegBin", "ffmpeg")
             h, br = _CFG.get("proxyHeight", 720), _CFG.get("proxyMaxBitrateK", 4000)
-            made = 0
+            workers = max(1, int(_CFG.get("warmConcurrency", 3)))
+            # Collect the videos that still need a proxy, in warmOrder priority.
+            todo = []
             for root in ordered_warm_roots(_CFG.get("roots", []), _CFG.get("warmOrder", [])):
                 off = 0
                 while True:
@@ -116,15 +119,19 @@ def warm_proxies_async():
                         break
                     off += len(batch)
                     for it in batch:
-                        if it["file_type"] != "video":
-                            continue
-                        dst = media.proxy_path(cache, it["id"])
-                        if os.path.exists(dst):
-                            continue
-                        if media.ensure_video_proxy(it["file_path"], dst, ff, h, br):
-                            made += 1
-            if made:
-                print(f"proxy warm: generated {made} video proxies")
+                        if it["file_type"] == "video" and not os.path.exists(media.proxy_path(cache, it["id"])):
+                            todo.append(it)
+            if not todo:
+                return
+            print(f"proxy warm: {len(todo)} videos to transcode ({workers} concurrent)")
+            def one(it):
+                return media.ensure_video_proxy(it["file_path"], media.proxy_path(cache, it["id"]), ff, h, br)
+            made = 0
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                for ok in ex.map(one, todo):
+                    if ok:
+                        made += 1
+            print(f"proxy warm: generated {made} video proxies")
         finally:
             _proxy_warming.clear()
     threading.Thread(target=work, daemon=True).start()

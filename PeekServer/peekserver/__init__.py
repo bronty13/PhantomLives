@@ -11,4 +11,4 @@ Companion to the PurplePeek macOS app — it mirrors PurplePeek's data model and
 pipeline (Phase 2 delegates the actual import to exiftool + osxphotos).
 """
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2 — Parallel proxy warm
+
+- **Warm transcodes several videos at once** (`warmConcurrency`, default 3) instead of one-at-a-time,
+  so a review-queue backlog of proxies clears in a fraction of the time — the videos you're about to
+  review are ready before you reach them. Videos still needing a proxy are collected in `warmOrder`
+  priority, then transcoded through a small thread pool.
+
 ## 0.5.1 — `/preview` never blocks the player
 
 - **Fixes the Preview-tab inline player spinning on un-warmed videos.** `/preview` used to run the
