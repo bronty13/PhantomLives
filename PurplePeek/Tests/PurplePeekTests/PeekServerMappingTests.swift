@@ -77,6 +77,14 @@ final class PeekServerMappingTests: XCTestCase {
         XCTAssertEqual(c.fileSize, 10)
     }
 
+    func testImageFileTypeMapsToPhoto() {
+        // PeekServer emits file_type "image" for photos; must map to MediaType.photo.
+        let dto = PeekItemDTO(id: "x", scan_root: "/r", file_path: "/r/p.jpg", file_name: "p.jpg",
+                              file_type: "image", file_size: 1, keep: nil, is_favorite: 0,
+                              title: nil, caption: nil, is_hidden: 0, imported_at: nil, photos_asset_id: nil)
+        XCTAssertEqual(RemotePeekDataSource.map(dto).mediaType, .photo)
+    }
+
     func testDecodeItemDetailKeywordsAndAlbums() throws {
         // /api/item returns SELECT * plus these two lists; decoding must ignore the extra columns.
         let json = """
