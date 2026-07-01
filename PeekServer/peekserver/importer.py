@@ -127,6 +127,29 @@ def _trash(path):
     return r.returncode == 0
 
 
+def move_to_trash(path: str) -> bool:
+    """Recoverable trash WITHOUT Finder automation (works headless): move the file into its
+    volume's `.Trashes/<uid>/` (external volumes) or `~/.Trash` (boot volume) via a same-volume
+    rename. Returns True on success or if already gone; False on failure (caller then must NOT
+    mark the item deleted). Never falls back to a permanent delete."""
+    real = os.path.realpath(path)
+    if not os.path.exists(real):
+        return True
+    uid = os.getuid()
+    if real.startswith("/Volumes/"):
+        vol = "/".join(real.split("/")[:3])                  # /Volumes/<name>
+        trash_dir = os.path.join(vol, ".Trashes", str(uid))
+    else:
+        trash_dir = os.path.expanduser("~/.Trash")
+    try:
+        os.makedirs(trash_dir, exist_ok=True)
+        dst = _unique(os.path.join(trash_dir, os.path.basename(real)))
+        os.rename(real, dst)                                 # same-volume: atomic, fast
+        return True
+    except Exception:
+        return False
+
+
 def _osa_quote(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 

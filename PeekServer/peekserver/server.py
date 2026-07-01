@@ -138,6 +138,35 @@ class Handler(BaseHTTPRequestHandler):
             res = importer.process_pending(_CFG, execute=bool(data.get("execute")),
                                            limit=data.get("limit"))
             return self._json(res["summary"])
+        if u.path == "/api/mark-imported":
+            # A CLIENT imported this file to ITS OWN Photos (client-side import model); just record
+            # it so the item leaves the pending queue and isn't re-offered. No server-side Photos work.
+            data = self._read_json()
+            mid = data.get("id")
+            if not mid:
+                return self._json({"error": "missing id"}, 400)
+            db.mark_imported(mid, data.get("asset_id"))
+            return self._json({"ok": True})
+        if u.path == "/api/mark-exported":
+            # A client keep-exported this audio file to its own machine; record it.
+            data = self._read_json()
+            mid = data.get("id")
+            if not mid:
+                return self._json({"error": "missing id"}, 400)
+            db.mark_exported(mid)
+            return self._json({"ok": True})
+        if u.path == "/api/trash":
+            # Trash ONE rejected review file, headless + recoverable (no Finder automation). Only
+            # marks it deleted if the file actually reached the Trash.
+            data = self._read_json()
+            mid = data.get("id")
+            if not mid:
+                return self._json({"error": "missing id"}, 400)
+            path, _ = db.path_for(mid)
+            if path and importer.move_to_trash(path):
+                db.mark_deleted(mid)
+                return self._json({"ok": True})
+            return self._json({"ok": False, "error": "trash failed"}, 500)
         return self._notfound()
 
     def _read_json(self):
