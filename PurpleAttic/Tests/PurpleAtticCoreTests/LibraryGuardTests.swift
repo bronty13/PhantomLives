@@ -69,6 +69,25 @@ final class LibraryGuardTests: XCTestCase {
         XCTAssertFalse(LibraryInspector.isLikelyOptimized(originalsOnDisk: 0, totalAssets: 0))
     }
 
+    // MARK: originalsIncomplete is honest + non-alarming (no false "Optimize Storage" claim)
+
+    func testIncompleteSummaryIsNeutralNotAlarming() {
+        let insp = LibraryInspection(libraryPath: "/x", exists: true, originalsOnDisk: 100,
+                                     totalAssets: 8000, readable: true)
+        XCTAssertTrue(insp.originalsIncomplete)
+        // Must NOT assert the setting or shout "INCOMPLETE"; must name both possibilities.
+        XCTAssertFalse(insp.summary.contains("INCOMPLETE"))
+        XCTAssertTrue(insp.summary.contains("still downloading"))
+        XCTAssertTrue(insp.summary.contains("100 of 8000"))
+    }
+
+    func testFullyDownloadedSummaryUnchanged() {
+        let insp = LibraryInspection(libraryPath: "/x", exists: true, originalsOnDisk: 8000,
+                                     totalAssets: 8000, readable: true)
+        XCTAssertFalse(insp.originalsIncomplete)
+        XCTAssertTrue(insp.summary.contains("looks fully downloaded"))
+    }
+
     func testResolveLibraryPathFallsBackToSystemLibrary() {
         let resolved = LibraryInspector.resolveLibraryPath(nil)
         XCTAssertTrue(resolved.hasSuffix("Pictures/Photos Library.photoslibrary"))

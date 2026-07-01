@@ -5,6 +5,18 @@ release-hygiene conventions from the repo root `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Changed
+- **The "Optimize Storage likely — INCOMPLETE" library warning is now honest and non-blocking.**
+  It was a heuristic (`originalsOnDisk < 90% of assets`) that **cannot distinguish "Optimize Mac
+  Storage" from "Download Originals, still downloading"** — both look identical on disk — so it
+  false-alarmed (orange ⚠︎ + a "This library looks incomplete / Run Anyway" confirm dialog on every
+  run) whenever a Download-Originals pass was still in flight (e.g. airy's fresh library). Renamed
+  `optimizeStorageLikely` → `originalsIncomplete` (it's a fact about local files, not a claim about
+  the setting), reworded the summary to name both possibilities, dropped the orange styling and the
+  forced confirm dialog (Run Archive just runs), and downgraded the ExportEngine log from a "RISK"
+  warning to an informational note. The archive is append-only, so a later run captures whatever
+  finishes downloading — no data risk in proceeding.
+
 ### Fixed
 - **Ad-hoc B2 backup re-uploaded the entire archive every run instead of just the delta.** The
   `rclone copy` into the crypt remote used rclone's default size+modtime comparison; through a crypt

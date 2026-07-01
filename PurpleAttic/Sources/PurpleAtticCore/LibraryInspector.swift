@@ -29,8 +29,11 @@ public struct LibraryInspection: Sendable {
         self.readable = readable
     }
 
-    /// True when we have a reliable asset count AND most originals are absent.
-    public var optimizeStorageLikely: Bool {
+    /// True when we have a reliable asset count AND notably fewer originals are on disk than
+    /// assets. This is a **fact about local files**, NOT a claim about the Photos storage setting:
+    /// it can't tell "Optimize Mac Storage" from "Download Originals, still downloading" — both
+    /// look identical on disk. So it's surfaced as neutral info, never an alarm or a run blocker.
+    public var originalsIncomplete: Bool {
         guard let total = totalAssets, total > 0 else { return false }
         return LibraryInspector.isLikelyOptimized(originalsOnDisk: originalsOnDisk, totalAssets: total)
     }
@@ -40,8 +43,8 @@ public struct LibraryInspection: Sendable {
         if !exists { return "Library not found at \(libraryPath)." }
         if !readable { return "Can't read the library (grant Full Disk Access to enable the completeness check)." }
         if let total = totalAssets {
-            if optimizeStorageLikely {
-                return "⚠︎ Optimize Storage likely — \(originalsOnDisk) of \(total) originals on disk. Archiving now would be INCOMPLETE."
+            if originalsIncomplete {
+                return "\(originalsOnDisk) of \(total) originals on disk — the rest are in iCloud (still downloading, or Optimize Mac Storage). Archiving now captures the local ones; re-run after they finish for full coverage."
             }
             return "\(originalsOnDisk) originals on disk for \(total) assets — looks fully downloaded."
         }

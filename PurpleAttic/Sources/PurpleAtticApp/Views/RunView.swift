@@ -4,7 +4,6 @@ import PurpleAtticCore
 /// The archive dashboard: run buttons, a live log, and the last run summary.
 struct RunView: View {
     @EnvironmentObject var appState: AppState
-    @State private var showIncompleteConfirm = false
 
     private var issues: [String] {
         appState.store.profile.validationIssues().filter { !$0.contains("Purge is enabled") }
@@ -26,13 +25,6 @@ struct RunView: View {
             appState.refreshPermissions()
             if appState.libraryInspection == nil { appState.checkLibrary() }
         }
-        .alert("This library looks incomplete", isPresented: $showIncompleteConfirm) {
-            Button("Cancel", role: .cancel) { }
-            Button("Run Anyway", role: .destructive) { appState.runArchive(dryRun: false) }
-        } message: {
-            Text((appState.libraryInspection?.summary ?? "")
-                 + "\n\nArchiving now captures only the originals currently on this Mac. Run on the Mac set to “Download Originals,” or enable download-missing in Settings.")
-        }
     }
 
     @ViewBuilder
@@ -41,10 +33,11 @@ struct RunView: View {
             Label("Checking library…", systemImage: "hourglass").font(.caption).foregroundStyle(.secondary)
         } else if let insp = appState.libraryInspection {
             HStack(spacing: 5) {
-                Image(systemName: insp.optimizeStorageLikely ? "exclamationmark.triangle.fill"
-                      : (insp.readable ? "checkmark.circle" : "questionmark.circle"))
-                    .foregroundStyle(insp.optimizeStorageLikely ? .orange : .secondary)
-                Text(insp.summary).foregroundStyle(insp.optimizeStorageLikely ? .orange : .secondary)
+                // Neutral/informational only — the originals-on-disk count can't distinguish
+                // "Optimize Mac Storage" from "still downloading", so it's never an alarm.
+                Image(systemName: insp.readable ? "info.circle" : "questionmark.circle")
+                    .foregroundStyle(.secondary)
+                Text(insp.summary).foregroundStyle(.secondary)
                 Button("Recheck") { appState.checkLibrary() }.buttonStyle(.link).font(.caption)
             }
             .font(.caption)
@@ -71,11 +64,7 @@ struct RunView: View {
             } label: { Label("Dry Run", systemImage: "eye") }
                 .disabled(appState.isRunning || !issues.isEmpty || !appState.permissions.allGranted)
             Button {
-                if appState.libraryInspection?.optimizeStorageLikely == true {
-                    showIncompleteConfirm = true
-                } else {
-                    appState.runArchive(dryRun: false)
-                }
+                appState.runArchive(dryRun: false)
             } label: { Label("Run Archive", systemImage: "play.fill") }
                 .keyboardShortcut("r", modifiers: [.command])
                 .buttonStyle(.borderedProminent)

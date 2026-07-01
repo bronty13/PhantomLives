@@ -148,12 +148,14 @@ public final class ExportEngine {
         logger.info("Primary archive: \(profile.primaryArchiveRoot)")
         logger.info("Formats: \(profile.enabledPasses.map { $0.label }.joined(separator: ", "))")
 
-        // Completeness guard: warn loudly if the library looks optimized (originals only in
-        // iCloud) and we're not downloading them — the archive would be incomplete.
+        // Completeness note (informational, never blocks): fewer originals on disk than assets
+        // just means some are still in iCloud — could be Optimize Mac Storage OR a Download-
+        // Originals pass still in progress; we can't tell which, so we don't alarm. The archive
+        // is append-only, so a later run captures whatever finishes downloading.
         let inspection = LibraryInspector.inspect(libraryPath: profile.photosLibraryPath)
         logger.info("Library: \(inspection.summary)")
-        if inspection.optimizeStorageLikely && !profile.downloadMissingFromICloud {
-            logger.warn("INCOMPLETE-ARCHIVE RISK: most originals are not on disk. Run on the Mac set to \"Download Originals,\" or enable downloadMissingFromICloud. Continuing with the local subset only.")
+        if inspection.originalsIncomplete && !profile.downloadMissingFromICloud {
+            logger.info("Note: \(inspection.originalsOnDisk) originals on disk; others are iCloud-only. Archiving the local set now; re-run after any download finishes for full coverage.")
         }
 
         var steps: [StepResult] = []
