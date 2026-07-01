@@ -266,7 +266,7 @@ struct PreviewModeView: View {
             }
             switch event.keyCode {
             case 49: // space → Quick Look
-                if let f = appState.currentPreviewFile { QuickLookCoordinator.shared.toggle(f.fileURL) }
+                if let f = appState.currentPreviewFile { QuickLookCoordinator.shared.toggle(file: f, provider: appState.peekMediaProvider) }
                 return nil
             case 123: appState.prevPreview(); return nil  // ←
             case 124: appState.nextPreview(); return nil  // →

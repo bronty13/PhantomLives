@@ -25,7 +25,7 @@ struct FolderBrowseView: View {
         .onDisappear { removeMonitor() }
         // Keep an open peek in step as the selection moves (click another thumbnail).
         .onChange(of: appState.selectedFileId) { _, _ in
-            if let f = appState.selectedFile { QuickLookCoordinator.shared.refreshIfVisible(f.fileURL) }
+            if let f = appState.selectedFile { QuickLookCoordinator.shared.refreshIfVisible(file: f, provider: appState.peekMediaProvider) }
         }
     }
 
@@ -39,7 +39,7 @@ struct FolderBrowseView: View {
             if NSApp.keyWindow?.firstResponder is NSText { return event }
             guard event.keyCode == 49 else { return event }   // 49 = space
             guard let file = appState.selectedFile else { return event }
-            QuickLookCoordinator.shared.toggle(file.fileURL)
+            QuickLookCoordinator.shared.toggle(file: file, provider: appState.peekMediaProvider)
             return nil
         }
     }
