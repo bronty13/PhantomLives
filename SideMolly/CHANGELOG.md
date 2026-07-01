@@ -4,6 +4,19 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] — 2026-07-01
+
+### Added
+- **Split-bundle reassembly.** SideMolly now recognizes Molly's
+  `<name>.partNNofMM` split parts (produced when a published bundle exceeds
+  Slack's 1 GB per-file limit). It waits until every part of a set has landed,
+  byte-concatenates them into the whole ZIP under a non-watched `.reassembled/`
+  staging dir, then verifies + ingests it through the normal hash-chain path — a
+  wrong or incomplete reassembly simply fails verify and waits for the rest.
+  Reassembly is idempotent across relaunches, and part progress
+  ("have X of MM parts …") is logged so a missing part is diagnosable rather
+  than a silent hang. Requires Molly ≥ 1.35.0 to produce the parts.
+
 ## [0.28.4] — 2026-06-29
 
 ### Added — Copy button for the title on the Distribute tab

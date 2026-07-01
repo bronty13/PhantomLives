@@ -182,6 +182,123 @@ fn is_bundle_zip(path: &Path) -> bool {
             .unwrap_or(false)
 }
 
+/// Parse a split-part filename `<base>.partNNofMM` → (base, nn, mm). `base`
+/// includes the trailing `.zip` (e.g. "2026-06-30-0001 Foo.zip"). Molly emits
+/// these when a published bundle exceeds Slack's 1 GB per-file cap; SideMolly
+/// concatenates them back into the whole zip. Returns None for a normal file.
+fn parse_bundle_part(path: &Path) -> Option<(String, usize, usize)> {
+    let name = path.file_name()?.to_str()?;
+    let idx = name.rfind(".part")?;
+    let (base, suffix) = name.split_at(idx);
+    let rest = suffix.strip_prefix(".part")?; // "NNofMM"
+    let (nn, mm) = rest.split_once("of")?;
+    let nn: usize = nn.parse().ok()?;
+    let mm: usize = mm.parse().ok()?;
+    if nn == 0 || mm == 0 || nn > mm {
+        return None;
+    }
+    Some((base.to_string(), nn, mm))
+}
+
+fn is_bundle_part(path: &Path) -> bool {
+    path.is_file() && parse_bundle_part(path).is_some()
+}
+
+enum IngestOutcome {
+    Ingested,
+    Skipped,
+    Failed(String),
+}
+
+/// Ingest a resolved path — a whole `.zip` OR a reassembled staging zip — and
+/// emit `bundle-ingested` on success. Duplicate-uid + hard errors are logged,
+/// never fatal, so the caller keeps scanning.
+fn ingest_and_emit<R: Runtime>(handle: &AppHandle<R>, path: &Path) -> IngestOutcome {
+    let path_str = path.to_string_lossy().to_string();
+    match ingest_bundle_inner(handle, &path_str) {
+        Ok(r) => {
+            let _ = handle.emit("bundle-ingested", &r);
+            IngestOutcome::Ingested
+        }
+        Err(BundleError::DuplicateUid { uid, existing_path }) => {
+            eprintln!(
+                "[sidemolly:watch] duplicate uid {uid}; skipping {} \
+                 (already ingested from {existing_path})",
+                path.display(),
+            );
+            IngestOutcome::Skipped
+        }
+        Err(e) => {
+            eprintln!("[sidemolly:watch] ingest failed for {}: {e}", path.display());
+            IngestOutcome::Failed(format!("{}: {e}", path.display()))
+        }
+    }
+}
+
+/// Given ONE split-part path, if the whole `<base>.partNNofMM` set has landed,
+/// byte-concatenate the parts (in order) into a staging zip under
+/// `work_root/.reassembled/` (a NON-watched dir, so it never re-triggers the
+/// watcher) and return its path, ready to ingest. Returns Ok(None) while parts
+/// are still missing (logging "have X of MM" — Robert drags parts from Slack
+/// one at a time, so a lost part must be diagnosable, not a silent hang) or when
+/// the set was already ingested. Reassembly correctness is validated by the
+/// normal ingest verify (the inner hash chain), so no separate checksum here.
+fn reassemble_part_set(
+    conn: &Connection,
+    work_root: &Path,
+    part_path: &Path,
+) -> Result<Option<PathBuf>, BundleError> {
+    let Some((base, _nn, mm)) = parse_bundle_part(part_path) else {
+        return Ok(None);
+    };
+    let dir = part_path.parent().unwrap_or_else(|| Path::new("."));
+
+    let mut part_paths = Vec::with_capacity(mm);
+    let mut present = 0usize;
+    for i in 1..=mm {
+        let p = dir.join(format!("{base}.part{:02}of{:02}", i, mm));
+        if p.is_file() {
+            present += 1;
+        }
+        part_paths.push(p);
+    }
+
+    let staging_dir = work_root.join(".reassembled");
+    let staging = staging_dir.join(&base);
+
+    if present < mm {
+        eprintln!(
+            "[sidemolly:watch] have {present} of {mm} parts for “{base}” — waiting for the rest",
+        );
+        return Ok(None);
+    }
+
+    // Whole set present. If we've already ingested this staging path, skip the
+    // heavy re-concatenation + re-verify on relaunch (cheap idempotency).
+    if already_ingested(conn, work_root, &staging) {
+        return Ok(None);
+    }
+
+    std::fs::create_dir_all(&staging_dir)?;
+    let tmp = staging_dir.join(format!("{base}.reassembling"));
+    {
+        let mut out = std::fs::File::create(&tmp)?;
+        for p in &part_paths {
+            let mut f = std::fs::File::open(p)?;
+            std::io::copy(&mut f, &mut out)?;
+        }
+    }
+    if staging.exists() {
+        let _ = std::fs::remove_file(&staging);
+    }
+    std::fs::rename(&tmp, &staging)?;
+    eprintln!(
+        "[sidemolly:watch] reassembled {mm} parts → {}",
+        staging.display()
+    );
+    Ok(Some(staging))
+}
+
 fn scan_dir<R: Runtime>(
     handle: &AppHandle<R>,
     dir: &Path,
@@ -222,38 +339,48 @@ fn scan_dir<R: Runtime>(
         return result;
     };
 
+    // A split bundle drops several `<base>.partNNofMM` files; process each
+    // set once per scan (they share a base).
+    let mut handled_bases: std::collections::HashSet<String> = std::collections::HashSet::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if !is_bundle_zip(&path) { continue; }
-        result.considered += 1;
-
-        if !force_reingest && already_ingested(&conn, &work_root, &path) {
-            result.skipped += 1;
-            continue;
-        }
-
-        let path_str = path.to_string_lossy().to_string();
-        match ingest_bundle_inner(handle, &path_str) {
-            Ok(r) => {
-                result.ingested += 1;
-                let _ = handle.emit("bundle-ingested", &r);
-            }
-            // A duplicate uid is not a failure — the uid is already owned by
-            // another zip. Skip it (keep the first) and warn once so the
-            // user knows to remove/rename the dupe. Counting it as `failed`
-            // would falsely flag the folder as broken.
-            Err(BundleError::DuplicateUid { uid, existing_path }) => {
+        if is_bundle_zip(&path) {
+            result.considered += 1;
+            if !force_reingest && already_ingested(&conn, &work_root, &path) {
                 result.skipped += 1;
-                eprintln!(
-                    "[sidemolly:watch] duplicate uid {uid}; skipping {} \
-                     (already ingested from {existing_path})",
-                    path.display(),
-                );
+                continue;
             }
-            Err(e) => {
-                result.failed += 1;
-                result.errors.push(format!("{}: {e}", path.display()));
-                eprintln!("[sidemolly:watch] ingest failed for {}: {e}", path.display());
+            match ingest_and_emit(handle, &path) {
+                IngestOutcome::Ingested => result.ingested += 1,
+                // A duplicate uid is not a failure — the uid is already owned by
+                // another zip; keeping the first is correct.
+                IngestOutcome::Skipped => result.skipped += 1,
+                IngestOutcome::Failed(msg) => {
+                    result.failed += 1;
+                    result.errors.push(msg);
+                }
+            }
+        } else if let Some((base, _, _)) = parse_bundle_part(&path) {
+            if !handled_bases.insert(base) {
+                continue;
+            }
+            match reassemble_part_set(&conn, &work_root, &path) {
+                Ok(Some(staging)) => {
+                    result.considered += 1;
+                    match ingest_and_emit(handle, &staging) {
+                        IngestOutcome::Ingested => result.ingested += 1,
+                        IngestOutcome::Skipped => result.skipped += 1,
+                        IngestOutcome::Failed(msg) => {
+                            result.failed += 1;
+                            result.errors.push(msg);
+                        }
+                    }
+                }
+                Ok(None) => {} // still waiting for parts, or already ingested
+                Err(e) => {
+                    result.failed += 1;
+                    result.errors.push(format!("reassemble {}: {e}", path.display()));
+                }
             }
         }
     }
@@ -336,33 +463,45 @@ fn run_watcher<R: Runtime>(handle: AppHandle<R>) {
 }
 
 fn has_interesting_path(event: &notify::Event) -> bool {
-    event.paths.iter().any(|p| is_bundle_zip(p))
+    event
+        .paths
+        .iter()
+        .any(|p| is_bundle_zip(p) || is_bundle_part(p))
 }
 
-/// Ingest only the bundle zip(s) named in an FS event. De-dupes paths
-/// within the event, ingests each, and emits `bundle-ingested` on success.
-/// Duplicate-uid collisions and hard errors are logged but never abort the
-/// loop. Unlike a full-dir rescan, this leaves already-ingested, untouched
-/// bundles alone — so a stray folder event no longer re-emits everything.
+/// Ingest the bundle zip(s) — or reassemble the split part(s) — named in an FS
+/// event. De-dupes within the event, ingests each, and emits `bundle-ingested`
+/// on success. Duplicate-uid collisions and hard errors are logged but never
+/// abort the loop. Unlike a full-dir rescan, this leaves already-ingested,
+/// untouched bundles alone — so a stray folder event no longer re-emits
+/// everything.
 fn ingest_changed_paths<R: Runtime>(handle: &AppHandle<R>, event: &notify::Event) {
-    let mut seen: Vec<PathBuf> = Vec::new();
-    for path in event.paths.iter().filter(|p| is_bundle_zip(p)) {
-        if seen.contains(path) { continue; }
-        seen.push(path.clone());
-        let path_str = path.to_string_lossy().to_string();
-        match ingest_bundle_inner(handle, &path_str) {
-            Ok(r) => {
-                let _ = handle.emit("bundle-ingested", &r);
+    // Reassembly needs a conn + work root; resolve once (both or neither).
+    let ctx = open_conn(handle).ok().zip(crate::bundles::work_root(handle).ok());
+    let mut seen_zips: Vec<PathBuf> = Vec::new();
+    let mut seen_bases: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for path in &event.paths {
+        if is_bundle_zip(path) {
+            if seen_zips.contains(path) {
+                continue;
             }
-            Err(BundleError::DuplicateUid { uid, existing_path }) => {
-                eprintln!(
-                    "[sidemolly:watch] duplicate uid {uid}; skipping {} \
-                     (already ingested from {existing_path})",
-                    path.display(),
-                );
+            seen_zips.push(path.clone());
+            let _ = ingest_and_emit(handle, path);
+        } else if let Some((base, _, _)) = parse_bundle_part(path) {
+            if !seen_bases.insert(base) {
+                continue;
             }
-            Err(e) => {
-                eprintln!("[sidemolly:watch] ingest failed for {}: {e}", path.display());
+            let Some((conn, work_root)) = ctx.as_ref() else {
+                continue;
+            };
+            match reassemble_part_set(conn, work_root, path) {
+                Ok(Some(staging)) => {
+                    let _ = ingest_and_emit(handle, &staging);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("[sidemolly:watch] reassemble failed for {}: {e}", path.display())
+                }
             }
         }
     }
@@ -424,6 +563,47 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn parse_bundle_part_cases() {
+        // Valid split parts — base keeps the trailing `.zip`.
+        assert_eq!(
+            parse_bundle_part(Path::new("/x/2026-06-30-0001 Breath.zip.part01of03")),
+            Some(("2026-06-30-0001 Breath.zip".to_string(), 1, 3)),
+        );
+        assert_eq!(
+            parse_bundle_part(Path::new("/x/foo.zip.part10of10")),
+            Some(("foo.zip".to_string(), 10, 10)),
+        );
+        // Not parts / malformed.
+        assert_eq!(parse_bundle_part(Path::new("/x/foo.zip")), None);
+        assert_eq!(parse_bundle_part(Path::new("/x/foo.zip.part0of3")), None, "nn=0 rejected");
+        assert_eq!(parse_bundle_part(Path::new("/x/foo.zip.part4of3")), None, "nn>mm rejected");
+        assert_eq!(parse_bundle_part(Path::new("/x/foo.zip.partXofY")), None, "non-numeric rejected");
+    }
+
+    #[test]
+    fn reassemble_all_parts_reproduces_whole() {
+        // Split a byte blob into 3 named parts (as Molly would), then verify
+        // in-order concatenation reproduces the original — the core of the
+        // reassembly contract (the DB-bound reassemble_part_set builds on this).
+        let dir = TempDir::new().unwrap();
+        let whole: Vec<u8> = (0..5000u32).map(|n| n as u8).collect();
+        let base = "2026-01-01-0001 Foo.zip";
+        let cap = 2000usize;
+        let count = whole.len().div_ceil(cap);
+        for i in 0..count {
+            let chunk = &whole[i * cap..((i + 1) * cap).min(whole.len())];
+            let name = format!("{base}.part{:02}of{:02}", i + 1, count);
+            fs::write(dir.path().join(name), chunk).unwrap();
+        }
+        let mut reassembled = Vec::new();
+        for i in 1..=count {
+            let name = format!("{base}.part{:02}of{:02}", i, count);
+            reassembled.extend(fs::read(dir.path().join(name)).unwrap());
+        }
+        assert_eq!(reassembled, whole);
+    }
 
     #[test]
     fn is_bundle_zip_filter() {

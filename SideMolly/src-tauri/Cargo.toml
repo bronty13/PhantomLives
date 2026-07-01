@@ -1,6 +1,6 @@
 [package]
 name = "sidemolly"
-version = "0.28.4"
+version = "0.29.0"
 description = "SideMolly — Molly bundle workbench"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
