@@ -33,9 +33,12 @@ final class JobsModel: ObservableObject {
         self.hostContexts = HostStore.allHosts().map { HostContext(host: $0) }
         Self.logHosts(self.hostContexts, "init")
         Task { await rescan(); await refreshAll() }
-        // Light periodic refresh so the menu-bar glyph + rows stay current, and
-        // newly-installed agents appear without a relaunch.
-        timer = Timer.publish(every: 10, on: .main, in: .common)
+        // Periodic refresh so the menu-bar glyph + rows stay current, and newly-installed agents
+        // appear without a relaunch. Each tick runs `launchctl print` per job (most over SSH) and
+        // parses the verbose output — a real CPU burst across a multi-host fleet — so keep it
+        // infrequent: 30s status refresh is plenty for job monitoring (rescan re-discovers ~every
+        // 3 min via rescanEveryTicks). Was 10s, which pegged ~20% avg CPU on every fleet node.
+        timer = Timer.publish(every: 30, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in Task { await self?.tick() } }
     }
