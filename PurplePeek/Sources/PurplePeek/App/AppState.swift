@@ -943,11 +943,19 @@ final class AppState: ObservableObject {
         let name = f.fileName
         Task {
             do {
-                _ = try await Task.detached(priority: .userInitiated) {
-                    try AudioKeepService.export(source: src, to: dir)
-                }.value
+                if let client = peekClient {
+                    // Remote: download the original straight into the Kept Audio folder (that copy
+                    // IS the export), then record the export on the server.
+                    let data = try await client.fullData(id: id)
+                    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    try data.write(to: dir.appendingPathComponent(name))
+                } else {
+                    _ = try await Task.detached(priority: .userInitiated) {
+                        try AudioKeepService.export(source: src, to: dir)
+                    }.value
+                }
                 let now = BackupService.isoNow()
-                try db.markExported(id: id, now: now)
+                try await dataSource.markExported(id: id, now: now)
                 patchLocal(id) { $0.exportedAt = now }
                 statusMessage = "Exported \(name) to Kept Audio."
             } catch {
@@ -1000,7 +1008,7 @@ final class AppState: ObservableObject {
                 switch await importOneFile(file, exiftoolPath: exif) {
                 case .success(let assetId):
                     let now = BackupService.isoNow()
-                    try? db.markImported(id: file.id, assetId: assetId, now: now)
+                    try? await dataSource.markImported(id: file.id, assetId: assetId, now: now)
                     patchLocal(file.id) { $0.importedAt = now; $0.photosAssetId = assetId }
                     prog.succeeded += 1
                 case .failure(let err):
@@ -1036,7 +1044,7 @@ final class AppState: ObservableObject {
             switch await importOneFile(file, exiftoolPath: exif) {
             case .success(let assetId):
                 let now = BackupService.isoNow()
-                try? db.markImported(id: id, assetId: assetId, now: now)
+                try? await dataSource.markImported(id: id, assetId: assetId, now: now)
                 patchLocal(id) { $0.importedAt = now; $0.photosAssetId = assetId }
                 recomputeDerived()
                 statusMessage = "Imported \(file.fileName) to Photos."
@@ -1051,21 +1059,43 @@ final class AppState: ObservableObject {
     /// videos — so no post-import AppleScript is needed. Returns the asset id or an error.
     private func importOneFile(_ file: MediaFile, exiftoolPath: String?) async -> Result<String, ImportFailure> {
         let type: PHAssetResourceType = (file.mediaType == .photo) ? .photo : .video
-        let albums = (try? db.albums(forFile: file.id)) ?? []
-        let keywords = (try? db.keywordNames(forFile: file.id)) ?? []
-        let hasMetadata = (file.title?.isEmpty == false) || (file.caption?.isEmpty == false) || !keywords.isEmpty
+        // Metadata comes from the active data source (local DB or the server).
+        let albums: [String]
+        let keywords: [String]
+        do {
+            albums = try await dataSource.albums(forFile: file.id)
+            keywords = try await dataSource.keywordNames(forFile: file.id)
+        } catch { return .failure(ImportFailure(message: error.localizedDescription)) }
+
+        // Source file: the local path in local mode, or the original downloaded from the server
+        // (remote mode — the file isn't on this Mac; keepers import to THIS Mac's Photos).
+        var sourceURL = file.fileURL
+        var downloadedURL: URL?
+        if let client = peekClient {
+            do {
+                let data = try await client.fullData(id: file.id)
+                let ext = (file.fileName as NSString).pathExtension
+                let dir = FileManager.default.temporaryDirectory.appendingPathComponent("PurplePeekImport", isDirectory: true)
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let dl = dir.appendingPathComponent(ext.isEmpty ? file.id : "\(file.id).\(ext)")
+                try data.write(to: dl)
+                downloadedURL = dl; sourceURL = dl
+            } catch { return .failure(ImportFailure(message: "Download failed: \(error.localizedDescription)")) }
+        }
+        func cleanup(_ urls: URL?...) { for u in urls { if let u { try? FileManager.default.removeItem(at: u) } } }
 
         // Embed title/caption/keywords into a staged copy so Photos ingests them on import —
         // photos via XMP/IPTC, videos via the QuickTime `Keys:` group. PhotoKit can't write
         // these fields directly; this is the only path, and it needs no AppleScript / no
         // "control Photos" automation prompt (see docs/tcc-prompt-research-spike.md). Only
         // files that actually carry metadata are staged (copied); the rest import in place.
-        var importURL = file.fileURL
+        let hasMetadata = (file.title?.isEmpty == false) || (file.caption?.isEmpty == false) || !keywords.isEmpty
+        var importURL = sourceURL
         var stagedURL: URL?
         if hasMetadata, let ep = exiftoolPath {
             let kind: MetadataStagingService.Kind = (file.mediaType == .photo) ? .photo : .video
             let meta = MetadataStagingService.Metadata(title: file.title, caption: file.caption, keywords: keywords)
-            let original = file.fileURL
+            let original = sourceURL
             stagedURL = try? await Task.detached(priority: .userInitiated) {
                 try MetadataStagingService.stage(original: original, metadata: meta, exiftoolPath: ep, kind: kind)
             }.value
@@ -1076,10 +1106,10 @@ final class AppState: ObservableObject {
             let assetId = try await PhotoKitService.shared.importOne(
                 url: importURL, type: type, isFavorite: file.isFavorite, isHidden: file.isHidden, albums: albums
             )
-            if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
+            cleanup(stagedURL, downloadedURL)   // Photos copies the data on import; safe to remove
             return .success(assetId)
         } catch {
-            if let stagedURL { try? FileManager.default.removeItem(at: stagedURL) }
+            cleanup(stagedURL, downloadedURL)
             return .failure(ImportFailure(message: error.localizedDescription))
         }
     }
@@ -1100,6 +1130,23 @@ final class AppState: ObservableObject {
 
     /// Delete the given files from disk (Trash or permanent) and mark the succeeded ones.
     func performDelete(_ files: [MediaFile], permanently: Bool) {
+        // Remote: the files live on the server → trash them there (recoverable, headless). The
+        // "permanent" option is local-only; remote always does a recoverable server-side trash.
+        if isRemote {
+            Task {
+                let now = BackupService.isoNow()
+                var ok = 0, fail = 0
+                for f in files {
+                    do { try await dataSource.markDeleted(id: f.id, now: now); patchLocal(f.id) { $0.deletedAt = now }; ok += 1 }
+                    catch { fail += 1 }
+                }
+                statusMessage = fail == 0 ? "Trashed \(ok) file\(ok == 1 ? "" : "s") on the server."
+                                          : "Trashed \(ok); \(fail) failed."
+                if selectedFile?.deletedAt != nil { selectedFileId = nil }
+                reloadMediaFiles()
+            }
+            return
+        }
         let urlToId = Dictionary(uniqueKeysWithValues: files.map { ($0.fileURL, $0.id) })
         let urls = files.map { $0.fileURL }
         Task {

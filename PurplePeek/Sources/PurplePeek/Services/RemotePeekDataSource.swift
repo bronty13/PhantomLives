@@ -124,15 +124,18 @@ final class RemotePeekDataSource: DataSource {
         try await client.postDecision(id: fileId, fields: ["keywords": names])
     }
 
-    // MARK: Import/trash state — owned server-side (see type doc); P6 drives /api/process directly
+    // MARK: Import/trash state (client-side import model — see P6)
 
+    /// Record that the client imported this keeper to ITS OWN Photos library.
     func markImported(id: String, assetId: String?, now: String) async throws {
-        throw PeekServerError.unsupported("Import state is recorded server-side (added in P6).")
+        try await client.markImported(id: id, assetId: assetId)
     }
+    /// Record a client audio keep-export.
     func markExported(id: String, now: String) async throws {
-        throw PeekServerError.unsupported("Export state is recorded server-side (added in P6).")
+        try await client.markExported(id: id)
     }
+    /// Trash a rejected review file server-side (recoverable, headless).
     func markDeleted(id: String, now: String) async throws {
-        throw PeekServerError.unsupported("Trash is performed server-side via /api/process (P6).")
+        try await client.trash(id: id)
     }
 }

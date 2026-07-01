@@ -193,13 +193,32 @@ struct PeekServerClient {
     /// clear it. Values are the raw wire types (keep as Int/NSNull, is_favorite as 0/1, arrays of
     /// names for keywords/albums).
     func postDecision(id: String, fields: [String: Any]) async throws {
+        var body = fields
+        body["id"] = id
+        try await postJSON("/api/decision", body: body)
+    }
+
+    /// Record a client-side import (keeper imported to the local Mac's Photos).
+    func markImported(id: String, assetId: String?) async throws {
+        try await postJSON("/api/mark-imported", body: ["id": id, "asset_id": assetId ?? NSNull()])
+    }
+
+    /// Record a client-side audio keep-export.
+    func markExported(id: String) async throws {
+        try await postJSON("/api/mark-exported", body: ["id": id])
+    }
+
+    /// Trash one rejected review file server-side (recoverable, headless).
+    func trash(id: String) async throws {
+        try await postJSON("/api/trash", body: ["id": id])
+    }
+
+    private func postJSON(_ path: String, body: [String: Any]) async throws {
         guard let base = connection.baseURL else { throw PeekServerError.notConfigured }
-        var req = URLRequest(url: base.appendingPathComponent("/api/decision"))
+        var req = URLRequest(url: base.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !connection.user.isEmpty { req.setValue(authHeader, forHTTPHeaderField: "Authorization") }
-        var body = fields
-        body["id"] = id
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
