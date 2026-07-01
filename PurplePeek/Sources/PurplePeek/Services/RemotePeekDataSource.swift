@@ -120,6 +120,10 @@ final class RemotePeekDataSource: DataSource {
         try await client.postDecision(id: fileId, fields: ["albums": albumNames])
     }
 
+    func setKeywordNames(fileId: String, names: [String]) async throws {
+        try await client.postDecision(id: fileId, fields: ["keywords": names])
+    }
+
     // MARK: Import/trash state — owned server-side (see type doc); P6 drives /api/process directly
 
     func markImported(id: String, assetId: String?, now: String) async throws {

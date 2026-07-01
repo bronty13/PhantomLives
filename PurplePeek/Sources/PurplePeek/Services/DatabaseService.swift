@@ -459,6 +459,15 @@ final class DatabaseService {
         return map
     }
 
+    /// Replace a file's keywords by NAME — maps each name to a vocabulary row (creating it if new,
+    /// case-insensitively), then sets the id-based junction. The local counterpart of PeekServer's
+    /// name-based `POST /api/decision {keywords:[…]}`, so both data sources share one `DataSource` call.
+    func setKeywordNames(fileId: String, names: [String]) throws {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let ids = try names.map { try createKeyword(name: $0, now: now).id }
+        try setKeywords(fileId: fileId, keywordIds: ids)
+    }
+
     /// Replace a file's keyword set.
     func setKeywords(fileId: String, keywordIds: [String]) throws {
         try dbPool.write { db in

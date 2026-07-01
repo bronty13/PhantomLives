@@ -661,18 +661,46 @@ final class AppState: ObservableObject {
     func selectFile(_ id: String?) {
         selectedFileId = id
         guard let id else { selectedKeywordIds = []; selectedAlbums = []; return }
-        // Keyword IDs are a local-vocabulary concept (remote keyword tagging lands in P5); albums are
-        // per-file review state → through the active data source.
-        do { selectedKeywordIds = Set(try db.keywordIds(forFile: id)) }
-        catch { errorMessage = error.localizedDescription }
-        Task {
-            do { selectedAlbums = try await dataSource.albums(forFile: id) }
-            catch { errorMessage = error.localizedDescription }
+        if isRemote {
+            // Remote: the file's keywords/albums come from the server (by name); map keyword names
+            // onto the local vocabulary so the picker shows them checked.
+            Task {
+                do {
+                    let names = try await dataSource.keywordNames(forFile: id)
+                    let ids = ensureLocalKeywordIds(for: names)
+                    let albums = try await dataSource.albums(forFile: id)
+                    guard selectedFileId == id else { return }   // selection moved on; discard stale load
+                    selectedKeywordIds = Set(ids)
+                    selectedAlbums = albums
+                } catch { errorMessage = error.localizedDescription }
+            }
+        } else {
+            do {
+                selectedKeywordIds = Set(try db.keywordIds(forFile: id))
+                selectedAlbums = try db.albums(forFile: id)
+            } catch { errorMessage = error.localizedDescription }
         }
         // Remote mode: pre-download the original so a spacebar Quick Look shows instantly + reliably.
         if let f = mediaFiles.first(where: { $0.id == id }) {
             QuickLookCoordinator.shared.prewarm(file: f, provider: peekMediaProvider)
         }
+    }
+
+    /// Ensure each server keyword name exists in the local vocabulary and return the matching ids
+    /// (so the ID-based keyword picker can show remote tags). Creates missing names; refreshes the
+    /// vocabulary list if any were added.
+    private func ensureLocalKeywordIds(for names: [String]) -> [String] {
+        var ids: [String] = []
+        var created = false
+        for name in names {
+            if let existing = keywords.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+                ids.append(existing.id)
+            } else if let kw = try? db.createKeyword(name: name, now: BackupService.isoNow()) {
+                ids.append(kw.id); created = true
+            }
+        }
+        if created { reloadKeywords() }
+        return ids
     }
 
     /// Mutate one row in `mediaFiles` in place — republishes for the grid badge without a
@@ -846,14 +874,15 @@ final class AppState: ObservableObject {
         } else {
             selectedKeywordIds.insert(keywordId)
         }
-        do {
-            try db.setKeywords(fileId: fileId, keywordIds: Array(selectedKeywordIds))
-            // Reflect the change in the bulk map so this item's tag label updates and the
-            // "Tagged only" filter re-evaluates it (it may now enter or leave the grid).
-            let names = selectedKeywordNames()
-            fileKeywordNames[fileId] = names.isEmpty ? nil : names
-            if showTaggedOnly { recomputeDerived() }
-        } catch { errorMessage = error.localizedDescription }
+        // Optimistic: update the bulk map now so the tag label + "Tagged only" filter react, then
+        // persist by NAME through the active data source (local maps names→ids; remote POSTs names).
+        let names = selectedKeywordNames()
+        fileKeywordNames[fileId] = names.isEmpty ? nil : names
+        if showTaggedOnly { recomputeDerived() }
+        Task {
+            do { try await dataSource.setKeywordNames(fileId: fileId, names: names) }
+            catch { errorMessage = error.localizedDescription }
+        }
     }
 
     /// The names of the currently selected keyword ids, sorted — keeps the bulk map's per-file

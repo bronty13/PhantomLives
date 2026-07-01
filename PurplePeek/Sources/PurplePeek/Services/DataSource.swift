@@ -37,6 +37,9 @@ protocol DataSource {
     func updateTitle(id: String, title: String?, now: String) async throws
     func updateCaption(id: String, caption: String?, now: String) async throws
     func setAlbums(fileId: String, albumNames: [String]) async throws
+    /// Replace a file's keywords by NAME (PeekServer is name-based; the local impl maps names to
+    /// its keyword-vocabulary rows, creating any that don't exist yet).
+    func setKeywordNames(fileId: String, names: [String]) async throws
     func markImported(id: String, assetId: String?, now: String) async throws
     func markExported(id: String, now: String) async throws
     func markDeleted(id: String, now: String) async throws
