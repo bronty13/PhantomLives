@@ -60,6 +60,12 @@ A keyboard-driven thumbnail grid (open `/` in a browser):
 `GET /api/roots` · `GET /api/items?root&decision&offset&limit` · `GET /api/item/<id>` ·
 `GET /thumb/<id>` · `GET /full/<id>` (Range-aware) · `POST /api/decision` · `POST /api/scan`
 
+Serving is tuned for many small requests over Wi-Fi: HTTP/1.1 keep-alive, long-lived
+`Cache-Control` on `/thumb`, `ETag` validators on `/full`/`/preview` (so clients revalidate with
+a cheap 304 instead of re-downloading originals), correct suffix-`Range`/416 handling, and cached
+thumbs/proxies are served **without touching the source volume** (freshness comes from the
+DB-recorded mtime, refreshed by each scan — a spun-down drive can't stall a cache hit).
+
 ## Keep → Photos (Phase 2)
 
 Once you've triaged, run the worker on the host with the Photos library:

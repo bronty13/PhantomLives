@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.6.0 — Hot-path latency fixes (keep-alive, cache-trusting serving, correct Range)
+
+The audit-driven "server quick wins" release. Measured baseline over Wi-Fi (Vortex → airy):
+a **cached** thumbnail took 120–180 ms per request vs **3 ms on loopback** — nearly all of it
+avoidable per-request overhead. Four fixes:
+
+- **HTTP/1.1 keep-alive.** The stdlib handler default is HTTP/1.0, which closes the TCP
+  connection after *every* response — so each of the hundreds of small thumb/metadata/range
+  requests a review client fires paid a fresh Wi-Fi handshake, serialized through the client's
+  ~6-connections-per-host cap. `protocol_version = "HTTP/1.1"` (+ a 60 s idle timeout so parked
+  connections release their thread). Safe because every response sets Content-Length, and
+  `_serve_file` now closes the connection if a file shrinks mid-serve (framing can't desync).
+- **Cached hits never touch the source volume.** `/thumb` and `/preview` used to `stat()` the
+  *original* on every request (mtime comparison) even on a 100 % warm cache — so a spun-down
+  or slow SMR source drive stalled requests whose bytes were sitting on the internal SSD.
+  Freshness is now decided against the **DB-recorded** `file_modified_at`
+  (`db.serving_info` + `media.cache_is_fresh`), which every scan refreshes: same invalidation
+  semantics, at scan granularity, zero source-volume I/O. The original is only read when a
+  (re)generation is actually needed.
+- **`/full` and `/preview` are now cacheable + validated.** Both send an `ETag` (variant +
+  size + mtime) and Cache-Control (`/full`: `public, max-age=86400`; `/preview`: `no-cache`,
+  i.e. revalidate — cheap 304 on a warm connection). Flipping back to an image you just viewed
+  no longer re-downloads the whole original. The ETag's **variant** ("orig" vs "proxy") plus
+  `If-Range` handling also fixes a real player hazard: `/preview` serves the original until the
+  background transcode lands, then the proxy — the same URL changing bytes mid-session. A
+  client holding Range state from the original now gets the full new body instead of garbage
+  offsets into a different file.
+- **Correct Range handling** (`parse_range`, pure + unit-tested). Suffix ranges (`bytes=-N` =
+  the *last* N bytes — how players locate a trailing `moov` atom in .mov originals) were served
+  as the *first* N+1 bytes with a confidently wrong 206, which broke seeking and forced linear
+  streaming of full-res video. Also: syntactically-valid-but-out-of-bounds ranges → proper
+  **416** with `Content-Range: bytes */size`; malformed/multi-range headers are ignored (full
+  200) per RFC 9110 instead of raising.
+
+Robustness that rode along:
+
+- **Route dispatch is exception-guarded**: malformed input (`offset=abc`, bad JSON, an
+  FK-violating decision id) now returns a 400/500 JSON instead of dropping the connection with
+  no status; `BrokenPipeError`/`ConnectionResetError` from a scrubbing/aborting player is
+  swallowed silently (it's not an error).
+- **Startup sweep of orphaned transcode artifacts** (`media.sweep_stale_artifacts`): a killed
+  or power-lost server used to leave `*.tmp.mp4` partials and `*.src.*` staging copies
+  (full-size originals, multi-GB each) in the proxy cache forever — 6 such orphans were found
+  live on airy. Swept at startup, age-guarded (>1 h) so a concurrently-running `--warm`'s live
+  staging files survive.
+
+No config changes. Tests: +24 (Range parsing, ETag, cache freshness vs DB mtime, artifact
+sweep) → 51 total.
+
 ## 0.5.2 — Parallel proxy warm
 
 - **Warm transcodes several videos at once** (`warmConcurrency`, default 3) instead of one-at-a-time,

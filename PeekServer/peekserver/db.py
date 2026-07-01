@@ -190,6 +190,16 @@ def path_for(mid: str):
         return (row["file_path"], row["file_type"]) if row else (None, None)
 
 
+def serving_info(mid: str):
+    """(file_path, file_type, file_modified_at) in one lookup — what /thumb, /full and /preview
+    need to serve a request. Includes the DB-recorded mtime so cache freshness can be decided
+    without stat'ing the original on the (slow, possibly spun-down) source volume."""
+    with connect() as c:
+        row = c.execute("SELECT file_path, file_type, file_modified_at FROM media_files WHERE id=?",
+                        (mid,)).fetchone()
+        return (row["file_path"], row["file_type"], row["file_modified_at"]) if row else (None, None, None)
+
+
 _DECISION_FIELDS = {"keep", "is_favorite", "title", "caption", "is_hidden"}
 
 

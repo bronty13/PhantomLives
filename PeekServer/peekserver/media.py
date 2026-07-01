@@ -5,11 +5,13 @@ That's the whole speed trick: browsing reads tiny cached JPEGs, never the big or
 or remote storage. Images use `sips` (fast, handles HEIC); video/other use `qlmanage` (QuickLook
 poster frame). Audio has no thumbnail (the UI shows a glyph).
 """
+import calendar
 import os
 import shutil
 import subprocess
 import tempfile
 import threading
+import time
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".gif", ".tiff", ".tif",
              ".bmp", ".webp", ".dng", ".cr2", ".nef", ".arw", ".raf"}
@@ -36,6 +38,51 @@ def thumb_path(cache_dir: str, mid: str) -> str:
     # shard by first 2 chars to avoid one giant directory
     sub = os.path.join(cache_dir, mid[:2])
     return os.path.join(sub, mid + ".jpg")
+
+
+def iso_to_epoch(iso):
+    """Parse the DB's `%Y-%m-%dT%H:%M:%SZ` timestamps to a UTC epoch; None if absent/malformed."""
+    try:
+        return calendar.timegm(time.strptime(iso, "%Y-%m-%dT%H:%M:%SZ"))
+    except (TypeError, ValueError):
+        return None
+
+
+def cache_is_fresh(dst: str, src_mtime_iso) -> bool:
+    """True if the cached artifact at `dst` exists and is at least as new as the source's
+    DB-recorded mtime — decided WITHOUT touching the source volume. Stat'ing the original per
+    request meant every cached-hit /thumb and /preview still seeked the slow (possibly spun-down)
+    source drive; the DB mtime is refreshed by every scan, so staleness is detected at scan
+    granularity instead, which is the freshness the rest of the system already lives by."""
+    try:
+        dst_mtime = os.path.getmtime(dst)
+    except OSError:
+        return False
+    epoch = iso_to_epoch(src_mtime_iso)
+    return epoch is None or dst_mtime >= epoch
+
+
+def sweep_stale_artifacts(cache_dir: str, min_age_seconds: int = 3600) -> int:
+    """Remove orphaned transcode leftovers from the proxy cache: `*.tmp.mp4` partials and
+    `*.src.*` staging copies (full-size originals, potentially many GB each) that a killed or
+    power-lost server never got to clean up. Age-guarded so the live staging files of a
+    concurrently-running `--warm` pass survive. Returns the number of files removed."""
+    if not os.path.isdir(cache_dir):
+        return 0
+    cutoff = time.time() - min_age_seconds
+    removed = 0
+    for dirpath, _dirs, files in os.walk(cache_dir):
+        for fn in files:
+            if not (fn.endswith(".tmp.mp4") or ".src." in fn):
+                continue
+            fp = os.path.join(dirpath, fn)
+            try:
+                if os.path.getmtime(fp) <= cutoff:
+                    os.remove(fp)
+                    removed += 1
+            except OSError:
+                pass
+    return removed
 
 
 def ensure_thumb(src: str, dst: str, ftype: str, size: int) -> bool:
