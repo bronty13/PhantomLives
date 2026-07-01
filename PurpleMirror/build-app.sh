@@ -95,14 +95,33 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 PLIST
 
 # --- Codesign (Sparkle nested executables inside-out, then the app) ---
+# A dedicated signing keychain (Dev-ID identity + stored password) lets us Dev-ID-sign even over
+# SSH — a stable Dev-ID identity keeps TCC grants across rebuilds, unlike adhoc (new cdhash every
+# build → grants silently invalidated). Set up once per headless Mac; see docs/dev-id-signing-airy.md.
+SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-$HOME/Library/Keychains/purple-signing.keychain-db}"
+SIGN_KC_PW_FILE="${SIGN_KC_PW_FILE:-$HOME/.config/purple-signing/keychain-pw}"
+
+unlock_signing_keychain() {
+    [ -f "$SIGN_KC_PW_FILE" ] && [ -f "$SIGN_KEYCHAIN" ] || return 1
+    security unlock-keychain -p "$(cat "$SIGN_KC_PW_FILE")" "$SIGN_KEYCHAIN" 2>/dev/null
+}
+
 detect_codesign_identity() {
     if [ -n "${CODESIGN_IDENTITY:-}" ]; then echo "$CODESIGN_IDENTITY"; return; fi
-    # Over SSH, adhoc-sign by default: `codesign` with a Developer ID identity needs the login
-    # keychain's private key, which an SSH session can't unlock (fails errSecInternalComponent),
-    # so a remote `build-app.sh` would break and force a manual local build. Adhoc needs no keychain
-    # and is fine for dev/local installs (Developer ID + notarization is only for releases via
-    # Scripts/release.sh, run locally). Set FORCE_DEVID=1 to Dev-ID-sign over SSH anyway.
-    if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then echo "-"; return; fi
+    # Over SSH the login keychain is unreachable (Dev-ID codesign → errSecInternalComponent), so we
+    # adhoc-sign UNLESS a dedicated signing keychain is set up — then Dev-ID-sign from it (stable
+    # identity → TCC grants survive rebuilds). Adhoc fallback keeps remote builds working anywhere
+    # the keychain isn't set up. FORCE_DEVID=1 also forces the login-keychain path.
+    if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then
+        if unlock_signing_keychain; then
+            local devid
+            devid=$(security find-identity -v -p codesigning "$SIGN_KEYCHAIN" 2>/dev/null \
+                | grep -E '"Developer ID Application:' | head -1 \
+                | sed -E 's/.*"(Developer ID Application:[^"]+)".*/\1/')
+            [ -n "$devid" ] && { echo "$devid"; return; }
+        fi
+        echo "-"; return
+    fi
     local devid
     devid=$(security find-identity -v -p codesigning 2>/dev/null \
         | grep -E '"Developer ID Application:' | head -1 \
@@ -110,6 +129,8 @@ detect_codesign_identity() {
     [ -n "$devid" ] && echo "$devid" || echo "-"
 }
 CODESIGN_ID="$(detect_codesign_identity)"
+# Ensure the keychain is unlocked in THIS shell too (detect ran in a subshell) before codesign.
+[ "$CODESIGN_ID" != "-" ] && [ -n "${SSH_CONNECTION:-}" ] && unlock_signing_keychain || true
 
 sign_one() {
     local target="$1"
