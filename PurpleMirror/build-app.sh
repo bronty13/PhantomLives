@@ -97,6 +97,12 @@ PLIST
 # --- Codesign (Sparkle nested executables inside-out, then the app) ---
 detect_codesign_identity() {
     if [ -n "${CODESIGN_IDENTITY:-}" ]; then echo "$CODESIGN_IDENTITY"; return; fi
+    # Over SSH, adhoc-sign by default: `codesign` with a Developer ID identity needs the login
+    # keychain's private key, which an SSH session can't unlock (fails errSecInternalComponent),
+    # so a remote `build-app.sh` would break and force a manual local build. Adhoc needs no keychain
+    # and is fine for dev/local installs (Developer ID + notarization is only for releases via
+    # Scripts/release.sh, run locally). Set FORCE_DEVID=1 to Dev-ID-sign over SSH anyway.
+    if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${FORCE_DEVID:-}" ]; then echo "-"; return; fi
     local devid
     devid=$(security find-identity -v -p codesigning 2>/dev/null \
         | grep -E '"Developer ID Application:' | head -1 \
