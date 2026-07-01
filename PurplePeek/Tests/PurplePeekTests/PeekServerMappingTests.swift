@@ -97,6 +97,23 @@ final class PeekServerMappingTests: XCTestCase {
         XCTAssertEqual(detail.albums, ["Highlights"])
     }
 
+    // MARK: Settings tolerance (adding a field must not wipe saved settings)
+
+    func testSettingsDecodeToleratesMissingKeys() throws {
+        // Simulate settings saved by an OLDER build (no remoteRootOrg, before that field existed).
+        // A connection that WAS configured must survive; absent fields fall back to defaults.
+        let oldJSON = """
+        {"defaultMode":"folderBrowse","appearance":"system","themeName":"Purple Dusk",
+         "peekServerEnabled":true,"peekServerHost":"AIRY.local","peekServerPort":8788,"peekServerUser":"peek"}
+        """
+        let s = try JSONDecoder().decode(AppSettings.self, from: Data(oldJSON.utf8))
+        XCTAssertTrue(s.peekServerEnabled)            // preserved — connection NOT lost
+        XCTAssertEqual(s.peekServerHost, "AIRY.local")
+        XCTAssertEqual(s.remoteRootOrg, [:])          // new field → default, no decode failure
+        XCTAssertTrue(s.dedupeEnabled)                // untouched field → its default
+        XCTAssertEqual(s.backupRetentionDays, 14)
+    }
+
     // MARK: Connection + auth
 
     func testConnectionAccountAndBaseURL() {
