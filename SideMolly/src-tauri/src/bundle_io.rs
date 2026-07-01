@@ -388,6 +388,53 @@ mod tests {
     }
 
     #[test]
+    fn split_parts_reassemble_and_verify() {
+        // End-to-end reassembly contract: a REAL Molly-format outer zip,
+        // byte-split into parts (as Molly does) then concatenated back (as
+        // SideMolly's reassemble_part_set does), must pass verify_outer_zip —
+        // and an incomplete reassembly (a dropped part) must NOT.
+        let dir = TempDir::new().unwrap();
+        let (outer, _hashes) = build_fixture_zip(
+            "2026-07-01-0001",
+            &[
+                ("info.md", b"# Split test\n"),
+                ("Molly.log", b"Bundle UID: 2026-07-01-0001\n"),
+                ("Video/00001_clip.mp4", b"pretend-video-bytes-abcdefghijklmnop-0123456789"),
+            ],
+        );
+
+        // Byte-split into 3 parts (mirrors Molly's split_bytes_into_parts).
+        let cap = (outer.len() + 2) / 3;
+        let mut parts: Vec<Vec<u8>> = Vec::new();
+        let mut i = 0;
+        while i * cap < outer.len() {
+            let start = i * cap;
+            let end = ((i + 1) * cap).min(outer.len());
+            parts.push(outer[start..end].to_vec());
+            i += 1;
+        }
+        assert!(parts.len() >= 2, "expected a multi-part split");
+
+        // Concatenate in order (mirrors reassemble_part_set) → must equal the
+        // original AND verify cleanly.
+        let reassembled: Vec<u8> = parts.concat();
+        assert_eq!(reassembled, outer, "parts concatenate back to the whole");
+        let p = write_outer(&dir, "reassembled.zip", &reassembled);
+        let v = verify_outer_zip(&p).expect("reassembled bundle verifies");
+        assert_eq!(v.hashes.bundle_uid, "2026-07-01-0001");
+
+        // A missing final part → incomplete bytes → must fail verify (this is
+        // why no separate whole-zip checksum is needed: the hash chain catches
+        // a wrong/incomplete reassembly).
+        let incomplete: Vec<u8> = parts[..parts.len() - 1].concat();
+        let bad = write_outer(&dir, "incomplete.zip", &incomplete);
+        assert!(
+            verify_outer_zip(&bad).is_err(),
+            "an incomplete reassembly must not verify",
+        );
+    }
+
+    #[test]
     fn mismatched_inner_hash_is_caught() {
         let dir = TempDir::new().unwrap();
         let (mut outer, _hashes) = build_fixture_zip(

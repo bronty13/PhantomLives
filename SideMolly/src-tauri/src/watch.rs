@@ -279,6 +279,10 @@ fn reassemble_part_set(
         return Ok(None);
     }
 
+    // Note: we don't wait for the final part's write to settle. If a
+    // GB-sized last part is still flushing when the debounced event fires,
+    // the concat produces a short zip that fails verify — harmless, the next
+    // event (or launch scan) retries once it's complete. Eventually consistent.
     std::fs::create_dir_all(&staging_dir)?;
     let tmp = staging_dir.join(format!("{base}.reassembling"));
     {
