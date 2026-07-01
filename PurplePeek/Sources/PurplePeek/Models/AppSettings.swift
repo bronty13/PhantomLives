@@ -28,6 +28,14 @@ struct AppSettings: Codable, Equatable {
     var scanRootAutoCleanupEnabled: Bool = false
     var scanRootAutoCleanupDays: Int = 180
 
+    // PeekServer remote mode. When enabled + a host is set, PurplePeek acts as a LAN client of a
+    // PeekServer instance (all roots/items/decisions come from it) instead of local folders. The
+    // password is NOT here — it lives in the Keychain (see KeychainStore), keyed by user@host:port.
+    var peekServerEnabled: Bool = false
+    var peekServerHost: String = ""
+    var peekServerPort: Int = 8788
+    var peekServerUser: String = ""
+
     // Backup (PhantomLives auto-backup-on-launch standard)
     var autoBackupEnabled: Bool = true
     var backupPath: String = ""                         // empty ⇒ ~/Downloads/PurplePeek backup

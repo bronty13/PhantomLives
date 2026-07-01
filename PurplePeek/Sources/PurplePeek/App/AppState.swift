@@ -152,7 +152,15 @@ final class AppState: ObservableObject {
 
     // MARK: - Sub-stores / services
     let settingsStore = SettingsStore()
+    /// Concrete local store — always used for local-only ops (scanning, dedup hashing, sidebar
+    /// sections, keyword *vocabulary*, scan-root management), regardless of mode.
     private let db = DatabaseService.shared
+    /// The active data source for the reviewable set (roots/items) + decision writes. Points at
+    /// `db` in local mode, or a `RemotePeekDataSource` when connected to a PeekServer. Rebuilt by
+    /// `rebuildDataSource()` at init and whenever the connection settings change.
+    private var dataSource: DataSource = DatabaseService.shared
+    /// True when connected to a PeekServer (roots/items/decisions are remote).
+    var isRemote: Bool { !(dataSource is DatabaseService) }
     private var settingsObserver: AnyCancellable?
 
     /// FSEvents watcher for the selected scan root (auto-rescan). Created lazily; only active
@@ -200,6 +208,42 @@ final class AppState: ObservableObject {
         // Honor the user's default mode for a fresh launch.
         appMode = settings.defaultMode
         if settings.scanRootAutoCleanupEnabled { cleanupOldScanRoots(announce: false) }
+        rebuildDataSource()
+        reloadAll()
+    }
+
+    /// Point `dataSource` at a PeekServer (remote mode) or back at local GRDB, from current
+    /// settings + Keychain. Call after changing the connection, then `reloadAll()` to refetch.
+    func rebuildDataSource() {
+        if settings.peekServerEnabled, !settings.peekServerHost.isEmpty {
+            let conn = PeekServerConnection(host: settings.peekServerHost,
+                                            port: settings.peekServerPort,
+                                            user: settings.peekServerUser)
+            let pw = KeychainStore.password(account: conn.account) ?? ""
+            dataSource = RemotePeekDataSource(connection: conn, password: pw)
+        } else {
+            dataSource = db
+        }
+        // A mode change invalidates the current selection's media set.
+        selectedRootPath = nil
+        selectedFolderPath = nil
+    }
+
+    /// Apply an edited PeekServer connection: persist the password to the Keychain, flip settings,
+    /// rebuild the data source, and refetch everything. Pass an empty host (or enabled=false) to
+    /// return to local mode.
+    func applyPeekServerConnection(enabled: Bool, host: String, port: Int, user: String, password: String) {
+        var s = settings
+        s.peekServerEnabled = enabled
+        s.peekServerHost = host
+        s.peekServerPort = port
+        s.peekServerUser = user
+        settings = s
+        if enabled, !host.isEmpty {
+            let conn = PeekServerConnection(host: host, port: port, user: user)
+            if !password.isEmpty { KeychainStore.setPassword(password, account: conn.account) }
+        }
+        rebuildDataSource()
         reloadAll()
     }
 
@@ -213,8 +257,12 @@ final class AppState: ObservableObject {
     }
 
     func reloadScanRoots() {
-        do { scanRoots = try db.fetchAllScanRoots() }
-        catch { errorMessage = error.localizedDescription }
+        // Fire-and-forget async so the same call works for both local (runs inline on the main
+        // actor) and remote (suspends on URLSession) data sources; @Published mutation stays on main.
+        Task {
+            do { scanRoots = try await dataSource.fetchAllScanRoots() }
+            catch { errorMessage = error.localizedDescription }
+        }
     }
 
     func reloadSections() {
@@ -231,8 +279,10 @@ final class AppState: ObservableObject {
     /// Refresh the bulk file→keyword-names map (cheap; one query). Call after any keyword
     /// assignment change so the grid's tag labels and "Tagged only" filter stay in sync.
     func reloadFileKeywordNames() {
-        do { fileKeywordNames = try db.allFileKeywordNames() }
-        catch { errorMessage = error.localizedDescription }
+        Task {
+            do { fileKeywordNames = try await dataSource.allFileKeywordNames() }
+            catch { errorMessage = error.localizedDescription }
+        }
     }
 
     /// Sorted keyword names assigned to `id` (empty when untagged) — read by the grid/list cells.
@@ -248,12 +298,14 @@ final class AppState: ObservableObject {
             recomputeDerived()
             return
         }
-        do { mediaFiles = try db.fetchMediaFiles(scanRoot: root) }
-        catch { errorMessage = error.localizedDescription }
-        rebuildIndex()
-        rebuildDuplicateIndex()
-        rebuildFolderTree()
-        recomputeDerived()
+        Task {
+            do { mediaFiles = try await dataSource.fetchMediaFiles(scanRoot: root) }
+            catch { errorMessage = error.localizedDescription }
+            rebuildIndex()
+            rebuildDuplicateIndex()
+            rebuildFolderTree()
+            recomputeDerived()
+        }
     }
 
     // MARK: - Duplicate index (exact-content groups)
@@ -579,11 +631,13 @@ final class AppState: ObservableObject {
     func selectFile(_ id: String?) {
         selectedFileId = id
         guard let id else { selectedKeywordIds = []; selectedAlbums = []; return }
-        do {
-            selectedKeywordIds = Set(try db.keywordIds(forFile: id))
-            selectedAlbums = try db.albums(forFile: id)
-        } catch {
-            errorMessage = error.localizedDescription
+        // Keyword IDs are a local-vocabulary concept (remote keyword tagging lands in P5); albums are
+        // per-file review state → through the active data source.
+        do { selectedKeywordIds = Set(try db.keywordIds(forFile: id)) }
+        catch { errorMessage = error.localizedDescription }
+        Task {
+            do { selectedAlbums = try await dataSource.albums(forFile: id) }
+            catch { errorMessage = error.localizedDescription }
         }
     }
 
@@ -620,13 +674,13 @@ final class AppState: ObservableObject {
             if decisionUndoStack.count > 50 { decisionUndoStack.removeFirst() }
         }
 
-        do {
-            for mid in members {
-                try db.updateKeep(id: mid, keep: value, now: now)
-                patchLocal(mid) { $0.keepDecision = keep }
-            }
-            recomputeDerived()   // keep affects the undecided queue + grid badge
-        } catch { errorMessage = error.localizedDescription }
+        // Optimistic: patch the UI now, persist in the background. On failure, resync from source.
+        for mid in members { patchLocal(mid) { $0.keepDecision = keep } }
+        recomputeDerived()   // keep affects the undecided queue + grid badge
+        Task {
+            do { for mid in members { try await dataSource.updateKeep(id: mid, keep: value, now: now) } }
+            catch { errorMessage = error.localizedDescription; reloadMediaFiles() }
+        }
 
         // Keeping an audio file copies it to the Kept Audio Export folder (once).
         if keep == true, let f = mediaFiles.first(where: { $0.id == id }),
@@ -640,58 +694,67 @@ final class AppState: ObservableObject {
     func undoLastDecision() {
         guard let last = decisionUndoStack.popLast() else { return }
         let now = BackupService.isoNow()
-        do {
-            for change in last.changes {                          // restore every affected copy
-                try db.updateKeep(id: change.id, keep: change.previousKeep, now: now)
-                patchLocal(change.id) { $0.keep = change.previousKeep }   // bypasses setKeep → no re-push
+        for change in last.changes {                          // restore every affected copy (optimistic)
+            patchLocal(change.id) { $0.keep = change.previousKeep }
+        }
+        recomputeDerived()
+        if let firstId = last.changes.first?.id {
+            selectFile(firstId)
+            if appMode == .preview, let idx = previewQueue.firstIndex(where: { $0.id == firstId }) {
+                previewIndex = idx
             }
-            recomputeDerived()
-            if let firstId = last.changes.first?.id {
-                selectFile(firstId)
-                if appMode == .preview, let idx = previewQueue.firstIndex(where: { $0.id == firstId }) {
-                    previewIndex = idx
-                }
-            }
-            statusMessage = "Undid decision for \(last.fileName)."
-        } catch { errorMessage = error.localizedDescription }
+        }
+        statusMessage = "Undid decision for \(last.fileName)."
+        Task {
+            do { for change in last.changes { try await dataSource.updateKeep(id: change.id, keep: change.previousKeep, now: now) } }
+            catch { errorMessage = error.localizedDescription; reloadMediaFiles() }
+        }
     }
 
     func setFavorite(_ id: String, _ value: Bool) {
         let now = BackupService.isoNow()
-        do {
-            try db.updateFavorite(id: id, isFavorite: value, now: now)
-            patchLocal(id) { $0.isFavorite = value }
-            recomputeDerived()   // refresh the cached copy so the grid heart badge updates
-        } catch { errorMessage = error.localizedDescription }
+        let prev = mediaFiles.first(where: { $0.id == id })?.isFavorite ?? !value
+        patchLocal(id) { $0.isFavorite = value }
+        recomputeDerived()   // refresh the cached copy so the grid heart badge updates
+        Task {
+            do { try await dataSource.updateFavorite(id: id, isFavorite: value, now: now) }
+            catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.isFavorite = prev }; recomputeDerived() }
+        }
     }
 
     func setHidden(_ id: String, _ value: Bool) {
         let now = BackupService.isoNow()
-        do {
-            try db.updateHidden(id: id, isHidden: value, now: now)
-            patchLocal(id) { $0.isHidden = value }
-            recomputeDerived()   // refresh the cached copy so the grid hidden badge updates
-        } catch { errorMessage = error.localizedDescription }
+        let prev = mediaFiles.first(where: { $0.id == id })?.isHidden ?? !value
+        patchLocal(id) { $0.isHidden = value }
+        recomputeDerived()   // refresh the cached copy so the grid hidden badge updates
+        Task {
+            do { try await dataSource.updateHidden(id: id, isHidden: value, now: now) }
+            catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.isHidden = prev }; recomputeDerived() }
+        }
     }
 
     func setTitle(_ id: String, _ value: String?) {
         let now = BackupService.isoNow()
         let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         let stored = (clean?.isEmpty ?? true) ? nil : clean
-        do {
-            try db.updateTitle(id: id, title: stored, now: now)
-            patchLocal(id) { $0.title = stored }
-        } catch { errorMessage = error.localizedDescription }
+        let prev = mediaFiles.first(where: { $0.id == id })?.title
+        patchLocal(id) { $0.title = stored }
+        Task {
+            do { try await dataSource.updateTitle(id: id, title: stored, now: now) }
+            catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.title = prev } }
+        }
     }
 
     func setCaption(_ id: String, _ value: String?) {
         let now = BackupService.isoNow()
         let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         let stored = (clean?.isEmpty ?? true) ? nil : clean
-        do {
-            try db.updateCaption(id: id, caption: stored, now: now)
-            patchLocal(id) { $0.caption = stored }
-        } catch { errorMessage = error.localizedDescription }
+        let prev = mediaFiles.first(where: { $0.id == id })?.caption
+        patchLocal(id) { $0.caption = stored }
+        Task {
+            do { try await dataSource.updateCaption(id: id, caption: stored, now: now) }
+            catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.caption = prev } }
+        }
     }
 
     // MARK: - Keywords
@@ -790,15 +853,21 @@ final class AppState: ObservableObject {
         guard !trimmed.isEmpty, !selectedAlbums.contains(trimmed) else { return }
         selectedAlbums.append(trimmed)
         selectedAlbums.sort()
-        do { try db.setAlbums(fileId: fileId, albumNames: selectedAlbums) }
-        catch { errorMessage = error.localizedDescription }
+        let albums = selectedAlbums
+        Task {
+            do { try await dataSource.setAlbums(fileId: fileId, albumNames: albums) }
+            catch { errorMessage = error.localizedDescription }
+        }
     }
 
     func removeAlbum(_ name: String) {
         guard let fileId = selectedFileId else { return }
         selectedAlbums.removeAll { $0 == name }
-        do { try db.setAlbums(fileId: fileId, albumNames: selectedAlbums) }
-        catch { errorMessage = error.localizedDescription }
+        let albums = selectedAlbums
+        Task {
+            do { try await dataSource.setAlbums(fileId: fileId, albumNames: albums) }
+            catch { errorMessage = error.localizedDescription }
+        }
     }
 
     // MARK: - Audio keep-export
