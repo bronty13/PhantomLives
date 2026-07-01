@@ -149,6 +149,10 @@ final class AppState: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var statusMessage: String?
+    /// Remote decision writes queued but not yet confirmed by the server (offline write queue) —
+    /// drives the "unsaved" pill so pending state is visible, never silent.
+    @Published private(set) var pendingWriteCount = 0
+    private var writeQueue: RemoteWriteQueue?
 
     // MARK: - Sub-stores / services
     let settingsStore = SettingsStore()
@@ -219,12 +223,16 @@ final class AppState: ObservableObject {
     /// Point `dataSource` at a PeekServer (remote mode) or back at local GRDB, from current
     /// settings + Keychain. Call after changing the connection, then `reloadAll()` to refetch.
     func rebuildDataSource() {
+        writeQueue?.shutdown()
+        writeQueue = nil
+        pendingWriteCount = 0
         if settings.peekServerEnabled, !settings.peekServerHost.isEmpty {
             let conn = PeekServerConnection(host: settings.peekServerHost,
                                             port: settings.peekServerPort,
                                             user: settings.peekServerUser)
             let pw = KeychainStore.password(account: conn.account) ?? ""
             dataSource = RemotePeekDataSource(connection: conn, password: pw)
+            writeQueue = makeWriteQueue(account: conn.account)
         } else {
             dataSource = db
         }
@@ -234,6 +242,43 @@ final class AppState: ObservableObject {
         // A mode change invalidates the current selection's media set.
         selectedRootPath = nil
         selectedFolderPath = nil
+    }
+
+    /// Build the offline write queue for a remote connection: pending decision writes persist
+    /// per server account, coalesce per file+field, replay in order, and retry on reconnect —
+    /// so a Wi-Fi blip mid-triage can no longer silently revert decisions. The count feeds the
+    /// "unsaved" pill; a permanent failure (e.g. the item was deleted server-side) is dropped
+    /// with a visible error instead of wedging the queue.
+    private func makeWriteQueue(account: String) -> RemoteWriteQueue {
+        let queue = RemoteWriteQueue(storeURL: RemoteWriteQueue.storeURL(account: account)) { [weak self] write in
+            guard let self else { return }
+            let now = BackupService.isoNow()
+            switch write.kind {
+            case .keep:     try await self.dataSource.updateKeep(id: write.fileId, keep: write.intValue, now: now)
+            case .favorite: try await self.dataSource.updateFavorite(id: write.fileId, isFavorite: write.boolValue ?? false, now: now)
+            case .hidden:   try await self.dataSource.updateHidden(id: write.fileId, isHidden: write.boolValue ?? false, now: now)
+            case .title:    try await self.dataSource.updateTitle(id: write.fileId, title: write.stringValue, now: now)
+            case .caption:  try await self.dataSource.updateCaption(id: write.fileId, caption: write.stringValue, now: now)
+            case .keywords: try await self.dataSource.setKeywordNames(fileId: write.fileId, names: write.listValue ?? [])
+            case .albums:   try await self.dataSource.setAlbums(fileId: write.fileId, albumNames: write.listValue ?? [])
+            }
+        }
+        queue.onCountChange = { [weak self] count in self?.pendingWriteCount = count }
+        queue.onPermanentFailure = { [weak self] write, error in
+            self?.errorMessage = "Couldn't save \(write.kind.rawValue) for \(write.fileName.isEmpty ? write.fileId : write.fileName): \(error.localizedDescription)"
+        }
+        pendingWriteCount = queue.pending.count   // restored writes from a previous session
+        return queue
+    }
+
+    /// Submit a remote write through the offline queue (created in remote mode); the optimistic
+    /// UI patch stays put — the queue guarantees delivery or a visible failure.
+    private func enqueueRemote(_ write: PendingWrite) {
+        writeQueue?.submit(write)
+    }
+
+    private func fileName(for id: String) -> String {
+        mediaFiles.first(where: { $0.id == id })?.fileName ?? ""
     }
 
     /// Apply an edited PeekServer connection: persist the password to the Keychain, flip settings,
@@ -774,12 +819,18 @@ final class AppState: ObservableObject {
             if decisionUndoStack.count > 50 { decisionUndoStack.removeFirst() }
         }
 
-        // Optimistic: patch the UI now, persist in the background. On failure, resync from source.
+        // Optimistic: patch the UI now, persist in the background. Remote goes through the
+        // offline write queue (a connectivity blip queues + retries instead of the old
+        // resync-from-server, which silently reverted the decision); local failures resync.
         for mid in members { patchLocal(mid) { $0.keepDecision = keep } }
         recomputeDerived()   // keep affects the undecided queue + grid badge
-        Task {
-            do { for mid in members { try await dataSource.updateKeep(id: mid, keep: value, now: now) } }
-            catch { errorMessage = error.localizedDescription; reloadMediaFiles() }
+        if isRemote {
+            for mid in members { enqueueRemote(.keep(fileId: mid, fileName: fileName(for: mid), value: value)) }
+        } else {
+            Task {
+                do { for mid in members { try await dataSource.updateKeep(id: mid, keep: value, now: now) } }
+                catch { errorMessage = error.localizedDescription; reloadMediaFiles() }
+            }
         }
 
         // Keeping an audio file copies it to the Kept Audio Export folder (once).
@@ -805,9 +856,13 @@ final class AppState: ObservableObject {
             }
         }
         statusMessage = "Undid decision for \(last.fileName)."
-        Task {
-            do { for change in last.changes { try await dataSource.updateKeep(id: change.id, keep: change.previousKeep, now: now) } }
-            catch { errorMessage = error.localizedDescription; reloadMediaFiles() }
+        if isRemote {
+            for change in last.changes { enqueueRemote(.keep(fileId: change.id, fileName: fileName(for: change.id), value: change.previousKeep)) }
+        } else {
+            Task {
+                do { for change in last.changes { try await dataSource.updateKeep(id: change.id, keep: change.previousKeep, now: now) } }
+                catch { errorMessage = error.localizedDescription; reloadMediaFiles() }
+            }
         }
     }
 
@@ -816,6 +871,10 @@ final class AppState: ObservableObject {
         let prev = mediaFiles.first(where: { $0.id == id })?.isFavorite ?? !value
         patchLocal(id) { $0.isFavorite = value }
         recomputeDerived()   // refresh the cached copy so the grid heart badge updates
+        if isRemote {
+            enqueueRemote(.favorite(fileId: id, fileName: fileName(for: id), value: value))
+            return
+        }
         Task {
             do { try await dataSource.updateFavorite(id: id, isFavorite: value, now: now) }
             catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.isFavorite = prev }; recomputeDerived() }
@@ -827,37 +886,32 @@ final class AppState: ObservableObject {
         let prev = mediaFiles.first(where: { $0.id == id })?.isHidden ?? !value
         patchLocal(id) { $0.isHidden = value }
         recomputeDerived()   // refresh the cached copy so the grid hidden badge updates
+        if isRemote {
+            enqueueRemote(.hidden(fileId: id, fileName: fileName(for: id), value: value))
+            return
+        }
         Task {
             do { try await dataSource.updateHidden(id: id, isHidden: value, now: now) }
             catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.isHidden = prev }; recomputeDerived() }
         }
     }
 
-    /// Per-field pending remote text writes, keyed "title:<id>" / "caption:<id>" — see
-    /// `scheduleRemoteTextWrite`.
+    /// Per-field debounce timers for remote text write-through, keyed "title:<id>" etc.
     private var pendingTextWrites: [String: Task<Void, Never>] = [:]
 
-    /// Debounce + strictly order a remote title/caption write. The write-through UI calls
-    /// setTitle/setCaption on EVERY keystroke; posting each keystroke as its own independent Task
-    /// meant (a) N POSTs for an N-character title and (b) no ordering guarantee — keystroke N's
-    /// POST could land after N+1's and persist a stale prefix. Each new edit cancels the pending
-    /// (still-sleeping) write, and a write that does fire first awaits its predecessor, so at most
-    /// one write per field is on the wire and they arrive in edit order. Local mode keeps the
-    /// original inline write (synchronous GRDB is already ordered and cheap).
-    private func scheduleRemoteTextWrite(key: String,
-                                         write: @escaping () async throws -> Void,
-                                         revert: @escaping () -> Void) {
-        let previous = pendingTextWrites[key]
-        previous?.cancel()
-        pendingTextWrites[key] = Task { [weak self] in
+    /// Debounce a remote title/caption write-through, then hand it to the offline write queue.
+    /// The UI calls setTitle/setCaption on EVERY keystroke; posting each keystroke as its own
+    /// independent Task meant N POSTs for an N-character title with no ordering guarantee
+    /// (keystroke N could land after N+1 and persist a stale prefix). The queue coalesces
+    /// per file+field and replays strictly in order; the debounce just avoids churning the
+    /// queue's persist file per keystroke. Local mode keeps the original inline write
+    /// (synchronous GRDB is already ordered and cheap).
+    private func debounceRemoteWrite(key: String, _ submit: @escaping @MainActor () -> Void) {
+        pendingTextWrites[key]?.cancel()
+        pendingTextWrites[key] = Task {
             try? await Task.sleep(nanoseconds: 400_000_000)
             if Task.isCancelled { return }        // superseded by a newer edit
-            _ = await previous?.value             // serialize behind any in-flight predecessor
-            do { try await write() }
-            catch {
-                self?.errorMessage = error.localizedDescription
-                revert()
-            }
+            submit()
         }
     }
 
@@ -868,10 +922,8 @@ final class AppState: ObservableObject {
         let prev = mediaFiles.first(where: { $0.id == id })?.title
         patchLocal(id) { $0.title = stored }
         if isRemote {
-            scheduleRemoteTextWrite(key: "title:\(id)") { [dataSource] in
-                try await dataSource.updateTitle(id: id, title: stored, now: now)
-            } revert: { [weak self] in
-                self?.patchLocal(id) { $0.title = prev }
+            debounceRemoteWrite(key: "title:\(id)") { [weak self] in
+                self?.enqueueRemote(.title(fileId: id, fileName: self?.fileName(for: id) ?? "", value: stored))
             }
         } else {
             Task {
@@ -888,10 +940,8 @@ final class AppState: ObservableObject {
         let prev = mediaFiles.first(where: { $0.id == id })?.caption
         patchLocal(id) { $0.caption = stored }
         if isRemote {
-            scheduleRemoteTextWrite(key: "caption:\(id)") { [dataSource] in
-                try await dataSource.updateCaption(id: id, caption: stored, now: now)
-            } revert: { [weak self] in
-                self?.patchLocal(id) { $0.caption = prev }
+            debounceRemoteWrite(key: "caption:\(id)") { [weak self] in
+                self?.enqueueRemote(.caption(fileId: id, fileName: self?.fileName(for: id) ?? "", value: stored))
             }
         } else {
             Task {
@@ -959,14 +1009,19 @@ final class AppState: ObservableObject {
             selectedKeywordIds.insert(keywordId)
         }
         // Optimistic: update the bulk map now so the tag label + "Tagged only" filter react, then
-        // persist by NAME through the active data source (local maps names→ids; remote POSTs names).
+        // persist by NAME through the active data source (local maps names→ids; remote POSTs names
+        // via the offline queue — a blip queues + retries; only a permanent failure surfaces).
         let names = selectedKeywordNames()
         fileKeywordNames[fileId] = names.isEmpty ? nil : names
         if showTaggedOnly { recomputeDerived() }
+        if isRemote {
+            enqueueRemote(.keywords(fileId: fileId, fileName: fileName(for: fileId), names: names))
+            return
+        }
         Task {
             do { try await dataSource.setKeywordNames(fileId: fileId, names: names) }
             catch {
-                // The server never stored it — showing the tag anyway would be silent divergence.
+                // The store never took it — showing the tag anyway would be silent divergence.
                 errorMessage = error.localizedDescription
                 fileKeywordNames[fileId] = prevNames
                 if selectedFileId == fileId { selectedKeywordIds = prevSelected }
@@ -1008,6 +1063,10 @@ final class AppState: ObservableObject {
         selectedAlbums.append(trimmed)
         selectedAlbums.sort()
         let albums = selectedAlbums
+        if isRemote {
+            enqueueRemote(.albums(fileId: fileId, fileName: fileName(for: fileId), names: albums))
+            return
+        }
         Task {
             do { try await dataSource.setAlbums(fileId: fileId, albumNames: albums) }
             catch {
@@ -1022,6 +1081,10 @@ final class AppState: ObservableObject {
         let prev = selectedAlbums
         selectedAlbums.removeAll { $0 == name }
         let albums = selectedAlbums
+        if isRemote {
+            enqueueRemote(.albums(fileId: fileId, fileName: fileName(for: fileId), names: albums))
+            return
+        }
         Task {
             do { try await dataSource.setAlbums(fileId: fileId, albumNames: albums) }
             catch {

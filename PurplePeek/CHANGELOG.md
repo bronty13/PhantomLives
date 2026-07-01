@@ -5,6 +5,29 @@ All notable changes to PurplePeek are documented here. Versions are git-derived
 
 ## Unreleased
 
+### Offline write queue: decisions survive connectivity blips
+
+Remote-mode decisions (keep/skip, favorite, hidden, title, caption, keywords, albums) now go
+through a **persistent offline write queue** (`RemoteWriteQueue`) instead of fire-and-forget
+POSTs. Previously, a write that failed because the server was briefly unreachable either
+**silently reverted** your decision on the next resync (keep/skip) or reverted the optimistic UI
+(tags/albums) — triaging through a 10-second Wi-Fi blip quietly lost work. Now:
+
+- Every remote write **persists to disk immediately** (per server account, under Application
+  Support), so even quitting the app mid-outage loses nothing — pending writes replay on the
+  next connect.
+- Writes **coalesce** per file+field (only the newest value is sent — also collapsing the
+  per-keystroke title/caption stream) and **replay strictly in order**, sent one at a time.
+- Transient failures (connection refused/lost/timeout, HTTP 5xx) **retry automatically** — with
+  backoff, and immediately when the network path comes back (`NWPathMonitor`).
+- Permanent failures (HTTP 4xx — e.g. the item was deleted server-side) are dropped **with a
+  visible error** naming the file, so an unsendable write can't wedge the queue.
+- An orange **"N unsaved" pill** (bottom-right) shows whenever confirmed-unsent decisions exist,
+  and disappears as the queue drains.
+
++9 tests (coalescing, ordering, retryable-vs-permanent classification, outage recovery,
+relaunch persistence, nil-value round-trip) → 59 total.
+
 ### Remote-mode latency & robustness overhaul (audit-driven; full report in `~/Downloads/PPeek Audit/`)
 
 The client-side companion to PeekServer 0.6.0/0.7.0. The audit found four compounding

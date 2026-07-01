@@ -88,10 +88,14 @@ one authoritative review state.
   `interactive` session (short timeouts, disk URLCache — the server's immutable/ETag headers do
   the caching) and a `bulk` session (whole-original pulls, separate pool). Don't reintroduce
   `URLSession.shared`.
-- **Writes are optimistic** (`patchLocal` then POST): keep/favorite/hidden revert or resync on
-  failure; title/caption are debounced + strictly ordered per field (`scheduleRemoteTextWrite`);
-  keyword/album failures revert. Known gap: no offline write queue — a decision made during a
-  connectivity blip surfaces an error and resyncs to server truth.
+- **Writes are optimistic + queued** (`patchLocal`, then `RemoteWriteQueue.submit`): every
+  remote mutation enters a persistent offline queue (`Services/RemoteWriteQueue.swift`) that
+  coalesces per file+field, replays strictly in order, retries transient failures on reconnect
+  (NWPathMonitor + backoff), drops permanent (4xx) failures with a visible error, and survives
+  relaunch (per-account JSON store). `AppState.pendingWriteCount` drives the orange "N unsaved"
+  pill in `ContentView`. Route any NEW remote mutation through the queue, not a bare Task —
+  fire-and-forget is how decisions used to get silently lost in Wi-Fi blips. Local mode keeps
+  inline GRDB writes.
 - `QuickLookCoordinator.prewarm` pre-downloads **photos only** (size-capped, cancelled on the
   next selection) so spacebar peeks are synchronous; videos stream on demand.
 
@@ -133,6 +137,7 @@ Sources/PurplePeek/
     PeekServerClient.swift   PeekServer HTTP client (wire DTOs, PeekMediaProvider URL builder)
     RemotePeekDataSource.swift  DataSource over PeekServerClient (DTO→model mapping, parallel paging)
     RemoteMedia.swift        LocalReachability (cached SMB-vs-HTTP probe) + PeekTransport sessions
+    RemoteWriteQueue.swift   persistent offline queue for remote decision writes (coalesce/order/retry)
     KeychainStore.swift      PeekServer password storage (device-only Keychain)
     SettingsStore.swift      AppSettings ⇄ UserDefaults; computed default output paths
     Utilities.swift          Array.chunked, small helpers

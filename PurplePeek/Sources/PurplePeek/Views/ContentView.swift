@@ -46,6 +46,7 @@ struct ContentView: View {
             DeleteConfirmationView(kind: kind).environmentObject(appState)
         }
         .overlay(alignment: .bottom) { statusToast }
+        .overlay(alignment: .bottomTrailing) { pendingWritesPill }
         .alert("Something went wrong",
                isPresented: Binding(get: { appState.errorMessage != nil },
                                     set: { if !$0 { appState.errorMessage = nil } })) {
@@ -77,6 +78,23 @@ struct ContentView: View {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 if appState.statusMessage == status { appState.statusMessage = nil }
             }
+        }
+    }
+
+    /// Remote decisions the offline write queue hasn't confirmed yet — visible so a connectivity
+    /// blip is never silent. Disappears the moment the queue drains (it retries automatically
+    /// when the network returns).
+    @ViewBuilder
+    private var pendingWritesPill: some View {
+        if appState.pendingWriteCount > 0 {
+            Label("\(appState.pendingWriteCount) unsaved", systemImage: "arrow.triangle.2.circlepath")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(.orange.opacity(0.9), in: Capsule())
+                .foregroundStyle(.white)
+                .padding([.bottom, .trailing], 12)
+                .help("Decisions saved locally and waiting for the PeekServer connection — they retry automatically.")
+                .transition(.opacity)
         }
     }
 
