@@ -42,7 +42,7 @@ make a broken file by accident.
 
 ---
 
-## 3. 🛟 I won't let a broken video slip through anymore
+## 3. 🛡️ I won't let a broken video slip through anymore
 
 This is the big, quiet one. Before, if a squish got interrupted (usually from
 low disk), the video could come out **damaged but still look finished** — and it
@@ -62,10 +62,10 @@ it out fast. You never have to look at it — it's just there if we need it. �
 
 ---
 
-## 🪟 Updating on your Windows machine
+## 🖥️ Updating on your Windows machine
 
 Open me → **Settings → Updates → Check for updates** and let me swoop in! Or grab
-the fresh installer from the release page if the in-app updater is being shy. 🩷
+the fresh installer from the release page if the in-app updater is being shy. 💗
 
 *(Tiny honesty note: I'm built and tested on Robert's Mac. Will you give the new
 bits a little squeeze on Windows for me? Try a **🗜️ Squish**, and publish a

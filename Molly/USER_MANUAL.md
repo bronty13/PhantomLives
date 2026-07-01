@@ -685,7 +685,7 @@ A few little things to know:
 - **Big videos take a few minutes.** A long 4K clip has a *lot* of pixels to tuck in! The progress bar keeps you company the whole time. 🗜️
 - **Already under 1 GB?** I'll say so — but you can still squish it smaller if you want a tinier file.
 - It works on your videos right from your computer — nothing ever gets uploaded anywhere. 🔒
-- **I check my own work now.** After squishing, I make sure the new clip actually opens and plays start-to-finish *before* saving it. If something went wrong (almost always low disk space), I tell you and don't leave a broken file behind. 🛟
+- **I check my own work now.** After squishing, I make sure the new clip actually opens and plays start-to-finish *before* saving it. If something went wrong (almost always low disk space), I tell you and don't leave a broken file behind. 🛡️
 - **Low on space?** If your disk is getting full, you'll see a soft 🌷/🚨 banner at the top of the Squish page with a **🔄 Recheck** button. Free up a little room and tap Recheck — squishing needs some elbow room to work safely. 💕
 
 > *Try it for me:* pick any video, tap **🗜️ Squish it under 1 GB!**, and when it's done, tap **📂 Show in folder** and check that your slimmed clip is there and plays. 🎀
