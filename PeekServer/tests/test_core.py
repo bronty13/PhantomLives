@@ -106,5 +106,24 @@ class CoreTests(unittest.TestCase):
         self.assertGreater(os.path.getsize(dst), 0)
 
 
+class TestPeriodicScanInterval(unittest.TestCase):
+    """The pure interval-resolution used to schedule auto-rescans (0.4.0)."""
+
+    def test_default_and_conversion(self):
+        from peekserver import server
+        self.assertEqual(server.periodic_scan_interval({"scanIntervalMinutes": 15}), 900)
+        self.assertEqual(server.periodic_scan_interval({"scanIntervalMinutes": 1}), 60)
+
+    def test_disabled_and_missing(self):
+        from peekserver import server
+        self.assertEqual(server.periodic_scan_interval({"scanIntervalMinutes": 0}), 0)
+        self.assertEqual(server.periodic_scan_interval({}), 0)          # absent → disabled
+
+    def test_bad_values_are_safe(self):
+        from peekserver import server
+        self.assertEqual(server.periodic_scan_interval({"scanIntervalMinutes": -5}), 0)   # clamped
+        self.assertEqual(server.periodic_scan_interval({"scanIntervalMinutes": "x"}), 0)  # non-int
+
+
 if __name__ == "__main__":
     unittest.main()

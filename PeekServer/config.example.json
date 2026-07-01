@@ -5,6 +5,7 @@
   "dbPath": "~/Library/Application Support/PeekServer/peekserver.sqlite",
   "thumbCache": "~/Library/Caches/PeekServer/thumbs",
   "thumbSize": 512,
+  "scanIntervalMinutes": 15,
   "_auth": "Set authUser + authPasswordSHA256 (sha256 of the password) to require Basic Auth. Both empty = open. Generate a hash: python3 -c 'import hashlib,getpass;print(hashlib.sha256(getpass.getpass().encode()).hexdigest())'",
   "authUser": "",
   "authPasswordSHA256": "",

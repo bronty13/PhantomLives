@@ -34,6 +34,7 @@ cp config.example.json config.json   # then edit "roots"
 | `dbPath` | the decisions database |
 | `thumbCache` | where generated thumbnails are cached |
 | `thumbSize` | max thumbnail dimension (px) |
+| `scanIntervalMinutes` | auto-rescan every N min so newly-staged files appear without a manual scan (default 15; `0` = scan only at startup) |
 | `roots` | `[{path,label,kind}]` — the review folders to serve |
 | `authUser` / `authPasswordSHA256` | Basic Auth (both empty = open). Store only the SHA-256 hash. |
 

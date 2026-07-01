@@ -14,6 +14,7 @@ Pure stdlib (ThreadingHTTPServer). Routes:
 import json
 import os
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -27,10 +28,36 @@ _scanning = threading.Event()
 def run(cfg: dict):
     global _CFG
     _CFG = cfg
+    start_periodic_scan(cfg)
     httpd = ThreadingHTTPServer((cfg["bind"], cfg["port"]), Handler)
     print(f"PeekServer {__version__} → http://{cfg['bind']}:{cfg['port']}  "
           f"(db={cfg['dbPath']}, {len(cfg['roots'])} root(s))")
     httpd.serve_forever()
+
+
+def periodic_scan_interval(cfg: dict) -> int:
+    """Seconds between auto-rescans (0 = disabled). Pure so it's unit-testable."""
+    try:
+        minutes = int(cfg.get("scanIntervalMinutes", 0))
+    except (TypeError, ValueError):
+        return 0
+    return max(0, minutes) * 60
+
+
+def start_periodic_scan(cfg: dict):
+    """Rescan every root on an interval so files staged after startup (e.g. Rachel's hourly sync)
+    show up in clients without anyone POSTing /api/scan. background_scan() self-guards against
+    overlap, so a slow scan on a busy drive just skips the next tick rather than piling up."""
+    interval = periodic_scan_interval(cfg)
+    if interval <= 0:
+        print("periodic rescan: disabled (scanIntervalMinutes=0)")
+        return
+    def loop():
+        while True:
+            time.sleep(interval)
+            background_scan()
+    threading.Thread(target=loop, daemon=True).start()
+    print(f"periodic rescan: every {interval // 60} min")
 
 
 def background_scan():

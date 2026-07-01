@@ -13,6 +13,8 @@ DEFAULTS = {
     "dbPath": "~/Library/Application Support/PeekServer/peekserver.sqlite",
     "thumbCache": "~/Library/Caches/PeekServer/thumbs",
     "thumbSize": 512,                        # max thumbnail dimension (px)
+    "scanIntervalMinutes": 15,               # auto-rescan every N min so newly-staged files appear
+                                             # without a manual scan (0 = disable, scan only at startup)
     "roots": [],                             # [{path,label,kind}]
     # --- Basic Auth (both empty = open). Password stored only as a SHA-256 hash. ---
     "authUser": "",

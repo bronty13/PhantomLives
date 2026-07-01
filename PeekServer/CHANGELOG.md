@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — Periodic auto-rescan
+
+- **Auto-rescan on an interval** (`scanIntervalMinutes`, default **15**; `0` disables). Previously
+  PeekServer scanned roots only at startup or on an explicit `POST /api/scan`, so files staged
+  *after* launch (e.g. Rachel's hourly photo sync into `NEW PHOTOS TO REVIEW`) never appeared in
+  clients until someone manually triggered a scan — the review queue silently went stale. A daemon
+  thread now rescans every root every N minutes; `background_scan()`'s existing overlap guard means a
+  slow scan just skips the next tick instead of piling up. `periodic_scan_interval()` is pure and
+  unit-tested. Set `scanIntervalMinutes` in `config.json`. (Incident: airy's Rachel photos scanned at
+  03:16 and nothing newer showed for hours despite the sync staging batches hourly.)
+
 ## 0.3.0 — Auth + fast browsing
 
 - **HTTP Basic Auth** (`auth.py`) gates every request, so the service isn't open on the LAN. The
