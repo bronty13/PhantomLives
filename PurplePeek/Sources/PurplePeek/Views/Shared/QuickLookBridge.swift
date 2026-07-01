@@ -13,10 +13,25 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
 
     /// Toggle Quick Look for a media file. Local mode previews its file URL directly; remote mode
     /// downloads `/full/<id>` to a temp cache file first (QLPreviewPanel only handles local files).
+    /// If the file is already cached (pre-warmed on selection), show synchronously — QLPreviewPanel
+    /// only reliably becomes key when opened inside the user-event turn, not a later async one.
     func toggle(file: MediaFile, provider: PeekMediaProvider?) {
         guard let provider else { toggle(file.fileURL); return }
         if isVisible { QLPreviewPanel.shared()?.orderOut(nil); return }
-        previewRemote(file: file, provider: provider)
+        let cached = Self.tempPath(id: file.id, fileName: file.fileName)
+        if FileManager.default.fileExists(atPath: cached.path) {
+            preview(cached)                     // synchronous → reliable
+        } else {
+            previewRemote(file: file, provider: provider)   // download then show (best-effort)
+        }
+    }
+
+    /// Download `/full/<id>` to the temp cache ahead of a peek (called when the selection changes in
+    /// remote mode) so the spacebar can show it synchronously. Cheap no-op if already cached.
+    func prewarm(file: MediaFile, provider: PeekMediaProvider?) {
+        guard let provider else { return }
+        if FileManager.default.fileExists(atPath: Self.tempPath(id: file.id, fileName: file.fileName).path) { return }
+        Task { _ = await Self.cachedFull(id: file.id, fileName: file.fileName, provider: provider) }
     }
 
     /// Keep an open peek in step with the selection (remote-aware). No-op when nothing is peeked.
@@ -35,13 +50,19 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
         }
     }
 
-    /// Download the original for `id` to a temp cache file (reused across peeks), returning its
-    /// local URL. The correct extension is preserved so Quick Look picks the right previewer.
-    private static func cachedFull(id: String, fileName: String, provider: PeekMediaProvider) async -> URL? {
+    /// Temp cache location for a peeked original — id-keyed, original extension preserved so Quick
+    /// Look picks the right previewer.
+    static func tempPath(id: String, fileName: String) -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("PurplePeekQL", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let ext = (fileName as NSString).pathExtension
-        let local = dir.appendingPathComponent(ext.isEmpty ? id : "\(id).\(ext)")
+        return dir.appendingPathComponent(ext.isEmpty ? id : "\(id).\(ext)")
+    }
+
+    /// Download the original for `id` to a temp cache file (reused across peeks), returning its
+    /// local URL.
+    private static func cachedFull(id: String, fileName: String, provider: PeekMediaProvider) async -> URL? {
+        let local = tempPath(id: id, fileName: fileName)
+        try? FileManager.default.createDirectory(at: local.deletingLastPathComponent(), withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: local.path) { return local }
         var req = URLRequest(url: provider.fullURL(id: id))
         for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
@@ -60,6 +81,7 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
         if panel.isVisible {
             panel.reloadData()
         } else {
+            NSApp.activate(ignoringOtherApps: true)   // helps the panel become key from an async turn
             panel.makeKeyAndOrderFront(nil)
         }
     }

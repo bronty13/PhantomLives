@@ -267,8 +267,21 @@ final class AppState: ObservableObject {
         // Fire-and-forget async so the same call works for both local (runs inline on the main
         // actor) and remote (suspends on URLSession) data sources; @Published mutation stays on main.
         Task {
-            do { scanRoots = try await dataSource.fetchAllScanRoots() }
+            do {
+                var roots = try await dataSource.fetchAllScanRoots()
+                if isRemote { roots = applyRemoteOrg(to: roots) }
+                scanRoots = roots
+            }
             catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    /// Overlay the local section/order assignments onto server-provided roots (which carry none).
+    private func applyRemoteOrg(to roots: [ScanRoot]) -> [ScanRoot] {
+        let org = settings.remoteRootOrg
+        return roots.map { r in
+            guard let o = org[r.path] else { return r }
+            var r = r; r.sectionId = o.sectionId; r.sortOrder = o.sortOrder; return r
         }
     }
 
@@ -655,6 +668,10 @@ final class AppState: ObservableObject {
         Task {
             do { selectedAlbums = try await dataSource.albums(forFile: id) }
             catch { errorMessage = error.localizedDescription }
+        }
+        // Remote mode: pre-download the original so a spacebar Quick Look shows instantly + reliably.
+        if let f = mediaFiles.first(where: { $0.id == id }) {
+            QuickLookCoordinator.shared.prewarm(file: f, provider: peekMediaProvider)
         }
     }
 
@@ -1137,7 +1154,13 @@ final class AppState: ObservableObject {
 
     func deleteSection(_ id: String) {
         do {
-            try db.deleteSection(id: id)
+            try db.deleteSection(id: id)   // sections table is local in both modes
+            // Remote roots assigned to this section (via the overlay) fall back to the default group.
+            if !settings.remoteRootOrg.isEmpty {
+                var org = settings.remoteRootOrg
+                for (path, o) in org where o.sectionId == id { org[path]?.sectionId = nil }
+                settings.remoteRootOrg = org
+            }
             reloadSections()
             reloadScanRoots()   // its roots fell back to the default group
         } catch { errorMessage = error.localizedDescription }
@@ -1145,6 +1168,14 @@ final class AppState: ObservableObject {
 
     /// Move a root into a section (nil = default group), appending it to that group's end.
     func assignRoot(_ path: String, toSection sectionId: String?) {
+        if isRemote {
+            let maxOrder = scanRoots.filter { $0.sectionId == sectionId }.map(\.sortOrder).max() ?? -1
+            var org = settings.remoteRootOrg
+            org[path] = RemoteRootOrg(sectionId: sectionId, sortOrder: maxOrder + 1)
+            settings.remoteRootOrg = org
+            scanRoots = applyRemoteOrg(to: scanRoots)
+            return
+        }
         do { try db.setScanRootSection(path: path, sectionId: sectionId); reloadScanRoots() }
         catch { errorMessage = error.localizedDescription }
     }
@@ -1165,6 +1196,16 @@ final class AppState: ObservableObject {
         let movedRoot = scanRoots.first { $0.path == path }
         if movedRoot?.sectionId == sectionId, current == paths { return }
 
+        if isRemote {
+            // Write section + within-group order to the local overlay, then re-apply in place.
+            var org = settings.remoteRootOrg
+            for (i, p) in paths.enumerated() {
+                org[p] = RemoteRootOrg(sectionId: sectionId, sortOrder: i)
+            }
+            settings.remoteRootOrg = org
+            scanRoots = applyRemoteOrg(to: scanRoots)
+            return
+        }
         do {
             try db.setScanRootSectionId(path: path, sectionId: sectionId)
             try db.reorderScanRoots(orderedPaths: paths)

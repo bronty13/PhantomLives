@@ -2,6 +2,12 @@ import Foundation
 
 /// User preferences, persisted by `SettingsStore` as JSON in UserDefaults. Every field has
 /// a sensible default so a fresh install is fully functional with no setup.
+/// A remote root's local sidebar placement (see `AppSettings.remoteRootOrg`).
+struct RemoteRootOrg: Codable, Equatable {
+    var sectionId: String?
+    var sortOrder: Int
+}
+
 struct AppSettings: Codable, Equatable {
     // General
     var defaultMode: AppMode = .folderBrowse
@@ -35,6 +41,10 @@ struct AppSettings: Codable, Equatable {
     var peekServerHost: String = ""
     var peekServerPort: Int = 8788
     var peekServerUser: String = ""
+    /// Local sidebar organization overlay for REMOTE roots (server roots carry no section/order of
+    /// their own). Keyed by root path → its assigned section + within-group order. Applied after
+    /// each remote fetch; ignored in local mode (local roots store this in the DB).
+    var remoteRootOrg: [String: RemoteRootOrg] = [:]
 
     // Backup (PhantomLives auto-backup-on-launch standard)
     var autoBackupEnabled: Bool = true
