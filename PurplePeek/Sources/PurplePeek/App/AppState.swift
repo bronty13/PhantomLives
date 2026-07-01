@@ -447,6 +447,28 @@ final class AppState: ObservableObject {
         return previewQueue[min(max(previewIndex, 0), previewQueue.count - 1)]
     }
 
+    /// Remote mode: nudge PeekServer to build the streaming proxy for the current + next few videos
+    /// in the review queue, so `/preview` is already the fast proxy by the time the reviewer reaches
+    /// them (instead of falling back to the laggy full-res original). Fire-and-forget: a tiny
+    /// `Range: bytes=0-0` request triggers the server's background transcode without downloading the
+    /// file. No-op in local mode.
+    func prewarmUpcomingProxies(lookahead: Int = 6) {
+        guard let provider = peekMediaProvider, !previewQueue.isEmpty else { return }
+        let start = max(0, previewIndex)
+        let end = min(previewQueue.count, start + lookahead)
+        for i in start..<end {
+            let file = previewQueue[i]
+            // Only worth prewarming a proxy for videos we'd play over HTTP; if the original is
+            // reachable on disk (SMB mount) we play it directly, so skip.
+            guard file.mediaType == .video, !FileManager.default.fileExists(atPath: file.filePath) else { continue }
+            var req = URLRequest(url: provider.previewURL(id: file.id))
+            req.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+            req.timeoutInterval = 20
+            for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
+            URLSession.shared.dataTask(with: req).resume()
+        }
+    }
+
     // MARK: - Preview navigation
 
     func startPreview() {

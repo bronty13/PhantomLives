@@ -16,6 +16,9 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
     /// If the file is already cached (pre-warmed on selection), show synchronously — QLPreviewPanel
     /// only reliably becomes key when opened inside the user-event turn, not a later async one.
     func toggle(file: MediaFile, provider: PeekMediaProvider?) {
+        // If the original is reachable on disk (local mode, or the server's volume mounted over SMB),
+        // Quick Look it directly — no whole-file HTTP download.
+        if FileManager.default.fileExists(atPath: file.filePath) { toggle(file.fileURL); return }
         guard let provider else { toggle(file.fileURL); return }
         if isVisible { QLPreviewPanel.shared()?.orderOut(nil); return }
         let cached = Self.tempPath(id: file.id, fileName: file.fileName)

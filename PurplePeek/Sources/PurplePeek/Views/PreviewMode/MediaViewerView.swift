@@ -19,20 +19,35 @@ struct MediaViewerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    /// Video/audio stream URL + headers: PeekServer's `/full/<id>` (Range-aware, auth header) in
-    /// remote mode, else the local file URL.
+    /// True when the item's original is reachable as a real file on this Mac — either genuinely local
+    /// (local mode) or the server's volume mounted here over SMB (e.g. airy's ROG_AIRY at the same
+    /// `/Volumes/ROG_AIRY` path). When so, we play/read the ORIGINAL directly: a network filesystem
+    /// streams video far more smoothly than HTTP, with no transcode/proxy needed.
+    private var localOriginalAvailable: Bool {
+        FileManager.default.fileExists(atPath: file.filePath)
+    }
+    /// Audio stream URL: the local original if reachable (incl. over SMB), else PeekServer's `/full`.
     private var streamURL: URL {
-        appState.peekMediaProvider?.fullURL(id: file.id) ?? file.fileURL
+        if localOriginalAvailable { return file.fileURL }
+        return appState.peekMediaProvider?.fullURL(id: file.id) ?? file.fileURL
+    }
+    /// Video stream URL: the local original over the (SMB) filesystem when reachable — smooth, no
+    /// transcode. Otherwise the `/preview` HTTP proxy (fallback for clients that can't mount the
+    /// volume, e.g. iPad).
+    private var videoStreamURL: URL {
+        if localOriginalAvailable { return file.fileURL }
+        return appState.peekMediaProvider?.previewURL(id: file.id) ?? file.fileURL
     }
     private var streamHeaders: [String: String] {
-        appState.peekMediaProvider?.httpHeaders ?? [:]
+        // Local file → no auth header; remote HTTP → the server's Basic-auth header.
+        (localOriginalAvailable ? nil : appState.peekMediaProvider?.httpHeaders) ?? [:]
     }
 
     @ViewBuilder
     private var content: some View {
         switch file.mediaType {
         case .photo: photoView
-        case .video: VideoPlayerView(url: streamURL, headers: streamHeaders).id(file.id)
+        case .video: VideoPlayerView(url: videoStreamURL, headers: streamHeaders).id(file.id)
         case .audio: audioView
         }
     }
@@ -57,15 +72,17 @@ struct MediaViewerView: View {
     private func loadImage() async {
         loading = true
         image = nil
-        if let provider = appState.peekMediaProvider {
-            // Remote: fetch the original bytes over HTTP (the file isn't on this Mac).
+        if localOriginalAvailable {
+            // The original is reachable on disk (local, or the server's volume mounted over SMB) —
+            // read it directly, no HTTP round-trip.
+            let url = file.fileURL
+            image = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
+        } else if let provider = appState.peekMediaProvider {
+            // Remote fallback: fetch the original bytes over HTTP (the file isn't mounted here).
             var req = URLRequest(url: provider.fullURL(id: file.id))
             for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
             let data = try? await URLSession.shared.data(for: req).0
             image = data.flatMap(NSImage.init(data:))
-        } else {
-            let url = file.fileURL
-            image = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
         }
         loading = false
     }

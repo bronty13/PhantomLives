@@ -28,6 +28,9 @@ struct PeekMediaProvider: Equatable {
 
     func thumbURL(id: String) -> URL { baseURL.appendingPathComponent("/thumb/\(id)") }
     func fullURL(id: String) -> URL { baseURL.appendingPathComponent("/full/\(id)") }
+    /// A lightweight 720p faststart proxy for smooth video playback over the LAN (the server
+    /// transcodes + caches on first request). Non-video ids fall back to the original server-side.
+    func previewURL(id: String) -> URL { baseURL.appendingPathComponent("/preview/\(id)") }
     var httpHeaders: [String: String] { authHeader.isEmpty ? [:] : ["Authorization": authHeader] }
 }
 
