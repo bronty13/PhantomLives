@@ -5,6 +5,66 @@ All notable changes to PurplePeek are documented here. Versions are git-derived
 
 ## Unreleased
 
+### Remote-mode latency & robustness overhaul (audit-driven; full report in `~/Downloads/PPeek Audit/`)
+
+The client-side companion to PeekServer 0.6.0/0.7.0. The audit found four compounding
+remote-mode latency sources on this side; all fixed:
+
+- **Quick Look prewarm no longer downloads every selected original.** `selectFile` pre-downloaded
+  the ENTIRE original (`/full`) of every item you selected — including videos, with no
+  local-file check, no size cap, and no cancellation. Arrow-keying through ten 500 MB videos
+  queued ~5 GB of un-cancellable Wi-Fi downloads that starved every thumbnail and metadata
+  request — the single worst latency source in the app. Prewarm is now photos-only, skipped when
+  the original is SMB-reachable, capped at 64 MB, and cancelled by the next selection. Its temp
+  cache is also swept of day-old files at launch (it used to grow unboundedly).
+- **No more synchronous SMB stats on the main thread.** The SMB-vs-HTTP choice
+  (`MediaViewerView`, `QuickLookCoordinator`, proxy prewarm) called `FileManager.fileExists`
+  on network paths during `body` evaluation — several per render, and an indefinite main-thread
+  hang whenever the mount went stale (server reboot, Wi-Fi drop). New `LocalReachability`
+  answers from a per-volume cache probed only on a background queue (refreshed on mount/unmount
+  notifications + a 30 s TTL), primed on root selection.
+- **Preview photos load a screen-size `/display` JPEG instead of the full original** (PeekServer
+  0.7.0; automatic `/full` fallback for older servers) — ~20× fewer bytes per photo — and the
+  **next few items prefetch** as you review (photos: display image; videos: a `bytes=0-0`
+  `/preview` ping that kicks the server's proxy transcode, now memoized instead of re-pinged on
+  every keypress). A stale-load guard stops a cancelled load from blanking the next photo.
+- **Tuned networking, replacing bare `URLSession.shared`** (`PeekTransport`): an *interactive*
+  session (15 s timeouts, 8 connections, **512 MB disk URLCache** — the server's immutable/ETag
+  cache headers now persist thumbs + display images across launches) and a separate *bulk*
+  session for whole-original pulls, so a big transfer can never starve thumbnails. Remote thumbs
+  are also de-duplicated in flight and cached by id (the grid and detail panel used to download
+  the same JPEG separately per requested size).
+- **Metadata round trips halved; text edits ordered.** Selecting an item fetched `/api/item`
+  twice (keywords, then albums) — now one `tagDetail` call. Title/caption write-through posted
+  every keystroke as an independent unordered request (keystroke N could land after N+1 and
+  persist a stale prefix); remote writes are now debounced 400 ms and strictly ordered per field.
+- **Optimistic tag/album state reverts on a failed write** instead of silently diverging from
+  the server, and a grid cell whose thumbnail load was cancelled mid-scroll now retries instead
+  of sticking on the placeholder forever.
+- **Initial folder load parallelized.** Remote roots paged 500 items per *sequential* round trip
+  (a 7,700-item root ≈ 16 serial RTTs of blank grid); after page 1 the remaining pages now fetch
+  concurrently.
+
+### Remote mode (PeekServer client) — backfill for the P1–P6 + SMB-direct arc
+
+Shipped across commits bf957acf → d110385e (2026-06-30 … 2026-07-01) without CHANGELOG entries;
+recorded here for the release-hygiene ledger:
+
+- **P1–P3**: the `DataSource` protocol seam (local GRDB vs remote), `PeekServerClient` +
+  `RemotePeekDataSource` (wire DTOs, typed errors, Keychain-stored password), and the Settings
+  connection UI with a whole-app local/remote mode switch.
+- **P4**: media rendering over HTTP — remote thumbnails via `/thumb`, full media via `/full`,
+  spacebar Quick Look in remote mode, `file_type "image" → "photo"` mapping, stale-fetch guards.
+- **P5**: keyword tagging over the network (names via `POST /api/decision`, mapped onto the
+  local vocabulary).
+- **P6**: import & trash over the network — client-side Photos import with `mark-imported` /
+  `mark-exported` records, and server-side headless trash.
+- **SMB-direct playback** (d110385e): when the server's volume is mounted here at the same
+  `/Volumes/<name>` path, video/audio/photos read the ORIGINAL over SMB (fast LAN filesystem);
+  HTTP (`/preview` proxy for video) is the fallback for clients that can't mount.
+
+### Earlier unreleased fixes
+
 - **Fix: Refresh no longer locks up on slow/remote libraries.** The toolbar Refresh button (and
   auto-rescan) is gated on `isScanning`, but a scan kept that flag `true` through the post-scan
   exact-duplicate pass — which sha256-hashes every file's *full content*. On a fast local disk that

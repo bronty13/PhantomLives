@@ -28,6 +28,11 @@ protocol DataSource {
     func allFileKeywordNames() async throws -> [String: [String]]
     func keywordNames(forFile fileId: String) async throws -> [String]
     func albums(forFile fileId: String) async throws -> [String]
+    /// Both of a file's tag lists in one call. The default just composes the two methods above
+    /// (fine locally — both are inline GRDB reads); the remote impl overrides with a SINGLE
+    /// `/api/item` fetch, because the naive composition cost two identical round trips per
+    /// selection change — pure Wi-Fi latency on every Preview advance.
+    func tagDetail(forFile fileId: String) async throws -> (keywords: [String], albums: [String])
     func distinctAlbumNames() async throws -> [String]
 
     // MARK: Decision writes — one row's review state
@@ -43,6 +48,12 @@ protocol DataSource {
     func markImported(id: String, assetId: String?, now: String) async throws
     func markExported(id: String, now: String) async throws
     func markDeleted(id: String, now: String) async throws
+}
+
+extension DataSource {
+    func tagDetail(forFile fileId: String) async throws -> (keywords: [String], albums: [String]) {
+        (try await keywordNames(forFile: fileId), try await albums(forFile: fileId))
+    }
 }
 
 /// `DatabaseService`'s existing synchronous, `@MainActor` methods witness every `async throws`

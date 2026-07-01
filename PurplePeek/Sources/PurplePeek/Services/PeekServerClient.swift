@@ -28,6 +28,9 @@ struct PeekMediaProvider: Equatable {
 
     func thumbURL(id: String) -> URL { baseURL.appendingPathComponent("/thumb/\(id)") }
     func fullURL(id: String) -> URL { baseURL.appendingPathComponent("/full/\(id)") }
+    /// Screen-size JPEG for the full-window image preview (PeekServer ≥0.7; 404 on older servers
+    /// and for non-images — callers fall back to `/full`). ~20× fewer bytes than an original HEIC.
+    func displayURL(id: String) -> URL { baseURL.appendingPathComponent("/display/\(id)") }
     /// A lightweight 720p faststart proxy for smooth video playback over the LAN (the server
     /// transcodes + caches on first request). Non-video ids fall back to the original server-side.
     func previewURL(id: String) -> URL { baseURL.appendingPathComponent("/preview/\(id)") }
@@ -112,7 +115,7 @@ struct PeekItemDetailDTO: Decodable {
 struct PeekServerClient {
     let connection: PeekServerConnection
     let password: String
-    var session: URLSession = .shared
+    var session: URLSession = PeekTransport.interactive
 
     private var authHeader: String {
         let raw = "\(connection.user):\(password)"

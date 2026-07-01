@@ -8,6 +8,15 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
 
     private var url: URL?
     private var downloadTask: Task<Void, Never>?
+    private var prewarmTask: Task<Void, Never>?
+    /// A photo original worth pre-downloading is a few MB; anything bigger streams/downloads
+    /// on demand when the user actually peeks.
+    private static let prewarmMaxBytes: Int64 = 64 << 20
+
+    override private init() {
+        super.init()
+        Self.cleanupTempCache()
+    }
 
     // MARK: Media-file entry points (local file URL, or remote /full download)
 
@@ -16,9 +25,10 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
     /// If the file is already cached (pre-warmed on selection), show synchronously — QLPreviewPanel
     /// only reliably becomes key when opened inside the user-event turn, not a later async one.
     func toggle(file: MediaFile, provider: PeekMediaProvider?) {
-        // If the original is reachable on disk (local mode, or the server's volume mounted over SMB),
-        // Quick Look it directly — no whole-file HTTP download.
-        if FileManager.default.fileExists(atPath: file.filePath) { toggle(file.fileURL); return }
+        // If the original is reachable on disk (local mode, or the server's volume mounted over
+        // SMB), Quick Look it directly — no whole-file HTTP download. Cached volume-level answer:
+        // a synchronous stat here (the old code) hangs the key-event handler on a stale mount.
+        if LocalReachability.shared.isReachable(file.filePath) { toggle(file.fileURL); return }
         guard let provider else { toggle(file.fileURL); return }
         if isVisible { QLPreviewPanel.shared()?.orderOut(nil); return }
         let cached = Self.tempPath(id: file.id, fileName: file.fileName)
@@ -29,12 +39,23 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
         }
     }
 
-    /// Download `/full/<id>` to the temp cache ahead of a peek (called when the selection changes in
-    /// remote mode) so the spacebar can show it synchronously. Cheap no-op if already cached.
+    /// Pre-download a PHOTO original to the temp cache ahead of a peek (called when the selection
+    /// changes in remote mode) so the spacebar can show it synchronously.
+    ///
+    /// Tightly gated, because the ungated version was the app's single worst Wi-Fi latency source:
+    /// it fired on EVERY selection change with no local-file check, no type/size limit, and no
+    /// cancellation — arrow-keying through ten 500 MB videos queued ~5 GB of un-cancellable
+    /// downloads that starved every thumbnail and metadata request behind them. Now: photos only
+    /// (a peeked video streams on demand), skipped when the original is reachable on disk, capped
+    /// by size, and each new selection cancels the previous prewarm.
     func prewarm(file: MediaFile, provider: PeekMediaProvider?) {
         guard let provider else { return }
+        guard file.mediaType == .photo else { return }
+        guard !LocalReachability.shared.isReachable(file.filePath) else { return }
+        if let size = file.fileSize, size > Self.prewarmMaxBytes { return }
         if FileManager.default.fileExists(atPath: Self.tempPath(id: file.id, fileName: file.fileName).path) { return }
-        Task { _ = await Self.cachedFull(id: file.id, fileName: file.fileName, provider: provider) }
+        prewarmTask?.cancel()
+        prewarmTask = Task { _ = await Self.cachedFull(id: file.id, fileName: file.fileName, provider: provider) }
     }
 
     /// Keep an open peek in step with the selection (remote-aware). No-op when nothing is peeked.
@@ -62,17 +83,35 @@ final class QuickLookCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewP
     }
 
     /// Download the original for `id` to a temp cache file (reused across peeks), returning its
-    /// local URL.
+    /// local URL. Rides the BULK session — a separate connection pool, so an original pull can
+    /// never starve thumbnails/metadata on the interactive one.
     private static func cachedFull(id: String, fileName: String, provider: PeekMediaProvider) async -> URL? {
         let local = tempPath(id: id, fileName: fileName)
         try? FileManager.default.createDirectory(at: local.deletingLastPathComponent(), withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: local.path) { return local }
         var req = URLRequest(url: provider.fullURL(id: id))
         for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+        guard let (data, resp) = try? await PeekTransport.bulk.data(for: req),
               (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         try? data.write(to: local)
         return local
+    }
+
+    /// Drop temp-cached originals older than a day — long remote sessions used to accumulate
+    /// gigabytes here until the OS purged /tmp. Runs once per launch, off the main thread.
+    private static func cleanupTempCache(maxAge: TimeInterval = 86_400) {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("PurplePeekQL", isDirectory: true)
+        DispatchQueue.global(qos: .utility).async {
+            let fm = FileManager.default
+            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+            let cutoff = Date().addingTimeInterval(-maxAge)
+            for f in files {
+                if let mtime = (try? f.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                   mtime < cutoff {
+                    try? fm.removeItem(at: f)
+                }
+            }
+        }
     }
 
     /// Show (or refresh) Quick Look for `url`.

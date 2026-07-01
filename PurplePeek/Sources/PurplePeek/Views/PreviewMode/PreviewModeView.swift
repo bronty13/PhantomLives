@@ -46,6 +46,7 @@ struct PreviewModeView: View {
             }
         }
         .task(id: appState.currentPreviewFile?.id) {
+            appState.prewarmUpcomingProxies()   // build proxies for this + upcoming videos ahead of the cursor
             if let file = appState.currentPreviewFile { await onFileChange(file) }
         }
         // Write-through: persist on every edit, independent of focus/navigation timing

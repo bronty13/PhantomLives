@@ -23,8 +23,12 @@ struct MediaViewerView: View {
     /// (local mode) or the server's volume mounted here over SMB (e.g. airy's ROG_AIRY at the same
     /// `/Volumes/ROG_AIRY` path). When so, we play/read the ORIGINAL directly: a network filesystem
     /// streams video far more smoothly than HTTP, with no transcode/proxy needed.
+    ///
+    /// Answered from `LocalReachability`'s volume cache: this computed property runs during `body`,
+    /// and the old direct `FileManager.fileExists` was a network stat per render — and an
+    /// indefinite MAIN-THREAD HANG whenever the SMB mount had gone stale mid-session.
     private var localOriginalAvailable: Bool {
-        FileManager.default.fileExists(atPath: file.filePath)
+        LocalReachability.shared.isReachable(file.filePath)
     }
     /// Audio stream URL: the local original if reachable (incl. over SMB), else PeekServer's `/full`.
     private var streamURL: URL {
@@ -72,18 +76,21 @@ struct MediaViewerView: View {
     private func loadImage() async {
         loading = true
         image = nil
+        var loaded: NSImage?
         if localOriginalAvailable {
             // The original is reachable on disk (local, or the server's volume mounted over SMB) —
             // read it directly, no HTTP round-trip.
             let url = file.fileURL
-            image = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
+            loaded = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
         } else if let provider = appState.peekMediaProvider {
-            // Remote fallback: fetch the original bytes over HTTP (the file isn't mounted here).
-            var req = URLRequest(url: provider.fullURL(id: file.id))
-            for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
-            let data = try? await URLSession.shared.data(for: req).0
-            image = data.flatMap(NSImage.init(data:))
+            // Remote: the screen-size /display JPEG (~20× fewer bytes than the original; falls
+            // back to /full for pre-0.7 servers), deduped + disk-cached by ThumbnailService.
+            loaded = await ThumbnailService.shared.displayImage(for: file, provider: provider)
         }
+        // `.task(id:)` cancelled us because the user navigated on — the NEXT item's load owns
+        // these @State slots now; writing would blank its spinner/image mid-load.
+        guard !Task.isCancelled else { return }
+        image = loaded
         loading = false
     }
 

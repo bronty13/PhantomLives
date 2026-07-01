@@ -12,7 +12,6 @@ struct MediaThumbnailCell: View {
 
     @Environment(\.appTheme) private var theme
     @State private var image: NSImage?
-    @State private var didLoad = false
 
     private let thumbSize = CGSize(width: 160, height: 160)
 
@@ -43,8 +42,10 @@ struct MediaThumbnailCell: View {
         .buttonStyle(.plain)
         .help(file.fileName)
         .task(id: file.id) {
-            guard !didLoad else { return }
-            didLoad = true
+            // Gate on the RESULT, not a did-run flag: a fetch cancelled by scrolling (or a
+            // transient server blip) must retry when the cell re-appears — the old `didLoad`
+            // guard locked such cells on the placeholder forever.
+            if image != nil { return }
             image = await ThumbnailService.shared.thumbnail(for: file, size: thumbSize)
         }
     }

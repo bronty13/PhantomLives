@@ -318,6 +318,8 @@ final class AppState: ObservableObject {
             recomputeDerived()
             return
         }
+        // Settle the SMB-vs-HTTP answer for this root's volume before any player asks for it.
+        LocalReachability.shared.prime([root])
         Task {
             do {
                 let files = try await dataSource.fetchMediaFiles(scanRoot: root)
@@ -447,25 +449,37 @@ final class AppState: ObservableObject {
         return previewQueue[min(max(previewIndex, 0), previewQueue.count - 1)]
     }
 
-    /// Remote mode: nudge PeekServer to build the streaming proxy for the current + next few videos
-    /// in the review queue, so `/preview` is already the fast proxy by the time the reviewer reaches
-    /// them (instead of falling back to the laggy full-res original). Fire-and-forget: a tiny
-    /// `Range: bytes=0-0` request triggers the server's background transcode without downloading the
-    /// file. No-op in local mode.
+    /// Server-side proxy transcodes we've already nudged this session — re-pinging on every
+    /// keypress (the un-memoized version) sent 6 redundant range requests per navigation.
+    private var proxyWarmRequested: Set<String> = []
+
+    /// Remote mode: warm the media the reviewer is about to reach — for the current + next few
+    /// queue items: VIDEOS get a tiny `Range: bytes=0-0` `/preview` ping that triggers the server's
+    /// background transcode (so the fast proxy is ready on arrival, not the laggy full-res
+    /// original), PHOTOS get their screen-size `/display` image prefetched (so advancing shows
+    /// them instantly). Items reachable on disk (SMB mount) play directly and are skipped — via
+    /// the cached reachability answer, never a per-item main-thread stat. No-op in local mode.
     func prewarmUpcomingProxies(lookahead: Int = 6) {
         guard let provider = peekMediaProvider, !previewQueue.isEmpty else { return }
         let start = max(0, previewIndex)
         let end = min(previewQueue.count, start + lookahead)
         for i in start..<end {
             let file = previewQueue[i]
-            // Only worth prewarming a proxy for videos we'd play over HTTP; if the original is
-            // reachable on disk (SMB mount) we play it directly, so skip.
-            guard file.mediaType == .video, !FileManager.default.fileExists(atPath: file.filePath) else { continue }
-            var req = URLRequest(url: provider.previewURL(id: file.id))
-            req.setValue("bytes=0-0", forHTTPHeaderField: "Range")
-            req.timeoutInterval = 20
-            for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
-            URLSession.shared.dataTask(with: req).resume()
+            guard !LocalReachability.shared.isReachable(file.filePath) else { continue }
+            switch file.mediaType {
+            case .video:
+                guard !proxyWarmRequested.contains(file.id) else { continue }
+                proxyWarmRequested.insert(file.id)
+                var req = URLRequest(url: provider.previewURL(id: file.id))
+                req.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+                req.timeoutInterval = 20
+                for (k, v) in provider.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
+                PeekTransport.interactive.dataTask(with: req).resume()
+            case .photo:
+                Task { await ThumbnailService.shared.prefetchDisplay(for: file, provider: provider) }
+            case .audio:
+                break
+            }
         }
     }
 
@@ -685,15 +699,15 @@ final class AppState: ObservableObject {
         guard let id else { selectedKeywordIds = []; selectedAlbums = []; return }
         if isRemote {
             // Remote: the file's keywords/albums come from the server (by name); map keyword names
-            // onto the local vocabulary so the picker shows them checked.
+            // onto the local vocabulary so the picker shows them checked. One /api/item fetch for
+            // both lists — fetching them separately cost two identical round trips per selection.
             Task {
                 do {
-                    let names = try await dataSource.keywordNames(forFile: id)
-                    let ids = ensureLocalKeywordIds(for: names)
-                    let albums = try await dataSource.albums(forFile: id)
+                    let detail = try await dataSource.tagDetail(forFile: id)
+                    let ids = ensureLocalKeywordIds(for: detail.keywords)
                     guard selectedFileId == id else { return }   // selection moved on; discard stale load
                     selectedKeywordIds = Set(ids)
-                    selectedAlbums = albums
+                    selectedAlbums = detail.albums
                 } catch { errorMessage = error.localizedDescription }
             }
         } else {
@@ -702,7 +716,9 @@ final class AppState: ObservableObject {
                 selectedAlbums = try db.albums(forFile: id)
             } catch { errorMessage = error.localizedDescription }
         }
-        // Remote mode: pre-download the original so a spacebar Quick Look shows instantly + reliably.
+        // Remote mode: pre-download a PHOTO original so a spacebar Quick Look shows instantly.
+        // (Gating — photos only, skip SMB-reachable, size cap, cancel-on-next-selection — lives in
+        // `prewarm` itself; the ungated version downloaded EVERY selected original in full.)
         if let f = mediaFiles.first(where: { $0.id == id }) {
             QuickLookCoordinator.shared.prewarm(file: f, provider: peekMediaProvider)
         }
@@ -817,15 +833,51 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Per-field pending remote text writes, keyed "title:<id>" / "caption:<id>" — see
+    /// `scheduleRemoteTextWrite`.
+    private var pendingTextWrites: [String: Task<Void, Never>] = [:]
+
+    /// Debounce + strictly order a remote title/caption write. The write-through UI calls
+    /// setTitle/setCaption on EVERY keystroke; posting each keystroke as its own independent Task
+    /// meant (a) N POSTs for an N-character title and (b) no ordering guarantee — keystroke N's
+    /// POST could land after N+1's and persist a stale prefix. Each new edit cancels the pending
+    /// (still-sleeping) write, and a write that does fire first awaits its predecessor, so at most
+    /// one write per field is on the wire and they arrive in edit order. Local mode keeps the
+    /// original inline write (synchronous GRDB is already ordered and cheap).
+    private func scheduleRemoteTextWrite(key: String,
+                                         write: @escaping () async throws -> Void,
+                                         revert: @escaping () -> Void) {
+        let previous = pendingTextWrites[key]
+        previous?.cancel()
+        pendingTextWrites[key] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if Task.isCancelled { return }        // superseded by a newer edit
+            _ = await previous?.value             // serialize behind any in-flight predecessor
+            do { try await write() }
+            catch {
+                self?.errorMessage = error.localizedDescription
+                revert()
+            }
+        }
+    }
+
     func setTitle(_ id: String, _ value: String?) {
         let now = BackupService.isoNow()
         let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         let stored = (clean?.isEmpty ?? true) ? nil : clean
         let prev = mediaFiles.first(where: { $0.id == id })?.title
         patchLocal(id) { $0.title = stored }
-        Task {
-            do { try await dataSource.updateTitle(id: id, title: stored, now: now) }
-            catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.title = prev } }
+        if isRemote {
+            scheduleRemoteTextWrite(key: "title:\(id)") { [dataSource] in
+                try await dataSource.updateTitle(id: id, title: stored, now: now)
+            } revert: { [weak self] in
+                self?.patchLocal(id) { $0.title = prev }
+            }
+        } else {
+            Task {
+                do { try await dataSource.updateTitle(id: id, title: stored, now: now) }
+                catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.title = prev } }
+            }
         }
     }
 
@@ -835,9 +887,17 @@ final class AppState: ObservableObject {
         let stored = (clean?.isEmpty ?? true) ? nil : clean
         let prev = mediaFiles.first(where: { $0.id == id })?.caption
         patchLocal(id) { $0.caption = stored }
-        Task {
-            do { try await dataSource.updateCaption(id: id, caption: stored, now: now) }
-            catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.caption = prev } }
+        if isRemote {
+            scheduleRemoteTextWrite(key: "caption:\(id)") { [dataSource] in
+                try await dataSource.updateCaption(id: id, caption: stored, now: now)
+            } revert: { [weak self] in
+                self?.patchLocal(id) { $0.caption = prev }
+            }
+        } else {
+            Task {
+                do { try await dataSource.updateCaption(id: id, caption: stored, now: now) }
+                catch { errorMessage = error.localizedDescription; patchLocal(id) { $0.caption = prev } }
+            }
         }
     }
 
@@ -891,6 +951,8 @@ final class AppState: ObservableObject {
     /// Toggle a keyword on the selected file and persist.
     func toggleKeyword(_ keywordId: String) {
         guard let fileId = selectedFileId else { return }
+        let prevSelected = selectedKeywordIds
+        let prevNames = fileKeywordNames[fileId]
         if selectedKeywordIds.contains(keywordId) {
             selectedKeywordIds.remove(keywordId)
         } else {
@@ -903,7 +965,13 @@ final class AppState: ObservableObject {
         if showTaggedOnly { recomputeDerived() }
         Task {
             do { try await dataSource.setKeywordNames(fileId: fileId, names: names) }
-            catch { errorMessage = error.localizedDescription }
+            catch {
+                // The server never stored it — showing the tag anyway would be silent divergence.
+                errorMessage = error.localizedDescription
+                fileKeywordNames[fileId] = prevNames
+                if selectedFileId == fileId { selectedKeywordIds = prevSelected }
+                if showTaggedOnly { recomputeDerived() }
+            }
         }
     }
 
@@ -936,22 +1004,30 @@ final class AppState: ObservableObject {
         guard let fileId = selectedFileId else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !selectedAlbums.contains(trimmed) else { return }
+        let prev = selectedAlbums
         selectedAlbums.append(trimmed)
         selectedAlbums.sort()
         let albums = selectedAlbums
         Task {
             do { try await dataSource.setAlbums(fileId: fileId, albumNames: albums) }
-            catch { errorMessage = error.localizedDescription }
+            catch {
+                errorMessage = error.localizedDescription
+                if selectedFileId == fileId { selectedAlbums = prev }   // don't show what wasn't stored
+            }
         }
     }
 
     func removeAlbum(_ name: String) {
         guard let fileId = selectedFileId else { return }
+        let prev = selectedAlbums
         selectedAlbums.removeAll { $0 == name }
         let albums = selectedAlbums
         Task {
             do { try await dataSource.setAlbums(fileId: fileId, albumNames: albums) }
-            catch { errorMessage = error.localizedDescription }
+            catch {
+                errorMessage = error.localizedDescription
+                if selectedFileId == fileId { selectedAlbums = prev }
+            }
         }
     }
 

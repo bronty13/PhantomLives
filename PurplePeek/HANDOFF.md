@@ -66,6 +66,35 @@ only" filter — so the grid never does a per-cell keyword query. The tagged gat
 inside `recomputeDerived()` to both `visibleMediaFiles` and `previewQueue`, alongside the
 `DecisionFilter` lens.
 
+## Remote mode (PeekServer client)
+
+PurplePeek can run as a **client of PeekServer** (`PhantomLives/PeekServer/`, a LAN HTTP service
+on the Mac that has the media attached): Settings → PeekServer connection flips the whole app to
+remote — roots/items/decisions come from the server instead of local GRDB, so multiple Macs share
+one authoritative review state.
+
+- **`DataSource`** (`Services/DataSource.swift`) is the seam: `DatabaseService` (local) and
+  `RemotePeekDataSource` → `PeekServerClient` (remote) both conform. Everything not on the
+  protocol (scanning, sidebar sections, keyword vocabulary) stays local-only.
+- **Media bytes** follow a tiered policy: originals read **directly over SMB** when the server's
+  volume is mounted here at the same `/Volumes/<name>` path (fast LAN filesystem; video plays the
+  original), else HTTP — `/thumb` (grid), `/display` (screen-size preview JPEG, PeekServer ≥0.7),
+  `/preview` (720p video proxy), `/full` (originals/import).
+- **`LocalReachability`** (`Services/RemoteMedia.swift`) owns the SMB-vs-HTTP answer: a
+  per-volume cache probed only on a background queue (mount/unmount notifications + 30 s TTL).
+  **Never call `FileManager.fileExists` on a `/Volumes/` path from the main thread** — a stale
+  SMB mount blocks `stat` indefinitely and beachballs the app; ask `LocalReachability` instead.
+- **`PeekTransport`** (same file) is the only sanctioned way to talk HTTP to the server: an
+  `interactive` session (short timeouts, disk URLCache — the server's immutable/ETag headers do
+  the caching) and a `bulk` session (whole-original pulls, separate pool). Don't reintroduce
+  `URLSession.shared`.
+- **Writes are optimistic** (`patchLocal` then POST): keep/favorite/hidden revert or resync on
+  failure; title/caption are debounced + strictly ordered per field (`scheduleRemoteTextWrite`);
+  keyword/album failures revert. Known gap: no offline write queue — a decision made during a
+  connectivity blip surfaces an error and resyncs to server truth.
+- `QuickLookCoordinator.prewarm` pre-downloads **photos only** (size-capped, cancelled on the
+  next selection) so spacebar peeks are synchronous; videos stream on demand.
+
 ## Module map
 
 ```
@@ -100,6 +129,11 @@ Sources/PurplePeek/
     EXIFService.swift        load EXIF for the Preview panel
     ThumbnailService.swift   async thumbnail generation/caching for the grid
     BackupService.swift      launch-time zip backup + retention; isoNow() timestamp helper
+    DataSource.swift         the local-vs-remote seam (protocol; DatabaseService + remote conform)
+    PeekServerClient.swift   PeekServer HTTP client (wire DTOs, PeekMediaProvider URL builder)
+    RemotePeekDataSource.swift  DataSource over PeekServerClient (DTO→model mapping, parallel paging)
+    RemoteMedia.swift        LocalReachability (cached SMB-vs-HTTP probe) + PeekTransport sessions
+    KeychainStore.swift      PeekServer password storage (device-only Keychain)
     SettingsStore.swift      AppSettings ⇄ UserDefaults; computed default output paths
     Utilities.swift          Array.chunked, small helpers
     WindowStateGuard.swift   window-frame persistence

@@ -8,14 +8,14 @@ import Foundation
 ///  - `allFileKeywordNames` / `distinctAlbumNames`: no bulk endpoint → return empty (the grid's
 ///    keyword-label map and the album quick-add list are conveniences; per-file tags still load via
 ///    `/api/item`, and albums can still be typed). Revisit if a bulk endpoint is added.
-///  - `markImported` / `markExported` / `markDeleted`: import/trash state is owned server-side
-///    (`POST /api/process`); these throw `.unsupported` — the P6 import/trash pipeline drives that
-///    flow directly rather than through these per-row marks.
+///  - `markImported` / `markExported` / `markDeleted` are fully implemented (P6, client-side
+///    import model): they record the client's import/export on the server and route deletes to
+///    the server-side headless trash (`POST /api/trash`).
 @MainActor
 final class RemotePeekDataSource: DataSource {
     let client: PeekServerClient
 
-    init(connection: PeekServerConnection, password: String, session: URLSession = .shared) {
+    init(connection: PeekServerConnection, password: String, session: URLSession = PeekTransport.interactive) {
         self.client = PeekServerClient(connection: connection, password: password, session: session)
     }
 
@@ -65,16 +65,25 @@ final class RemotePeekDataSource: DataSource {
     }
 
     func fetchMediaFiles(scanRoot: String) async throws -> [MediaFile] {
-        // /api/items caps at 500/page → page through until we've collected `total`.
-        var out: [MediaFile] = []
-        var offset = 0
+        // /api/items caps at 500/page. Fetch page 1 to learn `total`, then pull the REST of the
+        // pages concurrently — strictly-serial paging cost one Wi-Fi round trip per 500 items
+        // (a 20k-item root = 40 sequential RTTs of blank grid). Order is restored by offset.
         let limit = 500
-        while true {
-            let page = try await client.items(root: scanRoot, offset: offset, limit: limit)
-            out.append(contentsOf: page.items.map(Self.map))
-            offset += page.items.count
-            if page.items.isEmpty || out.count >= page.total { break }
+        let first = try await client.items(root: scanRoot, offset: 0, limit: limit)
+        var out = first.items.map(Self.map)
+        guard !first.items.isEmpty, out.count < first.total else { return out }
+        let client = self.client
+        let rest = try await withThrowingTaskGroup(of: (Int, [MediaFile]).self) { group in
+            for offset in stride(from: out.count, to: first.total, by: limit) {
+                group.addTask {
+                    (offset, try await client.items(root: scanRoot, offset: offset, limit: limit).items.map(Self.map))
+                }
+            }
+            var pages: [(Int, [MediaFile])] = []
+            for try await page in group { pages.append(page) }
+            return pages.sorted { $0.0 < $1.0 }.flatMap { $0.1 }
         }
+        out.append(contentsOf: rest)
         return out
     }
 
@@ -88,6 +97,13 @@ final class RemotePeekDataSource: DataSource {
 
     func albums(forFile fileId: String) async throws -> [String] {
         try await client.item(id: fileId).albums
+    }
+
+    /// One `/api/item` fetch for both lists — the default protocol composition would hit the
+    /// same endpoint twice per selection change (2× Wi-Fi RTT for one JSON document).
+    func tagDetail(forFile fileId: String) async throws -> (keywords: [String], albums: [String]) {
+        let detail = try await client.item(id: fileId)
+        return (detail.keywords, detail.albums)
     }
 
     func distinctAlbumNames() async throws -> [String] {
