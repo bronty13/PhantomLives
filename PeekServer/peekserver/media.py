@@ -6,6 +6,7 @@ or remote storage. Images use `sips` (fast, handles HEIC); video/other use `qlma
 poster frame). Audio has no thumbnail (the UI shows a glyph).
 """
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -132,8 +133,19 @@ def ensure_video_proxy(src: str, dst: str, ffmpeg_bin: str = "ffmpeg",
             return True
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         tmp = dst + ".tmp.mp4"
+        stage = None
         try:
-            r = subprocess.run(ffmpeg_proxy_args(ffmpeg_bin, src, tmp, height, maxrate_k),
+            infile = src
+            if src.startswith("/Volumes/"):
+                # Third-party ffmpeg can't open external/removable volumes when spawned under
+                # launchd: it has no kTCCServiceSystemPolicyRemovableVolumes grant, so its open()
+                # HANGS waiting for a consent prompt it can never show (Apple's sips/qlmanage are
+                # exempt; this Python process reads externals fine — see /full). So copy the source
+                # to internal disk first and transcode locally — ffmpeg never touches the volume.
+                stage = dst + ".src" + os.path.splitext(src)[1]
+                shutil.copyfile(src, stage)
+                infile = stage
+            r = subprocess.run(ffmpeg_proxy_args(ffmpeg_bin, infile, tmp, height, maxrate_k),
                                capture_output=True, timeout=1800)
             if r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
                 os.replace(tmp, dst)
@@ -142,8 +154,9 @@ def ensure_video_proxy(src: str, dst: str, ffmpeg_bin: str = "ffmpeg",
         except Exception:
             return False
         finally:
-            if os.path.exists(tmp):
-                try:
-                    os.remove(tmp)
-                except OSError:
-                    pass
+            for f in (tmp, stage):
+                if f and os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except OSError:
+                        pass

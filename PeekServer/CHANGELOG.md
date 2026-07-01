@@ -15,6 +15,11 @@
   root's path/label — matches warm first, the rest last. Keeps the active, fast-drive roots (Rachel's
   new-items-to-review on the SSD) ahead of a big slow-drive backlog (the "My Photos" root on the SMR
   REDONE), so review videos get proxies first instead of waiting behind hours of backlog transcoding.
+- **launchd/TCC fix:** third-party ffmpeg has no removable-volume TCC grant, so under the launchd
+  server its `open()` of a file on an external volume *hangs* on a consent prompt it can't show
+  (0% CPU, no output — Apple's sips/qlmanage are exempt, so thumbnails were unaffected). The proxy
+  generator now **stages the source to internal disk first** (this process can read externals — it
+  serves `/full`) and transcodes locally, so ffmpeg never touches the volume.
 - New config: `proxyCache`, `ffmpegBin`, `proxyHeight` (720), `proxyMaxBitrateK` (4000), `warmProxies`, `warmOrder`.
   **Requires `ffmpeg`** (`brew install ffmpeg`); if it's missing or a transcode fails, `/preview`
   falls back to the original so playback still works (just not accelerated). Pure command builder
