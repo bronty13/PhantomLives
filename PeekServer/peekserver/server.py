@@ -284,17 +284,21 @@ class Handler(BaseHTTPRequestHandler):
         self._serve_file(path, _ctype(path))
 
     def _serve_preview(self, mid):
-        """Stream a video via its lightweight 720p faststart proxy (generated + cached on first
-        hit). Non-video (or transcode failure) falls back to the original. Photos never use this."""
+        """Stream a video via its lightweight 720p faststart proxy — but NEVER block the player.
+        If the proxy is cached, serve it (instant start, smooth). If not, kick the transcode in the
+        BACKGROUND and serve the original right now, so the inline player plays immediately (like
+        /full) instead of spinning while a transcode runs; the next view gets the fast proxy.
+        Non-video falls through to the original."""
         path, ftype = db.path_for(mid)
         if not path or not os.path.isfile(path):
             return self._notfound()
         if ftype == "video":
             dst = media.proxy_path(_CFG["proxyCache"], mid)
-            if media.ensure_video_proxy(path, dst, _CFG.get("ffmpegBin", "ffmpeg"),
-                                        _CFG.get("proxyHeight", 720), _CFG.get("proxyMaxBitrateK", 4000)):
-                return self._serve_file(dst, "video/mp4")
-        return self._serve_file(path, _ctype(path))   # non-video or transcode failed → original
+            if os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(path):
+                return self._serve_file(dst, "video/mp4")        # proxy ready → smooth
+            media.ensure_video_proxy_async(path, dst, _CFG.get("ffmpegBin", "ffmpeg"),
+                                           _CFG.get("proxyHeight", 720), _CFG.get("proxyMaxBitrateK", 4000))
+        return self._serve_file(path, _ctype(path))              # original now (non-blocking)
 
     def _serve_file(self, path, ctype):
         size = os.path.getsize(path)

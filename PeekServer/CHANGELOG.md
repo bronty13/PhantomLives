@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1 — `/preview` never blocks the player
+
+- **Fixes the Preview-tab inline player spinning on un-warmed videos.** `/preview` used to run the
+  transcode **synchronously** on a cache miss, so the streaming player (`AVPlayer` over HTTP) sat
+  waiting for the whole transcode — spinning, sometimes for minutes on a large 4K clip — while the
+  Browse-tab spacebar (QuickLook, which uses `/full`) played fine. Now `/preview` is **non-blocking**:
+  it serves the cached proxy if ready (instant, smooth), else **kicks the transcode in the background
+  and serves the original immediately** so the player starts right away (like `/full`), and the next
+  view gets the fast proxy. `ensure_video_proxy_async` (deduped per destination) does the background
+  kick. The background warm still front-fills proxies so most views hit the fast path.
+
 ## 0.5.0 — Video streaming proxies (smooth review playback)
 
 - **Videos now stream via a cached 720p faststart proxy** instead of the full-resolution original.

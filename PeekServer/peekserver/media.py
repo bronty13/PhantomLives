@@ -93,6 +93,25 @@ def _ql_thumb(src: str, dst: str, size: int) -> bool:
 
 _proxy_locks_guard = threading.Lock()
 _proxy_locks: dict = {}
+_proxy_inflight: set = set()
+
+
+def ensure_video_proxy_async(src: str, dst: str, ffmpeg_bin: str = "ffmpeg",
+                             height: int = 720, maxrate_k: int = 4000) -> None:
+    """Kick a proxy transcode in the background and return immediately (deduped per destination).
+    This is what lets `/preview` NEVER block the player: on a cache miss the server serves the
+    original at once and calls this so the proxy is ready for the next view."""
+    with _proxy_locks_guard:
+        if dst in _proxy_inflight:
+            return
+        _proxy_inflight.add(dst)
+    def work():
+        try:
+            ensure_video_proxy(src, dst, ffmpeg_bin, height, maxrate_k)
+        finally:
+            with _proxy_locks_guard:
+                _proxy_inflight.discard(dst)
+    threading.Thread(target=work, daemon=True).start()
 
 
 def proxy_path(cache_dir: str, mid: str) -> str:
