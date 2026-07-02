@@ -92,9 +92,12 @@ own preflight) are what airy must satisfy:
 airy, `git pull`s, and runs the subproject's `Scripts/release.sh`, mirroring how `build-app.sh` already
 Dev-ID-signs over SSH. Then a release from any Mac is one command.
 
-**Artifacts I can build now (no airy needed):** the `release-on-airy.sh` wrapper; a `SIGN_KEYCHAIN`-aware
-patch to the shared `release.sh` preflight; a short `docs/releasing-on-airy.md` checklist. The keychain/
-notary/Sparkle-key steps are GUI/account actions that must happen on airy.
+**Built (✅):** `release-on-airy.sh` + `docs/releasing-on-airy.md` + `tests/test_release_on_airy.sh`.
+The `release.sh` preflight turned out to be **7 diverged copies**, not one shared file, so rather than a
+`SIGN_KEYCHAIN`-aware patch to each (risking the working Vortex/MB14 flow), the wrapper **unlocks the
+keychains centrally** before calling the unchanged `release.sh` — `purple-signing` is already in the
+keychain search list (`dev-id-signing-airy.md` step 2), so `find-identity` sees the Dev-ID once unlocked.
+The keychain/notary/Sparkle-key setup steps remain GUI/account actions that must happen on airy.
 
 ---
 
@@ -178,8 +181,8 @@ Vortex, no drive shuffling. airy already has the drives (ROG_WHITE/LACIE) and th
 
 | Buildable now (this repo) | Requires airy (GUI/account/hardware) |
 |---|---|
-| `release-on-airy.sh` wrapper + `SIGN_KEYCHAIN`-aware `release.sh` patch | Install Xcode; accept license; skip simulators |
+| ~~`release-on-airy.sh` wrapper~~ ✅ done — unlocks keychains centrally, so no per-app `release.sh` edit was needed | Install Xcode; accept license; skip simulators |
 | ~~`.github/workflows/swift-ci.yml` (self-hosted, path-filtered matrix)~~ ✅ done | Register + launchd-install the Actions runner |
 | ~~PeekServer launchd plist + `install-agent`/`uninstall-agent` installer~~ ✅ done (`PeekServer/install-agent.sh`) | notarytool profile, Sparkle private key, Apple ID |
 | ~~`eject-externals` PeekServer-bootout hook~~ ✅ done | Grant FDA on airy; write `config.json`; Tailscale |
-| `docs/releasing-on-airy.md` + update archive-runner Decision #2 | The daily-noon TCC click stays (per archive doc) |
+| ~~`docs/releasing-on-airy.md`~~ ✅ done | The daily-noon TCC click stays (per archive doc) |
