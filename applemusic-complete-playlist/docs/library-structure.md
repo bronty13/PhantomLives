@@ -106,21 +106,21 @@ Metal — Complete [PL]            2,071  ← all sub-genre streams, deduped
 │
 └── canon discographies (every recording, Flavor A):
     Motörhead 1771 · Metallica 1456 · Megadeth 649 · Sepultura 623 ·
-    Black Sabbath 573 · Judas Priest 567 · Ozzy 565 · Anthrax 543 ·
-    Death 530 · Iron Maiden 491 · Slipknot 458 · Slayer 393 · Dio 359 ·
+    Black Sabbath 573 · Judas Priest 567 · Ozzy 565 · Death 530 ·
+    Iron Maiden 491 · Slipknot 458 · Slayer 393 · Dio 359 ·
     Opeth 308 · Mastodon 288 · Lamb of God 276 · Testament 238 ·
     Amon Amarth 238 · Pantera 220 · Gojira 138 · System of a Down 136
 ```
 
 The sub-genre streams + `Metal — Complete` are the **breadth**; the `<Band> Complete`
-discographies are the **depth**. They're kept separate on purpose — folding 21
-every-recording discographies (~10,300 songs) into `Metal — Complete` would bury the
+discographies are the **depth**. They're kept separate on purpose — folding 20
+every-recording discographies (~10,280 songs) into `Metal — Complete` would bury the
 curated 2,071 breadth under one-band bulk.
 
 ### Artist completes (all genres)
 
 `<Artist> Complete [PL]` — every available recording + features for one artist, built
-by `build_playlist.py`. **67 playlists, 43,599 songs** (the 21 metal ones above plus
+by `build_playlist.py`. **66 playlists, 43,056 songs** (the 20 metal ones above plus
 Taylor Swift, The Beatles, Ella Fitzgerald 4,604, Pearl Jam 6,982, U2, etc.).
 
 ### Classical renditions
