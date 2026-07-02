@@ -34,7 +34,7 @@ from applearchive_common import (  # noqa: E402
     html_page, esc,
 )
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 
 # ─── .emlx parsing ───────────────────────────────────────────────────────────
@@ -221,6 +221,20 @@ def read_mail(mail_store):
 
 
 # ─── views ───────────────────────────────────────────────────────────────────
+def _save_attachment(dest, fn, data, mid):
+    """Write one attachment; on an OSError, log and skip it instead of aborting the
+    whole archive. Symmetric with the read guard below — a single unwritable file (e.g.
+    a dangling/corrupt directory entry on a flaky external volume) must not red the
+    entire mail run. Returns True if written."""
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / fn).write_bytes(data)
+        return True
+    except OSError as ex:
+        sys.stderr.write(f"  ! skipped unwritable attachment {mid}/{fn}: {ex}\n")
+        return False
+
+
 def _write_attachments(archive, e):
     """Extract this message's attachments to attachments/<id>/, return [(name, rel)].
     Names are de-duplicated (foo.pdf, foo-2.pdf, …) so same-named parts never clobber."""
@@ -248,8 +262,8 @@ def _write_attachments(archive, e):
         except Exception:
             continue
         fn = unique(part.get_filename())
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / fn).write_bytes(payload)
+        if not _save_attachment(dest, fn, payload, e['id']):
+            used.discard(fn); continue
         saved.append((fn, f"attachments/{e['id']}/{fn}"))
     for f in e.get('_external', []):
         try:
@@ -257,8 +271,8 @@ def _write_attachments(archive, e):
         except OSError:
             continue
         fn = unique(f.name)
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / fn).write_bytes(data)
+        if not _save_attachment(dest, fn, data, e['id']):
+            used.discard(fn); continue
         saved.append((fn, f"attachments/{e['id']}/{fn}"))
     return saved
 

@@ -2,6 +2,19 @@
 
 All notable changes to `apple-archiver` are recorded here.
 
+## 1.7.3 — 2026-07-02 (Mail archiver: skip unwritable attachments instead of aborting)
+
+### Fixed
+- **A single unwritable attachment no longer reds the entire mail archive.** The
+  attachment *write* in `mail_archiver._write_attachments` was unguarded (unlike the
+  *read* right above it), so one failing `write_bytes` raised and aborted the whole
+  run with exit 1. Discovered on the airy runner: a **dangling/corrupt APFS directory
+  entry** on the REDONE external (SMR drive with unrepairable fsroot corruption) made
+  one attachment path return `ENOENT` on every write, failing the mail job every run.
+  Writes now go through `_save_attachment`, which logs and skips an `OSError` and
+  continues — symmetric with the existing read guard. (mail_archiver 1.0.1.)
+  NOTE: this is resilience, not a fix for the underlying volume corruption.
+
 ## 1.7.2 — 2026-06-14 (Mail index blank-space + consolidated archive layout)
 
 ### Fixed

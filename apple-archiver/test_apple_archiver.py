@@ -659,5 +659,20 @@ class MailTests(unittest.TestCase):
         self.assertEqual(pdf.read_bytes(), b'%PDF-1.4 fake')
 
 
+class SaveAttachmentResilienceTest(unittest.TestCase):
+    """A single unwritable attachment (e.g. a dangling/corrupt directory entry on a
+    flaky external volume) must be skipped-and-logged, not abort the whole mail run."""
+
+    def test_writes_ok_and_reports_true(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'attachments' / 'abc'
+            self.assertTrue(ma._save_attachment(dest, 'a.bin', b'data', 'abc'))
+            self.assertEqual((dest / 'a.bin').read_bytes(), b'data')
+
+    def test_unwritable_dest_returns_false_without_raising(self):
+        # /dev/null is not a directory → mkdir raises OSError inside; must be caught.
+        self.assertFalse(ma._save_attachment(Path('/dev/null/nope'), 'a.bin', b'data', 'mid'))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
