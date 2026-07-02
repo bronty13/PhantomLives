@@ -43,6 +43,9 @@ jobs run unattended. Two things make this clean now:
   the only zero-touch alternative; deferred as overkill for now.
 - **Swift apps:** build PurpleAttic + PurpleMirror **on Vortex** and `ditto` the signed `.app`s to
   the runner's `/Applications`, to avoid ~15GB of Xcode on the 256GB SSD. TCC grants are per-machine.
+  **SUPERSEDED (see `docs/airy-services-plan.md`):** the decision to install Xcode on airy makes it
+  self-contained for build + sign + notarize + CI, so apps can build on airy directly. Watch the
+  256GB disk budget (Photos + Xcode + DerivedData) — mitigations are in that plan's Workstream 0.
 - **PurpleMirror remote control:** ship **monitor-only first**, then add Run-Now, then enable/disable.
 
 ---
