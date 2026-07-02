@@ -35,7 +35,11 @@ PurpleMirror reuses the **shared PhantomLives** credentials:
 
 ## Rules
 
-- Version is git-derived (`1.1.<commit-count>`) — no manual bump; release from a
-  committed, pushed commit. Re-running on the same commit is refused.
+- Version is **semantic** (`MAJOR.MINOR.PATCH`, e.g. `1.18.0`) — set it per release via
+  `SHORT_VERSION=<x.y.z>` (release.sh/build-app.sh honor the override; release-on-airy.sh
+  forwards it). Bump it yourself and add a matching `## <x.y.z> — <date>` CHANGELOG heading
+  (release.sh pulls the release notes from the heading that matches `SHORT_VERSION`). The
+  **build number** stays git-derived (`<commit-count>.<sha>`) so `CFBundleVersion` is monotonic
+  for Sparkle. Release from a committed, pushed commit; re-running on the same tag is refused.
 - **Never hand-edit a shipped `<item>`** in `appcast.xml` — its version+signature
   pair is part of the trust chain. Add new items above old ones (release.sh does).

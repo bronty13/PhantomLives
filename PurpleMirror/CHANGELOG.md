@@ -2,7 +2,7 @@
 
 All notable changes to PurpleMirror are documented here.
 
-## Unreleased
+## 1.18.0 — 2026-07-02
 
 - **Cluster view in the menu.** A new collapsible **Cluster** section in the menu-bar panel lists
   every node (local + fleet/remote) with a live status dot, the SSH/SMB/Screen-Sharing shortcuts,
