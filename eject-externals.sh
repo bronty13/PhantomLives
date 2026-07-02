@@ -54,6 +54,16 @@ if [[ "$MODE" == "--list" ]]; then
   exit 0
 fi
 
+# Preflight: stop any service that holds open file handles on an external volume,
+# or its files keep the volume busy and the unmount below is forced (or fails).
+# PeekServer serves media straight off the review drive, so boot its launchd agent
+# out first — it'll come back on next login/reboot (RunAtLoad). No-op if not loaded.
+PEEKSERVER_LABEL="com.phantomlives.peekserver"
+if /bin/launchctl print "gui/$(id -u)/$PEEKSERVER_LABEL" >/dev/null 2>&1; then
+  echo "→ stopping PeekServer ($PEEKSERVER_LABEL) so it releases the drive…"
+  /bin/launchctl bootout "gui/$(id -u)/$PEEKSERVER_LABEL" 2>/dev/null || true
+fi
+
 # GOAL: leave NO external volume mounted. The shutdown hang is diskarbitrationd
 # unmounting a *mounted volume* at shutdown — a connected drive whose volumes are
 # already unmounted has nothing to hang on. We therefore UNMOUNT (not necessarily
