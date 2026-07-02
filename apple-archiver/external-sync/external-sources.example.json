@@ -1,0 +1,33 @@
+{
+  "_comment": "TEMPLATE — copy to the deployment host as external-sources.json and fill in real values (which are PII, so the real file is gitignored). Defines the remote Macs archived by the pull-model sync. source-vars.py reads this; each external-<kind>-sync.sh consumes SRC_* vars derived from it. Archive layout is derived from 'name'. Nothing is hardcoded in the scripts — all host/user/paths live here.",
+  "sources": [
+    {
+      "id": "example",
+      "name": "Example",
+      "enabled": true,
+      "host": "10.0.0.NNN_OR_HOSTNAME",
+      "user": "REMOTE_MAC_USERNAME",
+      "identityFile": "~/.ssh/purpleattic_example",
+      "photos": {
+        "enabled": true,
+        "remoteLibrary": "/path/on/remote/Pictures/Photos Library.photoslibrary",
+        "remoteExportRoot": "/path/on/remote/PhotoArchive",
+        "osxphotosBin": "/path/on/remote/Library/Python/3.x/bin/osxphotos",
+        "reviewBase": "/Volumes/REVIEW_SSD",
+        "windowDays": 90
+      },
+      "messages":   { "enabled": true },
+      "notes":      { "enabled": true },
+      "reminders":  { "enabled": true },
+      "safari":     { "enabled": true },
+      "voicememos": { "enabled": true },
+      "calls":      { "enabled": true, "decrypt": true },
+      "calendar":   { "enabled": true },
+      "books":      { "enabled": true },
+      "podcasts":   { "enabled": true },
+      "stickies":   { "enabled": true },
+      "mail":       { "enabled": true },
+      "archiveBase": "/Volumes/ARCHIVE_DRIVE"
+    }
+  ]
+}

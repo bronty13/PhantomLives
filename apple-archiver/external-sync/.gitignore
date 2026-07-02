@@ -1,0 +1,9 @@
+# Real config + runtime state hold PII (hosts, usernames, paths) — deploy on the
+# runner, NEVER commit. Only external-sources.example.json is tracked.
+external-sources.json
+profile.json
+settings.json
+*.log
+run.lock
+run-history.jsonl
+__pycache__/
