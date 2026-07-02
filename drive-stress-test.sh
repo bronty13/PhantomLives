@@ -78,7 +78,11 @@ printf '  read:  %d MB/s (%d GB in %ds)\n' $(( GB*1024/rsec )) "$GB" "$rsec"
 
 say "4. I/O-error scan (system log, this run)"
 SECS=$(( $(date +%s) - START_EPOCH + 5 ))
-errs="$(log show --last "${SECS}s" 2>/dev/null | grep -iE "I/O error|${BSD}.*error|media error|SCSI|UNRECOVERED|reset" | grep -vi "no error" | head -8 || true)"
+# Specific disk-error signatures only — avoid matching unrelated "…Reset…"/"…error…"
+# app-log noise (which produced false positives on the first REDTHREE run).
+errs="$(log show --last "${SECS}s" 2>/dev/null \
+  | grep -iE "i/o error|media error|unrecovered read|read failure|write failure|${BSD}:? .*(I/O|media) error" \
+  | head -8 || true)"
 if [ -n "$errs" ]; then echo "$errs" | sed 's/^/  /'; else echo "  (no disk I/O errors logged)"; fi
 
 hr
