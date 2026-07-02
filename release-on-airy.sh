@@ -63,10 +63,12 @@ build_remote_script() {
     if [ -n "${!v:-}" ]; then exports+="export $v=$(shq "${!v}")"$'\n'; fi
   done
   cat <<REMOTE
-set -euo pipefail
 # Load release env (SPARKLE_PUBLIC_KEY, NOTARIZE_PROFILE) — ssh non-login shell won't.
+# The rc files are zsh and not necessarily set -e/-u safe, so source them BEFORE
+# enabling strict mode (else a zsh-ism or unset ref under bash aborts the release).
 source "\$HOME/.zprofile" 2>/dev/null || true
 source "\$HOME/.zshrc" 2>/dev/null || true
+set -euo pipefail
 ${exports}
 
 cd "$AIRY_REPO"

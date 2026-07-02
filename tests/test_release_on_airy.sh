@@ -8,6 +8,11 @@ check() { if eval "$2"; then echo "ok: $1"; else echo "FAIL: $1"; fail=1; fi; }
 
 OUT="$($WRAP --print-remote PurpleMirror)"
 check "sources zprofile for release env" 'grep -q "source \"\$HOME/.zprofile\"" <<<"$OUT"'
+# Regression: the zsh rc files must be sourced BEFORE `set -euo pipefail`, else a zsh-ism
+# or unset-var ref in them aborts the whole release under bash strict mode (real-run bug).
+check "sources rc files before strict mode" \
+  '[ "$(grep -n "source \"\$HOME/.zshrc\"" <<<"$OUT" | head -1 | cut -d: -f1)" -lt \
+     "$(grep -n "^set -euo pipefail" <<<"$OUT" | head -1 | cut -d: -f1)" ]'
 check "syncs main before releasing"       'grep -q "git pull --ff-only origin \"main\"" <<<"$OUT"'
 check "unlocks the signing keychain"       'grep -q "unlock-keychain.*purple-signing.keychain-db" <<<"$OUT"'
 check "invokes the subproject release.sh"  'grep -q "PurpleMirror/Scripts/release.sh" <<<"$OUT"'
