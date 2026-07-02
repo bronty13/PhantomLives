@@ -19,12 +19,11 @@ set -euo pipefail
 
 BUNDLE="${1:?usage: release-secrets-restore.sh <bundle-dir>}"
 [ -d "$BUNDLE" ] || { echo "no such bundle dir: $BUNDLE" >&2; exit 1; }
-# shellcheck disable=SC1090
+# shellcheck source=/dev/null disable=SC1091
 [ -f "$BUNDLE/manifest.env" ] && source "$BUNDLE/manifest.env" || true
 
 CFG="$HOME/.config/purple-signing"
 SIGN_KC="$HOME/Library/Keychains/purple-signing.keychain-db"
-LOGIN_KC="$HOME/Library/Keychains/login.keychain-db"
 MIRROR_APP="${MIRROR_APP:-PurpleMirror}"
 SPARKLE_PUBKEY_EXPECTED="${SPARKLE_PUBLIC_KEY:-2q4I3WNk7qQbidXEO/Jo/U3+t2ODS9x+e3/Wqt+ClQQ=}"
 note() { printf '  %s\n' "$*"; }
@@ -42,8 +41,8 @@ if [ -f "$BUNDLE/sparkle-ed25519-private.key" ]; then
   if [ -n "$GK" ]; then
     "$GK" -f "$BUNDLE/sparkle-ed25519-private.key"
     got="$("$GK" -p 2>/dev/null | tail -1)"
-    [ "$got" = "$SPARKLE_PUBKEY_EXPECTED" ] && note "imported ✓  (pubkey matches canonical)" \
-      || warn "imported but pubkey '$got' != expected '$SPARKLE_PUBKEY_EXPECTED'"
+    if [ "$got" = "$SPARKLE_PUBKEY_EXPECTED" ]; then note "imported ✓  (pubkey matches canonical)"
+    else warn "imported but pubkey '$got' != expected '$SPARKLE_PUBKEY_EXPECTED'"; fi
   else warn "generate_keys not found; resolve $MIRROR_APP and re-run."; fi
 fi
 
@@ -60,6 +59,7 @@ if [ -f "$BUNDLE/devid-identity.p12" ]; then
   security import "$BUNDLE/devid-identity.p12" -k "$SIGN_KC" -P "${P12_PASSWORD:?P12_PASSWORD missing from manifest.env}" \
     -T /usr/bin/codesign -T /usr/bin/security
   security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPW" "$SIGN_KC" >/dev/null
+  # shellcheck disable=SC2046  # intentional: each existing keychain must be a separate arg
   security list-keychains -d user -s "$SIGN_KC" $(security list-keychains -d user | sed 's/"//g')
   printf '%s' "$KCPW" > "$CFG/keychain-pw"; chmod 600 "$CFG/keychain-pw"
   security find-identity -v -p codesigning "$SIGN_KC" | grep "Developer ID Application" && note "imported ✓"
@@ -74,7 +74,8 @@ fi
 # ---- 4. gh token ------------------------------------------------------------
 if [ -f "$BUNDLE/gh-token.txt" ] && command -v gh >/dev/null 2>&1; then
   echo "-- gh auth --"
-  gh auth login --with-token < "$BUNDLE/gh-token.txt" && note "gh authenticated ✓" || warn "gh token rejected — run 'gh auth login' manually."
+  if gh auth login --with-token < "$BUNDLE/gh-token.txt"; then note "gh authenticated ✓"
+  else warn "gh token rejected — run 'gh auth login' manually."; fi
 fi
 
 # ---- 5. notarytool profile (interactive) ------------------------------------
