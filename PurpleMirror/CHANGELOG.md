@@ -2,6 +2,13 @@
 
 All notable changes to PurpleMirror are documented here.
 
+## Unreleased
+
+- **Release tooling:** `Scripts/release.sh` now bases the `Notarized:` label on `stapler validate`
+  (authoritative) instead of `spctl -t exec`, which can report non-"accepted" for a freshly-stapled
+  app on macOS Tahoe even though the ticket is stapled — 1.18.0 was mislabeled `Notarized: no`
+  despite being properly notarized.
+
 ## 1.18.0 — 2026-07-02
 
 - **Cluster view in the menu.** A new collapsible **Cluster** section in the menu-bar panel lists

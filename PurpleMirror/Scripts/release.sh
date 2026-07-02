@@ -98,11 +98,17 @@ SHORT_VERSION="$SHORT_VERSION" BUILD_NUMBER="$BUILD_NUMBER" \
 echo; echo "== Verify =="
 NOTARIZED="no"
 if [ -n "$NOTARIZE_PROFILE" ]; then
+    # A passing `stapler validate` is authoritative proof the app is notarized + stapled,
+    # so it — not the flakier `spctl -t exec` assessment — decides the NOTARIZED label.
+    # (spctl -t exec can report non-"accepted" for a freshly-stapled app in a temp dir on
+    # some macOS versions even though the ticket is present; observed on 1.18.0 / Tahoe 26.)
     xcrun stapler validate "$APP.app" >/dev/null 2>&1 \
         || die "stapler validate failed — not notarized/stapled. See /tmp/pm-notarize.plist."
-    note "stapler validate ✓"
+    note "stapler validate ✓"; NOTARIZED="yes"
     if spctl -a -vvv -t exec "$APP.app" 2>&1 | grep -q 'accepted'; then
-        note "spctl: accepted ✓"; NOTARIZED="yes"
+        note "spctl: accepted ✓"
+    else
+        note "spctl -t exec did not report 'accepted' (cosmetic; the staple is authoritative)"
     fi
 fi
 
