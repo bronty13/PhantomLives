@@ -30,8 +30,9 @@ evict(){ command -v vmtouch >/dev/null 2>&1 && vmtouch -e "$1" >/dev/null 2>&1 |
 
 WORK="$VOL/.drive-stress-$$"
 mkdir "$WORK"
-cleanup(){ rm -rf "$WORK" 2>/dev/null || true; }
-trap cleanup EXIT
+# On exit, stop any concurrent-load agitators (flag file + kill our bg jobs) before removing.
+cleanup(){ rm -f "$WORK/keepgoing" 2>/dev/null; kill "$(jobs -p)" 2>/dev/null; rm -rf "$WORK" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
 
 DEV="$(diskutil info "$VOL" 2>/dev/null | awk -F: '/Device Node/{gsub(/ /,"",$2);print $2}')"
 BSD="$(basename "${DEV:-}")"
@@ -76,6 +77,31 @@ r1="$(date +%s)"; rsec=$(( r1 - r0 )); [ "$rsec" -lt 1 ] && rsec=1
 printf '  read:  %d MB/s (%d GB in %ds)\n' $(( GB*1024/rsec )) "$GB" "$rsec"
 [ -s "$WORK/cmp.err" ] && { echo "  cmp/read errors:"; sed 's/^/    /' "$WORK/cmp.err"; }
 
+say "3b. Concurrent mixed-load integrity"
+# The failure that corrupted REDONE was CONTENTION — many streams reading/writing at once
+# (smbd + ffmpeg + jobs). A sequential pass can't reproduce it. Here N agitators churn the
+# drive with random write→fsync→read loops WHILE the foreground writes+verifies a fresh
+# file. If the drive drops/reorders writes under load, this verify fails where §3 passed.
+NAG=5
+CONC_GB=$(( GB/3 > 4 ? GB/3 : 4 ))
+: > "$WORK/keepgoing"
+agit(){ local d="$WORK/ag$1"; mkdir -p "$d"
+  while [ -e "$WORK/keepgoing" ]; do
+    dd if=/dev/urandom of="$d/c" bs=1m count=64 2>/dev/null || echo "w$1" >>"$WORK/ag.err"
+    sync
+    dd if="$d/c" of=/dev/null bs=1m 2>/dev/null || echo "r$1" >>"$WORK/ag.err"
+  done; }
+for i in $(seq "$NAG"); do agit "$i" & done
+echo "  ${NAG} agitators churning; writing + verifying ${CONC_GB} GB under contention…"
+CK=$(( CONC_GB * 4 )); BIG2="$WORK/big2.bin"
+for _ in $(seq "$CK"); do cat "$SEED"; done > "$BIG2"; sync; evict "$BIG2"
+conc=PASS
+{ for _ in $(seq "$CK"); do cat "$SEED"; done | cmp - "$BIG2" 2>"$WORK/cmp2.err"; } || conc=FAIL
+rm -f "$WORK/keepgoing"; wait 2>/dev/null || true
+cioerr=0; { [ -s "$WORK/ag.err" ] || [ -s "$WORK/cmp2.err" ]; } && cioerr=1
+printf '  concurrent verify: %s   (agitator I/O errors: %s)\n' "$conc" "$([ -f "$WORK/ag.err" ] && wc -l <"$WORK/ag.err" | tr -d ' ' || echo 0)"
+[ -s "$WORK/cmp2.err" ] && { echo "  cmp errors under load:"; sed 's/^/    /' "$WORK/cmp2.err"; }
+
 say "4. I/O-error scan (system log, this run)"
 SECS=$(( $(date +%s) - START_EPOCH + 5 ))
 # Specific disk-error signatures only — avoid matching unrelated "…Reset…"/"…error…"
@@ -87,11 +113,12 @@ if [ -n "$errs" ]; then echo "$errs" | sed 's/^/  /'; else echo "  (no disk I/O 
 
 hr
 say "VERDICT"
-if [ "$verify" = PASS ] && [ "$ioerr" = 0 ]; then
-    echo "  INTEGRITY PASS — ${GB} GB written, read back, byte-identical, no I/O errors."
+if [ "$verify" = PASS ] && [ "$ioerr" = 0 ] && [ "${conc:-PASS}" = PASS ] && [ "${cioerr:-0}" = 0 ]; then
+    echo "  INTEGRITY PASS — ${GB} GB sequential + concurrent-load, byte-identical, no I/O errors."
     echo "  (Judge health on the throughput numbers above: a healthy 5 Gbps HDD reads"
     echo "   ~50–150 MB/s; SSD ~400+. Reads of a few MB/s or USB2-class ~40 MB/s are red flags.)"
 else
-    echo "  INTEGRITY FAIL — data did NOT survive a write→read round-trip (verify=$verify, io-errors=$ioerr)."
-    echo "  This drive corrupted or could not read back what was written. DO NOT trust it with data."
+    echo "  INTEGRITY FAIL — data did NOT survive a write→read round-trip."
+    echo "    sequential verify=$verify (io-errors=$ioerr) · concurrent verify=${conc:-?} (io-errors=${cioerr:-?})"
+    echo "  A concurrent-only failure = the drive drops writes UNDER CONTENTION (REDONE's mode). DO NOT trust it."
 fi
