@@ -65,7 +65,7 @@ Status legend: ✅ done & verified · 🟡 in progress · ⬜ not started · ⚠
 | — | **Rachel backup pull** | ✅ | 13 `com.bronty13.external-*-sync.rachel` jobs loaded, exiting clean. |
 | — | **Dev-ID signing** | ✅ | `purple-signing.keychain-db` holds `Developer ID Application: Robert Olen (SRKV8T38CD)`; pw at `~/.config/purple-signing/keychain-pw`. |
 | WS1 | **Release/notary runner** | ✅ | Notary profile + Sparkle key seeded in login keychain, `gh` authed, `~/.config/purple-signing/login-pw` unlocks it over SSH, `~/.zprofile` exports the env. **Proven:** cut **PurpleMirror 1.18.0** (notarized + stapled + appcast live). Headless `sign_update` over SSH works after a one-time "Always Allow". |
-| WS2 | **Self-hosted Swift CI** | ✅ | `~/actions-runner` registered as **`airy`** (labels `self-hosted,macOS,ARM64,xcode`), launchd service. **Proven green:** a PurpleMirror push ran `test (PurpleMirror)` on airy → success. Still monitor-only (not a required check). |
+| WS2 | **Self-hosted Swift CI** | ✅ | `~/actions-runner` registered as **`airy`** (labels `self-hosted,macOS,ARM64,xcode`), launchd LaunchAgent. **Proven green:** a PurpleMirror push ran `test (PurpleMirror)` on airy → success. Monitor-only (not a required check). *Reboot-start not yet tested* — the agent is RunAtLoad, but FileVault-on + no-auto-login means it starts only after a GUI login (consistent with airy's model, §6). |
 | — | **Secrets → 1Password** | ✅ | `release-secrets-backup.sh`/`restore.sh` shipped; the Sparkle key + Dev-ID `.p12` + notary/gh refs backed up to 1Password. |
 | — | **PurpleAttic archive** | ⬜ | osxphotos/exiftool/restic installed; app + 3-copy run (LACIE+ROG_WHITE) + TCC grants pending. |
 | — | **PurpleMirror app** | ✅ | Installed + run-at-login (`org.purplemirror.autostart`); Dev-ID-signed. |
@@ -121,6 +121,10 @@ Mac with `release-secrets-restore.sh` (see `docs/release-secrets-backup.md`).
 - **Stays awake while up** via **Amphetamine** (menu-bar; "Launch at login" set) — do not re-flag sleep
   as an open risk once the power profile (§4) is applied.
 - **Login-keychain secrets** (Sparkle/notary) must be seeded from airy's **own Terminal**, not over SSH.
+  The **Sparkle key** additionally needed a one-time **"Always Allow"** (done by running
+  `PurpleMirror/Scripts/release.sh` once at airy's Terminal) before `sign_update` works headlessly over
+  SSH. A broadening `set-key-partition-list … unsigned:` was also applied to the login keychain, but the
+  "Always Allow" is what actually unblocked it.
 - **Rebuilds keep TCC grants** because apps Dev-ID-sign (stable cdhash) — the adhoc-regrant tax is gone.
 
 ## 7 — How to cut a release from airy
