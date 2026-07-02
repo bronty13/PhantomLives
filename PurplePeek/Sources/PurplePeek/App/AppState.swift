@@ -57,6 +57,8 @@ struct ImportProgress {
     var failures: [(name: String, reason: String)] = []
 }
 
+
+
 /// Single source of truth for the UI. All data mutations funnel through here (views never
 /// touch `DatabaseService` directly), and every mutation is followed by a `reloadX()` that
 /// republishes the affected slice.
@@ -122,6 +124,13 @@ final class AppState: ObservableObject {
     /// the decision lens so you can surface the tagged items among those you've already decided.
     @Published var showTaggedOnly: Bool = false {
         didSet { if showTaggedOnly != oldValue { recomputeDerived() } }
+    }
+    /// The toolbar Date lens: narrow both the grid and the Preview queue to items modified
+    /// within a recent window. Combines with the decision + tagged lenses. The cutoff is
+    /// evaluated when the derived sets recompute (filter/decision/file-set changes), not on a
+    /// live timer — pick the filter again to re-anchor "now".
+    @Published var dateFilter: DateFilter = .all {
+        didSet { if dateFilter != oldValue { recomputeDerived() } }
     }
 
     // MARK: - Decision undo
@@ -308,6 +317,8 @@ final class AppState: ObservableObject {
         reloadMediaFiles()
     }
 
+    private var rootsRetryTask: Task<Void, Never>?
+
     func reloadScanRoots() {
         // Fire-and-forget async so the same call works for both local (runs inline on the main
         // actor) and remote (suspends on URLSession) data sources; @Published mutation stays on main.
@@ -316,8 +327,29 @@ final class AppState: ObservableObject {
                 var roots = try await dataSource.fetchAllScanRoots()
                 if isRemote { roots = applyRemoteOrg(to: roots) }
                 scanRoots = roots
+                rootsRetryTask?.cancel()
+                rootsRetryTask = nil
             }
-            catch { errorMessage = error.localizedDescription }
+            catch {
+                // Alert only on the FIRST failure; the quiet retry below handles recovery
+                // (re-alerting every cycle would spam the user with modal alerts).
+                if rootsRetryTask == nil { errorMessage = error.localizedDescription }
+                scheduleRootsRetry()
+            }
+        }
+    }
+
+    /// A remote roots fetch that fails (launch Wi-Fi blip, server restart, or macOS's Local
+    /// Network permission being granted AFTER launch — a TCC flip doesn't ripple through
+    /// NWPathMonitor, so a timer is the only reliable recovery) used to leave the sidebar empty
+    /// until the app was relaunched. Retry quietly every few seconds while remote and empty.
+    private func scheduleRootsRetry() {
+        guard isRemote, scanRoots.isEmpty else { return }
+        rootsRetryTask?.cancel()
+        rootsRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled, let self, self.isRemote, self.scanRoots.isEmpty else { return }
+            self.reloadScanRoots()
         }
     }
 
@@ -453,6 +485,9 @@ final class AppState: ObservableObject {
         let gridFilter = gridDecisionFilter
         let previewFilter = previewDecisionFilter
         let taggedOnly = showTaggedOnly
+        // Date lens: computed once per recompute. Items without a parseable modified date fail
+        // an active window (unknown age is not "recent").
+        let dateCutoff = dateFilter.cutoff()
         var visible: [MediaFile] = []
         var preview: [MediaFile] = []
         var deletableImported = false
@@ -465,6 +500,11 @@ final class AppState: ObservableObject {
             // Collapse exact duplicates: only the representative appears in the grid/preview
             // (the flags above still counted the hidden copies, so bulk delete reaches them).
             if hiddenDuplicateIds.contains(file.id) { continue }
+
+            // Date window applies to BOTH the grid and the Preview queue.
+            if let dateCutoff {
+                guard let modified = file.modifiedDate, modified >= dateCutoff else { continue }
+            }
 
             // Grid: optional folder narrowing + the grid's decision lens + optional tagged-only.
             if gridFilter.matches(file), !(taggedOnly && (fileKeywordNames[file.id]?.isEmpty ?? true)) {
@@ -613,7 +653,14 @@ final class AppState: ObservableObject {
 
     /// Re-scan the currently selected root in place. Same machinery as a fresh scan, so the
     /// upsert preserves every decision and the missing-files sweep reconciles deletions.
+    ///
+    /// REMOTE MODE routes to the server's scanner instead. Running the LOCAL scan here was a
+    /// latent bug that turned acute once the server's volumes were SMB-mounted at the same
+    /// paths: ⌘R would silently walk the whole remote tree over SMB, upsert the remote root
+    /// into the LOCAL SQLite, and — worst — its completion cleared the undo stack and reset
+    /// the selection, killing the in-progress review session (the "undo stopped working" bug).
     func rescanSelectedRoot() {
+        if isRemote { rescanRemote(); return }
         guard let root = selectedRootPath else { return }
         scanFolder(URL(fileURLWithPath: root))
     }
@@ -622,7 +669,24 @@ final class AppState: ObservableObject {
     /// as the toolbar refresh, but targeted at `path` regardless of which root is selected, so
     /// right-clicking any folder re-scans that one (decision-preserving upsert + missing sweep).
     func rescanRoot(_ path: String) {
+        if isRemote { rescanRemote(); return }
         scanFolder(URL(fileURLWithPath: path))
+    }
+
+    /// Remote refresh: kick the server's own (background, decision-preserving) rescan, then
+    /// refetch the roots + item list. Leaves the undo stack and preview position alone —
+    /// refreshing is not a session reset.
+    private func rescanRemote() {
+        Task {
+            do {
+                try await peekClient?.triggerScan()
+                statusMessage = "Server rescan started — new files appear as it finishes."
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            reloadScanRoots()
+            reloadMediaFiles()
+        }
     }
 
     /// FSEvents callback target: auto-rescan the selected root when its contents change on
@@ -851,7 +915,8 @@ final class AppState: ObservableObject {
         recomputeDerived()
         if let firstId = last.changes.first?.id {
             selectFile(firstId)
-            if appMode == .preview, let idx = previewQueue.firstIndex(where: { $0.id == firstId }) {
+            let idx = previewQueue.firstIndex(where: { $0.id == firstId })
+            if appMode == .preview, let idx {
                 previewIndex = idx
             }
         }

@@ -147,6 +147,20 @@ struct ContentView: View {
                 .help(appState.lastDecisionName.map { "Undo keep/skip for \($0)" } ?? "Undo last keep/skip")
         }
         ToolbarItem(placement: .primaryAction) {
+            // The Date lens — narrows BOTH the Browse grid and the Preview queue (it's applied
+            // in recomputeDerived alongside the decision + tagged lenses, so it combines).
+            Picker(selection: Binding(
+                get: { appState.dateFilter },
+                set: { appState.dateFilter = $0 }
+            )) {
+                ForEach(DateFilter.allCases) { Text($0.label).tag($0) }
+            } label: {
+                Label("Date", systemImage: appState.dateFilter == .all ? "calendar" : "calendar.badge.clock")
+            }
+            .pickerStyle(.menu)
+            .help("Show only items modified recently — applies to Browse and Preview")
+        }
+        ToolbarItem(placement: .primaryAction) {
             Button {
                 appState.rescanSelectedRoot()
             } label: { Label("Refresh", systemImage: "arrow.clockwise") }

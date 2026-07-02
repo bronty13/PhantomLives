@@ -68,4 +68,31 @@ struct MediaFile: Codable, FetchableRecord, MutablePersistableRecord, Identifiab
     var isImported: Bool { importedAt != nil }
     /// True when a re-scan found the file gone from disk (it may still reappear).
     var isMissing: Bool { missingAt != nil }
+
+    /// `fileModifiedAt` as a real Date, tolerating both stored dialects: the local scanner
+    /// writes local-time ISO without a zone ("2026-06-15T18:51:32"), PeekServer writes UTC
+    /// with Z ("2026-06-15T18:51:32Z"). nil when absent/unparseable — such items fail any
+    /// active date window (unknown age ≠ recent). Backs the toolbar Date filter.
+    var modifiedDate: Date? {
+        guard let s = fileModifiedAt, !s.isEmpty else { return nil }
+        // Dispatch on the suffix — DateFormatter is lenient about a missing quoted 'Z', so
+        // trying the UTC pattern first would silently mis-zone the local dialect by hours.
+        return s.hasSuffix("Z") ? Self.utcDateFormatter.date(from: s)
+                                : Self.localDateFormatter.date(from: s)
+    }
+
+    private static let utcDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    private static let localDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f
+    }()
 }

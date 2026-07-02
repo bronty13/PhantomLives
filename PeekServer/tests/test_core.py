@@ -52,8 +52,11 @@ class CoreTests(unittest.TestCase):
         open(os.path.join(self.mediadir, "notes.txt"), "w").close()
         n = scan.scan_root(self.root)
         self.assertEqual(n, 3)  # 3 pngs, dotfile + txt ignored
-        total, _ = db.list_media(root=self.mediadir)
+        total, items = db.list_media(root=self.mediadir)
         self.assertEqual(total, 3)
+        # Clients date-filter on this (0.7.1) — the list must carry it, UTC with Z.
+        self.assertIn("file_modified_at", items[0])
+        self.assertTrue(items[0]["file_modified_at"].endswith("Z"))
 
     # decisions + retrieval
     def test_decision_with_keywords_albums(self):

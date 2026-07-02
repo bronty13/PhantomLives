@@ -5,6 +5,33 @@ All notable changes to PurplePeek are documented here. Versions are git-derived
 
 ## Unreleased
 
+### New: Date filter in the toolbar (Browse + Preview)
+
+A calendar menu in the toolbar narrows both the Browse grid and the Preview queue to items
+**modified within a recent window**: Last Hour / 2 / 4 / 8 Hours, Last Day / 2 / 3 / 7 Days,
+Last 2 Weeks, Last Month (default: All Dates). It combines with the Review (decision) and
+Tagged lenses. Remote items get their modified date from PeekServer 0.7.1's item list; local
+items already had it. Items with no readable date are excluded from an active window (unknown
+age isn't "recent"). +7 tests (window math, both date dialects, membership) → 66 total.
+
+### Fix: Refresh (⌘R) in remote mode ran the LOCAL scanner — and killed the review session
+
+`rescanSelectedRoot`/`rescanRoot` always ran the local scan machinery. Latent while the
+server's volumes weren't mounted here, it turned acute with SMB mounts at the same paths:
+a remote-mode Refresh silently walked the whole tree over SMB, upserted the remote root into
+the LOCAL database, and its completion **cleared the undo stack and reset the selection** —
+the "Undo stopped working / didn't return to the item" bug. Remote Refresh now triggers the
+SERVER's background rescan (`POST /api/scan`) and refetches, leaving the undo stack and
+preview position untouched.
+
+### Fix: a failed remote roots fetch no longer strands an empty sidebar
+
+If the launch-time `/api/roots` fetch failed (Wi-Fi blip, server restart, or macOS's **Local
+Network permission** being granted after launch — its prompt is unreliable for re-signed
+builds, and a denial surfaces as the misleading "The Internet connection appears to be
+offline"), the sidebar stayed empty until relaunch. It now retries quietly every 5 seconds,
+alerting only on the first failure.
+
 ### Offline write queue: decisions survive connectivity blips
 
 Remote-mode decisions (keep/skip, favorite, hidden, title, caption, keywords, albums) now go

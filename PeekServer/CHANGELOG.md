@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 — `file_modified_at` in the item list
+
+- `GET /api/items` rows now include `file_modified_at` (UTC, `…Z`). Clients need it for
+  date-window filtering (PurplePeek's new toolbar Date filter); previously only the full
+  `/api/item/<id>` record carried it. +1 test asserting the list keys.
+
 ## 0.7.0 — `/display`: the screen-size image tier
 
 - **New `GET /display/<id>`** — a cached, screen-size (~2048 px, `displaySize`) JPEG for

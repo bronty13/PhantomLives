@@ -41,7 +41,7 @@ final class RemotePeekDataSource: DataSource {
             // PeekServer classifies photos as "image"; PurplePeek's MediaType uses "photo".
             fileType: i.file_type == "image" ? "photo" : i.file_type,
             fileSize: i.file_size,
-            fileModifiedAt: nil,
+            fileModifiedAt: i.file_modified_at,
             keep: i.keep,
             isFavorite: i.is_favorite != 0,
             isHidden: i.is_hidden != 0,
