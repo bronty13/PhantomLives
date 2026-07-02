@@ -26,6 +26,25 @@ cp config.example.json config.json   # then edit "roots"
 ./run.sh                              # → http://<host>:8788  (open from any Mac/iPad)
 ```
 
+### Run headless (launchd agent)
+
+To keep PeekServer up unattended on the runner (survives crash + login), install it as a
+launchd LaunchAgent:
+
+```bash
+./install-agent.sh --install-agent      # write the plist + (re)bootstrap it
+./install-agent.sh --status             # show launchd state + log location
+./install-agent.sh --uninstall-agent    # stop + remove
+```
+
+It's a long-running server, so the agent uses `KeepAlive` + `RunAtLoad` (relaunch on crash / at
+login) — not a `StartInterval`. Two headless gotchas it handles: it sets a `PATH` that includes
+`/opt/homebrew/bin` so **ffmpeg** (video proxies) resolves under launchd's minimal environment, and
+`--install-agent` prints the **Full Disk Access** grant steps needed when a review folder lives on an
+external/TCC-protected volume (grant FDA to `/bin/bash`, the interpreter the agent runs as). Logs go to
+`~/Library/Logs/phantomlives-peekserver.log`. If a root lives on an external drive, `eject-externals.sh`
+boots the agent out before unmounting so a `reboot-safe` eject can't be blocked (Tahoe unmount-hang guard).
+
 `config.json` (gitignored — may carry local paths):
 
 | key | meaning |
@@ -89,4 +108,4 @@ Once you've triaged, run the worker on the host with the Photos library:
 - **Phase 1:** scan + cached thumbnails + decisions DB + the web review UI. ✅
 - **Phase 2:** keep→Photos import worker (`exiftool` + `osxphotos import`), kept-audio export,
   skip→Trash, and PurplePeek decision migration. ✅
-- **Phase 3:** deploy to airy (launchd agent; move REDONE + config). ◻️
+- **Phase 3:** deploy to airy — launchd agent (`install-agent.sh`) ✅; move REDONE + config to airy ◻️.

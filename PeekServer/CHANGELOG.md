@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.0 — headless launchd agent (Phase 3: run unattended on the runner)
+
+- **New `install-agent.sh`** — run PeekServer as a launchd LaunchAgent
+  (`--install-agent` / `--uninstall-agent` / `--status` / `--print-plist`). It's a long-running
+  server, so the agent uses `KeepAlive` + `RunAtLoad` (relaunch on crash / at login), **not** a
+  `StartInterval`. Label `com.phantomlives.peekserver`; logs to
+  `~/Library/Logs/phantomlives-peekserver.log`.
+- Handles two headless gotchas: the agent's `PATH` includes `/opt/homebrew/bin` so **ffmpeg**
+  (video proxies) resolves under launchd's minimal environment, and `--install-agent` prints the
+  **Full Disk Access** grant steps for serving folders on external/TCC-protected volumes (FDA on
+  `/bin/bash`).
+- **`eject-externals.sh` (repo root) now boots the agent out before unmounting** — PeekServer
+  serves media straight off the review drive, so a mounted-and-in-use volume would otherwise force
+  the unmount (or fail it), re-inviting the Tahoe reboot-hang. The agent comes back on next login
+  (`RunAtLoad`). No-op when the agent isn't loaded.
+- +6 tests (`tests/test_agent.py`): validate the emitted plist (label, persistent-not-periodic,
+  launches `run.sh`, brew on `PATH`, logs, usage error) via `--print-plist` — no launchctl side
+  effects, so they run on any platform.
+
 ## 0.7.2 — `created_at` in the item list ("arrived" date)
 
 - `GET /api/items` rows now also include `created_at` — when the scanner FIRST SAW the file,

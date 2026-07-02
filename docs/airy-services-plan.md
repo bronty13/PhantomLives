@@ -180,6 +180,6 @@ Vortex, no drive shuffling. airy already has the drives (ROG_WHITE/LACIE) and th
 |---|---|
 | `release-on-airy.sh` wrapper + `SIGN_KEYCHAIN`-aware `release.sh` patch | Install Xcode; accept license; skip simulators |
 | `.github/workflows/swift-ci.yml` (self-hosted, path-filtered matrix) | Register + launchd-install the Actions runner |
-| PeekServer launchd plist + `install-agent`/`uninstall-agent` installer | notarytool profile, Sparkle private key, Apple ID |
-| `eject-externals` PeekServer-bootout hook | Grant FDA on airy; write `config.json`; Tailscale |
+| ~~PeekServer launchd plist + `install-agent`/`uninstall-agent` installer~~ ✅ done (`PeekServer/install-agent.sh`) | notarytool profile, Sparkle private key, Apple ID |
+| ~~`eject-externals` PeekServer-bootout hook~~ ✅ done | Grant FDA on airy; write `config.json`; Tailscale |
 | `docs/releasing-on-airy.md` + update archive-runner Decision #2 | The daily-noon TCC click stays (per archive doc) |
