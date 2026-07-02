@@ -86,11 +86,14 @@ a per-item **detail panel** on the right.
   show their **tag names** right on the cell (under the filename in grid view, in place of the
   media-type label in list view), so the tagged ones stand out at a glance even with the toggle
   off.
-- **Date menu** (calendar icon in the toolbar): show **only items modified recently** — *Last
-  Hour / 2 / 4 / 8 Hours, Last Day / 2 / 3 / 7 Days, Last 2 Weeks, Last Month*, or *All Dates*
-  (the default). It applies to **both Browse and Preview** and combines with the decision and
-  Tagged lenses — perfect for reviewing just what a sync dropped off this morning. The icon
-  gains a clock badge while a window is active so you can't forget it's on.
+- **Date menu** (calendar icon in the toolbar): show **only recent items** — *Last Hour / 2 /
+  4 / 8 Hours, Last Day / 2 / 3 / 7 Days, Last 2 Weeks, Last Month*, or *All Dates* (the
+  default). The same menu picks what "recent" measures: **Date Arrived** (default — when the
+  file first appeared in the review folder; use this to see what a sync dropped off this
+  morning, since synced files keep their original timestamps) or **Date Modified** (the
+  file's own date). It applies to **both Browse and Preview** and combines with the decision
+  and Tagged lenses. The icon gains a clock badge while a window is active so you can't
+  forget it's on.
 - Badges on each thumbnail show its type, your keep (✓) / skip (✕) decision, favorite (♥),
   hidden (eye-slash), and a **missing** marker (orange) if the file has left disk (see
   *Refreshing*).

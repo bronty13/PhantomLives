@@ -26,12 +26,22 @@ final class DateFilterTests: XCTestCase {
 
     // MARK: MediaFile.modifiedDate — must accept both stored dialects
 
-    private func file(modified: String?) -> MediaFile {
+    private func file(modified: String?, created: String = "") -> MediaFile {
         MediaFile(id: "x", scanRoot: "/r", filePath: "/r/a.jpg", fileName: "a.jpg",
                   fileType: "photo", fileSize: 1, fileModifiedAt: modified,
                   keep: nil, isFavorite: false, isHidden: false, title: nil, caption: nil,
                   importedAt: nil, exportedAt: nil, deletedAt: nil, missingAt: nil,
-                  contentHash: nil, photosAssetId: nil, createdAt: "", updatedAt: "")
+                  contentHash: nil, photosAssetId: nil, createdAt: created, updatedAt: "")
+    }
+
+    func testFirstSeenDateParsesArrival() {
+        // "Arrived" basis: an old photo (2022 mtime) that reached the review folder recently
+        // must be recent by first-seen even though it's ancient by modified date.
+        let f = file(modified: "2022-05-15T20:26:54Z", created: "2026-07-01T12:00:00Z")
+        XCTAssertNotNil(f.firstSeenDate)
+        XCTAssertNotNil(f.modifiedDate)
+        XCTAssertGreaterThan(f.firstSeenDate!, f.modifiedDate!)
+        XCTAssertNil(file(modified: nil, created: "").firstSeenDate)   // empty → nil, not epoch
     }
 
     func testParsesServerUTCFormat() {

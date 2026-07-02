@@ -53,7 +53,7 @@ final class RemotePeekDataSource: DataSource {
             missingAt: nil,
             contentHash: nil,
             photosAssetId: i.photos_asset_id,
-            createdAt: "",                  // PeekServer's item list omits these; not shown in review UI
+            createdAt: i.created_at ?? "",  // first-seen = "arrived" (Date filter basis, ≥0.7.2)
             updatedAt: ""
         )
     }

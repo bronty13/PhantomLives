@@ -131,3 +131,19 @@ enum DateFilter: String, CaseIterable, Identifiable {
         maxAge.map { now.addingTimeInterval(-$0) }
     }
 }
+
+/// What date the Date filter measures. **Modified** = the file's own modified timestamp —
+/// but sync tools (rsync -a) preserve original mtimes, so a photo that ARRIVED this morning
+/// can carry a 2022 date. **Arrived** = when the scanner first saw the file in the review
+/// folder (the DB row's created_at) — "what's new in the queue", usually what a review
+/// session wants.
+enum DateFilterBasis: String, CaseIterable, Identifiable {
+    case modified, arrived
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .modified: return "Date Modified"
+        case .arrived:  return "Date Arrived"
+        }
+    }
+}

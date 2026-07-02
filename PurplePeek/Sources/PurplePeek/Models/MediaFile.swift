@@ -73,10 +73,18 @@ struct MediaFile: Codable, FetchableRecord, MutablePersistableRecord, Identifiab
     /// writes local-time ISO without a zone ("2026-06-15T18:51:32"), PeekServer writes UTC
     /// with Z ("2026-06-15T18:51:32Z"). nil when absent/unparseable — such items fail any
     /// active date window (unknown age ≠ recent). Backs the toolbar Date filter.
-    var modifiedDate: Date? {
-        guard let s = fileModifiedAt, !s.isEmpty else { return nil }
-        // Dispatch on the suffix — DateFormatter is lenient about a missing quoted 'Z', so
-        // trying the UTC pattern first would silently mis-zone the local dialect by hours.
+    var modifiedDate: Date? { Self.parseStoredDate(fileModifiedAt) }
+
+    /// When this file was FIRST SEEN by a scan (the row's created_at) — its arrival in the
+    /// review folder. Basis for the Date filter's "Arrived" mode: synced files keep their
+    /// original modified dates, so "modified recently" misses fresh arrivals of old media.
+    var firstSeenDate: Date? { Self.parseStoredDate(createdAt) }
+
+    /// Parse either stored date dialect. Dispatch on the suffix — DateFormatter is lenient
+    /// about a missing quoted 'Z', so trying the UTC pattern first would silently mis-zone
+    /// the local dialect by hours.
+    static func parseStoredDate(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
         return s.hasSuffix("Z") ? Self.utcDateFormatter.date(from: s)
                                 : Self.localDateFormatter.date(from: s)
     }

@@ -162,7 +162,7 @@ def list_media(root: str = None, decision: str = "all", offset: int = 0, limit: 
         total = c.execute(f"SELECT COUNT(*) FROM media_files WHERE {clause}", args).fetchone()[0]
         rows = c.execute(
             f"""SELECT id,scan_root,file_path,file_name,file_type,file_size,file_modified_at,
-                       keep,is_favorite,title,caption,is_hidden,imported_at,photos_asset_id
+                       created_at,keep,is_favorite,title,caption,is_hidden,imported_at,photos_asset_id
                 FROM media_files WHERE {clause}
                 ORDER BY file_name LIMIT ? OFFSET ?""",
             args + [limit, offset],

@@ -132,6 +132,12 @@ final class AppState: ObservableObject {
     @Published var dateFilter: DateFilter = .all {
         didSet { if dateFilter != oldValue { recomputeDerived() } }
     }
+    /// Which date the window measures: the file's own modified date, or when it ARRIVED in the
+    /// review folder (first seen by a scan). Arrived is usually what a review session wants —
+    /// synced files keep their original mtimes, so fresh arrivals can carry years-old dates.
+    @Published var dateFilterBasis: DateFilterBasis = .arrived {
+        didSet { if dateFilterBasis != oldValue { recomputeDerived() } }
+    }
 
     // MARK: - Decision undo
     /// Recent keep/skip changes, newest last. The Undo control reverts the most recent one.
@@ -485,9 +491,10 @@ final class AppState: ObservableObject {
         let gridFilter = gridDecisionFilter
         let previewFilter = previewDecisionFilter
         let taggedOnly = showTaggedOnly
-        // Date lens: computed once per recompute. Items without a parseable modified date fail
-        // an active window (unknown age is not "recent").
+        // Date lens: computed once per recompute. Items without a parseable date on the chosen
+        // basis fail an active window (unknown age is not "recent").
         let dateCutoff = dateFilter.cutoff()
+        let dateBasis = dateFilterBasis
         var visible: [MediaFile] = []
         var preview: [MediaFile] = []
         var deletableImported = false
@@ -503,7 +510,8 @@ final class AppState: ObservableObject {
 
             // Date window applies to BOTH the grid and the Preview queue.
             if let dateCutoff {
-                guard let modified = file.modifiedDate, modified >= dateCutoff else { continue }
+                let basisDate = dateBasis == .modified ? file.modifiedDate : file.firstSeenDate
+                guard let basisDate, basisDate >= dateCutoff else { continue }
             }
 
             // Grid: optional folder narrowing + the grid's decision lens + optional tagged-only.

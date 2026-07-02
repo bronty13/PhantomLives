@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.2 — `created_at` in the item list ("arrived" date)
+
+- `GET /api/items` rows now also include `created_at` — when the scanner FIRST SAW the file,
+  i.e. when it arrived in the review folder. This is the basis for PurplePeek's "Date Arrived"
+  filter mode: synced files keep their original modified dates (rsync preserves mtimes), so
+  "modified in the last hour" misses files that arrived an hour ago carrying 2022 timestamps.
+
 ## 0.7.1 — `file_modified_at` in the item list
 
 - `GET /api/items` rows now include `file_modified_at` (UTC, `…Z`). Clients need it for

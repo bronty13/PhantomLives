@@ -8,11 +8,15 @@ All notable changes to PurplePeek are documented here. Versions are git-derived
 ### New: Date filter in the toolbar (Browse + Preview)
 
 A calendar menu in the toolbar narrows both the Browse grid and the Preview queue to items
-**modified within a recent window**: Last Hour / 2 / 4 / 8 Hours, Last Day / 2 / 3 / 7 Days,
-Last 2 Weeks, Last Month (default: All Dates). It combines with the Review (decision) and
-Tagged lenses. Remote items get their modified date from PeekServer 0.7.1's item list; local
-items already had it. Items with no readable date are excluded from an active window (unknown
-age isn't "recent"). +7 tests (window math, both date dialects, membership) → 66 total.
+from a recent window: Last Hour / 2 / 4 / 8 Hours, Last Day / 2 / 3 / 7 Days, Last 2 Weeks,
+Last Month (default: All Dates). It combines with the Review (decision) and Tagged lenses.
+The menu also picks **what the window measures**: **Date Arrived** (default — when the file
+first appeared in the review folder; what a triage session usually wants, since sync tools
+preserve original timestamps and a photo that arrived this morning can carry a 2022 date) or
+**Date Modified** (the file's own mtime). Remote items get both dates from PeekServer
+0.7.1/0.7.2's item list; local items already had them. Items with no readable date on the
+chosen basis are excluded from an active window (unknown age isn't "recent"). +8 tests
+(window math, both date dialects, arrival-vs-modified, membership) → 67 total.
 
 ### Fix: Refresh (⌘R) in remote mode ran the LOCAL scanner — and killed the review session
 

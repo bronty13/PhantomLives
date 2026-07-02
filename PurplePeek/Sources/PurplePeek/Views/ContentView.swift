@@ -149,16 +149,28 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
             // The Date lens — narrows BOTH the Browse grid and the Preview queue (it's applied
             // in recomputeDerived alongside the decision + tagged lenses, so it combines).
-            Picker(selection: Binding(
-                get: { appState.dateFilter },
-                set: { appState.dateFilter = $0 }
-            )) {
-                ForEach(DateFilter.allCases) { Text($0.label).tag($0) }
+            Menu {
+                Picker("Window", selection: Binding(
+                    get: { appState.dateFilter },
+                    set: { appState.dateFilter = $0 }
+                )) {
+                    ForEach(DateFilter.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.inline)
+                Divider()
+                // Arrived = first seen in the review folder (what a triage session usually
+                // wants — synced files keep their original modified dates); Modified = mtime.
+                Picker("Based on", selection: Binding(
+                    get: { appState.dateFilterBasis },
+                    set: { appState.dateFilterBasis = $0 }
+                )) {
+                    ForEach(DateFilterBasis.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.inline)
             } label: {
                 Label("Date", systemImage: appState.dateFilter == .all ? "calendar" : "calendar.badge.clock")
             }
-            .pickerStyle(.menu)
-            .help("Show only items modified recently — applies to Browse and Preview")
+            .help("Show only recent items (by arrival or modified date) — applies to Browse and Preview")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {

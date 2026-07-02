@@ -82,6 +82,7 @@ struct PeekItemDTO: Decodable {
     let file_type: String
     let file_size: Int64?
     let file_modified_at: String?     // UTC "…Z" (PeekServer ≥0.7.1; absent on older servers)
+    let created_at: String?           // first seen by the scanner = arrived (≥0.7.2)
     let keep: Int?
     let is_favorite: Int
     let title: String?

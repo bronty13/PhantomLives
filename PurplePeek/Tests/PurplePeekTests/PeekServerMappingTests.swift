@@ -81,11 +81,12 @@ final class PeekServerMappingTests: XCTestCase {
         // PeekServer emits file_type "image" for photos; must map to MediaType.photo.
         let dto = PeekItemDTO(id: "x", scan_root: "/r", file_path: "/r/p.jpg", file_name: "p.jpg",
                               file_type: "image", file_size: 1, file_modified_at: "2026-06-15T18:51:32Z",
-                              keep: nil, is_favorite: 0,
+                              created_at: "2026-07-01T12:00:00Z", keep: nil, is_favorite: 0,
                               title: nil, caption: nil, is_hidden: 0, imported_at: nil, photos_asset_id: nil)
         let mapped = RemotePeekDataSource.map(dto)
         XCTAssertEqual(mapped.mediaType, .photo)
         XCTAssertEqual(mapped.fileModifiedAt, "2026-06-15T18:51:32Z")   // 0.7.1: date-filter input
+        XCTAssertEqual(mapped.createdAt, "2026-07-01T12:00:00Z")        // 0.7.2: "arrived" basis
     }
 
     func testDecodeItemDetailKeywordsAndAlbums() throws {
