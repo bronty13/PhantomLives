@@ -1,0 +1,112 @@
+name: Swift CI
+
+# Runs the Swift test suites on the self-hosted macOS runner (airy). The monorepo
+# has no top-level build (each subproject is independent — see CLAUDE.md), so this
+# only tests the subproject(s) a change actually touches: a `discover` job diffs the
+# changed paths against the known set and emits a matrix of just those.
+#
+# SCOPE: the plain-`swift test` (SwiftPM) subprojects. Their run-tests.sh `exec` the
+# test command, so exit codes propagate → honest pass/fail. The xcodebuild/xcodegen
+# apps (Timeliner, PurpleMark, PurpleReel, …) can be added to CI_PROJECTS below once
+# their run-tests.sh propagate exit status (some currently end in `| grep … || true`,
+# which masks a failing suite) and xcodegen is on the runner's PATH.
+#
+# MONITOR-ONLY: this reports status checks; it is NOT wired as a required check in
+# branch protection yet. Prove it stable across a few real PRs before gating merges.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One self-hosted Air — serialize, and cancel a superseded run on the same ref.
+concurrency:
+  group: swift-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest   # cheap hosted runner just to compute the matrix
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+      any: ${{ steps.pick.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history to diff against the base
+      - id: pick
+        name: Select changed Swift subprojects
+        run: |
+          set -euo pipefail
+          # The plain-`swift test` subprojects (clean exit-code propagation).
+          CI_PROJECTS="IRCKit Ircle PurpleArchive PurpleAttic PurpleDedup PurpleIRC \
+            PurpleMirror PurplePeek PurpleSpeak PurpleVoice WeightTracker SlackSucker \
+            messages-exporter-gui"
+
+          # Resolve the base to diff against.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --quiet origin "${{ github.base_ref }}"
+            BASE="$(git merge-base HEAD "origin/${{ github.base_ref }}")"
+          else
+            BASE="${{ github.event.before }}"
+            # First push of a branch (or missing) → fall back to the parent commit.
+            if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null \
+               || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+            fi
+          fi
+          echo "Diffing changed paths against $BASE"
+          CHANGED_DIRS="$(git diff --name-only "$BASE" HEAD | awk -F/ 'NF>1 {print $1}' | sort -u)"
+          echo "Changed top-level dirs:"; echo "$CHANGED_DIRS" | sed 's/^/  /'
+
+          # Intersect changed dirs with the CI set → JSON array (no jq dependency).
+          SELECTED=""
+          for p in $CI_PROJECTS; do
+            if echo "$CHANGED_DIRS" | grep -qx "$p"; then
+              SELECTED="$SELECTED $p"
+            fi
+          done
+          SELECTED="$(echo "$SELECTED" | xargs -n1 2>/dev/null | sort -u || true)"
+
+          if [ -z "$SELECTED" ]; then
+            echo "No CI'd Swift subproject changed — skipping the test matrix."
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo 'matrix={"project":[]}' >> "$GITHUB_OUTPUT"
+          else
+            echo "Will test:"; echo "$SELECTED" | sed 's/^/  /'
+            JSON="$(echo "$SELECTED" | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $0} END{printf "]"}')"
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"project\":$JSON}" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: discover
+    if: >-
+      needs.discover.outputs.any == 'true' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, macos, xcode]
+    strategy:
+      fail-fast: false
+      max-parallel: 1   # one Air — never run two suites at once
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          cd "${{ matrix.project }}"
+          ./run-tests.sh
+      - name: Clean build artifacts (disk hygiene)
+        if: always()
+        run: |
+          # The Air's 256GB SSD can't accrue .build/ across every run — clear this
+          # project's, and log what was reclaimed rather than deleting silently.
+          d="${{ matrix.project }}/.build"
+          if [ -d "$d" ]; then
+            echo "Reclaiming $(du -sh "$d" 2>/dev/null | cut -f1) from $d"
+            rm -rf "$d"
+          fi
