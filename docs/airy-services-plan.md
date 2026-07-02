@@ -179,6 +179,10 @@ Vortex, no drive shuffling. airy already has the drives (ROG_WHITE/LACIE) and th
 
 ## What can be built now (in-repo, no airy access) vs. on-airy steps
 
+The in-repo column below is all ✅ done. The right column — the on-airy install/configure — is written
+up as an ordered, copy-pasteable runbook in **`docs/airy-handoff.md`** (run it on airy; GUI-only gates
+flagged). This table is the summary; the handoff is the execution checklist.
+
 | Buildable now (this repo) | Requires airy (GUI/account/hardware) |
 |---|---|
 | ~~`release-on-airy.sh` wrapper~~ ✅ done — unlocks keychains centrally, so no per-app `release.sh` edit was needed | Install Xcode; accept license; skip simulators |
